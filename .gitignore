@@ -1,0 +1,50 @@
+# Build products and IDE state
+.build/
+DerivedData/
+.swiftpm/xcode/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.cer
+*.der
+*.mobileprovision
+id_rsa
+id_ecdsa
+id_ed25519
+
+# Sensorium local pairing, identities, and runtime state
+.sensorium/
+SensoriumLocal/
+*.identity
+*.pairing
+*.certificate
+*.keychain
+
+# Generated diagnostics and private captures
+Artifacts/
+coverage/
+*.log
+*.trace
+*.recording
+*.mov
+*.mp4
+*.hevc
+*.h264
+
+# Local editor and machine state
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+*.swp
+*.swo

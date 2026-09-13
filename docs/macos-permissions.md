@@ -1,0 +1,63 @@
+# macOS permissions
+
+## Each app's own key
+
+Both apps keep a key that identifies the machine they run on, in `device-identity.json` under `~/Library/Application Support/Sensorium`. The host keeps a second key there, `host-tls-identity.json`, which holds the certificate the viewer pins when the two machines pair. Each file is readable by its owner only. macOS asks for no permission to read them, so a rebuild changes nothing about them.
+
+If a file cannot be read, the app shows its own window with **Try again** and **Make a new key**. Click **Try again** first. Only click **Make a new key** if the key is really lost, since it replaces the key and the two machines must pair again.
+
+## Host
+
+Sensorium Host needs three permissions. Grant them in System Settings.
+
+| Permission | Used for | Checked by the app |
+|---|---|---|
+| Screen Recording | Capturing the session canvas it streams | Yes |
+| Accessibility | Injecting mouse and keyboard input | Yes |
+| Remote Desktop | Apple's gate on unattended remote access | No. macOS has no API for it. |
+
+Without Accessibility the host still streams video. It only refuses input.
+
+### Waking the screen
+
+macOS draws nothing to a sleeping display. A session that started against a host whose screens had idled would stream a picture that never arrives, so the host wakes them when a session starts and keeps them awake while it runs.
+
+This needs no permission. It uses public power management only. The screen that comes on is the one the session streams. Nothing about the display's resolution, arrangement, or mirroring changes, and a Mac that is itself asleep stays asleep.
+
+While a session is live, macOS reports Sensorium as the reason the screen stays on, under the name "Sensorium session is live". When the session ends, the host lets the screen idle again exactly as it did before.
+
+If a screen does not come back within five seconds, the host says so and refuses to share it.
+
+### Grants expire
+
+macOS ties a grant to the exact binary. Rebuilding the app drops the grant. Since macOS Sequoia, grants also expire about weekly and after a restart.
+
+The host checks both permissions every 30 seconds while it runs. A lost permission logs which System Settings pane to reopen.
+
+## Viewer
+
+The viewer needs no permission to run. It needs Accessibility only to forward shortcuts macOS reserves for itself.
+
+| Permission | Used for | Checked by the app |
+|---|---|---|
+| Accessibility | Watching for reserved shortcuts before macOS acts on them, so they reach the host instead | Yes, without prompting |
+
+Nothing in this project requests or grants this permission. The viewer shows its shortcut routing mode and Accessibility status before the first keystroke.
+
+### Shortcut routing
+
+| Mode | Reserved shortcuts act on |
+|---|---|
+| `local` | The viewer machine. Nothing is forwarded. |
+| `remote-when-focused` | The host, whenever a viewer window has key focus. |
+| `remote-in-fullscreen` (default) | The host, only while a viewer window is fullscreen. |
+
+The default keeps a windowed viewer from taking Cmd-Tab away from the viewer machine's own apps.
+
+Without the grant, these still forward in a remote mode, since they need no permission: Cmd-Q, Cmd-W, Cmd-H, Cmd-M, and ordinary typing.
+
+These reserved shortcuts stay on the viewer machine in every mode: Cmd-Tab, Cmd-Shift-Tab, Cmd-Space, Cmd-` and Cmd-Shift-`, and Ctrl-Up, Ctrl-Down, Ctrl-Left, Ctrl-Right.
+
+**Control-Option-Command-Escape** returns the person to the machine in front of them. It leaves fullscreen, hides the viewer, and releases anything the session canvas still holds. No mode forwards it.
+
+Cmd-Q forwards only in the same case as the shortcuts above, fullscreen only by default. Otherwise it stays on the viewer machine.
