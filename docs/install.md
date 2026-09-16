@@ -4,7 +4,7 @@ What you need, and how to pair the two apps.
 
 ## Requirements
 
-- One Intel MacBook to view from, and one Apple-silicon Mac mini to host. Both need macOS 14 or later.
+- One Intel MacBook to view from, and one Apple-silicon Mac mini to host. Both need macOS 13 or later. Built and tested only on macOS 26.
 - Both machines joined to the same Tailscale tailnet.
 
 ## Build the two apps

@@ -66,6 +66,21 @@ only during a live host-screen session, and it is restored at that session's
 end. On screen it is called "resolution".
 _Avoid_: display mode, screen resolution change, scaling profile
 
+**Lock-screen unlock**:
+An opt-in action inside a live, authenticated, presence-verified host-screen
+session: the person at the viewer types the host machine's login password, and
+the host types it into its own locked login window. What locks is the
+machine's login session, not any one display, so this has nothing to do with
+which screen is being streamed. On screen it is offered as "Unlock the host
+screen".
+_Avoid_: remote unlock, screen unlock, password injection
+
+**Login password**:
+The password that unlocks the host machine's own login window, typed once at
+the viewer's request during lock-screen unlock and never stored, logged, or
+written to disk.
+_Avoid_: passcode, PIN
+
 **Waking the screen**:
 What the host does to a sleeping display when a session starts, and keeps doing
 for as long as that session runs. macOS draws nothing to a sleeping display, so

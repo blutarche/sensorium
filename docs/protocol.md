@@ -236,8 +236,30 @@ The host-screen path offers one of the host's own displays instead of a session 
 | `hostScreenModeRequest(modeID)` | client → host | One `modeID` from that list. Never a width, height, or scale of the viewer's own composing |
 | `hostScreenModeApplied(geometry, currentModeID)` | host → client | The mode changed. `geometry` is the new logical size and backing scale |
 | `hostScreenModeRefused(reason)` | host → client | `host-screen-mode-not-live`, `host-screen-mode-unknown`, `host-screen-mode-failed`. The session and display are untouched |
+| `hostScreenUnlockChallengeRequest` | client → host | Asks the host to mint a single-use unlock challenge. Carries nothing. Host answers only for an already-authenticated, already-streaming host-screen session |
+| `hostScreenUnlockChallenge(challenge)` | host → client | The single-use, connection-bound challenge for one unlock attempt |
+| `hostScreenUnlockArm(presence)` | client → host | A fresh presence proof over that challenge, arming exactly one subsequent `hostScreenUnlockRequest` |
+| `hostScreenUnlockRequest(password)` | client → host | The host's own login password, as raw UTF-8 bytes, to type into its locked login window |
+| `hostScreenUnlockResult(outcome)` | host → client | What the attempt did, one of `HostScreenUnlockOutcome`'s stable tokens, below |
+| `hostScreenLockState(locked)` | host → client | Whether the host's screen is locked. Sent unprompted right after `hostScreenReady` and again after every unlock attempt |
 
-`presence` is one of two shapes only, never a mixture: `signed` (`credentialID`, `credentialFormat`, a signature over `hostScreenList`'s `challenge`) or `resumeTicket` (a ticket the host minted for an earlier session). Neither shape, nor `pairRequest`'s optional presence-credential registration, carries a credential strength or display description as a field a viewer asserts. A viewer-reported strength is never trusted, only referenced back to what the host itself already recorded.
+`presence` is one of two shapes only, never a mixture: `signed` (`credentialID`, `credentialFormat`, a signature over `hostScreenList`'s `challenge`) or `resumeTicket` (a ticket the host minted for an earlier session). Neither shape, nor `pairRequest`'s optional presence-credential registration, carries a credential strength or display description as a field a viewer asserts. A viewer-reported strength is never trusted, only referenced back to what the host itself already recorded. `hostScreenUnlockArm`'s own `presence` is always `signed`: it is a fresh proof over the unlock challenge, never a resume ticket, since a resume ticket stands in for a fresh presence check and an unlock arm must not accept that substitute.
+
+### Lock-screen unlock outcomes
+
+`hostScreenUnlockResult` carries one of these stable tokens, the same discipline `hostScreenRefused`'s reason list follows:
+
+| Token | Meaning |
+|---|---|
+| `unlocked` | The password was accepted. The screen is no longer locked |
+| `wrong-password` | The login window refused the password. Still locked, and the viewer may try again |
+| `screen-sharing-unavailable` | The host could not reach its own built-in screen-sharing service on loopback, or that service does not offer the security type this unlock needs. Nothing was typed |
+| `not-locked` | The screen was already unlocked when the request arrived |
+| `not-authorized` | The connection is not an authenticated, active host-screen session |
+| `too-many-attempts` | This machine is at its wrong-guess cap. Retrying on this connection or a fresh one cannot help; only a correct password, a host restart, or the person at the host re-arming this machine clears it |
+| `password-too-long` | The password is longer than the unlock method's credential field can hold. Type it at the login window instead |
+| `presence-required` | No fresh, single-use presence arm covers this attempt. Confirm presence again, then retry |
+| `failed` | The password was accepted but the screen is still locked, or some other step failed. Carries a `reason` string for the operator log only, never shown as more than "try again" |
 
 ## Ordering rules
 
@@ -246,6 +268,7 @@ The host-screen path offers one of the host's own displays instead of a session 
 - Pointer motion is latest-wins, collapsing to the newest point queued behind an in-flight send. Buttons, scrolls, and keys are never coalesced.
 - Video frames are decoded in the order they arrived. A viewer that fell behind catches up rather than skipping ahead, because each frame is a difference from the one before it. Only a decode queue that reaches its bound gives a group up, and the next key frame recovers from that.
 - The viewer draws on its screen's own refresh. Each decoded frame is held a short time past the capture time the host stamped it with, so frames that arrive together are drawn one refresh apart instead of one of them being thrown away. The hold is measured from how unevenly frames arrive and never exceeds 50 milliseconds. A frame that arrives later than that is drawn at once.
+- A `hostScreenUnlockChallenge` is single-use, with a 60-second time to live: a `hostScreenUnlockArm` presented after that window is refused, never verified. `hostScreenUnlockArm` must precede `hostScreenUnlockRequest`: an unlock request with no valid arm is refused with `presence-required`. An arm is one-shot per request: it authorizes exactly one subsequent `hostScreenUnlockRequest`, and every later attempt needs a fresh challenge and a fresh arm of its own.
 
 ## Version policy
 

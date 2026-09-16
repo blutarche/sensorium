@@ -16,7 +16,7 @@ No account, no relay, no telemetry, no command line.
 ## Requirements
 
 - An Intel MacBook to view from and an Apple-silicon Mac mini to host.
-- macOS 14 or later on both.
+- macOS 13 or later. Built and tested only on macOS 26.
 - Both on the same Tailscale tailnet. Nothing else can reach the host.
 
 ## Getting started
@@ -33,12 +33,17 @@ Docs:
 - [Threat model](docs/threat-model.md)
 - [Wire protocol](docs/protocol.md)
 - [Host screen mode](docs/host-screen-design.md)
+- [User interface spec](docs/ux-spec.md)
+- [Design system](docs/design-system.md)
+- [Testing](docs/testing.md)
+- [Uninstall](docs/uninstall.md)
 
 ## Status
 
 Works between the two machines it was built for. Pairing, virtual display,
 pinned-identity QUIC transport, H.264 video, input, clipboard and reconnect
-all run. Not signed, not notarized, not yet tested on other hardware.
+all run. Host screen mode and its opt-in lock-screen unlock run too. Not
+signed, not notarized, not yet tested on other hardware.
 
 ## Development
 
@@ -51,7 +56,7 @@ Swift 6. No dependencies. No Xcode needed. Run the tests with
 - Changing physical displays. One exception: a host screen's resolution,
   on request, restored afterwards.
 - Backend, accounts, browser viewer, relay, telemetry.
-- Audio, file transfer, multiple users, access before login.
+- Audio, file transfer, multiple users, pre-boot (FileVault) unlock.
 
 ## License
 

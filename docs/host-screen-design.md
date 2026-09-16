@@ -22,7 +22,7 @@ The viewer calls this mode "host screen", not "mirror". A mirror would imply a c
 
 ## 2. Choosing the mode
 
-Host screen is armed by pairing. A machine that pairs and registers a presence credential is armed at once, for the displays the host has at that moment. A person at the host, not the viewer, can turn it off for that machine afterward, and can turn it back on.
+Host screen is armed by pairing. A machine that pairs and registers a presence credential is armed at once. Arming names the machine, not a set of screens. An armed machine may be offered any display the host has when a session starts. A person at the host, not the viewer, can turn it off for that machine afterward, and can turn it back on.
 
 ### 2.1 Arming, at pairing, persistently
 
@@ -30,9 +30,9 @@ Pairing arms a paired machine for screen control at once, when the machine regis
 
 - **Host-set only.** No wire message reaches the arming store. Only the host's own interface writes it. The session controller and coordinator hold a read-only view.
 - **Named machines.** Arming names the machine's public key. Pairing a second machine does not extend screen control to it.
-- **Named displays.** Arming names which display may be captured. Attaching a display later does not arm it.
+- **Per machine, not per display.** Arming names no display. A display qualifies when the host has it at session time and Sensorium did not create it, so a monitor attached after the host started can be shared, exactly as it can with the screen sharing macOS ships. A session canvas the host created never qualifies.
 
-The record lives at `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-readable only. It holds armed machine keys, armed display identities, the minimum credential strength registered for each machine at the moment it was armed (see §6.3), and the arming time. This is a separate file from `approved-devices.json`. That file means "this machine may connect." This file means "this machine may drive my screen." It sits beside the identity files in the same directory and is owner-readable in the same way. Its owner can read it with `cat` and revoke it with `rm`.
+The record lives at `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-readable only. It holds armed machine keys, the minimum credential strength registered for each machine at the moment it was armed (see §6.3), and the arming time. A record written by an earlier version that also named displays still loads; the display list is ignored and dropped when the record is written back. This is a separate file from `approved-devices.json`. That file means "this machine may connect." This file means "this machine may drive my screen." It sits beside the identity files in the same directory and is owner-readable in the same way. Its owner can read it with `cat` and revoke it with `rm`.
 
 ### 2.2 Seeing and revoking it later
 
@@ -40,9 +40,9 @@ The menu bar shows the state at all times: "Screen control: ON for `<machine>`",
 
 ### 2.3 The viewer side
 
-A real host offers its host-screen list unprompted. It sends this right after a successful authenticated hello, before any other host-initiated message. The list holds every display the connecting machine is armed for, or an empty list if it is armed for none. The session chooser lists "Private canvas (default)" and each offered display, plus a "Connect to Host Screen" item that reconnects. A connection's target is fixed for its whole life. Choosing host screen opens a fresh connection naming the display's own `displayIdentity`. No message upgrades an open canvas connection into a host-screen one.
+A real host offers its host-screen list unprompted. It sends this right after a successful authenticated hello, before any other host-initiated message. The list holds every display this host can share right now, or an empty list when it has none to share. The session chooser lists "Private canvas (default)" and each offered display, plus a "Connect to Host Screen" item that reconnects. A connection's target is fixed for its whole life. Choosing host screen opens a fresh connection naming the display's own `displayIdentity`. No message upgrades an open canvas connection into a host-screen one.
 
-A machine that asks for host screen while armed for none is refused with the reason `host-screen-not-allowed`, shown as "This Mac's owner has not enabled screen control for you." It does not fall back to a canvas silently. A display can be missing from the offer for several reasons: it is offline, inactive, a canvas the host itself created, or absent from the pre-session snapshot. Each case is logged with the reason. The Host Setup window's paired-machine row shows the same reason.
+A machine that is not armed is refused with the reason `host-screen-not-allowed`, shown as "This Mac's owner has not enabled screen control for you." It does not fall back to a canvas silently. A display can be missing from the offer for several reasons: it is offline, asleep, or mirroring another display. Each case is logged with the reason. A canvas the host itself created is never a candidate and is not logged. The Host Setup window's paired-machine row says when nothing can be shared.
 
 ### 2.4 What the person at the host sees
 
@@ -97,7 +97,7 @@ The viewer never names a raw display ID. `CGDirectDisplayID` is not stable acros
 
 `opaqueToken` and `displayIdentity` answer different questions. The token is a one-shot capability, minted fresh per offer, meaningless outside the session that minted it. `displayIdentity` is a stable encoding of the same display across every offer this host makes, including across a restart. It is opaque to the viewer, not secret. It lets a viewer recognize "the same display as last time" once a token is gone.
 
-A display is admitted only when every one of these holds: the mode is armed for this machine's key, the display is armed, the token was minted in this session, the display is still present and online, it does not carry this host's own canvas identity, and it appears in the pre-session display snapshot. One display streams per session. Serving two at once is architecturally possible but not built.
+A display is admitted only when every one of these holds: this machine's key is armed, the token was minted in this session, the display is still present, online, awake, and unmirrored, and it does not carry this host's own canvas identity. One display streams per session. Serving two at once is architecturally possible but not built.
 
 ### 5.5 Remembering a chosen mode
 
@@ -122,7 +122,7 @@ A canvas connection made only for lack of anything remembered still carries the 
 1. The machine is paired and authenticated.
 2. The source address is on the tailnet.
 3. Screen Recording is granted, checked with `CGPreflightScreenCaptureAccess()` at arming time.
-4. The mode is armed for this machine's key and this display, per §2.1.
+4. The machine's key is armed, per §2.1.
 5. The request carries a verified presence-credential signature over the host's challenge, or a valid resume ticket, per §6.3 and §6.5.
 6. The host-presence rule from §6.2 is satisfied.
 
@@ -167,7 +167,7 @@ A grant belongs to a host-screen session, not to a transport connection, and the
 
 ### 6.6 Threat model
 
-Stated in `docs/threat-model.md`. A stolen viewer key from a machine with no registered presence credential buys an attacker a private, empty canvas. A stolen key from any other paired machine buys control of a logged-in Mac, with nobody necessarily present to refuse, unless the person at the host has turned screen control off for that machine. The compensating controls, in order: arming is per-machine and per-display, arming is host-local and nothing on the wire can create, re-arm, or widen it, the tailnet requirement stands, a presence-bound credential must sign each session's challenge, the badge and Stop make a live session obvious to anyone in the room, and the session log makes a past session provable afterward.
+Stated in `docs/threat-model.md`. A stolen viewer key from a machine with no registered presence credential buys an attacker a private, empty canvas. A stolen key from any other paired machine buys control of a logged-in Mac, with nobody necessarily present to refuse, unless the person at the host has turned screen control off for that machine. The compensating controls, in order: arming is per-machine, arming is host-local and nothing on the wire can create, re-arm, or widen it, the tailnet requirement stands, a presence-bound credential must sign each session's challenge, the badge and Stop make a live session obvious to anyone in the room, and the session log makes a past session provable afterward.
 
 The presence credential proves a person was present. It does not prove they understood what they approved. On a machine without hardware key storage, it does not defend against an attacker already running code there.
 
@@ -193,12 +193,47 @@ A sleeping display is drawn to by nothing. Capture of it, or of a virtual displa
 
 The assertion is named "Sensorium session is live", which is what macOS shows anyone at the host asking what is keeping the screen on.
 
-- **At session start.** If any online display is asleep, the host declares user activity and waits for the display it is about to stream, up to five seconds. A display that comes back is offered and captured. A display that stays asleep is refused as `asleep`.
+- **At session start.** If sleep is the only thing keeping a display out of the offer, the host declares user activity and waits for the display it is about to stream, up to five seconds. A display held back for any other reason, a mirror of another display among them, is left alone: waking it would not make it offerable. A display that comes back is offered and captured. A display that stays asleep is refused as `asleep`.
 - **While a session is live.** One prevent-sleep assertion, taken once however many surfaces the session has.
 - **At session end.** The assertion is released on every path that ends a session, the ones that end it on an error and the one that ends it because the host is quitting included.
-- **Nothing on the wire.** Only a display the connecting machine is already armed for is woken before an offer, and only the display a token this host itself minted names is woken before a request. A message naming anything else reaches no power call.
+- **Nothing on the wire.** Only a display an armed machine could already be offered is woken before an offer, and only the display a token this host itself minted names is woken before a request. A message naming anything else reaches no power call.
 - **Still forbidden.** No display is created, destroyed, resized, re-arranged, mirrored, or blanked. The machine itself is never woken from sleep. An activity declaration wakes a display, not a sleeping Mac.
 
 A capture that delivers nothing while the display it captures is asleep is answered by waking that display and building the stream once more, rather than by giving up on this process's ability to capture. A host-screen session reads only the display it is streaming. A session canvas reads the machine, since display sleep is machine-wide.
 
 If the session still ends, it ends with `host-displays-asleep`, and the viewer is told the host's screens were asleep. The viewer does not redial into that ending: a person waking the screen is what changes the answer. `capture-unavailable` names the different case where the host can no longer get a picture out of that machine at all, and tells a person to quit and reopen the host.
+
+---
+
+## 9. Lock-screen unlock
+
+An opt-in action inside a live, authenticated, presence-verified host-screen session: the person at the viewer types the host's own login password, and the host types it into its own locked login window.
+
+### 9.1 Gating
+
+Lock-screen unlock is reachable only from a host-screen session that is already live, already authenticated, and already past its own presence check. It adds nothing to the session's own admission: it opens no separate connection and asks for no separate arming record. A session canvas has no login window and offers no unlock. Out of scope entirely: FileVault's pre-boot, cold-boot unlock screen. The built-in screen-sharing service this relies on is not running there, so a host is only ever reachable through this path once it is already past FileVault, sitting at its ordinary login window.
+
+### 9.2 The flow
+
+1. The viewer sends `hostScreenUnlockChallengeRequest`. The host mints a single-use, connection-bound challenge and stores it, replacing any earlier pending one.
+2. The host answers with `hostScreenUnlockChallenge(challenge)`.
+3. The viewer signs those exact bytes with its presence credential -- a fresh, live human confirmation, independent of the one that admitted the session -- and sends `hostScreenUnlockArm(presence)`.
+4. The host verifies the signature against the machine's registered public key at its registered minimum strength, the same verifier and strength admission itself uses. Only a `signed` proof arms an unlock; a resume ticket cannot, since a resume ticket stands in for exactly the fresh presence check an unlock must not skip. The challenge is consumed on this step whether or not it verifies, so it can never be replayed.
+5. The viewer sends `hostScreenUnlockRequest(password)`, the password as raw UTF-8 bytes.
+6. The host answers `hostScreenUnlockResult(outcome)`, then `hostScreenLockState(locked)` so the viewer knows whether to keep offering the prompt.
+
+A challenge is single-use with a 60-second time to live. An arm presented after that window is refused, never verified, and the consumed challenge cannot be reused either way. An arm authorizes exactly one subsequent unlock request; every later attempt needs its own fresh challenge and arm. See `docs/protocol.md` for the wire messages and outcome tokens in full.
+
+### 9.3 How the password reaches the login window
+
+The host speaks Apple's RFB security-type-30 handshake to the built-in screen-sharing service (`screensharingd`) over a loopback connection to `127.0.0.1:5900`, the one path that still reaches the login window: Secure Event Input there blocks the ordinary CGEvent injector this project otherwise uses. Sensorium opens no listener of its own for this and only ever connects out, to loopback. The handshake -- Diffie-Hellman key agreement, AES-128-ECB with a key derived as MD5 of the shared secret, the credential block's layout, and the KeyEvent message framing -- is this project's own clean-room reading of the public RFB protocol specification.
+
+The password is copied into the credential block, that block is encrypted and sent, and every buffer the host derives from the password -- the credential block, the shared secret, the derived key, and the per-character keysyms the login window is typed with -- is zeroed as soon as it has served its purpose. The one copy this does not reach is the wire-decoded message itself: it lives until that message is released, since `Data`'s copy-on-write storage cannot be wiped any earlier. The password is never written to disk and never logged. Only the outcome token (`unlocked`, `wrong-password`, and so on) reaches the host's own stdout operator log, as one line: `host-screen unlock attempt: <token>`. Nothing about an unlock attempt is written to the host-screen session log at `~/Library/Application Support/Sensorium/host-screen-sessions.log`.
+
+Enabling the built-in screen-sharing service this speaks to is the host operator's own choice, made in System Settings; Sensorium does not turn it on. See `docs/macos-permissions.md`.
+
+### 9.4 The wrong-guess throttle
+
+A machine's wrong guesses are counted against a shared budget of 5 per host uptime, kept in memory only (`HostScreenUnlockThrottle`). The budget is keyed by the machine's verified public key together with the arming record it was granted under, so every connection that machine opens spends the same shared count -- a fresh connection or a fresh resume ticket buys no fresh guesses. Three things clear it: a correct password, a host restart (which also voids every resume ticket, so nothing about the budget needs to survive one), or the person at the host re-arming that machine in the host window, which mints a new arming record and so a fresh throttle key. The per-attempt presence check §9.2 describes is a different act and does not clear it -- only the host-side re-arm does.
+
+Reserving a guess slot is the one indivisible step that also charges it, closing the race where concurrent connections could each read a stale pre-charge count and all proceed. An outcome that never reflects a real wrong guess -- the built-in service unreachable, the screen already unlocked, a password too long for the credential field, or a connection that died mid-attempt -- refunds the slot it reserved rather than spending it. An empty submit is refused before any slot is reserved at all. Once the budget is spent, the host answers every further attempt with `too-many-attempts` until one of those three things clears it.

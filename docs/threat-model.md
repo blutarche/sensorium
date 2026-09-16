@@ -26,6 +26,7 @@ There is no cloud account, backend, relay, or vendor control plane to attack, be
 | Canvas-bounded input validation | `HostSessionController` and `ClientSessionController` | Input aimed outside the session canvas |
 | Held-input release | `HostSessionController.releaseHeldInput`, plus an explicit viewer release at disconnect | A modifier or button stuck down after a lost session |
 | Presence-bound credential | `HostSessionController`, verified against the registered public key over a per-session challenge | Host screen granted to anyone but a live human at the registered viewer |
+| Per-machine unlock failure budget | `HostScreenUnlockThrottle`, 5 wrong guesses per machine per host uptime | Brute-forcing the host's login password through lock-screen unlock |
 
 The source check stands on its own. The PF anchor is one more layer for anyone who adds it. Both viewer and host check input bounds independently.
 
@@ -34,6 +35,12 @@ The source check stands on its own. The PF anchor is one more layer for anyone w
 The code is six digits, so a machine that reaches the port has a 1-in-10^6 shot per guess. Two caps bound it. A per-code budget allows 10 wrong guesses against the issued code itself, capping total exposure at 10-in-10^6 per ceremony no matter how many connections an attacker opens, and an eleventh attempt is refused even when correct. A per-connection cap allows 5 wrong guesses, so an attacker pays for a fresh handshake every five guesses instead of working through the per-code budget on one connection.
 
 The comparison is constant-time, so a guess cannot be refined digit by digit from how long the rejection took. The code, and any prefix of it, is never logged. The only place it appears is the host's own pairing screen.
+
+### Why the login password cannot be brute-forced
+
+Lock-screen unlock (see [Host screen mode](host-screen-design.md)) types the host's own login password into its login window on the viewer's request. A machine's wrong guesses are counted against a shared budget of 5 per host uptime, spent across every connection that machine opens. The budget is cleared by a correct password, by a host restart, or by the person at the host re-arming that machine in the host window, and by nothing else -- the per-attempt presence check the viewer confirms at the start of each unlock does not clear it, only the host-side act of re-arming does. An outcome that never reflects a real guess -- the screen-sharing service unreachable, the screen already unlocked, a password too long for the credential field, or a connection that died mid-attempt -- does not spend one.
+
+Unlock is also gated on a fresh presence proof for each attempt, independent of how the session itself was admitted, so a machine cannot spend its budget without a live human confirming at the viewer each time.
 
 ### Where the keys are kept
 
@@ -44,7 +51,8 @@ Each app keeps its key in a file under `~/Library/Application Support/Sensorium`
 - **A compromised viewer machine.** It holds the paired key.
 - **Physical access to the host.** Out of scope.
 - **Traffic analysis inside the tailnet.** WireGuard encrypts payloads. Volume and timing are visible to the tailnet coordination path.
-- **Pre-boot and login-window access.** Not supported at all.
+- **Pre-boot (FileVault) access.** Not supported at all. FileVault's own unlock screen runs before the host's login window, and before the built-in screen-sharing service lock-screen unlock relies on is running.
+- **The loopback unlock connection's peer.** Lock-screen unlock connects to `127.0.0.1:5900`, the built-in screen-sharing service's own port, and does not authenticate that peer beyond the RFB handshake itself. Any local process that binds port 5900 first could receive the login password instead of the real service. Reads and writes on that socket time out after 10 seconds (`RFBLoopbackSocketChannel`, `SO_RCVTIMEO`/`SO_SNDTIMEO`), so a peer that accepts the connection and then stalls cannot hold it open indefinitely. Enabling the built-in service is the host operator's own choice; Sensorium does not turn it on and does not change its behavior. Turning it on makes port 5900 listen on every interface, not loopback alone -- that is the operating system's own service, not a Sensorium listener, and it is exposed there whether or not lock-screen unlock is ever used.
 
 ## Privacy
 

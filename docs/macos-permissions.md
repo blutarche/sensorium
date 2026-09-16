@@ -8,15 +8,18 @@ If a file cannot be read, the app shows its own window with **Try again** and **
 
 ## Host
 
-Sensorium Host needs three permissions. Grant them in System Settings.
+Sensorium Host needs three permissions, and can use a fourth macOS service for one opt-in feature. Grant the permissions in System Settings.
 
-| Permission | Used for | Checked by the app |
+| Permission or service | Used for | Checked by the app |
 |---|---|---|
 | Screen Recording | Capturing the session canvas it streams | Yes |
 | Accessibility | Injecting mouse and keyboard input | Yes |
 | Remote Desktop | Apple's gate on unattended remote access | No. macOS has no API for it. |
+| Screen Sharing (Remote Management, System Settings) | macOS's own built-in service, spoken over loopback to type the login password during an opt-in lock-screen unlock | No. Not checked or required unless lock-screen unlock is used. |
 
 Without Accessibility the host still streams video. It only refuses input.
+
+Screen Sharing is off by default and is entirely the host operator's own choice to turn on, for [lock-screen unlock](host-screen-design.md). Turning it on makes it listen on every interface, not loopback alone; Sensorium only ever connects out to it, on `127.0.0.1`, and opens no listener of its own for it. See [the threat model](threat-model.md).
 
 ### Waking the screen
 

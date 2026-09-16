@@ -29,7 +29,7 @@ Top to bottom:
 2. **Pairing code.** Six digits in two groups of three, large, with **Hide code** beneath them. Shown the moment a new machine asks to pair. Otherwise a **Show pairing code** button shows instead, never replacing the connected machine or its **Stop** button.
 3. **Paired machines.** One row per machine, named by the name it gave when it paired, never a key fingerprint. Each row has:
    - The name, with **Remove** right-aligned.
-   - **Share host screen**, the only session-shaping control on the host, naming which screens this machine may see.
+   - **Share host screen**, the only session-shaping control on the host. It arms the machine, not one screen, and a line beneath it names the screens this Mac can share right now.
    - **Ask me first if this machine is in use**, shown while sharing is on, off by default.
    - A line naming its key fingerprint and why sharing is or is not available now.
 4. **Last screen session.** Machine, display, and when, if there has been one.
@@ -87,6 +87,8 @@ Controls, in the menu bar, reachable while connected, applying live:
 - **Clipboard: on or off.**
 - **Pointer capture**, its shortcut named next to it. Leaving the window releases it, and outside capture this machine's own pointer draws locally, not waiting on the video.
 
+While the host reports its screen locked, a panel titled *Unlock the host* appears in the session window: a **Login password** secure field and an **Unlock** button. Submitting confirms presence, then sends the password once, over the same connection. A wrong password keeps the panel up to try again; every other outcome clears the field and shows a brief notice, listed in *Errors the viewer may show* below.
+
 ### Sending system shortcuts
 
 Some shortcuts never reach the host, because the machine in front of the person takes them first: Mission Control, Spotlight, Command-Tab, and the rest. A slim strip hangs from the top of the session window and sends them on. Every overlay names the host: the strip's label and every button's tooltip say which machine a shortcut goes to.
@@ -104,3 +106,18 @@ Lock Screen and Quit App ask once first. Nothing on the strip takes keyboard foc
 ### Errors the viewer may show
 
 Every error names the machine, says what happened in one sentence, and offers the fix as a button. No remedy is a command, a file, or another app.
+
+The unlock panel's own notices, shown beneath its password field after an attempt:
+
+- "The host is unlocked."
+- "That password did not unlock the host. Try again."
+- "This Mac could not reach its own screen-sharing service to unlock."
+- "The host is already unlocked."
+- "This session is not allowed to unlock the host."
+- "Too many wrong passwords. The host stopped accepting unlock attempts. Someone at the host can re-arm this machine to allow more."
+- "That password is too long for this unlock method. Type it at the login window instead."
+- "Confirm you are here to unlock the host, then try again."
+- "The host could not be unlocked. Try again."
+- "The unlock request could not be sent. Try again."
+- "Presence confirmation was cancelled or failed. Try unlocking again."
+- "The host did not answer the unlock request in time. Try again."
