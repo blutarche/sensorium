@@ -52,7 +52,7 @@ private func unlockTestArming(
     HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: strength,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -648,7 +648,7 @@ func runHostScreenUnlockCoordinatorTests() async {
             HostScreenArming(devices: [
                 HostScreenDeviceArming(
                     devicePublicKey: identity.publicKey,
-                    deviceName: "Kestrel MacBook Pro",
+                    deviceName: "Kestrel Laptop Pro",
                     minimumCredentialStrength: .hardwareBound,
                     armedAt: armedAt
                 )

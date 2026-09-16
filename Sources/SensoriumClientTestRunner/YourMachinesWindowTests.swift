@@ -127,8 +127,8 @@ private func testMachine(_ name: String, key: UInt8, host: String) -> SavedHost 
 
 @MainActor
 func testYourMachinesWindowTests() async {
-    let mini = testMachine("Mac mini", key: 1, host: "mini.tail1234.ts.net")
-    let studio = testMachine("Mac Studio", key: 2, host: "studio.tail1234.ts.net")
+    let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let studio = testMachine("Studio", key: 2, host: "studio.tail1234.ts.net")
 
     do {
         // The launch window is the list. With nothing paired it says
@@ -150,8 +150,8 @@ func testYourMachinesWindowTests() async {
         )
 
         let listed = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini, studio]))
-        expect(hasLabel("Mac mini", in: content(of: listed)), "each saved machine gets a row named after it")
-        expect(hasLabel("Mac Studio", in: content(of: listed)), "including the second one")
+        expect(hasLabel("Loft", in: content(of: listed)), "each saved machine gets a row named after it")
+        expect(hasLabel("Studio", in: content(of: listed)), "including the second one")
         expect(
             hasLabel("mini.tail1234.ts.net", in: content(of: listed)),
             "the line under each name is where that machine is"
@@ -180,7 +180,7 @@ func testYourMachinesWindowTests() async {
             Foundation.exit(1)
         }
         tap(row)
-        expect(connected == ["Mac mini"], "clicking the first row asks for that machine, got \(connected)")
+        expect(connected == ["Loft"], "clicking the first row asks for that machine, got \(connected)")
 
         controller.connectStarted(hostPublicKey: mini.hostPublicKey)
         expect(
@@ -234,11 +234,11 @@ func testYourMachinesWindowTests() async {
         controller.perform(selector, with: item)
 
         expect(
-            store.loadAll().map(\.displayName) == ["Mac Studio"],
+            store.loadAll().map(\.displayName) == ["Studio"],
             "forgetting removes exactly that machine from this machine's own list, got \(store.loadAll().map(\.displayName))"
         )
-        expect(!hasLabel("Mac mini", in: content(of: controller)), "and its row is gone from the window")
-        expect(hasLabel("Mac Studio", in: content(of: controller)), "while every other row stays")
+        expect(!hasLabel("Loft", in: content(of: controller)), "and its row is gone from the window")
+        expect(hasLabel("Studio", in: content(of: controller)), "while every other row stays")
 
         print("PASS: forgetting a machine removes that entry and nothing else")
     }
@@ -250,7 +250,7 @@ func testYourMachinesWindowTests() async {
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini]))
         controller.apply(deviceList: .devices([
             TailnetDevicePickerRow(peer: TailnetPeer(
-                id: "1", displayName: "Mac Studio", magicDNSName: "studio.tail1234.ts.net",
+                id: "1", displayName: "Studio", magicDNSName: "studio.tail1234.ts.net",
                 tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: true, isThisMachine: false
             ))
         ]))
@@ -276,9 +276,9 @@ func testYourMachinesWindowTests() async {
         tap(back)
         expect(hasLabel("Your Machines", in: content(of: controller)), "Back returns to the list")
 
-        controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Mac Studio"))
+        controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
         expect(
-            hasLabel("Type the Code Shown on Mac Studio", in: content(of: controller)),
+            hasLabel("Type the Code Shown on Studio", in: content(of: controller)),
             "the code step names the machine the code is on"
         )
         expect(
@@ -321,7 +321,7 @@ func testYourMachinesWindowTests() async {
         var shouted = shoutedLabels(in: content(of: controller))
         controller.apply(deviceList: .noOtherDevices)
         shouted += shoutedLabels(in: content(of: controller))
-        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Mac mini"))
+        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Loft"))
         shouted += shoutedLabels(in: content(of: controller))
         controller.showCodeStep(for: nil)
         shouted += shoutedLabels(in: content(of: controller))
@@ -335,7 +335,7 @@ func testYourMachinesWindowTests() async {
         // A hand-typed address adds the address field above the code,
         // and only that path shows one.
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
-        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Mac mini"))
+        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Loft"))
         let addressField = storedValue("addressField", of: controller, as: NSTextField.self)
         expect(addressField.superview == nil, "a machine picked from the list is never asked for its address again")
 
@@ -360,7 +360,7 @@ func testYourMachinesWindowTests() async {
             return .sent
         }
         controller.pair = { _, _ in .failed(.refused(reason: "invalid-code")) }
-        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Mac mini"))
+        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Loft"))
 
         await recorder.waitForFirstCall()
         expect(await recorder.callCount == 1, "the code step announces this machine exactly once as soon as it appears")
@@ -411,8 +411,8 @@ func testYourMachinesWindowTests() async {
         // same words a failed pairing attempt already uses.
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
         controller.sendPairIntent = { _ in .failed(.unreachable) }
-        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Mac mini"))
-        let expected = ViewerPairingFailureCopy.copy(for: .unreachable, hostLabel: "Mac mini")
+        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Loft"))
+        let expected = ViewerPairingFailureCopy.copy(for: .unreachable, hostLabel: "Loft")
         await pumpUntil { hasLabel(expected.headline, in: content(of: controller)) }
         expect(
             hasLabel(expected.headline, in: content(of: controller)),
@@ -430,7 +430,7 @@ func testYourMachinesWindowTests() async {
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
         controller.sendPairIntent = { _ in .sent }
         controller.pair = { _, _ in .failed(.unknown) }
-        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Mac mini"))
+        controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Loft"))
         let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
         codeField.stringValue = "111111"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: nil))
@@ -466,7 +466,7 @@ func testYourMachinesWindowTests() async {
         controller.sendPairIntent = { _ in .sent }
         controller.pair = { _, _ in .paired(studio) }
         controller.onConnect = { connected.append($0.displayName) }
-        controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Mac Studio"))
+        controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
         let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
         codeField.stringValue = "111111"
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: nil))
@@ -474,11 +474,11 @@ func testYourMachinesWindowTests() async {
         await pumpUntil { !connected.isEmpty }
 
         expect(
-            store.loadAll().map(\.displayName) == ["Mac Studio"],
+            store.loadAll().map(\.displayName) == ["Studio"],
             "the newly paired machine is saved, got \(store.loadAll().map(\.displayName))"
         )
         expect(hasLabel("Your Machines", in: content(of: controller)), "and the window is back on the list")
-        expect(connected == ["Mac Studio"], "which then connects to it without a second click, got \(connected)")
+        expect(connected == ["Studio"], "which then connects to it without a second click, got \(connected)")
 
         print("PASS: pairing saves the machine, returns to the list, and connects to it")
     }
@@ -607,7 +607,7 @@ func testYourMachinesWindowTests() async {
 
         controller.beginPairAgain(with: studio)
         expect(
-            hasLabel("Type the Code Shown on Mac Studio", in: content(of: controller)),
+            hasLabel("Type the Code Shown on Studio", in: content(of: controller)),
             "the overlay's Pair again opens this window on that machine's code step"
         )
         controller.showList()
@@ -625,7 +625,7 @@ func testYourMachinesWindowTests() async {
         // happened -- and leaving it listed offers a row that can
         // never connect again.
         let rekeyed = SavedHost(
-            displayName: "Mac mini",
+            displayName: "Loft",
             host: "mini.tail1234.ts.net",
             port: 7777,
             hostPublicKey: Data([9]),
@@ -650,7 +650,7 @@ func testYourMachinesWindowTests() async {
             "the machine paired again keeps one row, under its new key and not its old one, got \(keys)"
         )
         expect(
-            store.loadAll().contains { $0.hostPublicKey == Data([2]) && $0.displayName == "Mac Studio" },
+            store.loadAll().contains { $0.hostPublicKey == Data([2]) && $0.displayName == "Studio" },
             "and every other saved machine is untouched"
         )
 

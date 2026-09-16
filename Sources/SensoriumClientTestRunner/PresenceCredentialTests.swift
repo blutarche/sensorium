@@ -112,7 +112,7 @@ func testPresenceCredentialTests() async {
         let identity = try! DeviceIdentity.generate()
         let hostIdentity = try! DeviceIdentity.generate()
         let signature = try! hostIdentity.sign(SensoriumFrameCodec.pairApprovalTranscript(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             clientPublicKey: identity.publicKey,
             tlsCertificateHash: nil
         ))
@@ -126,7 +126,7 @@ func testPresenceCredentialTests() async {
             credentialProvider: failingProvider
         )
 
-        let approval = try! await controller.pair(deviceName: "MacBook", code: "424242")
+        let approval = try! await controller.pair(deviceName: "Laptop", code: "424242")
 
         guard case .failed = approval.presenceCredentialRegistration else {
             expect(false, "a provider that throws must resolve to .failed, never .notOffered or .registered")
@@ -135,7 +135,7 @@ func testPresenceCredentialTests() async {
         expect(failingProvider.registerCallCount == 1, "pair() attempts registration exactly once per pairing")
         expectPairRequest(
             await transport.sent,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             identity: identity,
             code: "424242",
             presenceCredential: nil,
@@ -150,7 +150,7 @@ func testPresenceCredentialTests() async {
         let identity = try! DeviceIdentity.generate()
         let hostIdentity = try! DeviceIdentity.generate()
         let signature = try! hostIdentity.sign(SensoriumFrameCodec.pairApprovalTranscript(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             clientPublicKey: identity.publicKey,
             tlsCertificateHash: nil
         ))
@@ -165,7 +165,7 @@ func testPresenceCredentialTests() async {
             credentialProvider: softwareCredential
         )
 
-        let approval = try! await controller.pair(deviceName: "MacBook", code: "424242")
+        let approval = try! await controller.pair(deviceName: "Laptop", code: "424242")
 
         expect(
             approval.presenceCredentialRegistration == .registered(expectedRegistration),
@@ -173,7 +173,7 @@ func testPresenceCredentialTests() async {
         )
         expectPairRequest(
             await transport.sent,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             identity: identity,
             code: "424242",
             presenceCredential: expectedRegistration,

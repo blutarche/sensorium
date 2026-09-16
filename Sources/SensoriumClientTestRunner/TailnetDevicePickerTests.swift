@@ -13,12 +13,12 @@ func testTailnetDevicePickerTests() async {
     // reads like on screen.
     do {
         let online = TailnetPeer(
-            id: "1", displayName: "Mac mini", magicDNSName: "mini.tail1234.ts.net",
+            id: "1", displayName: "Studio", magicDNSName: "mini.tail1234.ts.net",
             tailnetIPv4: "100.64.1.2", tailnetIPv6: nil, isOnline: true, isThisMachine: false
         )
         let onlineRow = TailnetDevicePickerRow(peer: online)
         expect(
-            onlineRow.title == "Mac mini" && onlineRow.subtitle == "mini.tail1234.ts.net",
+            onlineRow.title == "Studio" && onlineRow.subtitle == "mini.tail1234.ts.net",
             "an online device shows its name and MagicDNS name with no extra note"
         )
 
@@ -39,11 +39,11 @@ func testTailnetDevicePickerTests() async {
     // state, never a window -- verified without one.
     do {
         let onePeer = TailnetPeer(
-            id: "1", displayName: "Mac mini", magicDNSName: nil,
+            id: "1", displayName: "Studio", magicDNSName: nil,
             tailnetIPv4: "100.64.1.2", tailnetIPv6: nil, isOnline: true, isThisMachine: false
         )
         let onlySelf = TailnetPeer(
-            id: "self", displayName: "This MacBook", magicDNSName: nil,
+            id: "self", displayName: "This Laptop", magicDNSName: nil,
             tailnetIPv4: "100.64.1.1", tailnetIPv6: nil, isOnline: true, isThisMachine: true
         )
 
@@ -116,11 +116,11 @@ func testTailnetDevicePickerTests() async {
     // nothing here ever calls the real tailscaled or its CLI.
     do {
         let goodJSON = Data("""
-        {"Self":{"ID":"self","HostName":"This MacBook","TailscaleIPs":["100.64.1.1"],"Online":true},
-         "Peer":{"a":{"ID":"1","HostName":"Mac mini","TailscaleIPs":["100.64.1.2"],"Online":true}}}
+        {"Self":{"ID":"self","HostName":"This Laptop","TailscaleIPs":["100.64.1.1"],"Online":true},
+         "Peer":{"a":{"ID":"1","HostName":"Studio","TailscaleIPs":["100.64.1.2"],"Online":true}}}
         """.utf8)
         let goodLoader = TailnetDevicePickerLoader(provider: FixtureTailnetStatusProvider(json: goodJSON))
-        guard case let .devices(rows) = await goodLoader.load(), rows.map(\.title) == ["Mac mini"] else {
+        guard case let .devices(rows) = await goodLoader.load(), rows.map(\.title) == ["Studio"] else {
             print("FAIL: a good fixture status loads to the one non-self device")
             Foundation.exit(1)
         }

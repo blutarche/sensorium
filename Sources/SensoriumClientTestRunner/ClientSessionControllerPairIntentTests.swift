@@ -31,10 +31,10 @@ func testClientSessionControllerPairIntentTests() async {
         let transport = ScriptedClientTransport(responses: [])
         let controller = ClientSessionController(transport: transport, identity: identity)
 
-        try! await controller.sendPairIntent(deviceName: "MacBook")
+        try! await controller.sendPairIntent(deviceName: "Laptop")
 
         expect(
-            await transport.sent == [.pairIntent(deviceName: "MacBook")],
+            await transport.sent == [.pairIntent(deviceName: "Laptop")],
             "sendPairIntent puts exactly one pairIntent, carrying the given name, on the wire"
         )
 
@@ -50,7 +50,7 @@ func testClientSessionControllerPairIntentTests() async {
         let controller = ClientSessionController(transport: transport, identity: identity)
 
         do {
-            try await controller.sendPairIntent(deviceName: "MacBook")
+            try await controller.sendPairIntent(deviceName: "Laptop")
             expect(false, "a transport that fails to send must not be reported as a successful pairIntent")
         } catch {
             expect(true, "sendPairIntent propagates a transport failure instead of swallowing it")

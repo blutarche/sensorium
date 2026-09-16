@@ -19,7 +19,7 @@ func runCanvasLauncherEmptyStateWrapTests() async {
     let result = CanvasHostTestHooks.launcherEmptyStateSubtext(
         frame: NSRect(x: 0, y: 0, width: 440, height: 1104),
         canvas: placement,
-        hostName: "Alex Kestrel-Whitfield's Sixteen-Inch MacBook Pro (2024, Space Black)"
+        hostName: "Alex Kestrel-Whitfield's Sixteen-Inch Laptop Pro (2024, Space Black)"
     )
     let subtext = result.subtext
 

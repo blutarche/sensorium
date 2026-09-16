@@ -31,7 +31,7 @@ First public release.
 - Keyboard and pointer input delivery, and clipboard sharing, between the
   two apps.
 - Reconnect after a dropped connection.
-- Two double-clickable macOS apps, `Sensorium.app` and
+- Two double-clickable apps (macOS), `Sensorium.app` and
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 

@@ -169,8 +169,8 @@ func testInputMappingAndPresentationTests() async {
             Foundation.exit(1)
         }
         let channel = InMemoryControlChannel()
-        try! await channel.send(.hello(protocolVersion: 1, deviceName: "MacBook"))
-        guard try! await channel.receive() == .hello(protocolVersion: 1, deviceName: "MacBook") else {
+        try! await channel.send(.hello(protocolVersion: 1, deviceName: "Laptop"))
+        guard try! await channel.receive() == .hello(protocolVersion: 1, deviceName: "Laptop") else {
             print("FAIL: control channel did not deliver a hello message")
             Foundation.exit(1)
         }
@@ -185,7 +185,7 @@ func testInputMappingAndPresentationTests() async {
             print("FAIL: client controller reported the wrong pre-canvas input error")
             Foundation.exit(1)
         }
-        let handle = try! await controller.connect(deviceName: "MacBook")
+        let handle = try! await controller.connect(deviceName: "Laptop")
         guard handle == .canvas(displayID: 42, hostScreenOffer: []) else {
             print("FAIL: client controller did not accept the canvas-ready display")
             Foundation.exit(1)
@@ -200,7 +200,7 @@ func testInputMappingAndPresentationTests() async {
         try! await controller.sendPointer(CanvasInputPoint(x: 10, y: 20))
         let sentBeforeDisconnect = await transport.sent
         guard sentBeforeDisconnect == [
-            .hello(protocolVersion: 1, deviceName: "MacBook"),
+            .hello(protocolVersion: 1, deviceName: "Laptop"),
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0),
             .input(.pointerMoved(x: 10, y: 20), surfaceID: nil, sequence: 0)
         ] else {

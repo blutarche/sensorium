@@ -42,7 +42,7 @@ The menu bar shows the state at all times: "Screen control: ON for `<machine>`",
 
 A real host offers its host-screen list unprompted. It sends this right after a successful authenticated hello, before any other host-initiated message. The list holds every display this host can share right now, or an empty list when it has none to share. The session chooser lists "Private canvas (default)" and each offered display, plus a "Connect to Host Screen" item that reconnects. A connection's target is fixed for its whole life. Choosing host screen opens a fresh connection naming the display's own `displayIdentity`. No message upgrades an open canvas connection into a host-screen one.
 
-A machine that is not armed is refused with the reason `host-screen-not-allowed`, shown as "This Mac's owner has not enabled screen control for you." It does not fall back to a canvas silently. A display can be missing from the offer for several reasons: it is offline, asleep, or mirroring another display. Each case is logged with the reason. A canvas the host itself created is never a candidate and is not logged. The Host Setup window's paired-machine row says when nothing can be shared.
+A machine that is not armed is refused with the reason `host-screen-not-allowed`, shown as "This machine's owner has not enabled screen control for you." It does not fall back to a canvas silently. A display can be missing from the offer for several reasons: it is offline, asleep, or mirroring another display. Each case is logged with the reason. A canvas the host itself created is never a candidate and is not logged. The Host Setup window's paired-machine row says when nothing can be shared.
 
 ### 2.4 What the person at the host sees
 
@@ -167,7 +167,7 @@ A grant belongs to a host-screen session, not to a transport connection, and the
 
 ### 6.6 Threat model
 
-Stated in `docs/threat-model.md`. A stolen viewer key from a machine with no registered presence credential buys an attacker a private, empty canvas. A stolen key from any other paired machine buys control of a logged-in Mac, with nobody necessarily present to refuse, unless the person at the host has turned screen control off for that machine. The compensating controls, in order: arming is per-machine, arming is host-local and nothing on the wire can create, re-arm, or widen it, the tailnet requirement stands, a presence-bound credential must sign each session's challenge, the badge and Stop make a live session obvious to anyone in the room, and the session log makes a past session provable afterward.
+Stated in `docs/threat-model.md`. A stolen viewer key from a machine with no registered presence credential buys an attacker a private, empty canvas. A stolen key from any other paired machine buys control of a logged-in machine, with nobody necessarily present to refuse, unless the person at the host has turned screen control off for that machine. The compensating controls, in order: arming is per-machine, arming is host-local and nothing on the wire can create, re-arm, or widen it, the tailnet requirement stands, a presence-bound credential must sign each session's challenge, the badge and Stop make a live session obvious to anyone in the room, and the session log makes a past session provable afterward.
 
 The presence credential proves a person was present. It does not prove they understood what they approved. On a machine without hardware key storage, it does not defend against an attacker already running code there.
 
@@ -197,7 +197,7 @@ The assertion is named "Sensorium session is live", which is what macOS shows an
 - **While a session is live.** One prevent-sleep assertion, taken once however many surfaces the session has.
 - **At session end.** The assertion is released on every path that ends a session, the ones that end it on an error and the one that ends it because the host is quitting included.
 - **Nothing on the wire.** Only a display an armed machine could already be offered is woken before an offer, and only the display a token this host itself minted names is woken before a request. A message naming anything else reaches no power call.
-- **Still forbidden.** No display is created, destroyed, resized, re-arranged, mirrored, or blanked. The machine itself is never woken from sleep. An activity declaration wakes a display, not a sleeping Mac.
+- **Still forbidden.** No display is created, destroyed, resized, re-arranged, mirrored, or blanked. The machine itself is never woken from sleep. An activity declaration wakes a display, not a sleeping machine.
 
 A capture that delivers nothing while the display it captures is asleep is answered by waking that display and building the stream once more, rather than by giving up on this process's ability to capture. A host-screen session reads only the display it is streaming. A session canvas reads the machine, since display sleep is machine-wide.
 

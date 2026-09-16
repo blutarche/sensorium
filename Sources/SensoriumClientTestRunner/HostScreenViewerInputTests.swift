@@ -31,7 +31,7 @@ func testHostScreenViewerInputTests() async {
             credentialProvider: SoftwarePresenceCredential()
         )
         _ = try! await controller.connect(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             target: .hostScreen(displayIdentity: displayIdentity)
         )
         return (controller, transport)
@@ -81,7 +81,7 @@ func testHostScreenViewerInputTests() async {
             .canvasReady(displayID: 7, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0)
         ])
         let controller = ClientSessionController(transport: transport)
-        _ = try! await controller.connect(deviceName: "MacBook")
+        _ = try! await controller.connect(deviceName: "Laptop")
 
         try! await controller.sendInput(SensoriumInputEvent.pointerMoved(x: 1920, y: 1200))
         var refusedOffCanvas = false
@@ -127,7 +127,7 @@ func testHostScreenViewerInputTests() async {
             .canvasReady(displayID: 7, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0)
         ])
         let controller = ClientSessionController(transport: transport)
-        _ = try! await controller.connect(deviceName: "MacBook")
+        _ = try! await controller.connect(deviceName: "Laptop")
 
         await controller.hostScreenModeDidApply(
             geometry: SessionSurfaceGeometry(logicalWidth: 3360, logicalHeight: 1890, backingScale: 2.0)

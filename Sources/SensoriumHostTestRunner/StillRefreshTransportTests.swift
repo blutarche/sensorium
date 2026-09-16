@@ -86,8 +86,8 @@ private func expectRetryLadderDescendsThenGivesUp() {
 }
 
 /// The refresh path with the real encoders, offline: no display, no capture,
-/// no network. A Mac with no hardware H.264 encoder skips this rather than
-/// failing -- what it exercises is this Mac's encoder, and there is nothing to
+/// no network. A machine with no hardware H.264 encoder skips this rather than
+/// failing -- what it exercises is this machine's encoder, and there is nothing to
 /// exercise without one.
 ///
 /// What it cannot reach is `HostMediaPipeline` itself, which needs an
@@ -106,7 +106,7 @@ private func expectTheRealRefreshPathHoldsItsGuarantees() async {
             _ = try? packetizer.deliver(from: sampleBuffer) { sink.record($0) }
         }
     ) else {
-        print("SKIP: this Mac has no hardware H.264 encoder, so there is no still-refresh path to drive")
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no still-refresh path to drive")
         return
     }
 
@@ -119,7 +119,7 @@ private func expectTheRealRefreshPathHoldsItsGuarantees() async {
         ))
     }
     guard await sink.settle(untilAtLeast: 4) else {
-        print("SKIP: this Mac's encoder produced too few frames to drive the refresh path")
+        print("SKIP: this machine's encoder produced too few frames to drive the refresh path")
         return
     }
     let streamPacketsBeforeRefresh = sink.packets.count
@@ -285,7 +285,7 @@ private func expectAnIncompressiblePictureIsBroughtInsideTheLimit(configuration:
         print("PASS: an incompressible picture the ladder could not bring inside the limit is refused at \(bytes) bytes")
     } catch StillFrameEncoderError.sessionCreationFailed(let status) {
         print(
-            "SKIP: this Mac's encoder will not open a \(configuration.encodeWidth)x\(configuration.encodeHeight) "
+            "SKIP: this machine's encoder will not open a \(configuration.encodeWidth)x\(configuration.encodeHeight) "
                 + "session (status \(status)), so the retry ladder has nothing to run against"
         )
     } catch {
@@ -345,7 +345,7 @@ private final class RecordingPacketSink: @unchecked Sendable {
 /// `H264SampleBufferPacketizer.deliver` holds across both.
 private func expectSequencingAndHandOffAreOneStep() {
     guard let keyFrame = offlineEncodedKeyFrame() else {
-        print("SKIP: this Mac has no hardware H.264 encoder, so there is no encoded frame to number")
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no encoded frame to number")
         return
     }
     let packetizer = H264SampleBufferPacketizer()
@@ -389,7 +389,7 @@ private final class ObservedSequenceOrder: @unchecked Sendable {
     }
 }
 
-/// One real key frame from this Mac's encoder, or `nil` where there is no
+/// One real key frame from this machine's encoder, or `nil` where there is no
 /// hardware encoder to produce one.
 private func offlineEncodedKeyFrame() -> CMSampleBuffer? {
     let configuration = VideoEncoderConfiguration.remoteDefault
@@ -541,7 +541,7 @@ private func refreshTestNoisePixelBuffer(width: Int, height: Int) -> CVPixelBuff
     return pixelBuffer
 }
 
-/// The largest square this Mac's hardware H.264 encoder accepts, where an
+/// The largest square this machine's hardware H.264 encoder accepts, where an
 /// incompressible picture is past what the wire carries at every quality the
 /// ladder has.
 private func squareEncoderConfiguration(side: Int) -> VideoEncoderConfiguration {

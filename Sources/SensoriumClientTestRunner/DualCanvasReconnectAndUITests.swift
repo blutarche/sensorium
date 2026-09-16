@@ -16,7 +16,7 @@ func testDualCanvasReconnectAndUITests() async {
             .canvasReady(displayID: 71, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 1)
         ])
         let dualClient = ClientSessionController(transport: dualHostTransport, requestSecondCanvas: true)
-        let dualPrimaryDisplayID = try! await dualClient.connect(deviceName: "MacBook")
+        let dualPrimaryDisplayID = try! await dualClient.connect(deviceName: "Laptop")
         expect(
             dualPrimaryDisplayID == .canvas(displayID: 70, hostScreenOffer: []),
             "connect still returns the primary canvas's own displayID"
@@ -24,7 +24,7 @@ func testDualCanvasReconnectAndUITests() async {
         expect(await dualClient.hostSupportsSurfaceIDs, "the host's echo on the primary canvas is still recorded as capability")
         expect(await dualClient.didOpenSecondCanvas, "a dual-canvas client against a capable host opens the second canvas")
         expect(await dualHostTransport.sent == [
-            .hello(protocolVersion: 1, deviceName: "MacBook"),
+            .hello(protocolVersion: 1, deviceName: "Laptop"),
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0),
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 1)
         ], "both canvases are requested back to back within the same connect, never later")
@@ -41,7 +41,7 @@ func testDualCanvasReconnectAndUITests() async {
         ])
         let refusedSecondClient = ClientSessionController(transport: refusedSecondTransport, requestSecondCanvas: true)
         let refusedSecondStart = Date()
-        let refusedSecondPrimary = try! await refusedSecondClient.connect(deviceName: "MacBook")
+        let refusedSecondPrimary = try! await refusedSecondClient.connect(deviceName: "Laptop")
         let refusedSecondElapsed = Date().timeIntervalSince(refusedSecondStart)
         expect(
             refusedSecondPrimary == .canvas(displayID: 90, hostScreenOffer: []),
@@ -79,7 +79,7 @@ func testDualCanvasReconnectAndUITests() async {
             requestSecondCanvas: true
         )
         do {
-            _ = try await refusedPrimaryClient.connect(deviceName: "MacBook")
+            _ = try await refusedPrimaryClient.connect(deviceName: "Laptop")
             expect(false, "a refused primary canvas fails the connect")
         } catch let ClientSessionError.canvasRefused(refusedPrimaryReason) {
             expect(
@@ -109,7 +109,7 @@ func testDualCanvasReconnectAndUITests() async {
         )
         let oldPeerRefusalStart = Date()
         do {
-            _ = try await oldPeerRefusalClient.connect(deviceName: "MacBook")
+            _ = try await oldPeerRefusalClient.connect(deviceName: "Laptop")
             expect(false, "an old client does not mistake a refusal for a canvas it may draw on")
         } catch ClientSessionError.unexpectedMessage {
         } catch {
@@ -200,7 +200,7 @@ func testDualCanvasReconnectAndUITests() async {
             transport: interleavedDualTransport,
             requestSecondCanvas: true
         )
-        let interleavedPrimaryDisplayID = try? await interleavedDualClient.connect(deviceName: "MacBook")
+        let interleavedPrimaryDisplayID = try? await interleavedDualClient.connect(deviceName: "Laptop")
         expect(
             interleavedPrimaryDisplayID == .canvas(displayID: 90, hostScreenOffer: []),
             "video arriving between the two canvasReady replies does not fail the connect and take the primary canvas down with it"
@@ -247,7 +247,7 @@ func testDualCanvasReconnectAndUITests() async {
             .control(.canvasReady(displayID: 92, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil))
         ])
         let interleavedSingleClient = ClientSessionController(transport: interleavedSingleTransport)
-        let interleavedSingleDisplayID = try? await interleavedSingleClient.connect(deviceName: "MacBook")
+        let interleavedSingleDisplayID = try? await interleavedSingleClient.connect(deviceName: "Laptop")
         expect(
             interleavedSingleDisplayID == .canvas(displayID: 92, hostScreenOffer: []),
             "a single-canvas connect is equally robust to video and unknown packets arriving before its canvasReady"
@@ -262,7 +262,7 @@ func testDualCanvasReconnectAndUITests() async {
         let wrongReplyClient = ClientSessionController(transport: wrongReplyTransport)
         var wrongReplyError: Error?
         do {
-            _ = try await wrongReplyClient.connect(deviceName: "MacBook")
+            _ = try await wrongReplyClient.connect(deviceName: "Laptop")
         } catch {
             wrongReplyError = error
         }
@@ -274,7 +274,7 @@ func testDualCanvasReconnectAndUITests() async {
         let truncatedClient = ClientSessionController(transport: truncatedTransport)
         var truncatedError: Error?
         do {
-            _ = try await truncatedClient.connect(deviceName: "MacBook")
+            _ = try await truncatedClient.connect(deviceName: "Laptop")
         } catch {
             truncatedError = error
         }
@@ -829,7 +829,7 @@ func testDualCanvasReconnectAndUITests() async {
             pinnedHostPublicKey: nil,
             requestSecondCanvas: true
         )
-        _ = try! await shortcutClient.connect(deviceName: "MacBook")
+        _ = try! await shortcutClient.connect(deviceName: "Laptop")
         let forwardedKey = SensoriumInputEvent.key(keyCode: 48, isDown: true, modifiers: [.command])
         for surface in [UInt32(0), UInt32(1)] {
             let decision = whenFocused.decide(
@@ -1301,7 +1301,7 @@ func testDualCanvasReconnectAndUITests() async {
         print("PASS: a clipboard packet is not media, and applying one never sends it back")
 
         // Hardware decode: request it, never require it -- the viewer is the
-        // weaker Intel MacBook, so a missing hardware decoder must not block
+        // weaker x86_64 laptop, so a missing hardware decoder must not block
         // a connection. `DecoderSpecification.make()` is the pure seam for
         // that choice; no real `VTDecompressionSession` is created here.
         let decoderSpecification = DecoderSpecification.make()
@@ -1339,13 +1339,13 @@ func testDualCanvasReconnectAndUITests() async {
         // session and a frozen picture the user reads as a live one.
         // No window is built here: every word and every status colour is a
         // decision `ViewerSessionStateMachine` owns on its own.
-        var viewerState = ViewerSessionStateMachine(hostName: "Mac mini")
+        var viewerState = ViewerSessionStateMachine(hostName: "Studio")
         expect(
             viewerState.status.phase == .connecting,
             "the viewer starts in the connecting state, before a single frame exists"
         )
         expect(
-            viewerState.status.headline == "Connecting to Mac mini…",
+            viewerState.status.headline == "Connecting to Studio…",
             "the connecting state names the host it is dialling, got: \(viewerState.status.headline)"
         )
         expect(
@@ -1378,7 +1378,7 @@ func testDualCanvasReconnectAndUITests() async {
             "a dropped session dims the frozen frame and says so — this is the defect that made a dead session pixel-identical to a live one"
         )
         expect(
-            dropped.headline == "Connection to Mac mini lost.",
+            dropped.headline == "Connection to Studio lost.",
             "the drop names the machine it lost the connection to, got: \(dropped.headline)"
         )
         expect(
@@ -1402,7 +1402,7 @@ func testDualCanvasReconnectAndUITests() async {
         )
         expect(firstRedial.tone == .warn, "a reconnect in progress is a warning, not a failure")
         expect(
-            firstRedial.headline == "Reconnecting to Mac mini…",
+            firstRedial.headline == "Reconnecting to Studio…",
             "the reconnect names the machine it is redialling, got: \(firstRedial.headline)"
         )
         expect(
@@ -1434,7 +1434,7 @@ func testDualCanvasReconnectAndUITests() async {
             "the attempt count restarts after a session comes back, so the next outage does not inherit it"
         )
 
-        var abandoned = ViewerSessionStateMachine(hostName: "Mac mini")
+        var abandoned = ViewerSessionStateMachine(hostName: "Studio")
         abandoned.handle(.canvasReady)
         abandoned.handle(.sessionEnded)
         let gaveUp = abandoned.handle(.gaveUp)
@@ -1457,14 +1457,14 @@ func testDualCanvasReconnectAndUITests() async {
 
         // A host-screen connect that never became a session is not a session
         // that ended -- nothing began, so the overlay must not claim it did.
-        var neverStarted = ViewerSessionStateMachine(hostName: "Mac mini")
+        var neverStarted = ViewerSessionStateMachine(hostName: "Studio")
         let refused = neverStarted.handle(.hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: false))
         expect(
             refused.eyebrow == "NOT STARTED",
             "a refusal before any frame ever arrived is not a session that ended, got: \(refused.eyebrow)"
         )
         expect(
-            refused.headline == "Could not show a host screen from Mac mini.",
+            refused.headline == "Could not show a host screen from Studio.",
             "the headline never orphans the host's name on its own line, got: \(refused.headline)"
         )
         expect(
@@ -1484,7 +1484,7 @@ func testDualCanvasReconnectAndUITests() async {
 
         // A host-screen connect that ends after the session was already live
         // reads as SESSION ENDED, unlike a connect that never went live.
-        var wasLive = ViewerSessionStateMachine(hostName: "Mac mini")
+        var wasLive = ViewerSessionStateMachine(hostName: "Studio")
         wasLive.handle(.connectStarted)
         wasLive.handle(.canvasReady)
         let endedAfterLive = wasLive.handle(.hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: false))
@@ -1493,7 +1493,7 @@ func testDualCanvasReconnectAndUITests() async {
             "a refusal after the session was live is a session that ended, got: \(endedAfterLive.eyebrow)"
         )
         expect(
-            endedAfterLive.headline == "The host-screen session with Mac mini ended.",
+            endedAfterLive.headline == "The host-screen session with Studio ended.",
             "the headline says the session ended, since it did, got: \(endedAfterLive.headline)"
         )
 
@@ -1502,7 +1502,7 @@ func testDualCanvasReconnectAndUITests() async {
         // The two reasons that mean this machine's presence credential needs
         // re-registering cannot be fixed with a virtual display alone, so
         // they offer a way to pair again -- primary, since it is the fix.
-        var needsRearming = ViewerSessionStateMachine(hostName: "Mac mini")
+        var needsRearming = ViewerSessionStateMachine(hostName: "Studio")
         let rearm = needsRearming.handle(
             .hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: true)
         )
@@ -1528,7 +1528,7 @@ func testDualCanvasReconnectAndUITests() async {
         // here would leave a spinner on screen with no button and nothing
         // behind it. A cancelled or closed pairing attempt must find the
         // ended panel and its buttons exactly as they were.
-        var stillOffersPairAgain = ViewerSessionStateMachine(hostName: "mac-mini")
+        var stillOffersPairAgain = ViewerSessionStateMachine(hostName: "studio-mini")
         let beforePairAgainPressed = stillOffersPairAgain.handle(
             .hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: true)
         )
@@ -1551,7 +1551,7 @@ func testDualCanvasReconnectAndUITests() async {
         // A state that describes a dead end without offering a way out of it
         // is still a dead end. Which buttons each state carries is a copy
         // decision like the words are, so it lives in the same pure type.
-        var actionable = ViewerSessionStateMachine(hostName: "mac-mini")
+        var actionable = ViewerSessionStateMachine(hostName: "studio-mini")
         actionable.handle(.connectStarted)
         expect(
             actionable.status.eyebrow == "CONNECTING",
@@ -1578,7 +1578,7 @@ func testDualCanvasReconnectAndUITests() async {
             "stopping is never the primary action — the accent belongs to the action that restores the session"
         )
         expect(
-            reconnect.headline == "Reconnecting to mac-mini\u{2026}",
+            reconnect.headline == "Reconnecting to studio-mini\u{2026}",
             "the reconnect headline names the machine it is redialling, got: \(reconnect.headline)"
         )
         expect(
@@ -1586,11 +1586,11 @@ func testDualCanvasReconnectAndUITests() async {
             "the first redial says which attempt it is on, so the wait is legible from the start, got: \(reconnect.detail)"
         )
         expect(
-            reconnect.headline.contains("mac-mini") && !reconnect.headline.contains("mac\u{2011}mini"),
+            reconnect.headline.contains("studio-mini") && !reconnect.headline.contains("studio\u{2011}mini"),
             "the stored host name is the caller's string verbatim, not rewritten with non-breaking hyphens, got: \(reconnect.headline)"
         )
         expect(
-            !reconnect.detail.contains("mac-mini"),
+            !reconnect.detail.contains("studio-mini"),
             "the detail never repeats the host the headline just named, got: \(reconnect.detail)"
         )
 
@@ -1625,7 +1625,7 @@ func testDualCanvasReconnectAndUITests() async {
 
         // The copy defect: it told the user to open the application they were
         // reading the sentence inside of.
-        var unreached = ViewerSessionStateMachine(hostName: "mac-mini")
+        var unreached = ViewerSessionStateMachine(hostName: "studio-mini")
         unreached.handle(.connectStarted)
         unreached.handle(.canvasReady)
         unreached.handle(.sessionEnded)
@@ -1793,7 +1793,7 @@ func testDualCanvasReconnectAndUITests() async {
             "the bracket form is how an IPv6 literal carries a port, and it is the only way to give one"
         )
         expect(
-            ViewerPairingForm(address: "Mac-mini.tail1234.ts.net", code: "123456").canSubmit,
+            ViewerPairingForm(address: "office-1.tail1234.ts.net", code: "123456").canSubmit,
             "a MagicDNS name with hyphens and digits is an ordinary address"
         )
         expect(
@@ -1906,11 +1906,11 @@ func testDualCanvasReconnectAndUITests() async {
         )
 
         expect(
-            ViewerPairingForm(address: "100.83.14.2", code: "123456", name: "Mac mini").submission?.displayName == "Mac mini",
+            ViewerPairingForm(address: "100.83.14.2", code: "123456", name: "Studio").submission?.displayName == "Studio",
             "a name the user typed becomes the display name, so every later window title and error says it"
         )
         expect(
-            ViewerPairingForm(address: "100.83.14.2", code: "123456", name: "  Mac mini  ").submission?.displayName == "Mac mini",
+            ViewerPairingForm(address: "100.83.14.2", code: "123456", name: "  Studio  ").submission?.displayName == "Studio",
             "the name is trimmed: a trailing space would ride along in every title forever"
         )
         expect(
@@ -1931,7 +1931,7 @@ func testDualCanvasReconnectAndUITests() async {
         // the failures the client itself can tell apart. A rejected code used
         // to dead-end at `[Process completed]` with a raw Swift enum printed.
         func failureCopy(_ outcome: ViewerPairingOutcome) -> ViewerPairingFailureCopy {
-            ViewerPairingFailureCopy.copy(for: outcome, hostLabel: "Mac mini")
+            ViewerPairingFailureCopy.copy(for: outcome, hostLabel: "Studio")
         }
         let refusals = [
             "invalid-code", "code-expired", "code-already-consumed",
@@ -1967,12 +1967,12 @@ func testDualCanvasReconnectAndUITests() async {
             "a spent, expired or retired code cannot be retyped: the other machine has to show a new one first"
         )
         expect(
-            failureCopy(.refused(reason: "invalid-code")).detail == "Check the six digits on Mac mini and try again.",
+            failureCopy(.refused(reason: "invalid-code")).detail == "Check the six digits on Studio and try again.",
             "a wrong code is one sentence naming only the action -- "
                 + "got \(failureCopy(.refused(reason: "invalid-code")).detail)"
         )
         expect(
-            failureCopy(.refused(reason: "no-active-code")).headline.contains("Mac mini"),
+            failureCopy(.refused(reason: "no-active-code")).headline.contains("Studio"),
             "the copy names the machine rather than saying `the host`"
         )
         expect(
@@ -2097,13 +2097,13 @@ func testDualCanvasReconnectAndUITests() async {
         )
 
         expect(
-            !ViewerPairingFailureCopy.copy(for: .unreachable, hostLabel: "Mac mini").detail
+            !ViewerPairingFailureCopy.copy(for: .unreachable, hostLabel: "Studio").detail
                 .contains("\(ViewerPairingForm.defaultPort)"),
             "the validator already accepts address:port silently, so nothing answering never sends a person "
                 + "hunting for a port number that is never the actual problem"
         )
         expect(
-            ViewerPairingFailureCopy.copy(for: .unreachable, hostLabel: "Mac mini").detail
+            ViewerPairingFailureCopy.copy(for: .unreachable, hostLabel: "Studio").detail
                 == "Check that it is awake and Sensorium Host is running.",
             "Sensorium Host never shows its own address, so the unreachable copy cannot send a person "
                 + "looking for a screen that does not exist"
@@ -2201,9 +2201,9 @@ func testDualCanvasReconnectAndUITests() async {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini"
+                hostName: "Studio"
             )
-            var liveState = ViewerSessionStateMachine(hostName: "Mac mini")
+            var liveState = ViewerSessionStateMachine(hostName: "Studio")
             let liveStatus = liveState.handle(.canvasReady)
             let backedOffSections = SessionHUDPanel.sections(telemetry: backedOff, session: liveStatus)
             expect(
@@ -2211,13 +2211,13 @@ func testDualCanvasReconnectAndUITests() async {
                 "the panel shows the scale the host says it is actually encoding at"
             )
             expect(
-                hudRow(backedOffSections, "STATE")?.note == "Connected to Mac mini.",
+                hudRow(backedOffSections, "STATE")?.note == "Connected to Studio.",
                 "every sub-line sentence on the panel ends with a period, including the session state's own"
                     + " headline, got: \(hudRow(backedOffSections, "STATE")?.note ?? "nil")"
             )
             expect(
                 hudRow(backedOffSections, "REQUESTED")?.note
-                    == "Held to 1.50x. Automatic asked for 2.00x, which Mac mini measured as unsustainable.",
+                    == "Held to 1.50x. Automatic asked for 2.00x, which Studio measured as unsustainable.",
                 "the single most useful line on the panel: the host is holding this viewer below what it asked "
                     + "for, and says so in the same one-sentence shape the fixed-choice clamp uses, got: "
                     + "\(hudRow(backedOffSections, "REQUESTED")?.note ?? "nil")"
@@ -2247,13 +2247,13 @@ func testDualCanvasReconnectAndUITests() async {
                     requestedStreamScale: 2.0,
                     streamScalePreference: .fixed(2.0),
                     decoder: .hardwareAccelerated,
-                    hostName: "Mac mini"
+                    hostName: "Studio"
                 ),
                 session: liveStatus
             )
             expect(
                 hudRow(clampedByHostSections, "REQUESTED")?.note
-                    == "Held to 1.75x. You asked for 2.00x, which Mac mini measured as unsustainable.",
+                    == "Held to 1.75x. You asked for 2.00x, which Studio measured as unsustainable.",
                 "the host's own clamp reads as one plain sentence, not two clauses joined by a double hyphen,"
                     + " and names the machine by its own name"
             )
@@ -2300,7 +2300,7 @@ func testDualCanvasReconnectAndUITests() async {
                 "the client's own decode and the host's encode both appear, each with its own number"
             )
             expect(
-                backedOffSections.contains { $0.title == "THIS MACHINE" } && backedOffSections.contains { $0.title == "MAC MINI" },
+                backedOffSections.contains { $0.title == "THIS MACHINE" } && backedOffSections.contains { $0.title == "STUDIO" },
                 "each latency figure is labelled with the machine that measured it, the host by its own upper-cased name"
             )
             // The two latency blocks are parallel data with short values, and
@@ -2314,12 +2314,12 @@ func testDualCanvasReconnectAndUITests() async {
                 return [title, left.title, right.title]
             }
             expect(
-                pairedTitles == [["LATENCY", "THIS MACHINE", "MAC MINI"]],
+                pairedTitles == [["LATENCY", "THIS MACHINE", "STUDIO"]],
                 "the only paired block is the two latency columns, this machine's on the left, the host named by its"
                     + " own upper-cased name rather than the generic word \"HOST\""
             )
             expect(
-                hudRow(backedOffSections, "FPS")?.note == "Encoded on Mac mini.",
+                hudRow(backedOffSections, "FPS")?.note == "Encoded on Studio.",
                 "every viewer surface names the machine; the HUD does too, once it has been told the name, got: "
                     + "\(hudRow(backedOffSections, "FPS")?.note ?? "nil")"
             )
@@ -2403,7 +2403,7 @@ func testDualCanvasReconnectAndUITests() async {
                     requestedStreamScale: 2.0,
                     streamScalePreference: .automatic,
                     decoder: .softwareFallback,
-                    hostName: "Mac mini"
+                    hostName: "Studio"
                 ),
                 session: liveStatus
             )
@@ -2412,7 +2412,7 @@ func testDualCanvasReconnectAndUITests() async {
                 "a reading that stopped arriving says so in the panel"
             )
             expect(
-                hudRow(staleSections, "READINGS")?.note?.contains("last Mac mini sent") == true
+                hudRow(staleSections, "READINGS")?.note?.contains("last Studio sent") == true
                     && hudRow(staleSections, "READINGS")?.note?.contains("the last the host sent") == false,
                 "the stale note names the host by its own label rather than the generic word, got: "
                     + "\(hudRow(staleSections, "READINGS")?.note ?? "nil")"
@@ -2467,13 +2467,13 @@ func testDualCanvasReconnectAndUITests() async {
                 "the one statement says what it means for the numbers below it"
             )
             expect(
-                hudRow(staleSections, "READINGS")?.note?.hasPrefix("Nothing from Mac mini for a few seconds.") == true,
+                hudRow(staleSections, "READINGS")?.note?.hasPrefix("Nothing from Studio for a few seconds.") == true,
                 "the staleness sentence names the machine by its own name once it is known, not the generic word "
                     + "\"host\", got: \(hudRow(staleSections, "READINGS")?.note ?? "nil")"
             )
             expect(
                 hudRow(staleSections, "DECODER")?.value == "software",
-                "a software decode fallback is named, since on the Intel viewer it is the difference that matters"
+                "a software decode fallback is named, since on the x86_64 viewer it is the difference that matters"
             )
 
             // A session that is down is a second reason the host's numbers
@@ -2481,7 +2481,7 @@ func testDualCanvasReconnectAndUITests() async {
             // telemetry expires. Reading `READINGS live` beside a panel that
             // says the connection is lost is the panel contradicting the app
             // around it.
-            var downMachine = ViewerSessionStateMachine(hostName: "Mac mini")
+            var downMachine = ViewerSessionStateMachine(hostName: "Studio")
             downMachine.handle(.connectStarted)
             downMachine.handle(.canvasReady)
             for downStatus in [downMachine.handle(.sessionEnded), downMachine.handle(.connectStarted), downMachine.handle(.gaveUp)] {
@@ -2494,7 +2494,7 @@ func testDualCanvasReconnectAndUITests() async {
                         requestedStreamScale: 2.0,
                         streamScalePreference: .automatic,
                         decoder: .hardwareAccelerated,
-                        hostName: "Mac mini"
+                        hostName: "Studio"
                     ),
                     session: downStatus
                 )
@@ -2570,7 +2570,7 @@ func testDualCanvasReconnectAndUITests() async {
         // it, never a Swift case name like
         // `canvasRefused("canvas-creation-in-progress")`.
         do {
-            let hostLabel = "Mac mini"
+            let hostLabel = "Studio"
             let sessionErrors: [ClientSessionError] = [
                 .unexpectedMessage,
                 .notConnected,
@@ -2675,10 +2675,6 @@ func testDualCanvasReconnectAndUITests() async {
                     + "connect.",
                 "a canvas the host could not open at all says so and names the one thing that fixes it, got: \(unavailableLine)"
             )
-            expect(
-                !unavailableLine.contains("Mac"),
-                "the category word in anything a person reads is machine"
-            )
 
             print("PASS: a failed session says what happened and what to do without editing the system error's own words")
         }
@@ -2721,8 +2717,8 @@ func testDualCanvasReconnectAndUITests() async {
                 "a pin mismatch classifies the same way a host key mismatch already does"
             )
             expect(
-                ViewerSessionFailureCopy.line(for: NetworkControlConnectionError.certificatePinMismatch, hostLabel: "Mac mini")
-                    == ViewerSessionFailureCopy.line(for: ClientSessionError.hostKeyMismatch, hostLabel: "Mac mini"),
+                ViewerSessionFailureCopy.line(for: NetworkControlConnectionError.certificatePinMismatch, hostLabel: "Studio")
+                    == ViewerSessionFailureCopy.line(for: ClientSessionError.hostKeyMismatch, hostLabel: "Studio"),
                 "the words on screen do not depend on which layer caught the mismatch"
             )
 

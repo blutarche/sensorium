@@ -89,7 +89,7 @@ private func makeHostScreenFixture(
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000),
             // This fixture is broken by exactly one thing per test, including
@@ -378,7 +378,7 @@ func runHostScreenCoordinatorTests() async {
             return
         }
         expect(
-            events.messages.contains("host screen started for Kestrel MacBook Pro"),
+            events.messages.contains("host screen started for Kestrel Laptop Pro"),
             "the host operator log names the device the controller actually admitted, read off its own armed "
                 + "record rather than the wire's own claim -- got: \(events.messages)"
         )
@@ -412,7 +412,7 @@ func runHostScreenCoordinatorTests() async {
         )
         expect(
             events.messages.contains(
-                "asking the person at this machine whether Kestrel MacBook Pro may see "
+                "asking the person at this machine whether Kestrel Laptop Pro may see "
                     + "\(HostScreenArmingPresentation.displayLabel(for: display))"
             ),
             "the host operator log records that a prompt was put up at all, naming the device and display it "
@@ -809,7 +809,7 @@ func runHostScreenModeCoordinatorTests() async {
 }
 
 /// Stands in for the real badge window: records `show`/`hide` without ever
-/// opening an `NSPanel`, so a test can assert the person at this Mac never
+/// opening an `NSPanel`, so a test can assert the person at this machine never
 /// stopped being told their screen was being watched.
 @MainActor
 private final class RecordingBadgeDisplay: HostScreenBadgeDisplaying {
@@ -826,7 +826,7 @@ private func temporaryModeSessionLogURL() -> URL {
         .appendingPathComponent("sensorium-host-screen-mode-session-log-\(UUID().uuidString).json")
 }
 
-/// What a mode change must cost the person at this Mac: nothing. CLAUDE.md
+/// What a mode change must cost the person at this machine: nothing. CLAUDE.md
 /// requires a continuous indication naming the connected device for as long
 /// as a host-screen session is live, and one record per session. A
 /// resolution change restarts the capture, so these run the whole change
@@ -853,7 +853,7 @@ func runHostScreenModeAccountabilityTests() async {
                 return capture
             },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }
@@ -872,7 +872,7 @@ func runHostScreenModeAccountabilityTests() async {
 
         expect(
             sessionLog.records().count == 1,
-            "a resolution change is the same session to the person at this Mac, so it leaves one record, not two -- got \(sessionLog.records().count)"
+            "a resolution change is the same session to the person at this machine, so it leaves one record, not two -- got \(sessionLog.records().count)"
         )
         expect(
             sessionLog.records().first?.outcome == nil,
@@ -917,7 +917,7 @@ func runHostScreenModeAccountabilityTests() async {
                 }
             },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }

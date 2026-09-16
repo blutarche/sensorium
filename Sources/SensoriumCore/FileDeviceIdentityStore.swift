@@ -6,7 +6,7 @@ public enum FileDeviceIdentityStoreError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidStoredValue:
-            return "The file holding the key that identifies this Mac could not be read"
+            return "The file holding the key that identifies this machine could not be read"
         }
     }
 }
@@ -41,7 +41,7 @@ public final class FileDeviceIdentityStore: DeviceIdentityProviding, DeviceIdent
         return identity
     }
 
-    /// "Make a new key": every device this Mac paired with knows the old
+    /// "Make a new key": every device this machine paired with knows the old
     /// public key, so pairing has to be done again once this key is stored.
     public func makeReplacementIdentity() throws -> DeviceIdentity {
         try DeviceIdentity.generate()

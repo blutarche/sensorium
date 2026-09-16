@@ -185,7 +185,7 @@ func runHostScreenProductionWiringTests() async {
         let identity = try! DeviceIdentity.generate()
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: identity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             armedAt: Date()
         ))
         let resumeTicketStore = HostScreenResumeTicketStore()
@@ -240,7 +240,7 @@ func runHostScreenProductionWiringTests() async {
         registerThroughPairing(
             approvedDeviceStore: approvedDeviceStore,
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             credentialID: credentialID,
             signingKey: signingKey,
             strength: .hardwareBound
@@ -249,7 +249,7 @@ func runHostScreenProductionWiringTests() async {
         // own minimum check, satisfied rather than sidestepped.
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         ))
@@ -267,10 +267,10 @@ func runHostScreenProductionWiringTests() async {
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey
+            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey
         )
         _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey,
+            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey,
             signature: try! deviceIdentity.sign(transcript)
         ))
         guard case let .hostScreenList(displays, challenge) = try! controller.offerHostScreenList(), let entry = displays.first else {
@@ -304,14 +304,14 @@ func runHostScreenProductionWiringTests() async {
         registerThroughPairing(
             approvedDeviceStore: approvedDeviceStore,
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             credentialID: credentialID,
             signingKey: registeredKey,
             strength: .hardwareBound
         )
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         ))
@@ -329,10 +329,10 @@ func runHostScreenProductionWiringTests() async {
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey
+            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey
         )
         _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey,
+            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey,
             signature: try! deviceIdentity.sign(transcript)
         ))
         guard case let .hostScreenList(displays, challenge) = try! controller.offerHostScreenList(), let entry = displays.first else {
@@ -364,7 +364,7 @@ func runHostScreenProductionWiringTests() async {
         registerThroughPairing(
             approvedDeviceStore: approvedDeviceStore,
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             credentialID: credentialID,
             signingKey: signingKey,
             strength: .softwarePresence
@@ -373,7 +373,7 @@ func runHostScreenProductionWiringTests() async {
             armingStore: armingStore,
             approvedStore: approvedDeviceStore,
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro"
+            deviceName: "Kestrel Laptop Pro"
         )
         let armedRecord = armingStore.load().devices.first { $0.devicePublicKey == deviceIdentity.publicKey }
         expect(
@@ -394,10 +394,10 @@ func runHostScreenProductionWiringTests() async {
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey
+            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey
         )
         _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey,
+            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey,
             signature: try! deviceIdentity.sign(transcript)
         ))
         guard case let .hostScreenList(displays, challenge) = try! controller.offerHostScreenList(), let entry = displays.first else {
@@ -432,7 +432,7 @@ func runHostScreenProductionWiringTests() async {
                 return FakeCanvasMedia()
             },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }
@@ -474,7 +474,7 @@ func runHostScreenProductionWiringTests() async {
                 return fake
             },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }
@@ -488,7 +488,7 @@ func runHostScreenProductionWiringTests() async {
         expect(media.badgeState != nil, "makeMedia shows a badge before returning media to stream with")
         expect(badge.showCount == 1, "makeMedia actually shows the badge -- not only sets badgeState -- exactly once, before returning media to stream with")
         expect(
-            media.badgeState?.content == HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            media.badgeState?.content == HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
             "the badge names the connected machine by the device name the arming record gave it, not a value the caller derives separately"
         )
         expect((produced as? HostScreenAccountableMedia) === media, "the media makeMedia returns is the accountable wrapper itself, not a bare handle to the raw capture object")
@@ -508,7 +508,7 @@ func runHostScreenProductionWiringTests() async {
         let media = HostScreenAccountableMedia(
             rawFactory: { _, _ in FakeCanvasMedia() },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }
@@ -537,7 +537,7 @@ func runHostScreenProductionWiringTests() async {
         let media = HostScreenAccountableMedia(
             rawFactory: { _, _ in FailingCanvasMedia() },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }
@@ -572,7 +572,7 @@ func runHostScreenProductionWiringTests() async {
         let media = HostScreenAccountableMedia(
             rawFactory: { _, _ in FakeCanvasMedia() },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: { stopRequestCount += 1 },
             badgeFactory: { _ in badge }
@@ -616,7 +616,7 @@ func runHostScreenProductionWiringTests() async {
                 return FakeCanvasMedia()
             },
             sessionLog: sessionLog,
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in badge }

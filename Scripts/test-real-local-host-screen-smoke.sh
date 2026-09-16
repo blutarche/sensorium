@@ -54,7 +54,7 @@ grep -F 'mode_restored_by=' "$SMOKE" >/dev/null
 grep -F 'wait_for_text '"'"'mode_restored='"'"'' "$SMOKE" >/dev/null
 grep -F 'mode_applied != "no" and mode_restored != "no"' "$SMOKE" >/dev/null
 
-# A person at this Mac is asked before their screen is shared, and nobody can
+# A person at this machine is asked before their screen is shared, and nobody can
 # answer that on their behalf: the rig waits for the machine to be left alone
 # and reports BLOCKED rather than leaving an unanswerable prompt on a real
 # screen or reading a refusal as a defect.

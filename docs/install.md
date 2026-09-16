@@ -4,12 +4,12 @@ What you need, and how to pair the two apps.
 
 ## Requirements
 
-- One Intel MacBook to view from, and one Apple-silicon Mac mini to host. Both need macOS 13 or later. Built and tested only on macOS 26.
+- One viewer machine and one host machine. macOS 13 or later on both machines. Built and tested only on macOS 26. Linux support is planned.
 - Both machines joined to the same Tailscale tailnet.
 
 ## Build the two apps
 
-There are no prebuilt downloads. Build on either Mac with the Swift toolchain from Command Line Tools.
+There are no prebuilt downloads. Build on either machine with the Swift toolchain from Command Line Tools.
 
 ```sh
 SENSORIUM_ALLOW_ADHOC=1 ./Scripts/package-apps.sh

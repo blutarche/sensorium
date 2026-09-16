@@ -60,7 +60,7 @@ func testMetalFramePresenterMeasuresRealCompletionNotJustScheduling() async {
     }
     expect(p50 >= 0 && p95 >= p50, "completion latency samples are never negative, and p95 never undercuts p50")
     // Not asserted against a ceiling: this measures this build machine's own
-    // GPU, not the Intel MacBook the user actually runs the viewer on, and
+    // GPU, not the x86_64 laptop the user actually runs the viewer on, and
     // the whole point of this fix is that nothing has ever known this
     // number before -- there is no prior baseline here to compare against.
     // The first cycle's one-time pipeline build is still in this sample

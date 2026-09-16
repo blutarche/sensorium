@@ -29,7 +29,7 @@ func testEncodedVideoFramePacketRoundTripsAndBoundsPayload() {
 
 func testTaggedTransportPacketDemultiplexesControlAndVideo() {
     let packets: [SensoriumTransportPacket] = [
-        .control(.hello(protocolVersion: 1, deviceName: "MacBook")),
+        .control(.hello(protocolVersion: 1, deviceName: "Laptop")),
         .video(EncodedVideoFramePacket(sequence: 2, presentationTimeNanoseconds: 3, isKeyFrame: false, payload: Data([8, 9]))),
     ]
     for packet in packets {
@@ -255,7 +255,7 @@ func testTransportFramesDecodeFromASliceThatDoesNotStartAtZero() {
     // splits it into frames is the obvious next caller.
     let packets: [SensoriumTransportPacket] = [
         .clipboard(.text("hello")),
-        .control(.hello(protocolVersion: 1, deviceName: "MacBook")),
+        .control(.hello(protocolVersion: 1, deviceName: "Laptop")),
         .unrecognized(tag: 200, payload: Data([9, 9, 9]))
     ]
     for packet in packets {

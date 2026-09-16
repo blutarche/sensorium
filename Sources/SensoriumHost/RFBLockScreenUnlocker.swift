@@ -5,7 +5,7 @@ import Security
 import SensoriumCore
 import SystemConfiguration
 
-/// Unlocks this Mac's locked login window on the viewer operator's behalf, by
+/// Unlocks this machine's locked login window on the viewer operator's behalf, by
 /// typing the login password into the login window through the built-in
 /// screen-sharing service (screensharingd) over a loopback RFB connection.
 ///
@@ -23,7 +23,7 @@ import SystemConfiguration
 /// specification, never from another implementation's source.
 ///
 /// Out of scope: FileVault's pre-login, cold-boot unlock screen.
-/// screensharingd is not running there, so this only ever reaches a Mac that
+/// screensharingd is not running there, so this only ever reaches a machine that
 /// is already past FileVault and sitting at its ordinary login window, locked.
 ///
 /// Operator note: turning on the built-in screen-sharing service this speaks
@@ -316,7 +316,7 @@ func aesECBEncrypt(_ plaintext: [UInt8], key: [UInt8]) throws -> [UInt8] {
     return Array(output.prefix(moved))
 }
 
-/// A blocking loopback RFB socket to this Mac's own screensharingd on
+/// A blocking loopback RFB socket to this machine's own screensharingd on
 /// 127.0.0.1:5900, with every read and write bounded by a timeout. The unlock
 /// flow that drives it holds a guess slot for as long as one attempt runs, so
 /// an unbounded wait on a stalled peer would hold that slot open forever.
@@ -324,7 +324,7 @@ func aesECBEncrypt(_ plaintext: [UInt8], key: [UInt8]) throws -> [UInt8] {
 /// Residual risk, named rather than papered over: whatever is listening on
 /// loopback port 5900 is not authenticated by this code, and no public API can
 /// prove it is the operating system's own screen-sharing service. Anything
-/// already able to bind that port on this Mac -- which takes local code running
+/// already able to bind that port on this machine -- which takes local code running
 /// as this user or as root -- could stand in for it and be handed the password
 /// this connection types. Enabling that service is the operator's own choice on
 /// the host.

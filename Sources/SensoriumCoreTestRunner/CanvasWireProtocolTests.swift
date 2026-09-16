@@ -63,7 +63,7 @@ func testCanvasRequestAndReadySurfaceIDRoundTripWhenPresentOrAbsent() {
 /// absent, and never encoded as a wire `null`.
 func testCanvasReadyHostNameRoundTripsWhenPresentOrAbsent() {
     let readyWithHostName = SensoriumMessage.canvasReady(
-        displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil, hostName: "Mac mini"
+        displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil, hostName: "Studio"
     )
     expect(
         try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(readyWithHostName)) == readyWithHostName,
@@ -298,12 +298,12 @@ func testAuthenticatedHelloRoundTripsAndVerifies() {
     let identity = try! DeviceIdentity.generate()
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1,
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         publicKey: identity.publicKey
     )
     let message = SensoriumMessage.authenticatedHello(
         protocolVersion: 1,
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         publicKey: identity.publicKey,
         signature: try! identity.sign(transcript)
     )

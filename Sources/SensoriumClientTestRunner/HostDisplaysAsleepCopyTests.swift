@@ -25,7 +25,7 @@ private final class SleepingDisplayAttemptCounter: @unchecked Sendable {
 /// two must not read the same: one is a screen to wake, the other is an app
 /// to reopen.
 func testHostDisplaysAsleepCopyTests() {
-    let asleep = ViewerSessionFailureCopy.line(for: .hostDisplaysAsleep, hostLabel: "Mac mini")
+    let asleep = ViewerSessionFailureCopy.line(for: .hostDisplaysAsleep, hostLabel: "Studio")
     expect(
         asleep.contains("asleep"),
         "a session ended by sleeping displays says so, got \(asleep)"
@@ -34,7 +34,7 @@ func testHostDisplaysAsleepCopyTests() {
         !asleep.contains("quit") && !asleep.contains("reopen") && !asleep.contains("opened again"),
         "and never tells anyone to reopen an app that is working fine, got \(asleep)"
     )
-    let unavailable = ViewerSessionFailureCopy.line(for: .hostCaptureUnavailable, hostLabel: "Mac mini")
+    let unavailable = ViewerSessionFailureCopy.line(for: .hostCaptureUnavailable, hostLabel: "Studio")
     expect(
         unavailable != asleep,
         "the two endings read differently, since their remedies are nothing alike"
@@ -48,9 +48,9 @@ func testHostDisplaysAsleepCopyTests() {
         "and says stopped once rather than twice in one breath, got \(unavailable)"
     )
     expect(
-        ViewerSessionFailureCopy.rowLine(for: .hostDisplaysAsleep, hostLabel: "Mac mini").contains("asleep"),
+        ViewerSessionFailureCopy.rowLine(for: .hostDisplaysAsleep, hostLabel: "Studio").contains("asleep"),
         "the Your machines row says the same thing in its own short form, got "
-            + ViewerSessionFailureCopy.rowLine(for: .hostDisplaysAsleep, hostLabel: "Mac mini")
+            + ViewerSessionFailureCopy.rowLine(for: .hostDisplaysAsleep, hostLabel: "Studio")
     )
     expect(
         ClientSessionRunner.hostEnding(for: .goodbye(reason: GoodbyeReason.hostDisplaysAsleep)) == .hostDisplaysAsleep,
@@ -66,11 +66,11 @@ func testHostDisplaysAsleepCopyTests() {
         "a person pressing Stop is neither, and keeps the ending it already had"
     )
 
-    var machine = ViewerSessionStateMachine(hostName: "Mac mini")
+    var machine = ViewerSessionStateMachine(hostName: "Studio")
     machine.handle(.connectStarted)
     machine.handle(.canvasReady)
     let status = machine.handle(.hostEnded(
-        reasonLine: ViewerSessionFailureCopy.line(for: .hostDisplaysAsleep, hostLabel: "Mac mini")
+        reasonLine: ViewerSessionFailureCopy.line(for: .hostDisplaysAsleep, hostLabel: "Studio")
     ))
     expect(
         status.detail.contains("asleep"),

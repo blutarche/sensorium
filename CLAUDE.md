@@ -1,7 +1,7 @@
 # Sensorium — Non-Negotiable Engineering Rules
 
 ## Product
-Sensorium is a clean-room, private, macOS-native remote workstation system for one Intel MacBook client and one Apple-silicon Mac mini host.
+Sensorium is a clean-room, private, native remote workstation system for one viewer machine and one host machine. macOS is the first platform; Linux is next.
 
 Sensorium ships as two double-clickable macOS apps and nothing else. No user ever runs a command, opens Terminal, or types an address. The CLI verbs and the `.command` launchers are test scaffolding — not an alpha surface — and every capability must be reachable from the GUI before it counts as delivered.
 
@@ -9,7 +9,7 @@ This repository will be published as open source. Write every comment, document 
 
 ## Clean-room boundary
 - Do NOT copy, import, vendor, fork, invoke, or inspect source from any other remote desktop or display configuration implementation.
-- Apple public framework documentation and independently written, small compatibility experiments are allowed.
+- The platform vendor's public framework documentation and independently written, small compatibility experiments are allowed.
 - Do not add telemetry, analytics, crash reporting SDKs, webviews, accounts, cloud APIs, TURN/STUN, or a backend.
 
 ## Safety boundary — strict
@@ -21,7 +21,7 @@ This repository will be published as open source. Write every comment, document 
 
 ## Development discipline
 - Strict TDD: write one failing test, run it and observe the intended failure, implement the minimum code, rerun the specific test, then run the full suite.
-- Prefer Swift 6 and XCTest. Keep code macOS-native and dependency-free.
+- Prefer Swift 6 and XCTest. Keep code native and dependency-free.
 - Write only source, tests, and documentation inside this repository.
 
 ## v1 core invariant
@@ -32,9 +32,9 @@ explicitly when the session is set up:
 - **Session canvas**: a session-owned virtual display this host
   created. It is removed at disconnect. The session starts here when the
   host does not offer a host screen.
-- **Host screen**: one existing display of this Mac, captured as it
+- **Host screen**: one existing display of this machine, captured as it
   is. It is never created and never removed. Pairing arms it when the
-  pairing device registers a presence credential. The person at this Mac
+  pairing device registers a presence credential. The person at the host
   can turn it off afterward. The session starts here when the host offers
   one. Its display mode (resolution
   and scaling) may be changed only on the viewer's explicit request during a
@@ -55,16 +55,16 @@ is streaming, on the viewer's request, and is always undone.
 
 Host screen is additionally gated, and no frame of it may leave the host
 until all of these hold. Screen Recording is granted. Host screen is armed
-by pairing. The person at this Mac shows the pairing code. The machine that
-pairs is armed for this Mac itself, not for a fixed set of screens: it may
-be offered any display this Mac has when a session starts. Arming needs a
-registered presence credential. The person at this Mac can turn off
+by pairing. The person at the host shows the pairing code. The machine that
+pairs is armed for this machine itself, not for a fixed set of screens: it may
+be offered any display this machine has when a session starts. Arming needs a
+registered presence credential. The person at the host can turn off
 arming for one machine. The person can turn it back on. The record
-persists across restarts, so an unattended Mac stays reachable. It is
-stored on this Mac alone. No message on the wire can create, re-arm, or
+persists across restarts, so an unattended host stays reachable. It is
+stored on this machine alone. No message on the wire can create, re-arm, or
 widen it. The target display is one Sensorium did not create.
-The person at this Mac can also turn on
-asking first. Someone who used this Mac in the last few minutes is then
+The person at the host can also turn on
+asking first. Someone who used this machine in the last few minutes is then
 asked. That person must agree first. Asking first is off by default. An
 armed device is otherwise not asked.
 
@@ -110,7 +110,7 @@ speaks that service's protocol from the public specification without copying
 any other implementation. Enabling that built-in service is the operator's
 own choice on the host.
 
-While a host-screen session is live, the person at this Mac must see a
+While a host-screen session is live, the person at the host must see a
 continuous, unmissable indication naming the connected device, with a
 control that stops it immediately; and every such session must leave a
 local record naming the device, the display, and when it ran. Sensorium

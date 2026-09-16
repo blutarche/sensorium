@@ -101,7 +101,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         let hostKey = hostIdentity.publicKey
         let pairingIdentity = try! DeviceIdentity.generate()
         let pairSignature = try! hostIdentity.sign(SensoriumFrameCodec.pairApprovalTranscript(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             clientPublicKey: pairingIdentity.publicKey,
             tlsCertificateHash: nil
         ))
@@ -109,7 +109,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             .pairApproved(hostPublicKey: hostKey, tlsCertificateHash: nil, signature: pairSignature)
         ])
         let pairingClient = ClientSessionController(transport: approvingTransport, identity: pairingIdentity)
-        let pairingApproval = try! await pairingClient.pair(deviceName: "MacBook", code: "424242")
+        let pairingApproval = try! await pairingClient.pair(deviceName: "Laptop", code: "424242")
         // The request carries a proof that this machine holds the identity
         // key it names, verified rather than compared byte for byte: the
         // host refuses to rewrite an already-paired machine's own record
@@ -119,14 +119,14 @@ func testSurfaceRoutingAndSessionSetupTests() async {
               await approvingTransport.sent.count == 1,
               pairingApproval.hostPublicKey == hostKey,
               pairingApproval.tlsCertificateHash == nil,
-              sentName == "MacBook",
+              sentName == "Laptop",
               sentKey == pairingIdentity.publicKey,
               sentCode == "424242",
               sentCredential == nil,
               DeviceIdentity.verify(
                 signature: sentSignature,
                 message: SensoriumFrameCodec.pairRequestTranscript(
-                    deviceName: "MacBook",
+                    deviceName: "Laptop",
                     clientPublicKey: pairingIdentity.publicKey,
                     code: "424242",
                     presenceCredential: nil
@@ -140,7 +140,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         let rejectingTransport = ScriptedClientTransport(responses: [.pairRejected(reason: "invalid-code")])
         let rejectedClient = ClientSessionController(transport: rejectingTransport, identity: pairingIdentity)
         do {
-            _ = try await rejectedClient.pair(deviceName: "MacBook", code: "000000")
+            _ = try await rejectedClient.pair(deviceName: "Laptop", code: "000000")
             print("FAIL: client treated a rejected pairing as success")
             Foundation.exit(1)
         } catch ClientSessionError.pairingRejected(let reason) {
@@ -165,7 +165,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             identity: pairingIdentity
         )
         do {
-            _ = try await unrecognizedDuringPairingClient.pair(deviceName: "MacBook", code: "424242")
+            _ = try await unrecognizedDuringPairingClient.pair(deviceName: "Laptop", code: "424242")
             print("FAIL: pairing accepted an unrecognized message instead of rejecting it")
             Foundation.exit(1)
         } catch ClientSessionError.unexpectedMessage {
@@ -184,7 +184,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             pinnedHostPublicKey: hostKey
         )
         do {
-            _ = try await pinningClient.connect(deviceName: "MacBook")
+            _ = try await pinningClient.connect(deviceName: "Laptop")
             print("FAIL: client accepted a canvas from a host that did not prove its identity")
             Foundation.exit(1)
         } catch ClientSessionError.hostKeyMismatch {
@@ -205,7 +205,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             identity: pairingIdentity
         )
         do {
-            _ = try await offerSkippingClient.connect(deviceName: "MacBook")
+            _ = try await offerSkippingClient.connect(deviceName: "Laptop")
             print("FAIL: an authenticated canvas connect accepted canvasReady in place of the host-screen offer")
             Foundation.exit(1)
         } catch ClientSessionError.unexpectedMessage {
@@ -221,7 +221,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             .canvasReady(displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0)
         ])
         let matchingSurfaceClient = ClientSessionController(transport: matchingSurfaceTransport)
-        _ = try! await matchingSurfaceClient.connect(deviceName: "MacBook")
+        _ = try! await matchingSurfaceClient.connect(deviceName: "Laptop")
         guard await matchingSurfaceClient.hostSupportsSurfaceIDs else {
             print("FAIL: client did not record surfaceID capability when the host echoed exactly what was sent")
             Foundation.exit(1)
@@ -231,7 +231,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             .canvasReady(displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil)
         ])
         let absentSurfaceClient = ClientSessionController(transport: absentSurfaceTransport)
-        _ = try! await absentSurfaceClient.connect(deviceName: "MacBook")
+        _ = try! await absentSurfaceClient.connect(deviceName: "Laptop")
         guard await absentSurfaceClient.hostSupportsSurfaceIDs == false else {
             print("FAIL: client recorded surfaceID capability from a host that never echoed it")
             Foundation.exit(1)
@@ -241,12 +241,12 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         // `ViewerWindowTitle`. Absent (an old host) leaves it nil, never a
         // fabricated name.
         let namedHostTransport = ScriptedClientTransport(responses: [
-            .canvasReady(displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil, hostName: "Mac mini")
+            .canvasReady(displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil, hostName: "Studio")
         ])
         let namedHostClient = ClientSessionController(transport: namedHostTransport)
-        _ = try! await namedHostClient.connect(deviceName: "MacBook")
+        _ = try! await namedHostClient.connect(deviceName: "Laptop")
         expect(
-            await namedHostClient.hostMachineName == "Mac mini",
+            await namedHostClient.hostMachineName == "Studio",
             "the client records the host's own name from canvasReady"
         )
 
@@ -254,7 +254,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             .canvasReady(displayID: 42, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil)
         ])
         let unnamedHostClient = ClientSessionController(transport: unnamedHostTransport)
-        _ = try! await unnamedHostClient.connect(deviceName: "MacBook")
+        _ = try! await unnamedHostClient.connect(deviceName: "Laptop")
         expect(
             await unnamedHostClient.hostMachineName == nil,
             "an old host that never sends hostName leaves it nil rather than inventing one"
@@ -265,7 +265,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         ])
         let mismatchedSurfaceClient = ClientSessionController(transport: mismatchedSurfaceTransport)
         do {
-            _ = try await mismatchedSurfaceClient.connect(deviceName: "MacBook")
+            _ = try await mismatchedSurfaceClient.connect(deviceName: "Laptop")
             print("FAIL: client silently accepted a canvasReady whose surfaceID did not match what it sent")
             Foundation.exit(1)
         } catch ClientSessionError.surfaceIDMismatch {
@@ -288,7 +288,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         }
 
         let savedHost = SavedHost(
-            displayName: "Mac mini",
+            displayName: "Studio",
             host: "mini.example-tailnet.ts.net",
             port: 7777,
             hostPublicKey: hostKey
@@ -348,7 +348,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         )
         let started = Date()
         do {
-            _ = try await wedgedClient.connect(deviceName: "MacBook", timeout: 0.05)
+            _ = try await wedgedClient.connect(deviceName: "Laptop", timeout: 0.05)
             print("FAIL: client waited forever on a host that never answered")
             Foundation.exit(1)
         } catch ClientSessionError.timedOut {
@@ -363,7 +363,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             .canvasReady(displayID: 51, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil)
         ])
         let quitting = ClientSessionController(transport: quitTransport)
-        _ = try! await quitting.connect(deviceName: "MacBook")
+        _ = try! await quitting.connect(deviceName: "Laptop")
         await quitting.disconnect(reason: "user-quit")
         await quitting.disconnect(reason: "user-quit")
         let goodbyes = await quitTransport.sent.filter {

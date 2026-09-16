@@ -28,7 +28,7 @@ func runHostMenuBarTitleCaseTests() async {
         let notGranted = HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
         let presence = HostMenuBarPresence(
             status: HostOperatorStatus(
-                connection: .servingHostScreen(peerName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+                connection: .servingHostScreen(peerName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
                 permissions: notGranted
             ),
             onStop: {},
@@ -39,7 +39,7 @@ func runHostMenuBarTitleCaseTests() async {
         presence.updateArming([
             HostScreenArmingPresentation.DeviceLine(
                 devicePublicKey: Data([0xAB]),
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 credentialSummary: "hardware-bound credential"
             )
         ])
@@ -47,11 +47,11 @@ func runHostMenuBarTitleCaseTests() async {
             fatalError("the status item's menu was never installed")
         }
         expect(
-            menu.items.contains { $0.title == "Sharing host screen with Kestrel MacBook Pro" },
+            menu.items.contains { $0.title == "Sharing host screen with Kestrel Laptop Pro" },
             "the status line for an armed device stays sentence case -- it names no action of its own"
         )
         expect(
-            menu.items.contains { $0.title == "Turn Off Share Host Screen for Kestrel MacBook Pro" },
+            menu.items.contains { $0.title == "Turn Off Share Host Screen for Kestrel Laptop Pro" },
             "turning off sharing is an action, in Title Case, and names what it actually does: "
                 + "revoking the permission, which armingStore.disarm confirms -- got titles "
                 + "\(menu.items.map { $0.title })"

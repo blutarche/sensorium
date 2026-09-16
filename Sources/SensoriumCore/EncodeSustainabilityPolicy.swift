@@ -4,7 +4,7 @@ import Foundation
 /// the frame period the encoder is trying to hit, and how many samples a
 /// verdict needs behind it.
 ///
-/// Measured on an Apple-silicon Mac mini, 1920x1200 static content over a
+/// Measured on an arm64 host machine, 1920x1200 static content over a
 /// 10s window: 1.0x costs 10.3ms p50 encode, comfortably under a
 /// 16.7ms/frame budget at 60fps, while 2.0x costs 33.4ms p50 and drops
 /// 28.5% of frames. `StreamScalePolicy`

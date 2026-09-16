@@ -34,7 +34,7 @@ public struct HostScreenBadgePosition: Codable, Equatable, Sendable {
 /// `~/Library/Application Support/Sensorium/host-screen-badge-position.json`.
 /// Keyed by `HostScreenDisplayIdentity.wireStableIdentifier` -- the same
 /// identity `HostScreenDeviceArming` already keys on -- so a different
-/// monitor, one this Mac has never remembered a drop for, gets its own
+/// monitor, one this machine has never remembered a drop for, gets its own
 /// default rather than inheriting another display's spot. `@unchecked
 /// Sendable`: every method is a synchronous whole-file read-modify-write
 /// over a `let url`.

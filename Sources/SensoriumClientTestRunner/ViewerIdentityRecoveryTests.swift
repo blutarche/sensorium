@@ -48,7 +48,7 @@ func testViewerIdentityFailureCopyReadsAsASentence() {
     }
     let copy = ViewerStartupFailureCopy.copy(for: failure)
     expect(
-        copy.detail.contains("The file holding the key that identifies this Mac could not be read"),
+        copy.detail.contains("The file holding the key that identifies this machine could not be read"),
         "the panel states in a sentence what could not be read -- got \(copy.detail)"
     )
     expect(
@@ -112,7 +112,7 @@ func testViewerIdentityRecoveryTests() async {
             "the button title is sentence case, not Title Case -- got \(copy.replaceButtonTitle)"
         )
         expect(
-            copy.replaceConsequence == "Make a new key replaces the key that identifies this Mac. The host "
+            copy.replaceConsequence == "Make a new key replaces the key that identifies this machine. The host "
                 + "will then ask for a pairing code again.",
             "the consequence states both facts plainly, one sentence each -- got \(copy.replaceConsequence)"
         )

@@ -18,7 +18,7 @@ func runPairingCodeRevealTests() async {
         store.beginHosting(address: "100.100.0.4")
         var issueCodeCallCount = 0
         let now = Date()
-        store.recordPairingRequest(deviceName: "Kestrel MacBook Pro", now: now) {
+        store.recordPairingRequest(deviceName: "Kestrel Laptop Pro", now: now) {
             issueCodeCallCount += 1
             return ("135791", now.addingTimeInterval(PairingAuthority.defaultLifetime))
         }
@@ -28,7 +28,7 @@ func runPairingCodeRevealTests() async {
             return
         }
         expect(code == "135791" && expiresAt == now.addingTimeInterval(PairingAuthority.defaultLifetime), "the freshly issued code and its own expiry are recorded")
-        expect(requestingDeviceName == "Kestrel MacBook Pro", "the requesting device's own name is recorded alongside the fresh code")
+        expect(requestingDeviceName == "Kestrel Laptop Pro", "the requesting device's own name is recorded alongside the fresh code")
 
         print("PASS: a pairRequest with no code currently valid issues exactly one fresh code and names the requester")
     }
@@ -39,7 +39,7 @@ func runPairingCodeRevealTests() async {
         let issuedAt = Date()
         store.showPairingCode("246810", expiresAt: issuedAt.addingTimeInterval(PairingAuthority.defaultLifetime))
         var issueCodeCallCount = 0
-        store.recordPairingRequest(deviceName: "Kestrel MacBook Pro", now: issuedAt.addingTimeInterval(10)) {
+        store.recordPairingRequest(deviceName: "Kestrel Laptop Pro", now: issuedAt.addingTimeInterval(10)) {
             issueCodeCallCount += 1
             return ("999999", issuedAt.addingTimeInterval(PairingAuthority.defaultLifetime))
         }
@@ -55,7 +55,7 @@ func runPairingCodeRevealTests() async {
             code == "246810" && expiresAt == issuedAt.addingTimeInterval(PairingAuthority.defaultLifetime),
             "the code and its expiry are exactly what was already active, untouched"
         )
-        expect(requestingDeviceName == "Kestrel MacBook Pro", "the requester's name is still recorded, even though the code itself was not")
+        expect(requestingDeviceName == "Kestrel Laptop Pro", "the requester's name is still recorded, even though the code itself was not")
 
         print("PASS: a pairRequest arriving while a code is still valid reveals that same code and never rotates it")
     }
@@ -66,7 +66,7 @@ func runPairingCodeRevealTests() async {
         let issuedAt = Date()
         store.showPairingCode("111222", expiresAt: issuedAt.addingTimeInterval(60))
         var issueCodeCallCount = 0
-        store.recordPairingRequest(deviceName: "Kestrel MacBook Pro", now: issuedAt.addingTimeInterval(61)) {
+        store.recordPairingRequest(deviceName: "Kestrel Laptop Pro", now: issuedAt.addingTimeInterval(61)) {
             issueCodeCallCount += 1
             return ("333444", issuedAt.addingTimeInterval(61 + PairingAuthority.defaultLifetime))
         }
@@ -85,11 +85,11 @@ func runPairingCodeRevealTests() async {
         let store = HostOperatorStatusStore(permissions: granted)
         let issuedAt = Date()
         store.showPairingCode("555666", expiresAt: issuedAt.addingTimeInterval(PairingAuthority.defaultLifetime))
-        store.recordPairingRequest(deviceName: "Kestrel MacBook Pro", now: issuedAt.addingTimeInterval(5)) {
+        store.recordPairingRequest(deviceName: "Kestrel Laptop Pro", now: issuedAt.addingTimeInterval(5)) {
             expect(false, "the code is still valid; this closure must not run")
             return ("000000", issuedAt)
         }
-        store.recordPairingRequest(deviceName: "Kestrel MacBook Air", now: issuedAt.addingTimeInterval(10)) {
+        store.recordPairingRequest(deviceName: "Kestrel Laptop Air", now: issuedAt.addingTimeInterval(10)) {
             expect(false, "the code is still valid; this closure must not run")
             return ("000000", issuedAt)
         }
@@ -99,7 +99,7 @@ func runPairingCodeRevealTests() async {
         }
         expect(code == "555666", "the code itself is unaffected by either request")
         expect(
-            requestingDeviceName == "Kestrel MacBook Air",
+            requestingDeviceName == "Kestrel Laptop Air",
             "only the latest requester's name is recorded -- the first is simply overwritten, not queued or listed alongside it"
         )
 
@@ -114,7 +114,7 @@ func runPairingCodeRevealTests() async {
             pairing: .showing(
                 code: "777888",
                 expiresAt: issuedAt.addingTimeInterval(PairingAuthority.defaultLifetime),
-                requestingDeviceName: "Kestrel MacBook Pro"
+                requestingDeviceName: "Kestrel Laptop Pro"
             ),
             permissions: granted
         ).presentation(now: issuedAt.addingTimeInterval(1))
@@ -123,7 +123,7 @@ func runPairingCodeRevealTests() async {
             "the eyebrow and headline stay exactly as they were before this field existed -- a code being asked for is not the same fact as a machine connecting"
         )
         expect(
-            named.detail == "Kestrel MacBook Pro is asking to pair.",
+            named.detail == "Kestrel Laptop Pro is asking to pair.",
             "detail names the requester in plain words once one has asked"
         )
 

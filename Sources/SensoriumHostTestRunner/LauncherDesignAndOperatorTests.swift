@@ -325,10 +325,10 @@ func runLauncherDesignAndOperatorTests() async {
                 "a host that discovered nothing leaves the status line to the empty state, rather than repeating it"
             )
             expect(
-                CanvasLauncherPresentation.emptyState(catalogCount: 0, hostName: "Kestrel Mac mini")
+                CanvasLauncherPresentation.emptyState(catalogCount: 0, hostName: "Kestrel Studio")
                     == CanvasLauncherEmptyState(
                         heading: "Nothing to Launch",
-                        subtext: "Install an application on Kestrel Mac mini and reconnect."
+                        subtext: "Install an application on Kestrel Studio and reconnect."
                     ),
                 "an empty catalog is advised to install something, never to clear a query it does not have -- on "
                     + "the host, named, since this text is drawn on the session canvas the viewer reads it from, "
@@ -351,8 +351,8 @@ func runLauncherDesignAndOperatorTests() async {
                 "a filter that matched nothing is advised to widen it, because there is something to find"
             )
             expect(
-                CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 0, hostName: "Kestrel Mac mini").text
-                    == "Nothing to launch: no applications were found on Kestrel Mac mini."
+                CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 0, hostName: "Kestrel Studio").text
+                    == "Nothing to launch: no applications were found on Kestrel Studio."
                     && CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 0).severity == .warn,
                 "Return on a host with no applications answers, rather than doing nothing at all -- on the host, "
                     + "named, for the same reason emptyState's subtext names it"
@@ -429,9 +429,9 @@ func runLauncherDesignAndOperatorTests() async {
                 CanvasLauncherPresentation.outcomeStatus(
                     application: "Safari",
                     outcome: .launchFailed(message: "The application “Safari” could not be launched."),
-                    hostName: "Kestrel Mac mini"
+                    hostName: "Kestrel Studio"
                 ) == CanvasLauncherStatus(
-                    text: "Safari did not open on Kestrel Mac mini. It may no longer be installed there.",
+                    text: "Safari did not open on Kestrel Studio. It may no longer be installed there.",
                     severity: .bad
                 ),
                 "a launch that never started names the machine it failed on, and the framework's own wording is kept to the log"
@@ -733,7 +733,7 @@ func runLauncherDesignAndOperatorTests() async {
         }
 
         do {
-            // Everything the person standing at the Mac mini reads. The menu
+            // Everything the person at the host reads. The menu
             // bar item draws these strings and nothing else, so the words --
             // and which of them appear when -- are checked here rather than on
             // a screen no test has.
@@ -854,7 +854,7 @@ func runLauncherDesignAndOperatorTests() async {
                     + "section falls back to a Show pairing code button instead of a second wording here"
             )
 
-            let peerName = "Kestrel MacBook Pro"
+            let peerName = "Kestrel Laptop Pro"
             let serving = HostOperatorStatus(connection: .serving(peerName: peerName), permissions: granted)
                 .presentation(now: issuedAt)
             expect(
@@ -880,7 +880,7 @@ func runLauncherDesignAndOperatorTests() async {
                 "the alert carries the System Settings pane that grants exactly that permission"
             )
             expect(
-                missingCapture.detail == "Kestrel MacBook Pro sees nothing until you allow Screen Recording for Sensorium Host in System Settings.",
+                missingCapture.detail == "Kestrel Laptop Pro sees nothing until you allow Screen Recording for Sensorium Host in System Settings.",
                 "the canvas-mode privacy sentence -- \"a virtual display, not this machine's own screen\" -- is false and self-contradicting the moment nothing is actually visible at all; the status card itself now carries the Screen Recording sentence as one block, in place of that false claim -- got: \(missingCapture.detail)"
             )
             expect(
@@ -892,12 +892,12 @@ func runLauncherDesignAndOperatorTests() async {
                 "the status card already says Screen Recording is missing while connected, the same as it does before anyone connects -- a second card beneath repeating it would read as two problems instead of one"
             )
             expect(
-                missingCapture.alerts.first?.detail == "Kestrel MacBook Pro sees nothing until you allow Screen Recording for Sensorium Host in System Settings.",
+                missingCapture.alerts.first?.detail == "Kestrel Laptop Pro sees nothing until you allow Screen Recording for Sensorium Host in System Settings.",
                 "the alert itself still carries the whole sentence, even though the panel no longer draws it as a second card -- got: \(missingCapture.alerts.first?.detail ?? "nil")"
             )
             let missingCaptureTexts = CanvasHostTestHooks.menuBarPanelTexts(missingCapture)
             expect(
-                missingCaptureTexts.map(\.string) == ["SCREEN RECORDING NEEDED", "Connected to Kestrel MacBook Pro", missingCapture.detail],
+                missingCaptureTexts.map(\.string) == ["SCREEN RECORDING NEEDED", "Connected to Kestrel Laptop Pro", missingCapture.detail],
                 "one block: the gold SCREEN RECORDING NEEDED eyebrow and headline, then the Screen Recording sentence -- no second eyebrow beneath it -- got: \(missingCaptureTexts.map(\.string))"
             )
             let missingCaptureEyebrowColor = missingCaptureTexts[0].attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor

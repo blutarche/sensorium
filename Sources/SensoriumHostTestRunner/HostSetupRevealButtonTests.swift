@@ -23,7 +23,7 @@ func runHostSetupRevealButtonTests() async {
         // A pairing already approved, waiting on the device to confirm: hidden
         let controller = HostSetupWindowController(
             status: HostOperatorStatus(
-                connection: .pairingApproved(deviceName: "Kestrel MacBook Pro"),
+                connection: .pairingApproved(deviceName: "Kestrel Laptop Pro"),
                 permissions: granted
             ),
             onRevealPairingCode: {},
@@ -42,7 +42,7 @@ func runHostSetupRevealButtonTests() async {
         // code drops to a plain bordered button rather than
         // competing with it as a second filled button.
         let controller = HostSetupWindowController(
-            status: HostOperatorStatus(connection: .serving(peerName: "Kestrel MacBook Pro"), permissions: granted),
+            status: HostOperatorStatus(connection: .serving(peerName: "Kestrel Laptop Pro"), permissions: granted),
             onRevealPairingCode: {},
             onStop: {},
             onToggleSharing: { _, _ in },

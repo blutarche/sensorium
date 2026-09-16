@@ -232,7 +232,7 @@ public final class HostSessionCoordinator {
     /// coordinator) rather than raw geometry, so this factory only ever
     /// has to construct a media object, never decide how big to make it.
     private let hostScreenMediaFactory: ((VideoEncoderConfiguration) -> any CanvasMediaStreaming)?
-    /// Reads whether this Mac's screen is locked, so the viewer is told whether
+    /// Reads whether this machine's screen is locked, so the viewer is told whether
     /// to offer the unlock prompt and so an unlock is confirmed after it types.
     private let lockStateReader: any ScreenLockStateReading
     /// Types the login password into the locked login window over loopback RFB.
@@ -431,7 +431,7 @@ public final class HostSessionCoordinator {
             // lifetime, which copy-on-write `Data` does not let this code cut
             // short.
             // The lock state is itself a disclosure: an unauthenticated or
-            // non-host-screen peer must not learn whether this Mac is locked by
+            // non-host-screen peer must not learn whether this machine is locked by
             // sending a bogus request. Decided before the attempt so a refused
             // request writes only its `.notAuthorized` result and no lock
             // state, while the attempt itself still flows through `unlock` --
@@ -625,7 +625,7 @@ public final class HostSessionCoordinator {
                 if let modeList = controller.hostScreenModeListMessage() {
                     try await writeResponse(modeList)
                 }
-                // Whether this Mac is locked, so the viewer knows to offer the
+                // Whether this machine is locked, so the viewer knows to offer the
                 // unlock prompt. Last, like the mode list: it describes a
                 // session that has now actually started streaming.
                 try await writeResponse(.hostScreenLockState(locked: lockStateReader.isScreenLocked()))
@@ -1170,7 +1170,7 @@ public final class HostSessionCoordinator {
     ///
     /// Host-screen frames are tagged with a canvas surface for the telemetry,
     /// admission and send machinery they share with the canvas path, but that
-    /// number names nothing the person at this Mac can point at: a
+    /// number names nothing the person at this machine can point at: a
     /// host-screen session creates no canvas, so a line calling it "canvas 0"
     /// describes something that does not exist. The display it really
     /// streams does.

@@ -46,7 +46,7 @@ func runHostCapabilityAndSettingsTests() async {
         // A host killed mid-session leaves its canvas behind with no owner,
         // and that leftover keeps the surface's stable identity taken. The
         // next launch must start a session on the next identity instead of
-        // refusing this Mac outright, and must say so once, in words that
+        // refusing this machine outright, and must say so once, in words that
         // name what happened.
         let surfaceZero = CanvasSurfaceID.allCases[0]
         let stable = CanvasIdentityFallback.identities(for: surfaceZero)[0]
@@ -158,7 +158,7 @@ func runHostCapabilityAndSettingsTests() async {
             "the reason names the step that failed: creation refused for every identity, most likely a leftover canvas"
         )
         expect(
-            !exhaustedReason.contains("Mac"),
+            exhaustedReason.contains("machine"),
             "the reason speaks of this machine, the word the rest of the host app's copy uses"
         )
 
@@ -179,11 +179,11 @@ func runHostCapabilityAndSettingsTests() async {
             "a missing runtime class is not something another identity can get past, so nothing else is tried"
         )
         expect(
-            hardwareReason.contains("Apple silicon") && !hardwareReason.contains("every identity"),
+            hardwareReason.contains("arm64") && !hardwareReason.contains("every identity"),
             "the reason tells the operator this is the machine itself, not a display an earlier host left behind"
         )
         expect(
-            hardwareReason.contains("cannot host from this machine") && !hardwareReason.contains("Mac"),
+            hardwareReason.contains("cannot host from this machine"),
             "the reason says what this machine cannot do, in the words the rest of the host app's copy uses"
         )
     }

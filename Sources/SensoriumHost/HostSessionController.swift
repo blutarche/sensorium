@@ -699,7 +699,7 @@ public final class HostSessionController {
     /// strength. Every unlock attempt has to arm first, so an arm that cleared
     /// the budget would put the cap out of reach and leave the login window an
     /// unbounded password oracle. Only a correct password clears it, through
-    /// `recordUnlockSuccess`; someone at this Mac re-arming the machine starts a
+    /// `recordUnlockSuccess`; someone at this machine re-arming the machine starts a
     /// fresh budget, because that changes the arming record the budget is keyed
     /// by.
     @discardableResult
@@ -833,7 +833,7 @@ public final class HostSessionController {
 
         let current = hostScreenCurrentDisplaysProvider()
         let eligible = HostScreenOfferEligibility.offerable(from: current)
-        // One line per display this Mac has but cannot hand over, so an
+        // One line per display this machine has but cannot hand over, so an
         // operator reading the log is never left guessing. A canvas
         // Sensorium created is not a gap: it was never a candidate.
         for display in current {

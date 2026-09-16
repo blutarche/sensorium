@@ -80,7 +80,7 @@ private func makeModeFixture(
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -177,7 +177,7 @@ func runHostScreenModeTests() async {
             "exactly one mode was set, on this session's own display"
         )
         expect(
-            fixture.log.messages.contains { $0.contains("host screen mode changed to 1920x1080 (3840x2160) for Kestrel MacBook Pro") },
+            fixture.log.messages.contains { $0.contains("host screen mode changed to 1920x1080 (3840x2160) for Kestrel Laptop Pro") },
             "and the person reading the host log is told what changed and for whom -- got: \(fixture.log.messages)"
         )
         // The list is re-read from the display afterwards, never from what

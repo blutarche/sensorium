@@ -63,13 +63,13 @@ if plutil -extract LSBackgroundOnly raw -o - "$KIT/Sensorium Host.app/Contents/I
   exit 1
 fi
 
-# The viewer goes to whatever Mac its owner works from, so both architectures
-# have to be in the one binary; the host only ever runs on Apple silicon.
+# The viewer goes to whatever machine its owner works from, so both
+# architectures have to be in the one binary; the host only ever runs on arm64.
 VIEWER_ARCHS="$(lipo -archs "$KIT/Sensorium.app/Contents/MacOS/Sensorium")"
 for arch in x86_64 arm64; do
   case " $VIEWER_ARCHS " in
     *" $arch "*) ;;
-    *) echo "Viewer binary is missing $arch; it must run on any Mac" >&2; exit 1 ;;
+    *) echo "Viewer binary is missing $arch; it must run on any machine" >&2; exit 1 ;;
   esac
 done
 case "$(file "$KIT/Sensorium Host.app/Contents/MacOS/SensoriumHost")" in
@@ -79,7 +79,7 @@ esac
 
 # The apps ship flat by role. A folder named after one machine is a folder
 # the next machine's owner has to be told to ignore.
-for stale in Intel-MacBook Mac-mini; do
+for stale in x86_64-Viewer arm64-Host; do
   [ ! -e "$KIT/$stale" ] || { echo "Package still names a machine: $stale" >&2; exit 1; }
 done
 

@@ -7,11 +7,11 @@ func testPairingCodeExpiresAndCannotBeReused() {
     let code = authority.issue(now: issuedAt, code: "123456")
     expect(code == "123456", "pairing issues the requested six-digit code")
 
-    let grant = try! authority.approve(code: code, deviceID: "macbook", now: issuedAt.addingTimeInterval(1))
-    expect(grant.deviceID == "macbook", "pairing grant binds the approved device")
+    let grant = try! authority.approve(code: code, deviceID: "laptop", now: issuedAt.addingTimeInterval(1))
+    expect(grant.deviceID == "laptop", "pairing grant binds the approved device")
 
     do {
-        _ = try authority.approve(code: code, deviceID: "macbook", now: issuedAt.addingTimeInterval(2))
+        _ = try authority.approve(code: code, deviceID: "laptop", now: issuedAt.addingTimeInterval(2))
         expect(false, "pairing code cannot be reused")
     } catch PairingError.codeAlreadyConsumed {
     } catch {
@@ -20,7 +20,7 @@ func testPairingCodeExpiresAndCannotBeReused() {
 
     let expiredCode = authority.issue(now: issuedAt, code: "654321")
     do {
-        _ = try authority.approve(code: expiredCode, deviceID: "macbook", now: issuedAt.addingTimeInterval(301))
+        _ = try authority.approve(code: expiredCode, deviceID: "laptop", now: issuedAt.addingTimeInterval(301))
         expect(false, "expired pairing code is rejected")
     } catch PairingError.codeExpired {
     } catch {
@@ -38,7 +38,7 @@ func testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime() {
     let exhaustedCode = exhausted.issue(now: issuedAt, code: "424242")
     for attempt in 1...PairingAuthority.maximumFailedAttempts {
         do {
-            _ = try exhausted.approve(code: "999999", deviceID: "macbook", now: attemptedAt)
+            _ = try exhausted.approve(code: "999999", deviceID: "laptop", now: attemptedAt)
             expect(false, "wrong pairing code \(attempt) is rejected")
         } catch PairingError.invalidCode {
         } catch {
@@ -46,7 +46,7 @@ func testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime() {
         }
     }
     do {
-        _ = try exhausted.approve(code: exhaustedCode, deviceID: "macbook", now: attemptedAt)
+        _ = try exhausted.approve(code: exhaustedCode, deviceID: "laptop", now: attemptedAt)
         expect(false, "a spent failure budget retires the code even for the correct guess")
     } catch PairingError.codeAttemptsExhausted {
     } catch {
@@ -58,12 +58,12 @@ func testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime() {
     var nearMiss = PairingAuthority()
     let nearMissCode = nearMiss.issue(now: issuedAt, code: "135790")
     for _ in 1..<PairingAuthority.maximumFailedAttempts {
-        _ = try? nearMiss.approve(code: "000000", deviceID: "macbook", now: attemptedAt)
+        _ = try? nearMiss.approve(code: "000000", deviceID: "laptop", now: attemptedAt)
     }
-    let nearMissGrant = try! nearMiss.approve(code: nearMissCode, deviceID: "macbook", now: attemptedAt)
-    expect(nearMissGrant.deviceID == "macbook", "nine wrong codes still leave the tenth, correct one able to pair")
+    let nearMissGrant = try! nearMiss.approve(code: nearMissCode, deviceID: "laptop", now: attemptedAt)
+    expect(nearMissGrant.deviceID == "laptop", "nine wrong codes still leave the tenth, correct one able to pair")
     do {
-        _ = try nearMiss.approve(code: nearMissCode, deviceID: "macbook", now: attemptedAt)
+        _ = try nearMiss.approve(code: nearMissCode, deviceID: "laptop", now: attemptedAt)
         expect(false, "a code that paired cannot pair again")
     } catch PairingError.codeAlreadyConsumed {
     } catch {
@@ -73,19 +73,19 @@ func testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime() {
     // Re-issuing is the recovery: a fresh code starts with a fresh budget.
     let reissuedCode = nearMiss.issue(now: issuedAt, code: "246810")
     for _ in 1..<PairingAuthority.maximumFailedAttempts {
-        _ = try? nearMiss.approve(code: "000000", deviceID: "macbook", now: attemptedAt)
+        _ = try? nearMiss.approve(code: "000000", deviceID: "laptop", now: attemptedAt)
     }
     expect(
-        (try? nearMiss.approve(code: reissuedCode, deviceID: "macbook", now: attemptedAt))?.deviceID == "macbook",
+        (try? nearMiss.approve(code: reissuedCode, deviceID: "laptop", now: attemptedAt))?.deviceID == "laptop",
         "issuing a new code resets the failure budget"
     )
 
     // Expiry is refused on its own terms, with budget still to spare.
     var expiring = PairingAuthority()
     let expiringCode = expiring.issue(now: issuedAt, code: "864209")
-    _ = try? expiring.approve(code: "000000", deviceID: "macbook", now: attemptedAt)
+    _ = try? expiring.approve(code: "000000", deviceID: "laptop", now: attemptedAt)
     do {
-        _ = try expiring.approve(code: expiringCode, deviceID: "macbook", now: issuedAt.addingTimeInterval(301))
+        _ = try expiring.approve(code: expiringCode, deviceID: "laptop", now: issuedAt.addingTimeInterval(301))
         expect(false, "an expired code is refused whatever the failure budget says")
     } catch PairingError.codeExpired {
     } catch {
@@ -115,7 +115,7 @@ func testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime() {
 func testPairingMessagesRoundTripThroughVersionedFrame() {
     let identity = try! DeviceIdentity.generate()
     let messages: [SensoriumMessage] = [
-        .pairRequest(deviceName: "MacBook", publicKey: identity.publicKey, code: "123456"),
+        .pairRequest(deviceName: "Laptop", publicKey: identity.publicKey, code: "123456"),
         .pairApproved(
             hostPublicKey: identity.publicKey,
             tlsCertificateHash: Data(repeating: 0xA5, count: 32),
@@ -130,10 +130,10 @@ func testPairingMessagesRoundTripThroughVersionedFrame() {
 }
 
 /// Credential registration, riding `pairRequest` -- design §6.3.
-/// `pairIntent` -- the true "shown the moment a new Mac asks to pair"
-/// moment, before that Mac has a code to send at all.
+/// `pairIntent` -- the true "shown the moment a new machine asks to pair"
+/// moment, before that machine has a code to send at all.
 func testPairIntentRoundTripsAndRefusesMalformed() {
-    let message = SensoriumMessage.pairIntent(deviceName: "Kestrel MacBook Pro")
+    let message = SensoriumMessage.pairIntent(deviceName: "Kestrel Laptop Pro")
     expect(
         try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(message)) == message,
         "a pairIntent round-trips its own device name unchanged"
@@ -174,7 +174,7 @@ func testPairRequestPresenceCredentialRegistration() {
         strength: "hardwareBound"
     )
     let withCredential = SensoriumMessage.pairRequest(
-        deviceName: "MacBook", publicKey: identity.publicKey, code: "123456", presenceCredential: credential
+        deviceName: "Laptop", publicKey: identity.publicKey, code: "123456", presenceCredential: credential
     )
     expect(
         try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withCredential)) == withCredential,
@@ -185,7 +185,7 @@ func testPairRequestPresenceCredentialRegistration() {
     // pair and use a session canvas" -- no credential is not a malformed
     // request, it is the ordinary case.
     let withoutCredential = SensoriumMessage.pairRequest(
-        deviceName: "MacBook", publicKey: identity.publicKey, code: "123456"
+        deviceName: "Laptop", publicKey: identity.publicKey, code: "123456"
     )
     expect(
         try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withoutCredential)) == withoutCredential,
@@ -207,7 +207,7 @@ func testPairRequestPresenceCredentialRegistration() {
 
     let baseObject: [String: Any] = [
         "type": "pairRequest",
-        "deviceName": "MacBook",
+        "deviceName": "Laptop",
         "publicKey": identity.publicKey.base64EncodedString(),
         "code": "123456"
     ]
@@ -258,14 +258,14 @@ func testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers() {
         strength: "hardwareBound"
     )
     let transcript = SensoriumFrameCodec.pairRequestTranscript(
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         clientPublicKey: identity.publicKey,
         code: "123456",
         presenceCredential: credential
     )
     let signature = try! identity.sign(transcript)
     let signed = SensoriumMessage.pairRequest(
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         publicKey: identity.publicKey,
         code: "123456",
         presenceCredential: credential,
@@ -291,19 +291,19 @@ func testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers() {
     )
     for (label, other) in [
         ("a different machine name", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "Another MacBook", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: credential
+            deviceName: "Another Laptop", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: credential
         )),
         ("a different identity key", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "MacBook", clientPublicKey: Data(repeating: 0x55, count: 32), code: "123456", presenceCredential: credential
+            deviceName: "Laptop", clientPublicKey: Data(repeating: 0x55, count: 32), code: "123456", presenceCredential: credential
         )),
         ("a different pairing code", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "MacBook", clientPublicKey: identity.publicKey, code: "654321", presenceCredential: credential
+            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "654321", presenceCredential: credential
         )),
         ("a different credential", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "MacBook", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: otherCredential
+            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: otherCredential
         )),
         ("no credential at all", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "MacBook", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: nil
+            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: nil
         ))
     ] {
         expect(other != transcript, "\(label) produces a different transcript, so the proof does not carry over to it")
@@ -317,7 +317,7 @@ func testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers() {
     // that request still decodes and still pairs -- the same
     // forward-compatibility the presence-credential fields already have.
     let unsigned = SensoriumMessage.pairRequest(
-        deviceName: "MacBook", publicKey: identity.publicKey, code: "123456"
+        deviceName: "Laptop", publicKey: identity.publicKey, code: "123456"
     )
     expect(
         try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(unsigned)) == unsigned,

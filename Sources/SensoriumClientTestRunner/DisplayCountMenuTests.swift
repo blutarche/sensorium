@@ -47,8 +47,8 @@ func testDisplayCountMenuTests() async {
             "a host-screen session's own refusal says why in words a person reads, not the wire token"
         )
         expect(
-            DisplayCountRefusalCopy.line(reason: "host-screen-session-active", hostLabel: "mac-mini")
-                == "Could not add a second display: mac-mini is showing this machine a host screen, and a "
+            DisplayCountRefusalCopy.line(reason: "host-screen-session-active", hostLabel: "studio-mini")
+                == "Could not add a second display: studio-mini is showing this machine a host screen, and a "
                     + "host screen allows only one display.",
             "the host-screen refusal names the machine showing the host screen, not just \"this connection\""
         )

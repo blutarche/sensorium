@@ -16,7 +16,7 @@ public enum PresenceCredentialStrength: String, Equatable, Sendable {
 /// machine that hits either case still pairs and uses the session canvas; it
 /// only cannot be armed for a host screen.
 public enum PresenceCredentialRegistrationError: Error, Equatable, Sendable {
-    /// This machine has no Secure Enclave to hold the key in -- an Intel machine
+    /// This machine has no Secure Enclave to hold the key in -- an x86_64 machine
     /// without a T2 chip, or a virtual machine.
     case noSecureEnclave
     /// The Secure Enclave or Keychain declined to create or reload the key.

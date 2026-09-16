@@ -37,4 +37,4 @@ forbidden_install = [
 for forbidden in forbidden_install:
     assert forbidden not in install, f"install guide retains stale statement: {forbidden}"
 
-print("PASS: documentation states the verified local and pending cross-Mac boundaries")
+print("PASS: documentation states the verified local and pending cross-machine boundaries")

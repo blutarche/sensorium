@@ -19,8 +19,8 @@ private func savedMachineRow(
 }
 
 func testYourMachinesWindowModelTests() {
-    let mini = savedMachineRow("Mac mini", key: 1, host: "mini.tail1234.ts.net", lastConnectedAt: Date(timeIntervalSince1970: 9_000))
-    let studio = savedMachineRow("Mac Studio", key: 2, host: "100.64.1.7", lastConnectedAt: Date(timeIntervalSince1970: 1_000))
+    let mini = savedMachineRow("Loft", key: 1, host: "mini.tail1234.ts.net", lastConnectedAt: Date(timeIntervalSince1970: 9_000))
+    let studio = savedMachineRow("Studio", key: 2, host: "100.64.1.7", lastConnectedAt: Date(timeIntervalSince1970: 1_000))
 
     do {
         // With nothing paired the list is one sentence, and adding a
@@ -38,7 +38,7 @@ func testYourMachinesWindowModelTests() {
         expect(!listed.isEmpty, "a saved machine means a list")
         expect(!listed.addIsPrimary, "with machines listed, adding another is a secondary action")
         expect(
-            listed.rows.map(\.name) == ["Mac mini", "Mac Studio"],
+            listed.rows.map(\.name) == ["Loft", "Studio"],
             "the rows are drawn in the order the store handed them over, got \(listed.rows.map(\.name))"
         )
         expect(
@@ -63,11 +63,11 @@ func testYourMachinesWindowModelTests() {
 
         let peers = [
             TailnetPeer(
-                id: "1", displayName: "Mac mini", magicDNSName: "mini.tail1234.ts.net",
+                id: "1", displayName: "Loft", magicDNSName: "mini.tail1234.ts.net",
                 tailnetIPv4: "100.64.1.2", tailnetIPv6: nil, isOnline: true, isThisMachine: false
             ),
             TailnetPeer(
-                id: "2", displayName: "Mac Studio", magicDNSName: "studio.tail1234.ts.net",
+                id: "2", displayName: "Studio", magicDNSName: "studio.tail1234.ts.net",
                 tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: false, isThisMachine: false
             )
         ]
@@ -203,7 +203,7 @@ func testYourMachinesWindowModelTests() {
         // row it was reported on does not exist any more.
         model.replaceHosts([studio], reachability: [:])
         expect(model.connectingHostPublicKey == nil, "forgetting the machine being dialled leaves nothing dialling")
-        expect(model.rows.map(\.name) == ["Mac Studio"], "and the list is what the store now holds")
+        expect(model.rows.map(\.name) == ["Studio"], "and the list is what the store now holds")
 
         print("PASS: re-reading the saved machines keeps the attempt already out, and drops it with its own row")
     }

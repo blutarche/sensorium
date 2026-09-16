@@ -446,7 +446,7 @@ public final class ShortcutStripView: NSView {
     /// directory every other per-viewer file already lives in. Owner-only,
     /// like `FileHostScreenModeMemoryStore`'s own file, for the same reason:
     /// nothing about this viewer's own settings should be readable by another
-    /// account on the same Mac, even though a pin is not a secret.
+    /// account on the same machine, even though a pin is not a secret.
     private static func defaultPinMemoryStore() -> any ShortcutStripPinMemoryStoring {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let url = base

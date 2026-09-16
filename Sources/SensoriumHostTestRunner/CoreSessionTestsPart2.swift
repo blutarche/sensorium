@@ -171,9 +171,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             keyConfinement: .unconfined
         )
         var capOkMessages = (0..<(HostSessionController.maximumPairingFailuresPerConnection - 1)).map { _ in
-            SensoriumMessage.pairRequest(deviceName: "NewMacBook", publicKey: capOkDevice.publicKey, code: "111111")
+            SensoriumMessage.pairRequest(deviceName: "NewLaptop", publicKey: capOkDevice.publicKey, code: "111111")
         }
-        capOkMessages.append(.pairRequest(deviceName: "NewMacBook", publicKey: capOkDevice.publicKey, code: "555555"))
+        capOkMessages.append(.pairRequest(deviceName: "NewLaptop", publicKey: capOkDevice.publicKey, code: "555555"))
         let capOkChannel = FakeHostByteChannel(scriptedMessages: capOkMessages)
         let capOkSession = HostNetworkSession(connection: capOkChannel, controller: capOkController)
         capOkSession.start()
@@ -273,7 +273,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             keyConfinement: .unconfined
         )
         let composeExhausted = try! composeFreshController.handle(.pairRequest(
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: composeDevice.publicKey,
             code: "864213"
         ))
@@ -793,7 +793,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         firstRun.issueCode(code: "314159")
         let pairedDevice = try! DeviceIdentity.generate()
         let restartApproval = firstRun.handlePairRequest(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: pairedDevice.publicKey,
             code: "314159"
         )
@@ -803,14 +803,14 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         }
         expect(restartHostKey == restartIdentity.publicKey && restartTLSHash == nil, "the ceremony approves the device")
         expect(
-            approvedStore.name(for: pairedDevice.publicKey) == "MacBook",
+            approvedStore.name(for: pairedDevice.publicKey) == "Laptop",
             "the name the device gave at pairing is recorded alongside its key, not just the key itself"
         )
         expect(
             DeviceIdentity.verify(
                 signature: restartSignature,
                 message: SensoriumFrameCodec.pairApprovalTranscript(
-                    deviceName: "MacBook",
+                    deviceName: "Laptop",
                     clientPublicKey: pairedDevice.publicKey,
                     tlsCertificateHash: nil
                 ),
@@ -824,7 +824,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             "a paired device survives a host restart instead of silently needing re-pairing"
         )
         expect(
-            approvedStore.name(for: pairedDevice.publicKey) == "MacBook",
+            approvedStore.name(for: pairedDevice.publicKey) == "Laptop",
             "the recorded name survives a host restart too, the same way the approval itself does"
         )
         expect(
@@ -849,12 +849,12 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         )
         let timeSyncTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: timeSyncIdentity.publicKey
         )
         _ = try! timeSyncController.handle(.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: timeSyncIdentity.publicKey,
             signature: try! timeSyncIdentity.sign(timeSyncTranscript)
         ))
@@ -889,12 +889,12 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         )
         let pairedHello = SensoriumMessage.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: pairedIdentity.publicKey,
             signature: try! pairedIdentity.sign(
                 SensoriumFrameCodec.authenticatedHelloTranscript(
                     protocolVersion: 1,
-                    deviceName: "MacBook",
+                    deviceName: "Laptop",
                     publicKey: pairedIdentity.publicKey
                 )
             )

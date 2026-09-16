@@ -60,7 +60,7 @@ public final class InMemoryShortcutStripPinMemoryStore: ShortcutStripPinMemorySt
 /// posture `FileHostScreenModeMemoryStore` already takes for a file under
 /// this viewer's own Application Support directory, even though a pin is not
 /// a secret: nothing about it should be readable by another account on the
-/// same Mac. No test executes this: it would write outside the repository.
+/// same machine. No test executes this: it would write outside the repository.
 /// What an unreadable file means is `ShortcutStripPinFileCoding`'s decision,
 /// which is verified.
 public final class FileShortcutStripPinMemoryStore: ShortcutStripPinMemoryStoring, @unchecked Sendable {

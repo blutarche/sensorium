@@ -33,7 +33,7 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 | `Scripts/verify-tailscale-route.sh` | Prints the `tailscale ping --verbose` command to run by hand before a latency claim, and how to read direct versus DERP-relayed |
 | `Scripts/benchmark-session.sh` | A placeholder that does nothing yet and exits non-zero, naming the steps a real benchmark needs, rather than publish a number this project has not measured |
 | `Scripts/test-package-apps.sh` | The packager, `Scripts/package-apps.sh`, run only with signing identities guaranteed absent from the machine, so it never touches a real keychain identity |
-| `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-Mac boundaries, and do not regress to an earlier, stale claim |
+| `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-machine boundaries, and do not regress to an earlier, stale claim |
 
 ## Test order
 

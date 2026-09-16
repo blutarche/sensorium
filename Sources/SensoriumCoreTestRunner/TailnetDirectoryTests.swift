@@ -225,7 +225,7 @@ func testTailnetPeerDialAddressPrefersIPv4ThenMagicDNSNameThenIPv6() {
     func peer(magicDNSName: String?, tailnetIPv4: String?, tailnetIPv6: String?) -> TailnetPeer {
         TailnetPeer(
             id: "n1",
-            displayName: "some-mac",
+            displayName: "some-machine",
             magicDNSName: magicDNSName,
             tailnetIPv4: tailnetIPv4,
             tailnetIPv6: tailnetIPv6,

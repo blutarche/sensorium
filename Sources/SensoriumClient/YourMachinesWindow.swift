@@ -172,7 +172,7 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
         // the code either way and the placeholder is where that is learned.
         codeField.placeholderAttributedString = ViewerFormControls.placeholder("000 000", mono: true, size: 20)
         codeField.delegate = self
-        nameField.placeholderAttributedString = ViewerFormControls.placeholder("Mac mini", mono: false, size: 14)
+        nameField.placeholderAttributedString = ViewerFormControls.placeholder("Studio", mono: false, size: 14)
         nameField.delegate = self
         pairButton.target = self
         pairButton.action = #selector(submit)

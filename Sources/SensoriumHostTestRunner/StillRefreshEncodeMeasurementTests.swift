@@ -11,8 +11,8 @@ import SensoriumHost
 /// This is the one test in the suite that runs a real `VTCompressionSession`.
 /// It needs no display, no capture and no network: the picture is drawn into a
 /// pixel buffer here, in this process, and the encoded frames are counted and
-/// thrown away. A Mac with no hardware H.264 encoder skips it rather than
-/// failing, because what it measures is this Mac's encoder and there is
+/// thrown away. A machine with no hardware H.264 encoder skips it rather than
+/// failing, because what it measures is this machine's encoder and there is
 /// nothing to measure without one.
 @MainActor
 func runStillRefreshEncodeMeasurementTests() async {
@@ -29,7 +29,7 @@ func runStillRefreshEncodeMeasurementTests() async {
             }
         }
     ) else {
-        print("SKIP: this Mac has no hardware H.264 encoder, so there is no still-refresh frame size to measure")
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no still-refresh frame size to measure")
         return
     }
 
@@ -55,7 +55,7 @@ func runStillRefreshEncodeMeasurementTests() async {
     let streamKeyFrameBytes = sizes.largestFrameBytes
 
     guard routineFrameBytes > 0, streamKeyFrameBytes > 0 else {
-        print("SKIP: this Mac's encoder produced no frames to measure against")
+        print("SKIP: this machine's encoder produced no frames to measure against")
         return
     }
 

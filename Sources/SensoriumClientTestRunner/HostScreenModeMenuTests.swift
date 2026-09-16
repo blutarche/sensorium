@@ -87,21 +87,21 @@ func testHostScreenModeMenuTests() async {
     do {
         // A refused change says so in words, and says what is true
         let failed = HostScreenRefusalCopy.modeRefusalLine(
-            reason: HostScreenModeRefusalReason.failed, hostLabel: "mac-mini"
+            reason: HostScreenModeRefusalReason.failed, hostLabel: "studio-mini"
         )
         expect(
-            failed == "mac-mini could not change its screen\u{2019}s resolution. It is back to what it was.",
+            failed == "studio-mini could not change its screen\u{2019}s resolution. It is back to what it was.",
             "the refusal names the machine and says what the screen is on now -- got: \(failed)"
         )
         let unknown = HostScreenRefusalCopy.modeRefusalLine(
-            reason: HostScreenModeRefusalReason.unknown, hostLabel: "mac-mini"
+            reason: HostScreenModeRefusalReason.unknown, hostLabel: "studio-mini"
         )
         expect(
             unknown.localizedCaseInsensitiveContains("no longer offers"),
             "a resolution the host has stopped offering is explained as that, not as a failure of this machine"
         )
         let notLive = HostScreenRefusalCopy.modeRefusalLine(
-            reason: HostScreenModeRefusalReason.notLive, hostLabel: "mac-mini"
+            reason: HostScreenModeRefusalReason.notLive, hostLabel: "studio-mini"
         )
         expect(
             notLive.localizedCaseInsensitiveContains("screen"),
@@ -113,7 +113,7 @@ func testHostScreenModeMenuTests() async {
                 "no refusal shows the wire token to a person -- got: \(line)"
             )
         }
-        let invented = HostScreenRefusalCopy.modeRefusalLine(reason: "a-reason-this-build-never-saw", hostLabel: "mac-mini")
+        let invented = HostScreenRefusalCopy.modeRefusalLine(reason: "a-reason-this-build-never-saw", hostLabel: "studio-mini")
         expect(
             invented.contains("a\u{2011}reason\u{2011}this\u{2011}build\u{2011}never\u{2011}saw"),
             "an unrecognised reason is quoted rather than translated into a cause nobody reported -- got: \(invented)"

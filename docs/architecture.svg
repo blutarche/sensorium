@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 320" width="760" height="320" role="img" aria-labelledby="sensorium-arch-title sensorium-arch-desc">
   <title id="sensorium-arch-title">Sensorium architecture</title>
-  <desc id="sensorium-arch-desc">The Sensorium viewer app on an Intel MacBook exchanges input and H.264 video with the Sensorium Host app on an Apple-silicon Mac mini over a Tailscale tailnet; the host streams either a session canvas it creates or, when armed, one existing host screen.</desc>
+  <desc id="sensorium-arch-desc">The Sensorium viewer app on the machine you work from exchanges input and H.264 video with the Sensorium Host app on the host machine over a Tailscale tailnet; the host streams either a session canvas it creates or, when armed, one existing host screen.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
       <polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/>
@@ -15,11 +15,11 @@
   <!-- zones -->
   <rect x="32" y="88" width="240" height="208" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
   <rect x="80" y="92" width="144" height="12" rx="2" fill="#f5f5f5"/>
-  <text x="152" y="101" fill="rgba(45,49,66,0.45)" font-size="7" font-family="'Geist Mono', 'SF Mono', Menlo, monospace" text-anchor="middle" letter-spacing="0.14em">VIEWER · INTEL MACBOOK</text>
+  <text x="152" y="101" fill="rgba(45,49,66,0.45)" font-size="7" font-family="'Geist Mono', 'SF Mono', Menlo, monospace" text-anchor="middle" letter-spacing="0.14em">VIEWER · THE MACHINE YOU WORK FROM</text>
 
   <rect x="376" y="88" width="352" height="208" rx="8" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.10)" stroke-width="0.8"/>
   <rect x="464" y="92" width="176" height="12" rx="2" fill="#f5f5f5"/>
-  <text x="552" y="101" fill="rgba(45,49,66,0.45)" font-size="7" font-family="'Geist Mono', 'SF Mono', Menlo, monospace" text-anchor="middle" letter-spacing="0.14em">HOST · APPLE-SILICON MAC MINI</text>
+  <text x="552" y="101" fill="rgba(45,49,66,0.45)" font-size="7" font-family="'Geist Mono', 'SF Mono', Menlo, monospace" text-anchor="middle" letter-spacing="0.14em">HOST · THE MACHINE YOU WORK ON</text>
 
   <!-- link caption -->
   <text x="352" y="72" fill="#7a8399" font-size="8" font-family="'Geist Mono', 'SF Mono', Menlo, monospace" text-anchor="middle" letter-spacing="0.10em">TAILSCALE TAILNET · QUIC · PINNED IDENTITY</text>

@@ -182,28 +182,28 @@ func runHostScreenArmingTests() async {
         let armed = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: Data([0xAB]),
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
         let lines = HostScreenArmingPresentation.lines(for: armed)
         expect(
-            lines.count == 1 && lines[0].deviceName == "Kestrel MacBook Pro"
-                && lines[0].credentialSummary == "Presence key on Kestrel MacBook Pro: reported as hardware-held.",
+            lines.count == 1 && lines[0].deviceName == "Kestrel Laptop Pro"
+                && lines[0].credentialSummary == "Presence key on Kestrel Laptop Pro: reported as hardware-held.",
             "the idle presentation names the armed device and says how its key is held in plain words, not a raw enum case"
         )
         let armedWithSoftwareKey = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: Data([0xAC]),
-                deviceName: "Kestrel MacBook Air",
+                deviceName: "Kestrel Laptop Air",
                 minimumCredentialStrength: .softwarePresence,
                 armedAt: Date()
             )
         ])
         expect(
             HostScreenArmingPresentation.lines(for: armedWithSoftwareKey)[0].credentialSummary
-                == "Presence key on Kestrel MacBook Air: reported as software-held.",
+                == "Presence key on Kestrel Laptop Air: reported as software-held.",
             "a key the operating system holds is told apart from one that cannot leave the device, and says what that costs"
         )
 
@@ -248,13 +248,13 @@ func runHostScreenArmingTests() async {
             inMemory.name(for: key) == nil,
             "a key approved with no name recorded reads back with none, not an empty string"
         )
-        inMemory.setName("Kestrel MacBook Pro", for: key)
+        inMemory.setName("Kestrel Laptop Pro", for: key)
         expect(
-            inMemory.name(for: key) == "Kestrel MacBook Pro",
+            inMemory.name(for: key) == "Kestrel Laptop Pro",
             "a name set for a key reads back exactly as set"
         )
         expect(
-            ApprovedDeviceDisplayName.resolve(for: key, in: inMemory) == "Kestrel MacBook Pro",
+            ApprovedDeviceDisplayName.resolve(for: key, in: inMemory) == "Kestrel Laptop Pro",
             "the resolved display name is the recorded one when there is one"
         )
         let unnamedKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x01])
@@ -293,10 +293,10 @@ func runHostScreenArmingTests() async {
             "a key from a pre-existing store file has no recorded name"
         )
 
-        store.setName("Kestrel MacBook Pro", for: key)
+        store.setName("Kestrel Laptop Pro", for: key)
         let reopened = FileApprovedDeviceStore(url: url)
         expect(
-            reopened.load() == [key] && reopened.name(for: key) == "Kestrel MacBook Pro",
+            reopened.load() == [key] && reopened.name(for: key) == "Kestrel Laptop Pro",
             "setting a name on a legacy record upgrades the file in place, keeping the key and adding the name"
         )
 
@@ -311,7 +311,7 @@ func runHostScreenArmingTests() async {
             .appendingPathComponent("sensorium-approved-devices-permissions-test-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = FileApprovedDeviceStore(url: url)
-        store.setName("Kestrel MacBook Pro", for: Data([0x01]))
+        store.setName("Kestrel Laptop Pro", for: Data([0x01]))
         let attributes = try! FileManager.default.attributesOfItem(atPath: url.path)
         expect(
             (attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600,
@@ -329,30 +329,30 @@ func runHostScreenArmingTests() async {
         let sharingKey = Data([0xAB])
         let unarmedKey = Data([0xCD])
         let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] = [
-            (sharingKey, "Kestrel MacBook Pro", .hardwareBound),
-            (unarmedKey, "Kestrel MacBook Air", nil)
+            (sharingKey, "Kestrel Laptop Pro", .hardwareBound),
+            (unarmedKey, "Kestrel Laptop Air", nil)
         ]
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: sharingKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
         let rows = HostScreenArmingPresentation.pairedMachineRows(approvedDevices: approvedDevices, arming: arming)
         expect(
-            rows.count == 2 && rows[0].deviceName == "Kestrel MacBook Pro" && rows[1].deviceName == "Kestrel MacBook Air",
+            rows.count == 2 && rows[0].deviceName == "Kestrel Laptop Pro" && rows[1].deviceName == "Kestrel Laptop Air",
             "every paired machine gets its own row, in the order it was given, whether or not it is sharing a host screen"
         )
         expect(
             rows[0].isSharingRealScreen && rows[0].blockedReason == nil
-                && rows[0].credentialSummary == "Presence key on Kestrel MacBook Pro: reported as hardware-held.",
+                && rows[0].credentialSummary == "Presence key on Kestrel Laptop Pro: reported as hardware-held.",
             "a device armed with a registered credential is shown as sharing, with nothing blocking it"
         )
         expect(
             !rows[1].isSharingRealScreen
-                && rows[1].blockedReason == HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel MacBook Air"),
+                && rows[1].blockedReason == HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel Laptop Air"),
             "a paired device that has never registered a credential cannot be turned on yet, and the row says why, naming the paired device rather than \"This machine\""
         )
 
@@ -407,19 +407,19 @@ func runHostScreenArmingTests() async {
         let armedKey = Data([0x11])
         let legacyKey = Data([0x22])
         let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] = [
-            (armedKey, "Kestrel MacBook Pro", .softwarePresence),
-            (legacyKey, "Kestrel iMac", .hardwareBound)
+            (armedKey, "Kestrel Laptop Pro", .softwarePresence),
+            (legacyKey, "Kestrel Desktop", .hardwareBound)
         ]
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: armedKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             ),
             HostScreenDeviceArming(
                 devicePublicKey: legacyKey,
-                deviceName: "Kestrel iMac",
+                deviceName: "Kestrel Desktop",
                 armedAt: Date()
             )
         ])
@@ -427,7 +427,7 @@ func runHostScreenArmingTests() async {
         expect(
             rows[0].isSharingRealScreen
                 && rows[0].blockedReason == nil
-                && rows[0].credentialSummary == "Presence key on Kestrel MacBook Pro: reported as hardware-held.",
+                && rows[0].credentialSummary == "Presence key on Kestrel Laptop Pro: reported as hardware-held.",
             "an armed row reports the strength it was armed at, not whatever is registered live now (here, a weaker one)"
         )
         expect(
@@ -485,13 +485,13 @@ func runHostScreenArmingTests() async {
             let arming = HostScreenArming(devices: [
                 HostScreenDeviceArming(
                     devicePublicKey: key,
-                    deviceName: "Kestrel MacBook Pro",
+                    deviceName: "Kestrel Laptop Pro",
                     minimumCredentialStrength: .hardwareBound,
                     armedAt: Date()
                 )
             ])
             let rows = HostScreenArmingPresentation.pairedMachineRows(
-                approvedDevices: [(key, "Kestrel MacBook Pro", .hardwareBound)],
+                approvedDevices: [(key, "Kestrel Laptop Pro", .hardwareBound)],
                 arming: arming,
                 activeDisplays: activeDisplays
             )
@@ -516,12 +516,12 @@ func runHostScreenArmingTests() async {
         )
         expect(
             row(activeDisplays: []).sharedDisplaysLine == nil && row(activeDisplays: []).notOfferedReason == nil,
-            "a caller that passes no display list gets neither a sentence nor a complaint, rather than a claim this Mac has no display at all"
+            "a caller that passes no display list gets neither a sentence nor a complaint, rather than a claim this machine has no display at all"
         )
         expect(
             row(activeDisplays: [canvas]).sharedDisplaysLine == nil
                 && row(activeDisplays: [canvas]).notOfferedReason == HostScreenArmingPresentation.noShareableDisplayNotice,
-            "a Mac whose only display is a canvas Sensorium created shares nothing, and the row says so rather than naming the canvas"
+            "a machine whose only display is a canvas Sensorium created shares nothing, and the row says so rather than naming the canvas"
         )
         expect(
             row(activeDisplays: [asleepDisplay]).notOfferedReason == HostScreenArmingPresentation.noShareableDisplayNotice,
@@ -534,7 +534,7 @@ func runHostScreenArmingTests() async {
         )
 
         let unarmed = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFF]), "Kestrel MacBook Air", nil)],
+            approvedDevices: [(Data([0xFF]), "Kestrel Laptop Air", nil)],
             arming: HostScreenArming(),
             activeDisplays: [builtin]
         )
@@ -593,13 +593,13 @@ func runHostScreenArmingTests() async {
             let arming = HostScreenArming(devices: [
                 HostScreenDeviceArming(
                     devicePublicKey: key,
-                    deviceName: "Kestrel MacBook Pro",
+                    deviceName: "Kestrel Laptop Pro",
                     minimumCredentialStrength: .hardwareBound,
                     armedAt: Date()
                 )
             ])
             return HostScreenArmingPresentation.pairedMachineRows(
-                approvedDevices: [(key, "Kestrel MacBook Pro", .hardwareBound)],
+                approvedDevices: [(key, "Kestrel Laptop Pro", .hardwareBound)],
                 arming: arming,
                 activeDisplays: activeDisplays
             )[0]
@@ -649,17 +649,17 @@ func runHostScreenArmingTests() async {
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             publicKey: device.publicKey
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             publicKey: device.publicKey,
             signature: try! device.sign(transcript)
         ))
         expect(
-            approvedStore.name(for: device.publicKey) == "Kestrel MacBook Pro",
+            approvedStore.name(for: device.publicKey) == "Kestrel Laptop Pro",
             "an already-approved device with no recorded name gets one the moment it authenticates, not only at the pairing ceremony"
         )
 
@@ -745,13 +745,13 @@ func runHostScreenArmingTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: key,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
         let rows = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(key, "Kestrel MacBook Pro", .hardwareBound)],
+            approvedDevices: [(key, "Kestrel Laptop Pro", .hardwareBound)],
             arming: arming,
             activeDisplays: [firstOfSameModel, secondOfSameModel]
         )
@@ -770,7 +770,7 @@ func runHostScreenArmingTests() async {
         let key = Data([0x01, 0x02, 0x03, 0x04])
         let legacyJSON = """
         {"devices":[{"devicePublicKey":"\(key.base64EncodedString())",\
-        "deviceName":"Kestrel MacBook Pro","armedDisplays":[],"armedAt":719000000}]}
+        "deviceName":"Kestrel Laptop Pro","armedDisplays":[],"armedAt":719000000}]}
         """
         let decoded = try! JSONDecoder().decode(HostScreenArming.self, from: legacyJSON.data(using: .utf8)!)
         expect(
@@ -780,7 +780,7 @@ func runHostScreenArmingTests() async {
 
         let device = HostScreenDeviceArming(
             devicePublicKey: key,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             armedAt: Date(timeIntervalSince1970: 1_700_000_000),
             asksWhenSomeoneIsUsingThisMachine: true
         )
@@ -795,7 +795,7 @@ func runHostScreenArmingTests() async {
             .appendingPathComponent("sensorium-host-screen-arming-asks-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = HostScreenArmingStore(url: url)
-        store.arm(HostScreenDeviceArming(devicePublicKey: key, deviceName: "Kestrel MacBook Pro", armedAt: Date()))
+        store.arm(HostScreenDeviceArming(devicePublicKey: key, deviceName: "Kestrel Laptop Pro", armedAt: Date()))
         let writesBefore = store.writeCount
         store.setAsksWhenInUse(devicePublicKey: key, true)
         expect(
@@ -805,11 +805,11 @@ func runHostScreenArmingTests() async {
         expect(store.writeCount == writesBefore + 1, "the store setter bumps writeCount, the same as arm and disarm")
 
         let fingerprintOff = HostScreenArmingFingerprint(HostScreenDeviceArming(
-            devicePublicKey: key, deviceName: "Kestrel MacBook Pro",
+            devicePublicKey: key, deviceName: "Kestrel Laptop Pro",
             armedAt: Date(timeIntervalSince1970: 1_700_000_000), asksWhenSomeoneIsUsingThisMachine: false
         ))
         let fingerprintOn = HostScreenArmingFingerprint(HostScreenDeviceArming(
-            devicePublicKey: key, deviceName: "Kestrel MacBook Pro",
+            devicePublicKey: key, deviceName: "Kestrel Laptop Pro",
             armedAt: Date(timeIntervalSince1970: 1_700_000_000), asksWhenSomeoneIsUsingThisMachine: true
         ))
         expect(
@@ -825,12 +825,12 @@ func runHostScreenArmingTests() async {
         // label an armed row's own sharing state reads from.
         let key = Data([0xEE, 0x01])
         let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] = [
-            (key, "Kestrel MacBook Pro", .hardwareBound)
+            (key, "Kestrel Laptop Pro", .hardwareBound)
         ]
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: key,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: true
@@ -850,7 +850,7 @@ func runHostScreenArmingTests() async {
         // A row with nothing shareable says so on its own line, and never
         // alongside a real sharedDisplaysLine, since there is nothing left
         // unexplained then. Arming is per machine, so the line is about
-        // this Mac's displays, never about the machine's permission.
+        // this machine's displays, never about the machine's permission.
         func row(name: String, key: Data, activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
             HostScreenArmingPresentation.pairedMachineRows(
                 approvedDevices: [(key, name, .hardwareBound)],
@@ -892,40 +892,40 @@ func runHostScreenArmingTests() async {
             (actuallyMirrored, "a mirror secondary"),
             (actuallyAsleep, "asleep")
         ] {
-            let blocked = row(name: "Kestrel MacBook Pro", key: Data([0xFC]), activeDisplays: [display])
+            let blocked = row(name: "Kestrel Laptop Pro", key: Data([0xFC]), activeDisplays: [display])
             expect(
                 blocked.sharedDisplaysLine == nil
                     && blocked.notOfferedReason == HostScreenArmingPresentation.noShareableDisplayNotice,
-                "a Mac whose only display is \(description) shows the blocked line instead of naming it -- got: \(blocked.notOfferedReason ?? "nil")"
+                "a machine whose only display is \(description) shows the blocked line instead of naming it -- got: \(blocked.notOfferedReason ?? "nil")"
             )
         }
 
-        let mixed = row(name: "Kestrel MacBook Air", key: Data([0xFD]), activeDisplays: [shareable, actuallyAsleep])
+        let mixed = row(name: "Kestrel Laptop Air", key: Data([0xFD]), activeDisplays: [shareable, actuallyAsleep])
         expect(
             mixed.sharedDisplaysLine != nil && mixed.notOfferedReason == nil,
-            "a row with something real to share never also carries a not-offered reason, whatever else this Mac has"
+            "a row with something real to share never also carries a not-offered reason, whatever else this machine has"
         )
 
         let unarmedRow = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFE]), "Kestrel iMac", nil)],
+            approvedDevices: [(Data([0xFE]), "Kestrel Desktop", nil)],
             arming: HostScreenArming(),
             activeDisplays: [offline]
         )[0]
         expect(unarmedRow.notOfferedReason == nil, "a row that is not sharing carries no not-offered reason either")
 
-        print("PASS: a row with nothing shareable says so once, only when it is sharing and this Mac has displays to judge")
+        print("PASS: a row with nothing shareable says so once, only when it is sharing and this machine has displays to judge")
     }
 
     do {
         // The owner's decision: pairing itself arms host screen, when the
-        // pairing device registered a presence credential, for this Mac's
+        // pairing device registered a presence credential, for this machine's
         // displays as they stand whenever a session starts.
         // `HostScreenArmingCoordinator.toggle(isOn: true)` in `sensoriumd`
         // builds through this exact function, so the two paths cannot
         // drift.
         let key = Data([0x77])
         let approvedStore = InMemoryApprovedDeviceStore(keys: [key])
-        approvedStore.setName("Kestrel MacBook Pro", for: key)
+        approvedStore.setName("Kestrel Laptop Pro", for: key)
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
         expect(
@@ -948,7 +948,7 @@ func runHostScreenArmingTests() async {
             devicePublicKey: key, approvedStore: approvedStore, now: now
         )
         expect(
-            armed?.deviceName == "Kestrel MacBook Pro" && armed?.minimumCredentialStrength == .hardwareBound
+            armed?.deviceName == "Kestrel Laptop Pro" && armed?.minimumCredentialStrength == .hardwareBound
                 && armed?.asksWhenSomeoneIsUsingThisMachine == false && armed?.armedAt == now,
             "the built record names the device by the name it gave at pairing, snapshots the strength it registered, defaults asking-first off, and stamps the moment it was armed -- got \(String(describing: armed))"
         )
@@ -963,13 +963,13 @@ func runHostScreenArmingTests() async {
         let key = Data([0x0A, 0x0B])
         let legacyJSON = """
         {"devices":[{"devicePublicKey":"\(key.base64EncodedString())",\
-        "deviceName":"Kestrel MacBook Pro",\
+        "deviceName":"Kestrel Laptop Pro",\
         "armedDisplays":[{"vendorNumber":1633775724,"modelNumber":4660}],\
         "minimumCredentialStrength":"hardwareBound","armedAt":719000000}]}
         """
         let decoded = try! JSONDecoder().decode(HostScreenArming.self, from: legacyJSON.data(using: .utf8)!)
         expect(
-            decoded.devices.count == 1 && decoded.devices[0].deviceName == "Kestrel MacBook Pro"
+            decoded.devices.count == 1 && decoded.devices[0].deviceName == "Kestrel Laptop Pro"
                 && decoded.devices[0].minimumCredentialStrength == .hardwareBound,
             "a record naming displays still loads, so a machine armed before this change stays armed"
         )

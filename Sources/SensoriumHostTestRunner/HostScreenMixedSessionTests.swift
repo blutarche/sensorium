@@ -63,7 +63,7 @@ func runHostScreenMixedSessionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -121,7 +121,7 @@ func runHostScreenMixedSessionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -197,7 +197,7 @@ func runHostScreenMixedSessionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )

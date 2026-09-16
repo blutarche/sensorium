@@ -177,7 +177,7 @@ private final class HostScreenArmingCoordinator {
                 approvedDevices: approvedDevices,
                 arming: arming,
                 // `online()`, not `active()`: a row judges from every
-                // display this Mac has, so one merely asleep or mirrored is
+                // display this machine has, so one merely asleep or mirrored is
                 // counted and reported rather than silently dropped.
                 activeDisplays: DisplayInventory.online()
             )
@@ -216,7 +216,7 @@ private final class HostScreenArmingCoordinator {
     /// screen, not a separate switch a person must find and flip. Called
     /// only for a key pairing for the first time
     /// (`PairingApproval.isNewDevice`); a device pairing again is never
-    /// re-armed here, so re-pairing cannot undo the person at this Mac
+    /// re-armed here, so re-pairing cannot undo the person at this machine
     /// having turned it off.
     func armOnPairing(devicePublicKey: Data) {
         guard let record = HostScreenDeviceArming.onPairing(

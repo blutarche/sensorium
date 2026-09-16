@@ -44,12 +44,12 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             )
             let dualSignTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1,
-                deviceName: "MacBook",
+                deviceName: "Laptop",
                 publicKey: dualSignClient.publicKey
             )
             _ = try! dualSignController.handle(.authenticatedHello(
                 protocolVersion: 1,
-                deviceName: "MacBook",
+                deviceName: "Laptop",
                 publicKey: dualSignClient.publicKey,
                 signature: try! dualSignClient.sign(dualSignTranscript)
             ))
@@ -434,12 +434,12 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
 
             let clipboardTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1,
-                deviceName: "MacBook",
+                deviceName: "Laptop",
                 publicKey: clipboardIdentity.publicKey
             )
             _ = try! clipboardController.handle(.authenticatedHello(
                 protocolVersion: 1,
-                deviceName: "MacBook",
+                deviceName: "Laptop",
                 publicKey: clipboardIdentity.publicKey,
                 signature: try! clipboardIdentity.sign(clipboardTranscript)
             ))
@@ -598,7 +598,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 keyConfinement: .unconfined
             )
             let ignoringChannel = FakeHostByteChannel(scriptedPackets: [
-                .clipboard(.text("copied on the MacBook")),
+                .clipboard(.text("copied on the Laptop")),
                 .control(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)),
             ])
             let ignoringSession = HostNetworkSession(connection: ignoringChannel, controller: ignoringController)
@@ -638,7 +638,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             )
             let wiredChannel = FakeHostByteChannel(scriptedPackets: [
                 .control(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)),
-                .clipboard(.text("copied on the MacBook")),
+                .clipboard(.text("copied on the Laptop")),
             ])
             let wiredSession = HostNetworkSession(
                 connection: wiredChannel,
@@ -654,7 +654,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             wiredSession.start()
             try! await Task.sleep(for: .milliseconds(300))
             expect(
-                wiredPasteboard.writtenContents == [.text("copied on the MacBook")],
+                wiredPasteboard.writtenContents == [.text("copied on the Laptop")],
                 "a clipboard frame off the wire is applied to the host pasteboard"
             )
             let wiredCopy = ClipboardContent.text("copied on the Mini")

@@ -33,11 +33,11 @@ public struct HostIdentityFailureCopy: Equatable, Sendable {
     /// host's key.
     public static let cannotReadKey = HostIdentityFailureCopy(
         headline: "Sensorium Host cannot read its own key",
-        detail: "The file that holds the key identifying this Mac could not be read. Click Try again. If that "
+        detail: "The file that holds the key identifying this machine could not be read. Click Try again. If that "
             + "keeps failing, make a new key.",
         retryButtonTitle: "Try again",
         replaceButtonTitle: "Make a new key",
-        replaceConsequence: "Make a new key replaces the key that identifies this Mac. Paired machines will "
-            + "no longer recognize this Mac, so pair each one again. Host screen settings are kept."
+        replaceConsequence: "Make a new key replaces the key that identifies this machine. Paired machines will "
+            + "no longer recognize this machine, so pair each one again. Host screen settings are kept."
     )
 }

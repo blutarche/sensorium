@@ -7,7 +7,7 @@ import SensoriumCore
 /// reads as active work and every settled state (`live`, `lost`, `ended`)
 /// reads as still.
 func testViewerSessionStatusIndicatorPulseTests() {
-    var machine = ViewerSessionStateMachine(hostName: "Mac mini")
+    var machine = ViewerSessionStateMachine(hostName: "Studio")
     expect(machine.status.indicatorPulses, "connecting pulses, got \(machine.status.phase)")
 
     machine.handle(.canvasReady)

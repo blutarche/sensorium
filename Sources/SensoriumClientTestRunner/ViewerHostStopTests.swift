@@ -77,13 +77,13 @@ func runViewerHostStopTests() async {
 
     do {
         // The words the person at the viewer reads
-        let line = ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: "Mac mini")
+        let line = ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: "Studio")
         expect(
-            line == "Stopped: a person at Mac mini ended this session from that machine.",
+            line == "Stopped: a person at Studio ended this session from that machine.",
             "the viewer says who ended the session and where they were -- got \"\(line)\""
         )
         expect(
-            ViewerSessionFailureCopy.line(for: ClientSessionError.stoppedByHost, hostLabel: "Mac mini") == line,
+            ViewerSessionFailureCopy.line(for: ClientSessionError.stoppedByHost, hostLabel: "Studio") == line,
             "and reaches the same words from the error the session itself throws"
         )
 
@@ -110,18 +110,18 @@ func runViewerHostStopTests() async {
 
     do {
         // The window says why it ended, not that the link dropped
-        var machine = ViewerSessionStateMachine(hostName: "Mac mini")
+        var machine = ViewerSessionStateMachine(hostName: "Studio")
         machine.handle(.connectStarted)
         machine.handle(.canvasReady)
-        let reasonLine = ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: "Mac mini")
+        let reasonLine = ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: "Studio")
         let status = machine.handle(.stoppedByHost(reasonLine: reasonLine))
 
         expect(
-            status.detail == "Stopped: a person at Mac mini ended this session from that machine.",
+            status.detail == "Stopped: a person at Studio ended this session from that machine.",
             "the panel carries the ending's own words -- got \"\(status.detail)\""
         )
         expect(
-            status.headline != "Connection to Mac mini lost.",
+            status.headline != "Connection to Studio lost.",
             "and never the dropped-link headline, which says the wrong thing about an ending somebody chose"
         )
         expect(

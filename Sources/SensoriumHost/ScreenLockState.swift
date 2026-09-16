@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Reads whether this Mac's screen is locked right now. Behind a protocol so
+/// Reads whether this machine's screen is locked right now. Behind a protocol so
 /// the unlock flow can be driven without a real lock: a locked screen is not
 /// something a unit test can produce, and the decision of whether an unlock is
 /// even needed must still be verifiable.

@@ -62,7 +62,7 @@ private func guardScenario(breaking: BrokenObligation) -> (
         : HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 armedAt: Date()
             )
         ])

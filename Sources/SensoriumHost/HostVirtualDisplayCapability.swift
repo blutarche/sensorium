@@ -4,7 +4,7 @@ import Foundation
 /// honest way there is: there is no public capability query for the private
 /// runtime classes `CoreGraphicsVirtualDisplayAdapter` resolves by name, so
 /// a model-name or architecture guess would be a guess. Every observation so far is
-/// Apple-silicon-only; this is what lets
+/// arm64-only; this is what lets
 /// the host refuse honestly on hardware that has never once run it, instead
 /// of hitting an unexplained failure partway into a session.
 @MainActor
@@ -65,7 +65,7 @@ public enum HostVirtualDisplayCapability {
     static let runtimeMissingReason =
         "This machine cannot create the virtual display Sensorium needs to host a session: the "
             + "macOS component that creates it is not present here. This has only ever been "
-            + "observed working on Apple silicon; Sensorium Host cannot host from this machine."
+            + "observed working on arm64; Sensorium Host cannot host from this machine."
 
     static let everyIdentityRefusedReason =
         "macOS refused to create the virtual display Sensorium needs to host a session, under "

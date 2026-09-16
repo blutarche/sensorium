@@ -46,7 +46,7 @@ func runPairedMachinesSharingToggleTests() async {
         // or off -- the switch itself already carries the state.
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             isSharingRealScreen: true,
             credentialSummary: "hardware-bound credential",
             blockedReason: nil
@@ -80,7 +80,7 @@ func runPairedMachinesSharingToggleTests() async {
         // label stays muted.
         let idleRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
-            deviceName: "Kestrel MacBook Air",
+            deviceName: "Kestrel Laptop Air",
             isSharingRealScreen: false,
             credentialSummary: "hardware-bound credential",
             blockedReason: nil
@@ -115,10 +115,10 @@ func runPairedMachinesSharingToggleTests() async {
         // custom control and its label must match.
         let blockedRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xEF]),
-            deviceName: "Kestrel MacBook Air",
+            deviceName: "Kestrel Laptop Air",
             isSharingRealScreen: false,
             credentialSummary: "hardware-bound credential",
-            blockedReason: "Pair Kestrel MacBook Air again to turn this on."
+            blockedReason: "Pair Kestrel Laptop Air again to turn this on."
         )
         let rows = rowViews(in: controller(rows: [blockedRow]))
         let toggle: NSControl = field("toggle", of: rows[0], as: NSControl.self)
@@ -156,7 +156,7 @@ func runPairedMachinesSharingToggleTests() async {
         hostController.updateLastHostScreenSession(nil)
         expect(lastSessionCard.isHidden && lastSessionEyebrow.isHidden, "with no session ever recorded, neither the header nor the card shows")
 
-        hostController.updateLastHostScreenSession("Kestrel MacBook Pro saw Built-in Display on 15 Nov 2023, 05:13\u{2013}05:43.")
+        hostController.updateLastHostScreenSession("Kestrel Laptop Pro saw Built-in Display on 15 Nov 2023, 05:13\u{2013}05:43.")
         expect(!lastSessionCard.isHidden && !lastSessionEyebrow.isHidden, "once a session is recorded, both the header and the card show together")
 
         print("PASS: Last Screen Session uses the same outside-header form Paired machines already uses, shown and hidden together with its card")
@@ -184,7 +184,7 @@ func runPairedMachinesSharingToggleTests() async {
         // prompt at all.
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             isSharingRealScreen: true,
             credentialSummary: "hardware-bound credential",
             blockedReason: nil,
@@ -192,7 +192,7 @@ func runPairedMachinesSharingToggleTests() async {
         )
         let idleRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
-            deviceName: "Kestrel MacBook Air",
+            deviceName: "Kestrel Laptop Air",
             isSharingRealScreen: false,
             credentialSummary: "hardware-bound credential",
             blockedReason: nil
@@ -218,7 +218,7 @@ func runPairedMachinesSharingToggleTests() async {
         // through its own callback, distinct from the sharing toggle's.
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             isSharingRealScreen: true,
             credentialSummary: "hardware-bound credential",
             blockedReason: nil,

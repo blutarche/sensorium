@@ -26,10 +26,10 @@ grep -F 'classify-host-permission-blocker.py' "$SMOKE" >/dev/null
 grep -F 'check-display-active.py' "$SMOKE" >/dev/null
 grep -F 'check-display-active.py "$STATE/display-inventory-pre.json" || exit 3' "$SMOKE" >/dev/null
 
-# A person actively using this Mac makes the host workspace unable to come
+# A person actively using this machine makes the host workspace unable to come
 # frontmost -- the same `workspace_focus_confirmed=false` a genuine defect
 # would produce. That must be reported as BLOCKED with the remedy (leave the
-# Mac alone), not as an opaque FAIL, and classified from the probe log via
+# machine alone), not as an opaque FAIL, and classified from the probe log via
 # the fixture-tested classifier rather than re-implemented inline.
 FOCUS_CLASSIFIER="$ROOT/Scripts/classify-workspace-focus-blocker.py"
 FOCUS_CLASSIFIER_TEST="$ROOT/Scripts/test-classify-workspace-focus-blocker.py"

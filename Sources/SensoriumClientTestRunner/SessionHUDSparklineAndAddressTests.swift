@@ -43,7 +43,7 @@ private func hudNamesTheHostsAddressUnderState() {
                 requestedStreamScale: nil,
                 streamScalePreference: .automatic,
                 decoder: nil,
-                hostName: "Mac mini",
+                hostName: "Studio",
                 hostAddress: hostAddress
             ),
             session: nil
@@ -143,7 +143,7 @@ private func sparklinesShareOneTrailingColumn() {
         requestedStreamScale: 2.0,
         streamScalePreference: .automatic,
         decoder: .hardwareAccelerated,
-        hostName: "Mac mini",
+        hostName: "Studio",
         hostAddress: "mini.tail1234.ts.net:7777",
         videoInBitrateTrend: SessionHUDTrend(samples: [40_000_000, 41_000_000, 42_000_000]),
         fpsTrend: SessionHUDTrend(samples: [58, 59, 60])

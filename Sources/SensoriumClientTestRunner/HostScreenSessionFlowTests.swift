@@ -191,9 +191,9 @@ func testHostScreenSessionFlowTests() async {
 
         let hostScreenNotAllowed = HostScreenRefusalCopy.line(reason: "host-screen-not-allowed")
         expect(
-            hostScreenNotAllowed == "Sensorium Host on that Mac has host screen turned off for this machine.",
+            hostScreenNotAllowed == "Sensorium Host on that machine has host screen turned off for this machine.",
             "host-screen-not-allowed says host screen is off for this machine, without claiming this machine "
-                + "never had it -- pairing itself may have armed it, and the person at that Mac turned it off -- "
+                + "never had it -- pairing itself may have armed it, and the person at that machine turned it off -- "
                 + "got \(hostScreenNotAllowed)"
         )
 
@@ -346,7 +346,7 @@ func testHostScreenSessionFlowTests() async {
         let controller = ClientSessionController(transport: transport, credentialProvider: credential)
 
         let outcome = try! await controller.connect(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             target: .hostScreen(displayIdentity: displayIdentity)
         )
 
@@ -371,7 +371,7 @@ func testHostScreenSessionFlowTests() async {
         ])
         let controller = ClientSessionController(transport: transport)
 
-        let outcome = try! await controller.connect(deviceName: "MacBook", target: .sessionCanvas)
+        let outcome = try! await controller.connect(deviceName: "Laptop", target: .sessionCanvas)
 
         expect(
             outcome == .canvas(displayID: 55, hostScreenOffer: []),
@@ -398,7 +398,7 @@ func testHostScreenSessionFlowTests() async {
 
         do {
             _ = try await controller.connect(
-                deviceName: "MacBook",
+                deviceName: "Laptop",
                 target: .hostScreen(displayIdentity: "00000610-0000a038")
             )
             expect(false, "a refused host-screen connect must throw, never return a substituted outcome")
@@ -438,7 +438,7 @@ func testHostScreenSessionFlowTests() async {
         let controller = ClientSessionController(transport: transport, credentialProvider: credential)
 
         do {
-            _ = try await controller.connect(deviceName: "MacBook", target: .hostScreen(displayIdentity: displayIdentity))
+            _ = try await controller.connect(deviceName: "Laptop", target: .hostScreen(displayIdentity: displayIdentity))
             expect(false, "two entries sharing one displayIdentity must refuse, never pick one silently")
         } catch ClientSessionError.hostScreenRefused(let reason) {
             expect(reason == "host-screen-display-unavailable", "a duplicate identity refuses with the same reason a missing one does")
@@ -477,7 +477,7 @@ func testHostScreenSessionFlowTests() async {
         let controller = ClientSessionController(transport: transport, credentialProvider: credential)
 
         let outcome = try! await controller.connect(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             target: .hostScreen(displayIdentity: displayIdentity),
             resumeTicket: heldTicket
         )
@@ -521,7 +521,7 @@ func testHostScreenSessionFlowTests() async {
                 ])
                 let controller = ClientSessionController(transport: transport, credentialProvider: credential)
                 _ = try await controller.connect(
-                    deviceName: "MacBook",
+                    deviceName: "Laptop",
                     target: .hostScreen(displayIdentity: displayIdentity),
                     resumeTicket: Data([0x99])
                 )
@@ -568,7 +568,7 @@ func testHostScreenSessionFlowTests() async {
         let controller = ClientSessionController(transport: transport, credentialProvider: credential)
 
         _ = try! await controller.connect(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             target: .hostScreen(displayIdentity: displayIdentity)
         )
 
@@ -742,7 +742,7 @@ func testHostScreenSessionFlowTests() async {
         await controller.setCanvasObserver(viewport)
 
         let connectTask = Task {
-            try await controller.connect(deviceName: "MacBook", target: .hostScreen(displayIdentity: displayIdentity))
+            try await controller.connect(deviceName: "Laptop", target: .hostScreen(displayIdentity: displayIdentity))
         }
         await sink.waitUntilEntered()
 
@@ -856,7 +856,7 @@ func testHostScreenSessionFlowTests() async {
         let hostScreenController = ClientSessionController(transport: hostScreenTransport, credentialProvider: credential)
 
         let hostScreenOutcome = try! await hostScreenController.connect(
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             target: .hostScreen(displayIdentity: displayIdentity),
             timeouts: shortTimeouts
         )
@@ -880,7 +880,7 @@ func testHostScreenSessionFlowTests() async {
 
         do {
             _ = try await canvasController.connect(
-                deviceName: "MacBook",
+                deviceName: "Laptop",
                 target: .sessionCanvas,
                 timeouts: shortTimeouts
             )

@@ -389,7 +389,7 @@ MainActor.assumeIsolated {
     // own `hostName`; a fixed one keeps these renders the same on every machine.
     @MainActor func launcher() -> CanvasLauncherView {
         let view = CanvasLauncherView(frame: launcherFrame, canvas: placement)
-        view.hostName = "Kestrel Mac mini"
+        view.hostName = "Kestrel Studio"
         return view
     }
 
@@ -550,13 +550,13 @@ MainActor.assumeIsolated {
         (
             "host-menu-panel-4-serving",
             "a connected client, by the name it sent",
-            HostOperatorStatus(connection: .serving(peerName: "Kestrel MacBook Pro"), permissions: granted)
+            HostOperatorStatus(connection: .serving(peerName: "Kestrel Laptop"), permissions: granted)
         ),
         (
             "host-menu-panel-5-permission-missing",
             "Screen Recording revoked out from under a live session",
             HostOperatorStatus(
-                connection: .serving(peerName: "Kestrel MacBook Pro"),
+                connection: .serving(peerName: "Kestrel Laptop"),
                 permissions: HostPermissionRequestResult(
                     screenCapture: .approvalRequired,
                     accessibility: .granted
@@ -611,27 +611,27 @@ MainActor.assumeIsolated {
     let onePairedRow: [HostScreenArmingPresentation.PairedMachineRow] = [
         HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop",
             isSharingRealScreen: false,
             credentialSummary: nil,
-            blockedReason: HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel MacBook Pro")
+            blockedReason: HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel Laptop")
         )
     ]
     let twoPairedRows: [HostScreenArmingPresentation.PairedMachineRow] = [
         HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop",
             isSharingRealScreen: true,
-            credentialSummary: HostScreenArmingPresentation.words(for: .hardwareBound, deviceName: "Kestrel MacBook Pro"),
+            credentialSummary: HostScreenArmingPresentation.words(for: .hardwareBound, deviceName: "Kestrel Laptop"),
             blockedReason: nil,
             sharedDisplaysLine: "May share Built-in Display."
         ),
         HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
-            deviceName: "Kestrel MacBook Air",
+            deviceName: "Kestrel Notebook",
             isSharingRealScreen: false,
             credentialSummary: nil,
-            blockedReason: HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel MacBook Air")
+            blockedReason: HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel Notebook")
         )
     ]
 
@@ -671,11 +671,11 @@ MainActor.assumeIsolated {
         online: true, builtin: false, main: false, vendorNumber: 0x03, modelNumber: 0x03
     )
     let sameNameDisplaysRows = HostScreenArmingPresentation.pairedMachineRows(
-        approvedDevices: [(sameNameDisplaysKey, "Kestrel MacBook Pro", .hardwareBound)],
+        approvedDevices: [(sameNameDisplaysKey, "Kestrel Laptop", .hardwareBound)],
         arming: HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: sameNameDisplaysKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop",
                 armedDisplays: [sameNameLeftDisplay, sameNameRightDisplay].map(HostScreenDisplayIdentity.init),
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
@@ -688,11 +688,11 @@ MainActor.assumeIsolated {
     // capturing one -- `needsRearmingNotice`, checked here for wrapping.
     let needsRearmingKey = Data([0x33])
     let needsRearmingRows = HostScreenArmingPresentation.pairedMachineRows(
-        approvedDevices: [(needsRearmingKey, "Kestrel MacBook Pro", .hardwareBound)],
+        approvedDevices: [(needsRearmingKey, "Kestrel Laptop", .hardwareBound)],
         arming: HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: needsRearmingKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop",
                 armedDisplays: [],
                 armedAt: Date()
             )
@@ -731,20 +731,20 @@ MainActor.assumeIsolated {
         (
             "host-window-5-waiting-for-pairing",
             "an approved device finishing its own connection, before it has ever been shown as connected",
-            HostOperatorStatus(connection: .pairingApproved(deviceName: "Kestrel MacBook Pro"), permissions: granted),
+            HostOperatorStatus(connection: .pairingApproved(deviceName: "Kestrel Laptop"), permissions: granted),
             noRows
         ),
         (
             "host-window-6-connected",
             "a connected client, virtual display only, with the Stop button that ends the session immediately",
-            HostOperatorStatus(connection: .serving(peerName: "Kestrel MacBook Pro"), permissions: granted),
+            HostOperatorStatus(connection: .serving(peerName: "Kestrel Laptop"), permissions: granted),
             twoPairedRows
         ),
         (
             "host-window-7-connected-host-screen",
             "a connected client sharing this machine's own host screen, distinct eyebrow and detail from a virtual display",
             HostOperatorStatus(
-                connection: .servingHostScreen(peerName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+                connection: .servingHostScreen(peerName: "Kestrel Laptop", displayLabel: "Built-in Display"),
                 permissions: granted
             ),
             twoPairedRows
@@ -802,7 +802,7 @@ MainActor.assumeIsolated {
             "a code revealed while a machine is already connected: the connection, its Stop button, and the code "
                 + "with its own Hide code control, all on screen at once",
             HostOperatorStatus(
-                connection: .serving(peerName: "Kestrel MacBook Pro"),
+                connection: .serving(peerName: "Kestrel Laptop"),
                 pairing: .showing(code: "418297", expiresAt: issued.addingTimeInterval(272)),
                 permissions: granted
             ),
@@ -872,7 +872,7 @@ MainActor.assumeIsolated {
             "host-window-12-last-session-clean-stop",
             "the last host-screen session ended with the Stop control, showing device, display, and both times",
             HostScreenSessionLogPresentation.line(for: HostScreenSessionRecord(
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop",
                 displayLabel: "Built-in Display",
                 startedAt: Date(timeIntervalSince1970: 1_700_000_000),
                 outcome: .stopped(at: Date(timeIntervalSince1970: 1_700_001_800))
@@ -882,7 +882,7 @@ MainActor.assumeIsolated {
             "host-window-13-last-session-not-clean",
             "the last host-screen session was reconciled from a crash: no invented stop time, said plainly instead",
             HostScreenSessionLogPresentation.line(for: HostScreenSessionRecord(
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop",
                 displayLabel: "Built-in Display",
                 startedAt: Date(timeIntervalSince1970: 1_700_000_000),
                 outcome: .endedWithoutCleanStop
@@ -909,7 +909,7 @@ MainActor.assumeIsolated {
     @MainActor
     func badgeContent(expanded: Bool) -> NSView {
         let state = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop", displayLabel: "Built-in Display"),
             startsExpanded: expanded
         )
         let controller = HostScreenBadgeWindowController(state: state)
@@ -936,7 +936,7 @@ MainActor.assumeIsolated {
     @MainActor
     func collapsedBadgeContent() -> NSView {
         let state = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop", displayLabel: "Built-in Display"),
             startsCollapsed: true
         )
         let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
@@ -969,19 +969,19 @@ MainActor.assumeIsolated {
     let presencePromptStates: [(String, String, String, String)] = [
         (
             "host-screen-presence-prompt-1-short",
-            "Kestrel MacBook Pro",
+            "Kestrel Laptop",
             "Built-in Display",
             "a short device name and display label, the common case"
         ),
         (
             "host-screen-presence-prompt-2-long-device-name",
-            "Alex Kestrel-Whitfield\u{2019}s Sixteen-Inch MacBook Pro (2024, Space Black)",
+            "Alex Kestrel-Whitfield\u{2019}s Sixteen-Inch Laptop (2024, Space Black)",
             "Built-in Display",
             "a device name long enough to test the headline's own three-line wrap"
         ),
         (
             "host-screen-presence-prompt-3-long-display-label",
-            "Kestrel MacBook Pro",
+            "Kestrel Laptop",
             "LG UltraFine 5K Display, connected over Thunderbolt 3 (Left of Built-in Display)",
             "a display label long enough to test the subtitle's own three-line wrap"
         )
@@ -1026,7 +1026,7 @@ MainActor.assumeIsolated {
     }
 
     let miniHost = SavedHost(
-        displayName: "Mac mini",
+        displayName: "Workstation",
         host: "mini.tail1234.ts.net",
         port: 7777,
         hostPublicKey: Data([1]),
@@ -1034,7 +1034,7 @@ MainActor.assumeIsolated {
         lastConnectedAt: Date(timeIntervalSince1970: 9_000)
     )
     let studioHost = SavedHost(
-        displayName: "Mac Studio",
+        displayName: "Studio",
         host: "studio.tail1234.ts.net",
         port: 7777,
         hostPublicKey: Data([2]),
@@ -1043,11 +1043,11 @@ MainActor.assumeIsolated {
     )
     let tailnetRows = [
         TailnetDevicePickerRow(peer: TailnetPeer(
-            id: "1", displayName: "Mac mini", magicDNSName: "mini.tail1234.ts.net",
+            id: "1", displayName: "Workstation", magicDNSName: "mini.tail1234.ts.net",
             tailnetIPv4: "100.64.1.2", tailnetIPv6: nil, isOnline: true, isThisMachine: false
         )),
         TailnetDevicePickerRow(peer: TailnetPeer(
-            id: "2", displayName: "Mac Studio", magicDNSName: "studio.tail1234.ts.net",
+            id: "2", displayName: "Studio", magicDNSName: "studio.tail1234.ts.net",
             tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: false, isThisMachine: false
         )),
         TailnetDevicePickerRow(peer: TailnetPeer(
@@ -1156,7 +1156,7 @@ MainActor.assumeIsolated {
     )
 
     let codeStep = machinesWindow(hosts: [miniHost])
-    codeStep.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Mac mini"))
+    codeStep.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Workstation"))
     write(
         render(machinesContent(codeStep)),
         named: "viewer-add-2-code.png",
@@ -1199,7 +1199,7 @@ MainActor.assumeIsolated {
     }
 
     let refused = machinesWindow(hosts: [miniHost]) { _, _ in .failed(.refused(reason: "invalid-code")) }
-    refused.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Mac Studio"))
+    refused.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
     fill(refused, code: "418297")
     // `submit` is private, invoked the same way this script already drives
     // other windows' own actions: Objective-C dispatch, no window on screen.
@@ -1255,7 +1255,7 @@ MainActor.assumeIsolated {
     )
 
     // The viewer's window opens at half the canvas in points, which on a
-    // Retina MacBook is one backing pixel per streamed pixel at 1.0x.
+    // Retina laptop is one backing pixel per streamed pixel at 1.0x.
     let viewerSize = NSSize(
         width: CGFloat(canvas.logicalWidth) / 2,
         height: CGFloat(canvas.logicalHeight) / 2
@@ -1265,16 +1265,16 @@ MainActor.assumeIsolated {
     // overlay is never on screen before then.
     var viewerStates: [(String, String, ViewerSessionStatus)] = []
 
-    var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+    var machine = ViewerSessionStateMachine(hostName: "workstation")
     viewerStates.append(("viewer-status-1-connecting", "first connect, before any frame", machine.status))
     machine.handle(.connectStarted)
 
     // A first attempt that never answers before the retry policy dials
     // again: the connecting panel names which attempt failed and why.
-    var failedFirstConnect = ViewerSessionStateMachine(hostName: "mac-mini")
+    var failedFirstConnect = ViewerSessionStateMachine(hostName: "workstation")
     failedFirstConnect.handle(.connectStarted)
     let connectingAfterFailure = failedFirstConnect.handle(
-        .attemptFailed(reasonLine: ViewerSessionFailureCopy.line(for: .unreachable, hostLabel: "mac-mini"))
+        .attemptFailed(reasonLine: ViewerSessionFailureCopy.line(for: .unreachable, hostLabel: "workstation"))
     )
     viewerStates.append((
         "viewer-status-1b-connecting-after-failure",
@@ -1326,7 +1326,7 @@ MainActor.assumeIsolated {
         "host-screen-resume-refused"
     ]
     for (index, (slug, reason)) in hostScreenEndedReasons.enumerated() {
-        var endedMachine = ViewerSessionStateMachine(hostName: "mac-mini")
+        var endedMachine = ViewerSessionStateMachine(hostName: "workstation")
         if reasonsAfterALiveSession.contains(reason) {
             endedMachine.handle(.connectStarted)
             endedMachine.handle(.canvasReady)
@@ -1349,7 +1349,7 @@ MainActor.assumeIsolated {
     // it; a long name is the wrap risk that check exists for, so one
     // long-name pass each for two reasons checks the shape most likely to
     // break.
-    let longHostName = "Alexandria-Whitfield-Sinclairs-MacBook-Pro-16-inch-M4-Max"
+    let longHostName = "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max"
     for (slug, reason) in [
         ("credential-unknown", "host-screen-credential-unknown"),
         ("not-allowed", "host-screen-not-allowed")
@@ -1372,11 +1372,11 @@ MainActor.assumeIsolated {
     // see ClientReconnectDriver's own no-auto-redial branch for it -- instead
     // of redialling forever.
     do {
-        var unverifiedMachine = ViewerSessionStateMachine(hostName: "mac-mini")
+        var unverifiedMachine = ViewerSessionStateMachine(hostName: "workstation")
         unverifiedMachine.handle(.connectStarted)
         let status = unverifiedMachine.handle(
             .unverifiedHostConnectEnded(
-                reasonLine: ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: "mac-mini")
+                reasonLine: ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: "workstation")
             )
         )
         viewerStates.append((
@@ -1456,7 +1456,7 @@ MainActor.assumeIsolated {
         )
     }
 
-    var liveMachine = ViewerSessionStateMachine(hostName: "Mac mini")
+    var liveMachine = ViewerSessionStateMachine(hostName: "Workstation")
     liveMachine.handle(.connectStarted)
     let liveSession = liveMachine.handle(.canvasReady)
 
@@ -1480,7 +1480,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress,
                 endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
                 videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
@@ -1498,7 +1498,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1513,7 +1513,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1528,7 +1528,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1543,7 +1543,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .softwareFallback,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1559,7 +1559,7 @@ MainActor.assumeIsolated {
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
                 isPointerCaptured: true,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1582,7 +1582,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1605,7 +1605,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         ),
@@ -1624,7 +1624,7 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .fixed(2.0),
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Workstation",
                 hostAddress: previewHostAddress
             )
         )
@@ -1705,7 +1705,7 @@ MainActor.assumeIsolated {
         state: "SessionHUDView pinned to the canvas view's top-left corner, \(Int(ViewerDesign.Space.xs))pt in,"
             + " over a synthetic frame — a live session shows no status overlay"
     )
-    var lostMachine = ViewerSessionStateMachine(hostName: "Mac mini")
+    var lostMachine = ViewerSessionStateMachine(hostName: "Workstation")
     lostMachine.handle(.connectStarted)
     lostMachine.handle(.canvasReady)
     write(
@@ -1749,7 +1749,7 @@ MainActor.assumeIsolated {
     ]
     for (prefix, reason, description) in noticeStates {
         let notice = ViewerTransientNoticeView()
-        notice.show(DisplayCountRefusalCopy.line(reason: reason, hostLabel: "mac-mini"))
+        notice.show(DisplayCountRefusalCopy.line(reason: reason, hostLabel: "workstation"))
         notice.layoutSubtreeIfNeeded()
         notice.frame = NSRect(origin: .zero, size: notice.fittingSize)
         write(
@@ -1773,8 +1773,8 @@ MainActor.assumeIsolated {
     func stripOverCanvas(open: Bool, confirming: ShortcutStripAction?, pinned: Bool = false) -> CGImage {
         let container = NSView(frame: NSRect(origin: .zero, size: viewerSize))
         let strip = pinned
-            ? ShortcutStripView(hostName: "Mac mini", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: true))
-            : ShortcutStripView(hostName: "Mac mini")
+            ? ShortcutStripView(hostName: "Workstation", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: true))
+            : ShortcutStripView(hostName: "Workstation")
         container.addSubview(strip)
         NSLayoutConstraint.activate([
             strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -1853,7 +1853,7 @@ lines += [
     "  natural      the view as drawn, at the renderer's backing scale.",
     "  stream1.0x   resampled down to a \(canvas.logicalWidth)x\(canvas.logicalHeight) stream and back up.",
     "  stream1.5x   resampled down to a \(canvas.logicalWidth * 2 / 3)x\(canvas.logicalHeight * 2 / 3) stream"
-        + " and back up (what the Mac mini settles at under load).",
+        + " and back up (what the Workstation settles at under load).",
     "  Resampling only — no H.264 quantisation, no motion, no bitrate. Real",
     "  streamed text is at best this legible, never better.",
     "  For the viewer overlay only the frame underneath is resampled, because",

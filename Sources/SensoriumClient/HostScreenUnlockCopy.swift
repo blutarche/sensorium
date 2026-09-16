@@ -17,7 +17,7 @@ public enum HostScreenUnlockCopy {
         case .wrongPassword:
             return "That password did not unlock the host. Try again."
         case .screenSharingUnavailable:
-            return "This Mac could not reach its own screen-sharing service to unlock."
+            return "This machine could not reach its own screen-sharing service to unlock."
         case .notLocked:
             return "The host is already unlocked."
         case .notAuthorized:

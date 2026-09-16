@@ -29,7 +29,7 @@ Top to bottom:
 2. **Pairing code.** Six digits in two groups of three, large, with **Hide code** beneath them. Shown the moment a new machine asks to pair. Otherwise a **Show pairing code** button shows instead, never replacing the connected machine or its **Stop** button.
 3. **Paired machines.** One row per machine, named by the name it gave when it paired, never a key fingerprint. Each row has:
    - The name, with **Remove** right-aligned.
-   - **Share host screen**, the only session-shaping control on the host. It arms the machine, not one screen, and a line beneath it names the screens this Mac can share right now.
+   - **Share host screen**, the only session-shaping control on the host. It arms the machine, not one screen, and a line beneath it names the screens this machine can share right now.
    - **Ask me first if this machine is in use**, shown while sharing is on, off by default.
    - A line naming its key fingerprint and why sharing is or is not available now.
 4. **Last screen session.** Machine, display, and when, if there has been one.
@@ -111,7 +111,7 @@ The unlock panel's own notices, shown beneath its password field after an attemp
 
 - "The host is unlocked."
 - "That password did not unlock the host. Try again."
-- "This Mac could not reach its own screen-sharing service to unlock."
+- "This machine could not reach its own screen-sharing service to unlock."
 - "The host is already unlocked."
 - "This session is not allowed to unlock the host."
 - "Too many wrong passwords. The host stopped accepting unlock attempts. Someone at the host can re-arm this machine to allow more."

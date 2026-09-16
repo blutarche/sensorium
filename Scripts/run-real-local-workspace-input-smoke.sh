@@ -1,5 +1,5 @@
 #!/bin/sh
-# Real same-Mac viewer/input smoke: a normal Sensorium viewer window presents the
+# Real same-machine viewer/input smoke: a normal Sensorium viewer window presents the
 # product workspace, routes a key through the client surface router, and proves
 # the host injected it into the editable workspace on the owned canvas.
 set -eu

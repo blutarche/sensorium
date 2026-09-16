@@ -3,9 +3,9 @@ import Foundation
 import SensoriumHost
 
 /// What the host asks CoreGraphics when it wants to know whether somebody is
-/// at this Mac. The design's whole host-presence rule (§6.2) hangs off this
+/// at this machine. The design's whole host-presence rule (§6.2) hangs off this
 /// one reading: ask the wrong question and the rule silently never fires, so
-/// a person actively using their Mac is never asked before their screen is
+/// a person actively using their machine is never asked before their screen is
 /// shared -- which is exactly what CLAUDE.md's invariant requires it to do.
 @MainActor
 func runHostLocalActivitySignalTests() async {

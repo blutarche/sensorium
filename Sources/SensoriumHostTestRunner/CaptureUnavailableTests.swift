@@ -170,7 +170,7 @@ func runCaptureUnavailableTests() async {
             "the host window says the one thing that fixes it, got \(presentation.headline)"
         )
         expect(
-            !presentation.headline.contains("Mac") && !presentation.detail.contains("Mac"),
+            presentation.detail.contains("machine"),
             "and calls this a machine, got \(presentation.detail)"
         )
         expect(

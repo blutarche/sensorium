@@ -121,7 +121,7 @@ func armedHostScreenController(
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -187,7 +187,7 @@ func makeWakeHostScreenFixture(
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -356,7 +356,7 @@ func runDisplayWakeTests() async {
             "and waking it is what made that possible, got \(power.userActivityDeclarations)"
         )
         expect(
-            loggedLines.contains("Sensorium host: offered 1 host screens to Kestrel MacBook Pro: External Display"),
+            loggedLines.contains("Sensorium host: offered 1 host screens to Kestrel Laptop Pro: External Display"),
             "with a clean offer line and no gap line, got \(loggedLines)"
         )
     }
@@ -384,7 +384,7 @@ func runDisplayWakeTests() async {
         expect(displays.isEmpty, "a display that would not wake is offered to no one, got \(displays.count)")
         expect(
             loggedLines == [
-                "Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: asleep"
+                "Sensorium host: did not offer host screen \"External Display\" to Kestrel Laptop Pro: asleep"
             ],
             "and the gap still reads asleep, got \(loggedLines)"
         )

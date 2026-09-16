@@ -15,13 +15,13 @@ func runHostScreenIndicationTests() async {
     do {
         // The operator activity case and its strings
         let servingHostScreen = HostOperatorStatus(
-            connection: .servingHostScreen(peerName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            connection: .servingHostScreen(peerName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
             permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
         ).presentation(now: Date())
 
         expect(servingHostScreen.indicator == .servingHostScreen, "a live host-screen session reports its own indicator, distinct from `.serving`")
         expect(
-            servingHostScreen.menuBarTitle == "Kestrel MacBook Pro",
+            servingHostScreen.menuBarTitle == "Kestrel Laptop Pro",
             "the menu bar shows title text naming the connected device -- design §6.4: canvas mode's serving state is deliberately quiet, this mode must not be"
         )
         expect(
@@ -38,7 +38,7 @@ func runHostScreenIndicationTests() async {
         )
 
         let canvasServing = HostOperatorStatus(
-            connection: .serving(peerName: "Kestrel MacBook Pro"),
+            connection: .serving(peerName: "Kestrel Laptop Pro"),
             permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
         ).presentation(now: Date())
         expect(
@@ -58,7 +58,7 @@ func runHostScreenIndicationTests() async {
             permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
         )
         store.beginHosting(address: "100.64.1.9")
-        store.setConnection(.servingHostScreen(peerName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        store.setConnection(.servingHostScreen(peerName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         store.apply(.closed(reason: nil), from: HostConnectionToken())
         expect(
             store.status.connection == .hosting(address: "100.64.1.9"),
@@ -80,7 +80,7 @@ func runHostScreenIndicationTests() async {
         expect(store.lastRecord == nil, "nothing to report as the last session when none has ever run")
 
         let started = Date(timeIntervalSince1970: 1_700_000_000)
-        let id = store.beginSession(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display", startedAt: started)
+        let id = store.beginSession(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display", startedAt: started)
 
         // A second instance constructed while the session is still live --
         // this machine's host GUI reading `lastRecord` for its own window,
@@ -100,7 +100,7 @@ func runHostScreenIndicationTests() async {
         let reopenedAfterStop = HostScreenSessionLogStore(url: url)
         expect(
             reopenedAfterStop.lastRecord == HostScreenSessionRecord(
-                id: id, deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+                id: id, deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
                 startedAt: started, outcome: .stopped(at: ended)
             ),
             "a second store instance at the same URL reads back exactly the clean-stopped record the first one wrote"
@@ -130,7 +130,7 @@ func runHostScreenIndicationTests() async {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let crashed = HostScreenSessionLogStore(url: url)
-        _ = crashed.beginSession(deviceName: "Kestrel MacBook Pro", displayLabel: "External Display", startedAt: Date())
+        _ = crashed.beginSession(deviceName: "Kestrel Laptop Pro", displayLabel: "External Display", startedAt: Date())
         // No `endSession` call, and no reconcile call either. `crashed` is
         // simply never touched again -- standing in for the process that
         // held it disappearing, since nothing this store's own API can do
@@ -152,7 +152,7 @@ func runHostScreenIndicationTests() async {
         // shape growing a field this design forbids, not only a
         // claim about the fields it happens to have today.
         let record = HostScreenSessionRecord(
-            deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+            deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
             startedAt: Date(timeIntervalSince1970: 0), outcome: .stopped(at: Date(timeIntervalSince1970: 60))
         )
         guard let data = try? JSONEncoder().encode(record),
@@ -184,11 +184,11 @@ func runHostScreenIndicationTests() async {
 
         let started = Date(timeIntervalSince1970: 1_700_000_000)
         let stoppedLine = HostScreenSessionLogPresentation.line(for: HostScreenSessionRecord(
-            deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+            deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
             startedAt: started, outcome: .stopped(at: started.addingTimeInterval(1_800))
         ))
         expect(
-            stoppedLine?.contains("Kestrel MacBook Pro") == true && stoppedLine?.contains("Built-in Display") == true,
+            stoppedLine?.contains("Kestrel Laptop Pro") == true && stoppedLine?.contains("Built-in Display") == true,
             "a cleanly stopped session names the device and the display"
         )
         expect(stoppedLine?.contains("ended without a clean stop") == false, "a cleanly stopped session is never worded as an abnormal one")
@@ -211,7 +211,7 @@ func runHostScreenIndicationTests() async {
 
         let sameDayLine = HostScreenSessionLogPresentation.line(
             for: HostScreenSessionRecord(
-                deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+                deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
                 startedAt: utcDate(day: 15, hour: 5, minute: 13),
                 outcome: .stopped(at: utcDate(day: 15, hour: 5, minute: 43))
             ),
@@ -219,7 +219,7 @@ func runHostScreenIndicationTests() async {
             timeZone: fixedZone
         )
         expect(
-            sameDayLine == "Kestrel MacBook Pro used Built-in Display from 15 Nov 2023, 05:13 to 05:43.",
+            sameDayLine == "Kestrel Laptop Pro used Built-in Display from 15 Nov 2023, 05:13 to 05:43.",
             "a same-day session reads as one sentence -- device, display, date once, both times joined with \"to\", "
                 + "the same shape the cross-day and still-running siblings use -- not a comma-run of device, "
                 + "display, date, times \(sameDayLine ?? "nil")"
@@ -227,7 +227,7 @@ func runHostScreenIndicationTests() async {
 
         let crossDayLine = HostScreenSessionLogPresentation.line(
             for: HostScreenSessionRecord(
-                deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+                deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
                 startedAt: utcDate(day: 15, hour: 23, minute: 50),
                 outcome: .stopped(at: utcDate(day: 16, hour: 0, minute: 20))
             ),
@@ -235,16 +235,16 @@ func runHostScreenIndicationTests() async {
             timeZone: fixedZone
         )
         expect(
-            crossDayLine == "Kestrel MacBook Pro used Built-in Display from 15 Nov 2023, 23:50 to 16 Nov 2023, 00:20.",
+            crossDayLine == "Kestrel Laptop Pro used Built-in Display from 15 Nov 2023, 23:50 to 16 Nov 2023, 00:20.",
             "a range crossing midnight names both dates, since the end time alone would not say which day it fell on \(crossDayLine ?? "nil")"
         )
 
         let abandonedLine = HostScreenSessionLogPresentation.line(for: HostScreenSessionRecord(
-            deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+            deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
             startedAt: started, outcome: .endedWithoutCleanStop
         ))
         expect(
-            abandonedLine?.hasPrefix("Kestrel MacBook Pro used Built-in Display from ") == true,
+            abandonedLine?.hasPrefix("Kestrel Laptop Pro used Built-in Display from ") == true,
             "an abandoned session still names the device, the display, and when it started, as one sentence \(abandonedLine ?? "nil")"
         )
         expect(
@@ -254,14 +254,14 @@ func runHostScreenIndicationTests() async {
 
         let stillRunningLine = HostScreenSessionLogPresentation.line(
             for: HostScreenSessionRecord(
-                deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display",
+                deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display",
                 startedAt: utcDate(day: 15, hour: 5, minute: 13), outcome: nil
             ),
             locale: fixedLocale,
             timeZone: fixedZone
         )
         expect(
-            stillRunningLine == "Kestrel MacBook Pro used Built-in Display from 15 Nov 2023, 05:13; it is still running.",
+            stillRunningLine == "Kestrel Laptop Pro used Built-in Display from 15 Nov 2023, 05:13; it is still running.",
             "a session this store's own process is still serving reads the same sentence shape as the other two "
                 + "outcomes \(stillRunningLine ?? "nil")"
         )
@@ -272,7 +272,7 @@ func runHostScreenIndicationTests() async {
     do {
         // The badge: stop is one action a test observes as state,
         // not only as a closure that may or may not have been wired.
-        let content = HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+        let content = HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         let state = HostScreenBadgeState(content: content)
         expect(state.isExpanded, "a badge starts expanded -- design §6.4: 'it opens expanded for a few seconds before shrinking, so somebody in the room sees it begin'")
         expect(!state.hasStopped, "a fresh badge has not stopped anything")
@@ -304,7 +304,7 @@ func runHostScreenIndicationTests() async {
             }
             fatalError("no stored property named \(name) of type \(T.self)")
         }
-        let content = HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+        let content = HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         let state = HostScreenBadgeState(content: content)
         let controller = HostScreenBadgeWindowController(state: state)
         let displayLabel: NSTextField = field("displayLabel", of: controller)
@@ -322,7 +322,7 @@ func runHostScreenIndicationTests() async {
         // local or, since host-screen mode drops key confinement,
         // remotely injected click to dismiss the one window Sensorium
         // places on a physical display.
-        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let controller = HostScreenBadgeWindowController(state: state)
         expect(!controller.hasNativeCloseControl, "the badge window's style mask carries no .closable bit -- there is no close button for any click, local or injected, to hit")
 
@@ -347,7 +347,7 @@ func runHostScreenIndicationTests() async {
         // alive for the session.
         func badge(startsExpanded: Bool) -> (state: HostScreenBadgeState, controller: HostScreenBadgeWindowController, window: NSWindow) {
             let state = HostScreenBadgeState(
-                content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+                content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
                 startsExpanded: startsExpanded
             )
             let controller = HostScreenBadgeWindowController(state: state)
@@ -370,7 +370,7 @@ func runHostScreenIndicationTests() async {
             guard let content = window.contentView else { fatalError("the \(name) badge window has no content view") }
             let texts = labels(in: content)
             expect(
-                texts.contains("Kestrel MacBook Pro") && texts.contains("Sees and controls Built-in Display"),
+                texts.contains("Kestrel Laptop Pro") && texts.contains("Sees and controls Built-in Display"),
                 "the \(name) badge names the connected device and the display it sees -- got: \(texts)"
             )
             expect(hasButton(in: content), "the \(name) badge keeps its Stop button")
@@ -395,7 +395,7 @@ func runHostScreenIndicationTests() async {
         // the device name, in both states, smaller when shrunk.
         func eyebrow(startsExpanded: Bool) -> NSTextField? {
             let state = HostScreenBadgeState(
-                content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+                content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
                 startsExpanded: startsExpanded
             )
             let controller = HostScreenBadgeWindowController(state: state)
@@ -428,7 +428,7 @@ func runHostScreenIndicationTests() async {
         // no window, no screen, so a test can drive it directly and read
         // the answer straight back. So is recording a drag's landing
         // spot: a plain fact about the state, independent of any window.
-        let content = HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+        let content = HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         let state = HostScreenBadgeState(content: content)
         expect(!state.isCollapsed, "a fresh badge starts expanded, not collapsed to its corner pill")
         expect(state.origin == nil, "a fresh badge has no origin of its own until something sets one")
@@ -553,7 +553,7 @@ func runHostScreenIndicationTests() async {
 
     do {
         // The controller itself: a fresh badge with nothing remembered
-        // for this Mac's real main screen defaults top-right, a badge
+        // for this machine's real main screen defaults top-right, a badge
         // built against a store that already has a position for that
         // screen starts there instead, collapsing and expanding keep the
         // window's own origin fixed, and a geometry change re-clamps an
@@ -574,7 +574,7 @@ func runHostScreenIndicationTests() async {
             .appendingPathComponent("sensorium-host-screen-badge-position-fresh-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: freshURL) }
         let freshStore = HostScreenBadgePositionStore(url: freshURL)
-        let freshState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let freshState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let freshController = HostScreenBadgeWindowController(state: freshState, positionStore: freshStore)
         let freshWindow = CanvasHostTestHooks.hostScreenBadgeWindow(freshController)
         let expectedDefault = HostScreenBadgeState.defaultOrigin(windowSize: freshWindow.frame.size, in: visibleFrame, margin: 12)
@@ -589,7 +589,7 @@ func runHostScreenIndicationTests() async {
             defer { try? FileManager.default.removeItem(at: seededURL) }
             let seededStore = HostScreenBadgePositionStore(url: seededURL)
             seededStore.setPosition(HostScreenBadgePosition(offsetFromFrameOrigin: CGPoint(x: 37, y: 51)), for: identity)
-            let seededState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+            let seededState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
             let seededController = HostScreenBadgeWindowController(state: seededState, positionStore: seededStore)
             let seededWindow = CanvasHostTestHooks.hostScreenBadgeWindow(seededController)
             expect(
@@ -600,7 +600,7 @@ func runHostScreenIndicationTests() async {
             expect(false, "NSScreen.main carries no NSScreenNumber device description key to identify it by")
         }
 
-        let anchorState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let anchorState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let anchorController = HostScreenBadgeWindowController(state: anchorState, restoresPersistedLayout: false)
         let expandedOrigin = CanvasHostTestHooks.hostScreenBadgeWindow(anchorController).frame.origin
         anchorState.toggleCollapsed()
@@ -617,7 +617,7 @@ func runHostScreenIndicationTests() async {
         )
 
         let driftedState = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
             origin: CGPoint(x: fullFrame.maxX + 5_000, y: fullFrame.maxY + 5_000)
         )
         let driftedController = HostScreenBadgeWindowController(state: driftedState, restoresPersistedLayout: false)
@@ -645,7 +645,7 @@ func runHostScreenIndicationTests() async {
             view.subviews.contains { $0 is NSButton || hasButton(in: $0) }
         }
         let state = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
         let expandedWindow = CanvasHostTestHooks.hostScreenBadgeWindow(controller)
@@ -660,7 +660,7 @@ func runHostScreenIndicationTests() async {
         if let content = collapsedWindow.contentView {
             let visibleTexts = labels(in: content).filter { !$0.isHidden }.map(\.stringValue)
             expect(
-                visibleTexts.contains("Kestrel MacBook Pro"),
+                visibleTexts.contains("Kestrel Laptop Pro"),
                 "the collapsed pill still names the device -- got: \(visibleTexts)"
             )
             expect(
@@ -685,7 +685,7 @@ func runHostScreenIndicationTests() async {
     do {
         // The badge window's level: it must stay visible above the Dock
         // and the menu bar, since it can be dropped directly on either.
-        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let controller = HostScreenBadgeWindowController(state: state)
         let window = CanvasHostTestHooks.hostScreenBadgeWindow(controller)
         let overlayLevel = Int(CGWindowLevelForKey(.overlayWindow))
@@ -724,7 +724,7 @@ func runHostScreenIndicationTests() async {
         // Measure this badge's own size first, from a controller with
         // nothing persisted, so the offset below lands it flush with the
         // top of the full frame whatever that size turns out to be.
-        let measuringState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let measuringState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let measuringController = HostScreenBadgeWindowController(state: measuringState, restoresPersistedLayout: false)
         let windowSize = CanvasHostTestHooks.hostScreenBadgeWindow(measuringController).frame.size
 
@@ -735,7 +735,7 @@ func runHostScreenIndicationTests() async {
         let flushWithTop = CGPoint(x: 40, y: fullFrame.height - windowSize.height)
         store.setPosition(HostScreenBadgePosition(offsetFromFrameOrigin: flushWithTop), for: identity)
 
-        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let controller = HostScreenBadgeWindowController(state: state, positionStore: store)
         let window = CanvasHostTestHooks.hostScreenBadgeWindow(controller)
         let expectedOrigin = CGPoint(x: fullFrame.minX + flushWithTop.x, y: fullFrame.minY + flushWithTop.y)
@@ -784,7 +784,7 @@ func runHostScreenIndicationTests() async {
             "the pill's fill breathes from fully opaque down to 0.6 and back"
         )
 
-        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         expect(!state.collapsedPulses, "an expanded badge is not pulsing")
         state.setCollapsed(true)
         expect(state.collapsedPulses, "collapsing starts the pulse")
@@ -806,7 +806,7 @@ func runHostScreenIndicationTests() async {
             fatalError("no stored property named \(name) of type \(T.self)")
         }
 
-        let motionState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let motionState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let movingController = HostScreenBadgeWindowController(state: motionState, restoresPersistedLayout: false, prefersReducedMotion: { false })
         let movingBorder: CAGradientLayer = mirrorField("borderGradientLayer", of: movingController)
         expect(
@@ -815,7 +815,7 @@ func runHostScreenIndicationTests() async {
             "with Reduce Motion off, the border gradient's start and end points both carry a running rotation"
         )
 
-        let stillState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let stillState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let stillController = HostScreenBadgeWindowController(state: stillState, restoresPersistedLayout: false, prefersReducedMotion: { true })
         let stillBorder: CAGradientLayer = mirrorField("borderGradientLayer", of: stillController)
         expect(
@@ -829,7 +829,7 @@ func runHostScreenIndicationTests() async {
         )
 
         let pulsingState = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
             startsCollapsed: true
         )
         let pulsingController = HostScreenBadgeWindowController(state: pulsingState, restoresPersistedLayout: false, prefersReducedMotion: { false })
@@ -839,7 +839,7 @@ func runHostScreenIndicationTests() async {
             "a collapsed pill with Reduce Motion off carries a running opacity pulse"
         )
 
-        let expandedState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"))
+        let expandedState = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let expandedController = HostScreenBadgeWindowController(state: expandedState, restoresPersistedLayout: false, prefersReducedMotion: { false })
         let expandedLayer = CanvasHostTestHooks.hostScreenBadgeWindow(expandedController).contentView?.layer
         expect(
@@ -848,7 +848,7 @@ func runHostScreenIndicationTests() async {
         )
 
         let stillPulseState = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
             startsCollapsed: true
         )
         let stillPulseController = HostScreenBadgeWindowController(state: stillPulseState, restoresPersistedLayout: false, prefersReducedMotion: { true })

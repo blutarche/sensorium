@@ -18,7 +18,7 @@ public enum HostScreenRefusalCopy {
             return "That machine was already showing this machine a virtual display. That session has ended. "
                 + "Connect with a virtual display, then choose a host screen from the Screen menu."
         case "host-screen-not-allowed":
-            return "Sensorium Host on that Mac has host screen turned off for this machine."
+            return "Sensorium Host on that machine has host screen turned off for this machine."
         case "host-screen-presence-declined":
             return "The person at that machine chose not to share its screen this time. Connect with a "
                 + "virtual display, then choose a host screen from the Screen menu \u{2014} they will be "

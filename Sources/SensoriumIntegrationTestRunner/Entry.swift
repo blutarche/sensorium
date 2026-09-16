@@ -236,7 +236,7 @@ struct SensoriumIntegrationTestRunner {
         )
         await observedViewport.setViewportSize(width: 1920, height: 1200)
         await client.setCanvasObserver(observedViewport)
-        let displayID = try! await client.connect(deviceName: "MacBook")
+        let displayID = try! await client.connect(deviceName: "Laptop")
         guard await observedViewport.movePointer(x: 12, y: 12) == .delivered(CanvasInputPoint(x: 12, y: 12)) else {
             print("FAIL: connected session did not arm the viewport for input")
             Foundation.exit(1)
@@ -352,12 +352,12 @@ struct SensoriumIntegrationTestRunner {
         )
         _ = try! latencyController.handle(.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: latencyIdentity.publicKey,
             signature: try! latencyIdentity.sign(
                 SensoriumFrameCodec.authenticatedHelloTranscript(
                     protocolVersion: 1,
-                    deviceName: "MacBook",
+                    deviceName: "Laptop",
                     publicKey: latencyIdentity.publicKey
                 )
             )
@@ -436,7 +436,7 @@ struct SensoriumIntegrationTestRunner {
             pointerSink: streamClient
         )
         await streamClient.setCanvasObserver(streamViewport)
-        _ = try! await streamClient.connect(deviceName: "MacBook")
+        _ = try! await streamClient.connect(deviceName: "Laptop")
         let streamRouter = CanvasSurfaceEventRouter(viewport: streamViewport)
 
         // The default 960x600-point window on a 2x display: exactly the
@@ -507,7 +507,7 @@ struct SensoriumIntegrationTestRunner {
         await enteredClient.setCanvasObserver(enteredViewport)
         let enteredRouter = CanvasSurfaceEventRouter(viewport: enteredViewport)
         await enteredRouter.route(.drawableSizeChanged(pixelWidth: 3840, pixelHeight: 2400))
-        _ = try! await enteredClient.connect(deviceName: "MacBook")
+        _ = try! await enteredClient.connect(deviceName: "Laptop")
         try! await Task.sleep(for: .milliseconds(300))
         guard enteredMedia.reconfiguredScales == [2.0] else {
             print("FAIL: an already-enlarged viewer did not raise the resolution of the session it just entered")
@@ -563,7 +563,7 @@ struct SensoriumIntegrationTestRunner {
             }
         }
         let dualCanvasClient = ClientSessionController(transport: dualTransport, requestSecondCanvas: true)
-        let dualCanvasDisplayID = try? await dualCanvasClient.connect(deviceName: "MacBook")
+        let dualCanvasDisplayID = try? await dualCanvasClient.connect(deviceName: "Laptop")
         guard dualCanvasDisplayID == .canvas(displayID: 101, hostScreenOffer: []), await dualCanvasClient.didOpenSecondCanvas else {
             print("FAIL: a dual-canvas handshake did not survive the host's own video interleaving into it")
             Foundation.exit(1)

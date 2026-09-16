@@ -1,13 +1,13 @@
 # Sensorium
 
-A private remote workstation for two Macs. You sit at one Mac and work on a
-virtual display the other Mac creates for you. With permission granted at
+A private remote workstation for two machines. You sit at the viewer and work
+on a virtual display the host creates for you. With permission granted at
 the host, you can also see and control one of its real screens.
 
 Two apps, nothing else:
 
-- **Sensorium** runs on the Mac you sit at.
-- **Sensorium Host** runs on the Mac you work on.
+- **Sensorium** runs on the machine you sit at.
+- **Sensorium Host** runs on the machine you work on.
 
 No account, no relay, no telemetry, no command line.
 
@@ -15,15 +15,16 @@ No account, no relay, no telemetry, no command line.
 
 ## Requirements
 
-- An Intel MacBook to view from and an Apple-silicon Mac mini to host.
-- macOS 13 or later. Built and tested only on macOS 26.
+- One viewer machine and one host machine.
+- macOS 13 or later on both machines. Built and tested only on macOS 26.
+  Linux support is planned.
 - Both on the same Tailscale tailnet. Nothing else can reach the host.
 
 ## Getting started
 
 1. Build both apps with `SENSORIUM_ALLOW_ADHOC=1 ./Scripts/package-apps.sh`. See [Install](docs/install.md) to keep permissions across rebuilds.
-2. Open Sensorium Host on the Mac mini. Grant what its window asks for.
-3. Open Sensorium on the MacBook. Pick the host. Type the six-digit code.
+2. Open Sensorium Host on the host machine. Grant what its window asks for.
+3. Open Sensorium on the viewer machine. Pick the host. Type the six-digit code.
 
 Docs:
 

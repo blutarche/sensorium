@@ -80,7 +80,7 @@ private func makeAdmissibleFixture() -> (
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(),
             // This fixture exists to exercise the presence rule and gate;
@@ -137,7 +137,7 @@ private func makeAdmissibleFixtureWithGate() -> (
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(),
             // Same reasoning as makeAdmissibleFixture: this fixture exists
@@ -375,7 +375,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         expect(fixture.gate.calls.count == 1, "the gate is asked exactly once")
         expect(
             fixture.gate.calls.first == HostScreenBadgeContent(
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 displayLabel: HostScreenArmingPresentation.displayLabel(for: fixture.display)
             ),
             "the gate is asked about the arming record's own device name and the same display label the badge and session log use, never a value read back from the connection's own claim"
@@ -658,7 +658,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -704,7 +704,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: false
@@ -748,7 +748,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
             "no prompt content is recorded for a request that never needed to ask"
         )
         expect(
-            loggedLines.contains { $0.contains("Kestrel MacBook Pro") && $0.contains("armed without asking first") },
+            loggedLines.contains { $0.contains("Kestrel Laptop Pro") && $0.contains("armed without asking first") },
             "the session log says this device is armed without asking first, so an owner reading the log knows why no prompt fired -- got \(loggedLines)"
         )
 
@@ -764,7 +764,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: true
@@ -807,7 +807,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
     }
 
     do {
-        // A gap between what this Mac has and what it can actually hand
+        // A gap between what this machine has and what it can actually hand
         // over must never be silent: `offerHostScreenList` logs one line
         // per display it left out, naming the display and the exact
         // reason, and one "offered" line naming what it did include. A
@@ -841,7 +841,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -872,15 +872,15 @@ func runHostScreenSessionControllerAdmissionTests() async {
 
         let eligibleLabel = HostScreenArmingPresentation.displayLabel(for: eligible)
         expect(
-            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: not online"),
+            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel Laptop Pro: not online"),
             "a display CoreGraphics reports not online is logged with that exact reason -- got: \(loggedLines)"
         )
         expect(
-            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: asleep"),
+            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel Laptop Pro: asleep"),
             "a display asleep right now is logged as asleep -- got: \(loggedLines)"
         )
         expect(
-            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: mirrored"),
+            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel Laptop Pro: mirrored"),
             "a display showing another display's picture is logged as mirrored -- got: \(loggedLines)"
         )
         expect(
@@ -888,7 +888,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
             "a canvas Sensorium created is not reported as a missing display -- got: \(loggedLines)"
         )
         expect(
-            loggedLines.contains("Sensorium host: offered 1 host screens to Kestrel MacBook Pro: \(eligibleLabel)"),
+            loggedLines.contains("Sensorium host: offered 1 host screens to Kestrel Laptop Pro: \(eligibleLabel)"),
             "what was actually offered is logged too, naming the device and the offered labels -- got: \(loggedLines)"
         )
         expect(loggedLines.count == 4, "exactly one line per unshareable display plus one offered line, no more -- got: \(loggedLines)")
@@ -914,7 +914,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -941,7 +941,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         }
         expect(
             loggedLines == [
-                "Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: asleep"
+                "Sensorium host: did not offer host screen \"External Display\" to Kestrel Laptop Pro: asleep"
             ],
             "a display asleep only at offer time is logged as asleep, not as absent or not present at start -- got: \(loggedLines)"
         )
@@ -958,7 +958,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -981,7 +981,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         ))
         _ = try! controller.offerHostScreenList()
         expect(
-            loggedLines == ["Sensorium host: offered 1 host screens to Kestrel MacBook Pro: External Display"],
+            loggedLines == ["Sensorium host: offered 1 host screens to Kestrel Laptop Pro: External Display"],
             "a display offered cleanly logs nothing but the one offered line -- got: \(loggedLines)"
         )
 
@@ -990,7 +990,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
 
     do {
         // Arming is per machine, not per display: an armed machine is
-        // offered whatever this Mac has at session time, including a
+        // offered whatever this machine has at session time, including a
         // monitor attached after this host started, and never a canvas
         // Sensorium created.
         let identity = try! DeviceIdentity.generate()
@@ -1005,7 +1005,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -1025,7 +1025,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
         guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
-            expect(false, "an armed machine is offered this Mac's current displays, not refused")
+            expect(false, "an armed machine is offered this machine's current displays, not refused")
             return
         }
         expect(

@@ -6,7 +6,7 @@ public enum FileHostTLSIdentityStoreError: Error, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidStoredValue:
-            return "The file holding this Mac\u{2019}s TLS certificate and key could not be read"
+            return "The file holding this machine\u{2019}s TLS certificate and key could not be read"
         }
     }
 }

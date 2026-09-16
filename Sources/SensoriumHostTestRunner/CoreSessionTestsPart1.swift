@@ -635,12 +635,12 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: identity.publicKey
         )
         _ = try! authenticatedController.handle(.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: identity.publicKey,
             signature: try! identity.sign(transcript)
         ))
@@ -941,10 +941,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             peerLog.line(for: .closed(reason: nil)) == nil,
             "a connection that never identified itself ends no session, and inventing one in the log would be a lie"
         )
-        let connectedLine = peerLog.line(for: .identified(deviceName: "Kestrel’s MacBook"))
+        let connectedLine = peerLog.line(for: .identified(deviceName: "Kestrel’s Laptop"))
         let endedLine = peerLog.line(for: .closed(reason: nil))
         expect(
-            connectedLine?.contains("Kestrel’s MacBook") == true && endedLine?.contains("Kestrel’s MacBook") == true,
+            connectedLine?.contains("Kestrel’s Laptop") == true && endedLine?.contains("Kestrel’s Laptop") == true,
             "the terminal records who connected and who left, by the name that arrived on the wire"
         )
         // A connection is not yet a target: the same hello precedes a session
@@ -952,7 +952,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         // which one it became. Promising one of them here writes a false
         // record of every host-screen session there has ever been.
         expect(
-            connectedLine == "Kestrel’s MacBook is connected.",
+            connectedLine == "Kestrel’s Laptop is connected.",
             "the connect line claims nothing about what the connected machine can see -- got \(connectedLine ?? "nothing")"
         )
         expect(
@@ -961,10 +961,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
 
         var droppedPeerLog = HostPeerActivityLog()
-        _ = droppedPeerLog.line(for: .identified(deviceName: "Kestrel\u{2019}s MacBook"))
+        _ = droppedPeerLog.line(for: .identified(deviceName: "Kestrel\u{2019}s Laptop"))
         let droppedLine = droppedPeerLog.line(for: .closed(reason: "macOS reported: The network connection was lost"))
         expect(
-            droppedLine == "Kestrel\u{2019}s MacBook is no longer connected (macOS reported: The network connection was lost). "
+            droppedLine == "Kestrel\u{2019}s Laptop is no longer connected (macOS reported: The network connection was lost). "
                 + "Nothing on this machine is being shared now.",
             "a connection that ended for a reason this host learned says the reason where it says the ending, so a drop mid-session is not a mystery in the log -- got \(droppedLine ?? "nothing")"
         )
@@ -1200,12 +1200,12 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
 
         let newDeviceTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: newDevice.publicKey
         )
         let newDeviceHello = SensoriumMessage.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: newDevice.publicKey,
             signature: try! newDevice.sign(newDeviceTranscript)
         )
@@ -1216,7 +1216,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
 
         let wrongCode = try! pairingController.handle(.pairRequest(
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: newDevice.publicKey,
             code: "999999"
         ))
@@ -1228,7 +1228,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
 
         let approval = try! pairingController.handle(.pairRequest(
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: newDevice.publicKey,
             code: "424242"
         ))
@@ -1241,7 +1241,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             DeviceIdentity.verify(
                 signature: signature,
                 message: SensoriumFrameCodec.pairApprovalTranscript(
-                    deviceName: "NewMacBook",
+                    deviceName: "NewLaptop",
                     clientPublicKey: newDevice.publicKey,
                     tlsCertificateHash: nil
                 ),
@@ -1279,7 +1279,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         }
         for attempt in 1...PairingAuthority.maximumFailedAttempts {
             let guess = try! budgetConnection().handle(.pairRequest(
-                deviceName: "NewMacBook",
+                deviceName: "NewLaptop",
                 publicKey: budgetDevice.publicKey,
                 code: String(format: "%06d", attempt)
             ))
@@ -1289,7 +1289,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             )
         }
         let spentBudget = try! budgetConnection().handle(.pairRequest(
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: budgetDevice.publicKey,
             code: "424242"
         ))
@@ -1321,13 +1321,13 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
         for attempt in 1..<PairingAuthority.maximumFailedAttempts {
             _ = try! nearMissController.handle(.pairRequest(
-                deviceName: "NewMacBook",
+                deviceName: "NewLaptop",
                 publicKey: nearMissDevice.publicKey,
                 code: String(format: "%06d", attempt)
             ))
         }
         let nearMissApproval = try! nearMissController.handle(.pairRequest(
-            deviceName: "NewMacBook",
+            deviceName: "NewLaptop",
             publicKey: nearMissDevice.publicKey,
             code: "135790"
         ))
@@ -1356,12 +1356,12 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
         let signedTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: signedClient.publicKey
         )
         _ = try! signingController.handle(.authenticatedHello(
             protocolVersion: 1,
-            deviceName: "MacBook",
+            deviceName: "Laptop",
             publicKey: signedClient.publicKey,
             signature: try! signedClient.sign(signedTranscript)
         ))

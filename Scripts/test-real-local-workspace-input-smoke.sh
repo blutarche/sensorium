@@ -35,10 +35,10 @@ grep -F 'BLOCKED: packaged host requires user-granted Accessibility before local
 grep -F 'BLOCKED: packaged host requires user-granted Screen Recording before local viewer/control acceptance can run.' "$SMOKE" >/dev/null
 grep -F 'BLOCKED: packaged host requires user-granted Accessibility and Screen Recording before local viewer/control acceptance can run.' "$SMOKE" >/dev/null
 
-# A person actively using this Mac makes the host workspace unable to come
+# A person actively using this machine makes the host workspace unable to come
 # frontmost -- the same `workspace_focus_confirmed=false` a genuine defect
 # would produce. That must be reported as BLOCKED with the remedy (leave the
-# Mac alone), not as an opaque FAIL, and classified from the probe log via
+# machine alone), not as an opaque FAIL, and classified from the probe log via
 # the fixture-tested classifier rather than re-implemented inline.
 FOCUS_CLASSIFIER="$ROOT/Scripts/classify-workspace-focus-blocker.py"
 FOCUS_CLASSIFIER_TEST="$ROOT/Scripts/test-classify-workspace-focus-blocker.py"

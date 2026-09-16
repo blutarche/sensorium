@@ -56,7 +56,7 @@ public struct HostScreenDisplayIdentity: Codable, Equatable, Hashable, Sendable 
     }
 }
 
-/// Why one of this Mac's displays is missing from what `offerHostScreenList`
+/// Why one of this machine's displays is missing from what `offerHostScreenList`
 /// actually offers -- the same four gaps, decided by `HostScreenOfferEligibility`
 /// alone, so the operator log and the Host Setup window never disagree about why.
 public enum HostScreenOfferGapReason: Equatable, Sendable {
@@ -94,9 +94,9 @@ public enum HostScreenOfferGapReason: Equatable, Sendable {
     }
 }
 
-/// Which of this Mac's displays an armed machine may be offered. Arming is
+/// Which of this machine's displays an armed machine may be offered. Arming is
 /// per machine, exactly as it is for the screen sharing macOS ships: a
-/// machine armed here may be offered whatever this Mac has when a session
+/// machine armed here may be offered whatever this machine has when a session
 /// starts, including a monitor attached after this host launched. Nothing
 /// here reads the arming record, and nothing here is reachable from the
 /// wire.
@@ -213,7 +213,7 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
 
 extension HostScreenDeviceArming {
     /// Host screen's own default: a machine that pairs and registers a
-    /// presence credential is armed at once, for this Mac's displays as they
+    /// presence credential is armed at once, for this machine's displays as they
     /// stand whenever a session starts. `nil` when the pairing device
     /// registered no credential -- it may still pair and use a session
     /// canvas, but this pairing does not arm host screen for it.
@@ -389,10 +389,10 @@ public enum HostScreenArmingPresentation {
         /// armed device with nothing snapshotted.
         public let blockedReason: String?
         /// "May share Built-in Display.", the permission, not a live share.
-        /// Names the displays this Mac could hand this machine right now,
+        /// Names the displays this machine could hand this machine right now,
         /// since arming is per machine; `nil` when there are none.
         public let sharedDisplaysLine: String?
-        /// Why this row has no `sharedDisplaysLine`: this Mac has displays,
+        /// Why this row has no `sharedDisplaysLine`: this machine has displays,
         /// but none of them can be shared right now. `nil` whenever
         /// `sharedDisplaysLine` has something to say instead, this row is
         /// not sharing, or the caller passed no display list to judge.
@@ -433,10 +433,10 @@ public enum HostScreenArmingPresentation {
     /// A not-yet-armed row gates on the credential registered now; an
     /// armed row on the strength snapshotted when it was armed, with
     /// `needsRearmingNotice` when that snapshot is missing. `activeDisplays`
-    /// is this Mac's own displays right now, which is what an armed row
+    /// is this machine's own displays right now, which is what an armed row
     /// names: arming is per machine, so what a machine may share is decided
     /// afresh from that list. Passing none leaves an armed row silent about
-    /// displays rather than claiming this Mac has none.
+    /// displays rather than claiming this machine has none.
     public static func pairedMachineRows(
         approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)],
         arming: HostScreenArming,
@@ -477,7 +477,7 @@ public enum HostScreenArmingPresentation {
 
     /// "May share Built-in Display." for one, "May share Built-in Display
     /// and External Display." for two, an Oxford-style list for three or more.
-    /// `nil` when this Mac has no display an armed machine could be handed
+    /// `nil` when this machine has no display an armed machine could be handed
     /// right now -- an asleep, mirrored, or Sensorium-created display is
     /// never actually shareable, so it is left out here exactly as
     /// `offerHostScreenList` leaves it out. An empty sentence is worse than
@@ -590,12 +590,12 @@ public enum HostScreenArmingPresentation {
     /// arm time -- never claims no credential exists, since one plainly
     /// does (it is armed), only that this machine never captured it. Turning
     /// sharing off and back on re-arms it and takes a fresh snapshot.
-    /// An armed machine with nothing to hand it: this Mac has displays, but
+    /// An armed machine with nothing to hand it: this machine has displays, but
     /// every one of them is offline, asleep, mirroring another, or a canvas
     /// Sensorium created. Nothing about the machine's own arming is wrong,
     /// so this never reads as a permission problem.
     public static let noShareableDisplayNotice =
-        "No display on this Mac can be shared right now."
+        "No display on this machine can be shared right now."
 
     public static let needsRearmingNotice =
         "How this machine holds its presence key was not recorded when it paired. Turn Share host screen off and on again to record it."

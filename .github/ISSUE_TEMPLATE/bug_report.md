@@ -11,8 +11,8 @@ assignees: ""
 
 ## Machines
 
-- Host Mac (Apple silicon): macOS version, model
-- Viewer Mac (Intel): macOS version, model
+- Host machine (arch: x86_64 or arm64): macOS version, model
+- Viewer machine (arch: x86_64 or arm64): macOS version, model
 
 ## App
 

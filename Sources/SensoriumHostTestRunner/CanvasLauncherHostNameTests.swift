@@ -8,7 +8,7 @@ import SensoriumHost
 @MainActor
 func runCanvasLauncherHostNameTests() async {
     let placement = CanvasHostTestHooks.placementForTesting(displayID: 0, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1200))
-    let hostName = "Kestrel Mac mini"
+    let hostName = "Kestrel Studio"
     let texts = CanvasHostTestHooks.launcherHostNameTexts(
         frame: NSRect(x: 0, y: 0, width: 440, height: 1104),
         canvas: placement,

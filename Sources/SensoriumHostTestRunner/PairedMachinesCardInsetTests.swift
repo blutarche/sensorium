@@ -54,7 +54,7 @@ func runPairedMachinesCardInsetTests() async {
         // was made to fit four lines compactly, not to match them.
         let row = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             isSharingRealScreen: true,
             credentialSummary: "hardware-bound credential",
             blockedReason: nil
@@ -79,7 +79,7 @@ func runPairedMachinesCardInsetTests() async {
         // 16pt too.
         let hostController = controller(rows: [])
         hostController.updateLastHostScreenSession(
-            "Kestrel MacBook Pro saw Built-in Display on 15 Nov 2023, 05:13\u{2013}05:43."
+            "Kestrel Laptop Pro saw Built-in Display on 15 Nov 2023, 05:13\u{2013}05:43."
         )
         let pairedMachines: NSView = field("pairedMachines", of: hostController, as: NSView.self)
         let lastSessionCard: NSView = field("lastSessionCard", of: pairedMachines, as: NSView.self)

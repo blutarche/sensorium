@@ -10,7 +10,7 @@ import SensoriumHost
 /// Adaptive fidelity and capture telemetry on a host-screen session.
 ///
 /// A session streams either a session canvas or one existing screen of this
-/// Mac, and the person watching is owed the same picture control either way:
+/// machine, and the person watching is owed the same picture control either way:
 /// the same ladder, the same capture-delivery report, the same recovery from
 /// a capture that delivers nothing, and the same figures behind the viewer's
 /// own readout. These drive the coordinator through a host-screen bring-up
@@ -124,7 +124,7 @@ private func makeFidelityFixture(
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -366,7 +366,7 @@ func runHostScreenFidelityTests() async {
                 return capture
             },
             sessionLog: HostScreenSessionLogStore(url: logURL),
-            deviceName: { "Kestrel MacBook Pro" },
+            deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
             badgeFactory: { _ in FidelityBadgeDisplay() }
@@ -422,7 +422,7 @@ func runHostScreenFidelityTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )

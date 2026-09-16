@@ -15,12 +15,12 @@ _Avoid_: server, mini, daemon
 
 **Viewer**:
 The Sensorium app, and the machine it runs on, where the person is.
-_Avoid_: client, MacBook, remote
+_Avoid_: client, Mac, remote
 
 **Machine**:
 Either computer, named in every window by the name it gave when it paired.
-The category word is always "machine"; proper names (Mac mini, MacBook, macOS)
-stay.
+The category word is always "machine"; macOS is named only when a fact is
+specific to that operating system.
 _Avoid_: Mac (as a category), device, peer, computer
 
 **Paired machine**:

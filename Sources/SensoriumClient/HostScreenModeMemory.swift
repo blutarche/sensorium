@@ -127,7 +127,7 @@ public final class InMemoryHostScreenModeMemoryStore: HostScreenModeMemoryStorin
 /// `FileDeviceIdentityStore` already take for a file under this viewer's own
 /// Application Support directory, even though a remembered resolution is not
 /// a secret: it is still this person's own record of a machine they use, and
-/// nothing about it should be readable by another account on the same Mac.
+/// nothing about it should be readable by another account on the same machine.
 /// No test executes this: it would write outside the repository. What an
 /// unreadable file means is `HostScreenModeMemoryFileCoding`'s decision,
 /// which is verified.

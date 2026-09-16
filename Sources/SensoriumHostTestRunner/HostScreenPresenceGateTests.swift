@@ -29,7 +29,7 @@ private final class FakeHostScreenPresencePrompting: HostScreenPresencePrompting
     }
 }
 
-private let testContent = HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+private let testContent = HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
 
 @MainActor
 func runHostScreenPresenceGateTests() async {

@@ -16,7 +16,7 @@ func testClipboardAndScaleTests() async {
             print("FAIL: the client reported a drawable size with no session canvas")
             Foundation.exit(1)
         } catch {}
-        _ = try! await scaleController.connect(deviceName: "MacBook")
+        _ = try! await scaleController.connect(deviceName: "Laptop")
         try! await scaleController.sendViewerDrawableSize(pixelWidth: 3840, pixelHeight: 2400, maximumScale: nil)
         guard await scaleTransport.sent.contains(.viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2400, surfaceID: nil, maximumScale: nil)) else {
             print("FAIL: the client did not put the viewer drawable size on the wire")
@@ -82,7 +82,7 @@ func testClipboardAndScaleTests() async {
             print("FAIL: the client reported focus with no session canvas")
             Foundation.exit(1)
         } catch {}
-        _ = try! await focusController.connect(deviceName: "MacBook")
+        _ = try! await focusController.connect(deviceName: "Laptop")
         try! await focusController.sendViewerFocus(surfaceID: nil, hasViewerFocus: true)
         try! await focusController.sendViewerFocus(surfaceID: nil, hasViewerFocus: false)
         expect(
@@ -123,7 +123,7 @@ func testClipboardAndScaleTests() async {
             .canvasReady(displayID: 60, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: nil)
         ])
         let oldHostClient = ClientSessionController(transport: oldHostTransport, requestSecondCanvas: true)
-        _ = try! await oldHostClient.connect(deviceName: "MacBook")
+        _ = try! await oldHostClient.connect(deviceName: "Laptop")
         expect(await oldHostClient.hostSupportsSurfaceIDs == false, "an old host that never echoes surfaceID is recorded as not supporting it")
         expect(await oldHostClient.didOpenSecondCanvas == false, "a second canvas is never opened against a host that does not support surfaceID")
         let oldHostCanvasRequests = await oldHostTransport.sent.filter {
@@ -137,11 +137,11 @@ func testClipboardAndScaleTests() async {
             .canvasReady(displayID: 80, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0)
         ])
         let singleWindowClient = ClientSessionController(transport: singleWindowTransport)
-        _ = try! await singleWindowClient.connect(deviceName: "MacBook")
+        _ = try! await singleWindowClient.connect(deviceName: "Laptop")
         expect(await singleWindowClient.hostSupportsSurfaceIDs, "a capable host is still detected even when a second canvas was never requested")
         expect(await singleWindowClient.didOpenSecondCanvas == false, "a second canvas is never opened unless explicitly requested, even against a capable host")
         expect(await singleWindowTransport.sent == [
-            .hello(protocolVersion: 1, deviceName: "MacBook"),
+            .hello(protocolVersion: 1, deviceName: "Laptop"),
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
         ], "a single-canvas connect sends exactly the sequence it always has")
 }

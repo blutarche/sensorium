@@ -31,7 +31,7 @@ func runHostMenuBarStopMenuItemTests() async {
         // Connected: the Stop item is present and fires onStop
         var stopped = false
         let presence = HostMenuBarPresence(
-            status: HostOperatorStatus(connection: .serving(peerName: "Kestrel MacBook Pro"), permissions: granted),
+            status: HostOperatorStatus(connection: .serving(peerName: "Kestrel Laptop Pro"), permissions: granted),
             onStop: { stopped = true },
             quit: {}
         )

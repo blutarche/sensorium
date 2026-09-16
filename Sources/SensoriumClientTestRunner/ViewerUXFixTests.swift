@@ -158,8 +158,8 @@ func testViewerUXFixTests() async {
         // from pairing when it has not.
         do {
             expect(
-                ViewerWindowTitle.resolve(hostMachineName: "Mac mini", savedHost: "mini.tailnet.ts.net", fallback: "mini.tailnet.ts.net")
-                    == "Mac mini @ mini.tailnet.ts.net",
+                ViewerWindowTitle.resolve(hostMachineName: "Studio", savedHost: "mini.tailnet.ts.net", fallback: "mini.tailnet.ts.net")
+                    == "Studio @ mini.tailnet.ts.net",
                 "a host that names itself is shown as its name and the address it was reached at"
             )
             expect(
@@ -180,8 +180,8 @@ func testViewerUXFixTests() async {
         // internal vocabulary docs/ux-spec.md forbids on screen. Named by
         // the same word the Displays menu itself uses.
         do {
-            let title = ViewerWindowTitle.secondDisplayTitle(primaryTitle: "Mac mini @ mini.tailnet.ts.net")
-            expect(title == "Mac mini @ mini.tailnet.ts.net \u{2014} Display 2", "the second window's title names which display it is, in the menu's own words")
+            let title = ViewerWindowTitle.secondDisplayTitle(primaryTitle: "Studio @ mini.tailnet.ts.net")
+            expect(title == "Studio @ mini.tailnet.ts.net \u{2014} Display 2", "the second window's title names which display it is, in the menu's own words")
             expect(!title.lowercased().contains("canvas"), "no window title ever says canvas")
             expect(!title.lowercased().contains("surface"), "no window title ever says surface")
 
@@ -434,7 +434,7 @@ func testViewerUXFixTests() async {
         // show -- and the list of rows it is computed from cannot drift
         // from the state machine without this catching it.
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             var statuses = [machine.status]
             machine.handle(.connectStarted)
             machine.handle(.canvasReady)
@@ -446,7 +446,7 @@ func testViewerUXFixTests() async {
             statuses.append(machine.handle(.retryRequested))
             statuses.append(machine.handle(.gaveUp))
             for offersPairAgain in [false, true] {
-                var ended = ViewerSessionStateMachine(hostName: "mac-mini")
+                var ended = ViewerSessionStateMachine(hostName: "studio-mini")
                 statuses.append(ended.handle(
                     .hostScreenConnectEnded(reasonLine: "reason", offersPairAgain: offersPairAgain)
                 ))
@@ -503,7 +503,7 @@ func testViewerUXFixTests() async {
             }
 
             let fourLineText = DisplayCountRefusalCopy.line(
-                reason: "a-reason-this-build-has-never-seen", hostLabel: "mac-mini"
+                reason: "a-reason-this-build-has-never-seen", hostLabel: "studio-mini"
             )
             let wrapped = laidOut(fourLineText)
             let threeLines = laidOut("one\ntwo\nthree")
@@ -533,7 +533,7 @@ func testViewerUXFixTests() async {
         // spot, keep numbering attempts across the retry, and get out of the
         // way once the wait it describes is over.
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             machine.handle(.connectStarted)
             let failed = machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             expect(
@@ -557,7 +557,7 @@ func testViewerUXFixTests() async {
         }
 
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             machine.handle(.connectStarted)
             machine.handle(.canvasReady)
             let liveThenLost = machine.handle(.sessionEnded)
@@ -571,7 +571,7 @@ func testViewerUXFixTests() async {
         }
 
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             machine.handle(.connectStarted)
             machine.handle(.canvasReady)
             machine.handle(.sessionEnded)
@@ -596,7 +596,7 @@ func testViewerUXFixTests() async {
         }
 
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             machine.handle(.connectStarted)
             machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             let retried = machine.handle(.retryRequested)
@@ -642,7 +642,7 @@ func testViewerUXFixTests() async {
                 "a row of only Quit chooses nothing, so the canvas keeps focus"
             )
 
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             var statuses = [machine.status]
             machine.handle(.connectStarted)
             machine.handle(.canvasReady)
@@ -654,7 +654,7 @@ func testViewerUXFixTests() async {
             statuses.append(machine.handle(.retryRequested))
             statuses.append(machine.handle(.gaveUp))
             for offersPairAgain in [false, true] {
-                var ended = ViewerSessionStateMachine(hostName: "mac-mini")
+                var ended = ViewerSessionStateMachine(hostName: "studio-mini")
                 statuses.append(ended.handle(
                     .hostScreenConnectEnded(reasonLine: "reason", offersPairAgain: offersPairAgain)
                 ))
@@ -680,7 +680,7 @@ func testViewerUXFixTests() async {
         // forwards a key -- while a click, which is delivered by position
         // rather than to the keyboard's owner, still landed on the canvas.
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             let connecting = machine.handle(.connectStarted)
             expect(
                 ViewerClientTestHooks.statusOverlayFocusTitle(after: [connecting]) == "Your machines",
@@ -705,8 +705,8 @@ func testViewerUXFixTests() async {
         // connect, with its own buttons: Pair again first, since re-pinning
         // the key is the only fix.
         do {
-            let reasonLine = ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: "mac-mini")
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            let reasonLine = ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: "studio-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             machine.handle(.connectStarted)
             let ended = machine.handle(.unverifiedHostConnectEnded(reasonLine: reasonLine))
             expect(ended.phase == .ended, "an unverified host ends the wait outright, got \(ended.phase)")
@@ -737,7 +737,7 @@ func testViewerUXFixTests() async {
         // canvas overlay only, so nothing here offers a Connect of its own,
         // and the way back to that list is a button that names it.
         do {
-            var machine = ViewerSessionStateMachine(hostName: "mac-mini")
+            var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             machine.handle(.connectStarted)
             machine.handle(.canvasReady)
             let lost = machine.handle(.sessionEnded)

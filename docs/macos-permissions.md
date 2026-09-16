@@ -25,7 +25,7 @@ Screen Sharing is off by default and is entirely the host operator's own choice 
 
 macOS draws nothing to a sleeping display. A session that started against a host whose screens had idled would stream a picture that never arrives, so the host wakes them when a session starts and keeps them awake while it runs.
 
-This needs no permission. It uses public power management only. The screen that comes on is the one the session streams. Nothing about the display's resolution, arrangement, or mirroring changes, and a Mac that is itself asleep stays asleep.
+This needs no permission. It uses public power management only. The screen that comes on is the one the session streams. Nothing about the display's resolution, arrangement, or mirroring changes, and a machine that is itself asleep stays asleep.
 
 While a session is live, macOS reports Sensorium as the reason the screen stays on, under the name "Sensorium session is live". When the session ends, the host lets the screen idle again exactly as it did before.
 

@@ -101,7 +101,7 @@ func runHostSetupStopButtonTests() async {
 
         let controller = HostSetupWindowController(
             status: HostOperatorStatus(
-                connection: .serving(peerName: "Kestrel MacBook Pro"),
+                connection: .serving(peerName: "Kestrel Laptop Pro"),
                 permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
             ),
             onRevealPairingCode: {},

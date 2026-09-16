@@ -51,7 +51,7 @@ private func heldBackSentenceNamesNoStageWithoutACeilingOrAClampedChoice() {
             requestedStreamScale: 1.75,
             streamScalePreference: .automatic,
             decoder: .hardwareAccelerated,
-            hostName: "Mac mini"
+            hostName: "Studio"
         ),
         session: nil
     )
@@ -61,7 +61,7 @@ private func heldBackSentenceNamesNoStageWithoutACeilingOrAClampedChoice() {
     )
     expect(
         hudRow(sections, "REQUESTED")?.note
-            == "Held to 1.50x at 30 fps. Automatic asked for 1.75x, but Mac mini is streaming a different scale.",
+            == "Held to 1.50x at 30 fps. Automatic asked for 1.75x, but Studio is streaming a different scale.",
         "with no measured ceiling and no clamped user choice, the sentence names no stage -- "
             + "got \(hudRow(sections, "REQUESTED")?.note ?? "nil")"
     )
@@ -141,7 +141,7 @@ private func streamSectionNamesTheFramesThisViewerGaveUp() {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini",
+                hostName: "Studio",
                 viewerDroppedBeforeDecode: beforeDecode,
                 viewerDroppedBeforePresent: beforePresent,
                 viewerDropsGrew: grew
@@ -164,7 +164,7 @@ private func streamSectionNamesTheFramesThisViewerGaveUp() {
         "and the host's own count is still its own, still unavailable when the host has sent none"
     )
     expect(
-        hudRow(quiet, "DROPPED HERE")?.note?.contains("Mac mini") == true,
+        hudRow(quiet, "DROPPED HERE")?.note?.contains("Studio") == true,
         "the row says whose count it is not, by the machine's own name, got: \(hudRow(quiet, "DROPPED HERE")?.note ?? "nil")"
     )
 
@@ -334,7 +334,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
-                hostName: "Mac mini"
+                hostName: "Studio"
             ),
             session: nil
         )
@@ -371,12 +371,12 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
     expect(
         hudRow(limited, "REQUESTED")?.note
             == "Held to 1.50x at 30 fps. Automatic asked for 2.00x, which the link cannot carry, "
-                + "by what this machine and Mac mini measured.",
+                + "by what this machine and Studio measured.",
         "the sentence names the frame rate, what cannot keep up, and whose measurement says so"
     )
 
     for (token, words, clause) in [
-        (FidelityLimitReason.encoder, "Mac mini's encoder", "which Mac mini's encoder cannot keep up with"),
+        (FidelityLimitReason.encoder, "Studio's encoder", "which Studio's encoder cannot keep up with"),
         (FidelityLimitReason.viewer, "this machine", "which this machine cannot keep up with")
     ] {
         let rows = sections(sample(
@@ -455,7 +455,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
     )
     expect(
         hudRow(old, "REQUESTED")?.note
-            == "Held to 1.50x. Automatic asked for 2.00x, which Mac mini measured as unsustainable.",
+            == "Held to 1.50x. Automatic asked for 2.00x, which Studio measured as unsustainable.",
         "the sentence a host with nothing new to say produces is exactly the one it always produced"
     )
 
@@ -498,7 +498,7 @@ private func latencySectionNamesTheHoldThisMachineAdded() {
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
                 presentationHoldNanoseconds: hold,
-                hostName: "Mac mini"
+                hostName: "Studio"
             ),
             session: nil
         )

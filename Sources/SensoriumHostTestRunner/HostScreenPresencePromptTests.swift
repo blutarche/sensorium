@@ -24,7 +24,7 @@ func runHostScreenPresencePromptTests() async {
         // screen -- "Screen Sharing Request" collides with macOS's
         // own Screen Sharing feature, which this is not.
         let eyebrow = CanvasHostTestHooks.presencePromptEyebrowText(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         expect(
             eyebrow == "SENSORIUM HOST \u{00B7} HOST SCREEN REQUEST",
@@ -39,7 +39,7 @@ func runHostScreenPresencePromptTests() async {
         // Eyebrow colour: a request is not a failure -- the gold
         // a missing permission gets would say the wrong thing here.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let eyebrow: NSTextField = field("eyebrow", of: controller, as: NSTextField.self)
         let color = eyebrow.attributedStringValue.attribute(
@@ -59,11 +59,11 @@ func runHostScreenPresencePromptTests() async {
         // asking -- never a passive status line that leaves both
         // unsaid.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            subtitle.stringValue == "If you allow, Kestrel MacBook Pro sees and controls \u{201C}\u{2060}Built-in Display\u{201D} "
+            subtitle.stringValue == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}Built-in Display\u{201D} "
                 + "until you click Stop on the badge that stays on screen, or it disconnects. You\u{2019}re asked because "
                 + "this machine was used in the last "
                 + "few minutes.",
@@ -80,11 +80,11 @@ func runHostScreenPresencePromptTests() async {
         // as more clauses of the surrounding sentence.
         let longLabel = "LG UltraFine 5K Display, connected over Thunderbolt 3 (Left of Built-in Display)"
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: longLabel)
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: longLabel)
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            subtitle.stringValue == "If you allow, Kestrel MacBook Pro sees and controls \u{201C}\u{2060}\(longLabel)\u{201D} "
+            subtitle.stringValue == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}\(longLabel)\u{201D} "
                 + "until you click Stop on the badge that stays on screen, or it disconnects. You\u{2019}re asked because "
                 + "this machine was used in the last "
                 + "few minutes.",
@@ -100,7 +100,7 @@ func runHostScreenPresencePromptTests() async {
         // line, not a static sentence that never moves, and one that
         // names who acts at zero.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let timeoutLine: NSTextField = field("timeoutLine", of: controller, as: NSTextField.self)
         expect(
@@ -115,7 +115,7 @@ func runHostScreenPresencePromptTests() async {
         // Buttons: "Don't Allow", never "Refuse" -- the same verb the
         // affirmative button already uses, not a mismatched pair.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let allowButton: NSButton = field("allowButton", of: controller, as: NSButton.self)
         let refuseButton: NSButton = field("refuseButton", of: controller, as: NSButton.self)
@@ -136,7 +136,7 @@ func runHostScreenPresencePromptTests() async {
         // failed or unanswered check is never one accidental
         // keystroke from granting anything.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let allowButton: NSButton = field("allowButton", of: controller, as: NSButton.self)
         let refuseButton: NSButton = field("refuseButton", of: controller, as: NSButton.self)
@@ -186,7 +186,7 @@ func runHostScreenPresencePromptTests() async {
         // silently drops its own trailing sentence instead of ever
         // asking for the room to show it.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
@@ -205,12 +205,12 @@ func runHostScreenPresencePromptTests() async {
         // `preferredMaxLayoutWidth` for Auto Layout to report the
         // right intrinsic height on the first layout pass.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let headline: NSTextField = field("headline", of: controller, as: NSTextField.self)
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            headline.stringValue == "Kestrel MacBook Pro wants to see and control a display of this machine",
+            headline.stringValue == "Kestrel Laptop Pro wants to see and control a display of this machine",
             "the headline asks for one display, the same thing the subtitle names, not this machine's whole screen "
                 + "-- got: \(headline.stringValue)"
         )
@@ -235,7 +235,7 @@ func runHostScreenPresencePromptTests() async {
         // a long one's -- not narrower, which the outer stack's own
         // trailing alignment then pushes rightward.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let window: NSPanel = field("window", of: controller, as: NSPanel.self)
         guard let contentView = window.contentView,
@@ -262,7 +262,7 @@ func runHostScreenPresencePromptTests() async {
         // only the digits themselves earn a tabular figure so the
         // line's width does not jump as they tick over.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let timeoutLine: NSTextField = field("timeoutLine", of: controller, as: NSTextField.self)
         let attributed = timeoutLine.attributedStringValue
@@ -299,7 +299,7 @@ func runHostScreenPresencePromptTests() async {
         // first, Don't Allow sits at the edge a person's eye and Return
         // both land on.
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         let allowButton: NSButton = field("allowButton", of: controller, as: NSButton.self)
         let refuseButton: NSButton = field("refuseButton", of: controller, as: NSButton.self)
@@ -338,7 +338,7 @@ func runHostScreenPresencePromptTests() async {
         expect(!app.isActive, "this process must be inactive before this test means anything -- production's own accessory app is never active either")
 
         let controller = HostScreenPresencePromptWindowController(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display")
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         controller.show()
         waiting.wait(until: Date().addingTimeInterval(0.3)) { false }
@@ -378,7 +378,7 @@ func runHostScreenPresencePromptTests() async {
         expect(!app.isActive, "this process must be inactive before this test means anything -- production's own accessory app is never active either")
 
         let state = HostScreenBadgeState(
-            content: HostScreenBadgeContent(deviceName: "Kestrel MacBook Pro", displayLabel: "Built-in Display"),
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
             startsCollapsed: true
         )
         let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)

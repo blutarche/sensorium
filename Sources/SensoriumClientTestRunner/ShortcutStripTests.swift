@@ -116,12 +116,12 @@ func testShortcutStripTests() {
         expect(!action.title.isEmpty, "\(action) has a label")
         expect(seenTitles.insert(action.title).inserted, "\(action)'s label is not used twice")
         expect(
-            action.tooltip(hostName: "Mac mini").contains("Mac mini"),
+            action.tooltip(hostName: "Studio").contains("Studio"),
             "\(action)'s tooltip names the machine it sends to"
         )
     }
     expect(
-        ShortcutStripAction.missionControl.tooltip(hostName: "Mac mini") == "Sends Control-Up to Mac mini",
+        ShortcutStripAction.missionControl.tooltip(hostName: "Studio") == "Sends Control-Up to Studio",
         "the tooltip says what is sent and where it goes"
     )
 
@@ -137,11 +137,11 @@ func testShortcutStripTests() {
         "Desktop Left and Desktop Right sit right after App Windows"
     )
     expect(
-        ShortcutStripAction.desktopLeft.tooltip(hostName: "Mac mini") == "Sends Control-Left to Mac mini",
+        ShortcutStripAction.desktopLeft.tooltip(hostName: "Studio") == "Sends Control-Left to Studio",
         "Desktop Left sends Control-Left"
     )
     expect(
-        ShortcutStripAction.desktopRight.tooltip(hostName: "Mac mini") == "Sends Control-Right to Mac mini",
+        ShortcutStripAction.desktopRight.tooltip(hostName: "Studio") == "Sends Control-Right to Studio",
         "Desktop Right sends Control-Right"
     )
     expect(
@@ -157,14 +157,14 @@ func testShortcutStripTests() {
             action.needsConfirmation == expected,
             "\(action) asks first only when the thing it does is disruptive"
         )
-        let confirmation = action.confirmation(hostName: "Mac mini")
+        let confirmation = action.confirmation(hostName: "Studio")
         expect(
             (confirmation != nil) == expected,
             "\(action) offers a confirmation exactly when it needs one"
         )
         if let confirmation {
             expect(
-                confirmation.question.contains("Mac mini"),
+                confirmation.question.contains("Studio"),
                 "\(action)'s confirmation names the machine it would act on"
             )
             expect(!confirmation.confirmTitle.isEmpty, "\(action)'s confirmation has a button that goes ahead")
@@ -596,7 +596,7 @@ actor RecordedOrder {
 @MainActor
 func testShortcutStripHandleTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
-    let strip = ShortcutStripView(hostName: "Mac mini")
+    let strip = ShortcutStripView(hostName: "Studio")
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -707,7 +707,7 @@ func testShortcutStripHandleTests() {
 @MainActor
 func testShortcutStripHandleStaysCenteredWhenNarrow() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 600))
-    let strip = ShortcutStripView(hostName: "Mac mini")
+    let strip = ShortcutStripView(hostName: "Studio")
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -744,7 +744,7 @@ func testShortcutStripHandleStaysCenteredWhenNarrow() {
 @MainActor
 func testShortcutStripButtonAppearanceTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
-    let strip = ShortcutStripView(hostName: "Mac mini")
+    let strip = ShortcutStripView(hostName: "Studio")
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -792,7 +792,7 @@ func testShortcutStripButtonAppearanceTests() {
 @MainActor
 func testShortcutStripPinButtonAppearanceTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
-    let strip = ShortcutStripView(hostName: "Mac mini", pinMemoryStore: InMemoryShortcutStripPinMemoryStore())
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore())
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),

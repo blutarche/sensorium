@@ -53,7 +53,7 @@ public struct ViewerStartupFailureCopy: Equatable, Sendable {
                 detail: "\(reason). Without it there is nothing to prove which machine this is, so no "
                     + "session can start.",
                 replaceButtonTitle: "Make a new key",
-                replaceConsequence: "Make a new key replaces the key that identifies this Mac. The host will "
+                replaceConsequence: "Make a new key replaces the key that identifies this machine. The host will "
                     + "then ask for a pairing code again."
             )
         }

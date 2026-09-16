@@ -230,7 +230,7 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
         let aCredentialID = Data([0xA1])
         let aKey = P256.Signing.PrivateKey()
         let aReply = pairing.handlePairRequest(
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             publicKey: deviceA.publicKey,
             code: aCode,
             presenceCredential: PresenceCredentialRegistration(
@@ -259,7 +259,7 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
         let attackerCredentialID = Data([0xEE])
         let attackerKey = P256.Signing.PrivateKey()
         let attackerReply = pairing.handlePairRequest(
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             publicKey: deviceA.publicKey,
             code: attackerCode,
             presenceCredential: PresenceCredentialRegistration(
@@ -293,12 +293,12 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
         let pairing = HostPairingService(hostIdentity: hostIdentity, approvedStore: store)
 
         let aCode = pairing.issueCode(code: "555555")
-        let aReply = pairing.handlePairRequest(deviceName: "Kestrel MacBook Pro", publicKey: deviceA.publicKey, code: aCode)
+        let aReply = pairing.handlePairRequest(deviceName: "Kestrel Laptop Pro", publicKey: deviceA.publicKey, code: aCode)
         guard case .pairApproved = aReply else {
             expect(false, "device A's own first pairing, with a valid code, approves")
             return
         }
-        expect(store.name(for: deviceA.publicKey) == "Kestrel MacBook Pro", "device A's own name is on file after its own pairing")
+        expect(store.name(for: deviceA.publicKey) == "Kestrel Laptop Pro", "device A's own name is on file after its own pairing")
 
         // A second, entirely valid code redeemed with device A's own public
         // key and an attacker-chosen name, no proof of possession.
@@ -309,7 +309,7 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
             "the code itself is genuinely valid, so the pairing part still succeeds -- only the name write is refused"
         )
         expect(
-            store.name(for: deviceA.publicKey) == "Kestrel MacBook Pro",
+            store.name(for: deviceA.publicKey) == "Kestrel Laptop Pro",
             "device A's own recorded name is unchanged -- a valid code for an unrelated pairing, replayed with A's public key and no proof of possessing it, never renames what A itself registered"
         )
 
@@ -324,11 +324,11 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
         let pairing = HostPairingService(hostIdentity: hostIdentity, approvedStore: store)
 
         let firstCode = pairing.issueCode(code: "777777")
-        _ = pairing.handlePairRequest(deviceName: "Kestrel MacBook Pro", publicKey: deviceA.publicKey, code: firstCode)
+        _ = pairing.handlePairRequest(deviceName: "Kestrel Laptop Pro", publicKey: deviceA.publicKey, code: firstCode)
 
         let secondCode = pairing.issueCode(code: "888888")
         let secondReply = pairing.handlePairRequest(
-            deviceName: "Kestrel MacBook Pro (renamed)",
+            deviceName: "Kestrel Laptop Pro (renamed)",
             publicKey: deviceA.publicKey,
             code: secondCode,
             connectionProvenPublicKey: deviceA.publicKey
@@ -338,7 +338,7 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
             return
         }
         expect(
-            store.name(for: deviceA.publicKey) == "Kestrel MacBook Pro (renamed)",
+            store.name(for: deviceA.publicKey) == "Kestrel Laptop Pro (renamed)",
             "a connection that has actually proven it holds device A's own key can still rename itself -- only who may write the name is restricted, not whether A itself still can"
         )
 
@@ -355,7 +355,7 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
         let firstCode = pairing.issueCode(code: "333333")
         let firstKey = P256.Signing.PrivateKey()
         _ = pairing.handlePairRequest(
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             publicKey: deviceA.publicKey,
             code: firstCode,
             presenceCredential: PresenceCredentialRegistration(
@@ -374,7 +374,7 @@ private func runPairRequestCannotOverwriteAnotherDevicesCredentialTests() async 
         let secondCode = pairing.issueCode(code: "444444")
         let secondKey = P256.Signing.PrivateKey()
         let secondReply = pairing.handlePairRequest(
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             publicKey: deviceA.publicKey,
             code: secondCode,
             presenceCredential: PresenceCredentialRegistration(
@@ -416,15 +416,15 @@ private func runPairingRequestedHookTests() async {
         keyConfinement: .unconfined
     )
 
-    _ = try! controller.handle(.pairRequest(deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey, code: "000000"))
+    _ = try! controller.handle(.pairRequest(deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey, code: "000000"))
     expect(
-        requestedNames == ["Kestrel MacBook Pro"],
+        requestedNames == ["Kestrel Laptop Pro"],
         "the hook fires with the request's own device name before the wrong code is even looked at"
     )
 
-    _ = try! controller.handle(.pairRequest(deviceName: "Kestrel MacBook Pro", publicKey: deviceIdentity.publicKey, code: code))
+    _ = try! controller.handle(.pairRequest(deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey, code: code))
     expect(
-        requestedNames == ["Kestrel MacBook Pro", "Kestrel MacBook Pro"],
+        requestedNames == ["Kestrel Laptop Pro", "Kestrel Laptop Pro"],
         "the hook fires again on the same device's later, correct attempt -- it is not a one-shot latch"
     )
 
@@ -436,9 +436,9 @@ private func runPairingRequestedHookTests() async {
     // device has nothing else to offer yet: no key, no code, nothing
     // authentication could even check.
     requestedNames.removeAll()
-    let intentReply = try! controller.handle(.pairIntent(deviceName: "Kestrel MacBook Air"))
+    let intentReply = try! controller.handle(.pairIntent(deviceName: "Kestrel Laptop Air"))
     expect(
-        requestedNames == ["Kestrel MacBook Air"],
+        requestedNames == ["Kestrel Laptop Air"],
         "pairIntent fires the same hook, with its own device name"
     )
     expect(intentReply == nil, "pairIntent has no reply of its own -- it is a one-way notice, not a request awaiting an answer")
@@ -483,7 +483,7 @@ private func runOnDeviceApprovedHookTests() async {
     )
     let code = pairing.issueCode(code: "135790")
     let reply = pairing.handlePairRequest(
-        deviceName: "Kestrel MacBook Pro",
+        deviceName: "Kestrel Laptop Pro",
         publicKey: deviceIdentity.publicKey,
         code: code,
         presenceCredential: PresenceCredentialRegistration(
@@ -497,12 +497,12 @@ private func runOnDeviceApprovedHookTests() async {
         expect(false, "a fresh device's own first pairing, with a valid code, approves")
         return
     }
-    expect(approvedNames == ["Kestrel MacBook Pro"], "onDeviceApproved fires exactly once, with the approved device's own name")
+    expect(approvedNames == ["Kestrel Laptop Pro"], "onDeviceApproved fires exactly once, with the approved device's own name")
     expect(
         keysAtCallback.contains(deviceIdentity.publicKey),
         "the approved store already carries the new key by the time onDeviceApproved fires, so a caller reloading a paired-machines list from the callback sees it"
     )
-    expect(nameAtCallback == "Kestrel MacBook Pro", "...and already carries the device's own name")
+    expect(nameAtCallback == "Kestrel Laptop Pro", "...and already carries the device's own name")
     expect(
         credentialAtCallback?.credentialID == credentialID,
         "...and already carries its registered presence credential"
@@ -514,7 +514,7 @@ private func runOnDeviceApprovedHookTests() async {
     // second time and silently undo an earlier "turn off" for this device.
     let secondCode = pairing.issueCode(code: "246801")
     let secondReply = pairing.handlePairRequest(
-        deviceName: "Kestrel MacBook Pro",
+        deviceName: "Kestrel Laptop Pro",
         publicKey: deviceIdentity.publicKey,
         code: secondCode,
         connectionProvenPublicKey: deviceIdentity.publicKey
@@ -551,7 +551,7 @@ private func runArmTimeMinimumStrengthSnapshotTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: minimumCredentialStrength,
                 armedAt: Date()
             )
@@ -654,7 +654,7 @@ private func runPresenceCredentialControllerIntegrationTests() async {
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
-            deviceName: "Kestrel MacBook Pro",
+            deviceName: "Kestrel Laptop Pro",
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -732,7 +732,7 @@ private func runPresenceCredentialPairingCeremonyTests() async {
     let firstKey = P256.Signing.PrivateKey()
     let firstCode = pairing.issueCode(code: "111111")
     let firstReply = pairing.handlePairRequest(
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         publicKey: deviceIdentity.publicKey,
         code: firstCode,
         presenceCredential: PresenceCredentialRegistration(
@@ -755,7 +755,7 @@ private func runPresenceCredentialPairingCeremonyTests() async {
     // An ordinary re-pair -- no presenceCredential offered -- leaves the
     // registered credential exactly as it was.
     let secondCode = pairing.issueCode(code: "222222")
-    let secondReply = pairing.handlePairRequest(deviceName: "MacBook", publicKey: deviceIdentity.publicKey, code: secondCode)
+    let secondReply = pairing.handlePairRequest(deviceName: "Laptop", publicKey: deviceIdentity.publicKey, code: secondCode)
     guard case .pairApproved = secondReply else {
         expect(false, "a re-pair with a valid code approves")
         return
@@ -772,7 +772,7 @@ private func runPresenceCredentialPairingCeremonyTests() async {
     let secondKey = P256.Signing.PrivateKey()
     let thirdCode = pairing.issueCode(code: "333333")
     let thirdReply = pairing.handlePairRequest(
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         publicKey: deviceIdentity.publicKey,
         code: thirdCode,
         presenceCredential: PresenceCredentialRegistration(
@@ -824,7 +824,7 @@ private func runPresenceCredentialPairingCeremonyTests() async {
     // even though the signature is just as genuine.
     let fourthCode = pairing.issueCode(code: "444444")
     let fourthReply = pairing.handlePairRequest(
-        deviceName: "MacBook",
+        deviceName: "Laptop",
         publicKey: deviceIdentity.publicKey,
         code: fourthCode,
         presenceCredential: PresenceCredentialRegistration(
@@ -886,7 +886,7 @@ private func runRePairWithProofOfPossessionReplacesCredentialTests() async {
     }
 
     func request(
-        deviceName: String = "MacBook",
+        deviceName: String = "Laptop",
         code: String,
         credential: PresenceCredentialRegistration,
         signedBy signer: DeviceIdentity?

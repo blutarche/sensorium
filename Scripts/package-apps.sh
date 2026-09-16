@@ -15,9 +15,9 @@ HOST_BIN="$ROOT/.build/arm64-apple-macosx/release/sensoriumd"
 ICONS="$ROOT/.build/icons"
 
 cd "$ROOT"
-# The viewer has to run on whatever machine its owner works from, Intel or
-# Apple silicon, so it is a universal binary; the host (sensoriumd) runs only
-# on the Apple-silicon machine, so it stays single-arch (native arm64, no
+# The viewer has to run on whatever machine its owner works from, x86_64 or
+# arm64, so it is a universal binary; the host (sensoriumd) runs only
+# on the arm64 machine, so it stays single-arch (native arm64, no
 # --triple needed).
 swift build -c release --product Sensorium --triple x86_64-apple-macosx13.0
 swift build -c release --product Sensorium --triple arm64-apple-macosx13.0
@@ -81,9 +81,9 @@ cat > "$KIT/Sensorium Host.app/Contents/Info.plist" <<'PLIST'
     <key>NSScreenCaptureUsageDescription</key>
     <string>Sensorium captures the virtual canvas it creates for a session, or a screen of this machine when a person here has shared it.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Sensorium delivers the keyboard and pointer input from your other Mac to the session canvas.</string>
+    <string>Sensorium delivers the keyboard and pointer input from your other machine to the session canvas.</string>
     <key>NSAccessibilityUsageDescription</key>
-    <string>Sensorium types and clicks on the session canvas on behalf of the Mac you are working from. It uses this for nothing else: without it the session is view-only.</string>
+    <string>Sensorium types and clicks on the session canvas on behalf of the machine you are working from. It uses this for nothing else: without it the session is view-only.</string>
     <key>NSHumanReadableCopyright</key><string>&#169; 2026 blutarche &#183; GPL-3.0</string>
 </dict>
 </plist>

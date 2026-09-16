@@ -71,7 +71,7 @@ func runHostIdentityFailureTests() async {
         )
         expect(
             copy.replaceConsequence.contains("replaces the key")
-                && copy.replaceConsequence.contains("no longer recognize this Mac")
+                && copy.replaceConsequence.contains("no longer recognize this machine")
                 && copy.replaceConsequence.contains("Host screen settings are kept"),
             "the consequence states plainly that the key is replaced, that pairing breaks, and what does "
                 + "not break (already-armed host-screen sharing) -- got: \(copy.replaceConsequence)"
@@ -88,7 +88,7 @@ func runHostIdentityFailureTests() async {
             "the primary button repeats the read that already ran once to reach this screen -- got: \(copy.retryButtonTitle)"
         )
         expect(
-            copy.detail == "The file that holds the key identifying this Mac could not be read. Click Try "
+            copy.detail == "The file that holds the key identifying this machine could not be read. Click Try "
                 + "again. If that keeps failing, make a new key.",
             "the body names what failed and the next click -- got: \(copy.detail)"
         )

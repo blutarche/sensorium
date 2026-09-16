@@ -31,7 +31,7 @@ private final class ClosingPresenceRecorder: @unchecked Sendable {
 @MainActor
 func runHostConnectionAndPairingTests() async {
     let granted = HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
-    let peerName = "Kestrel MacBook Pro"
+    let peerName = "Kestrel Laptop Pro"
 
     func button(_ label: String, in controller: HostSetupWindowController) -> NSButton {
         for child in Mirror(reflecting: controller).children {
@@ -224,7 +224,7 @@ func runHostConnectionAndPairingTests() async {
         store.beginHosting(address: "203.0.113.42")
 
         let superseded = HostConnectionToken()
-        store.apply(.identified(deviceName: "Kestrel MacBook Air"), from: superseded)
+        store.apply(.identified(deviceName: "Kestrel Laptop Air"), from: superseded)
 
         // The viewer redials; this machine accepts the new connection before
         // it has noticed the old one is gone.

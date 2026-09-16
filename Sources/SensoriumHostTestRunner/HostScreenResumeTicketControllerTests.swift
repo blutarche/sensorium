@@ -127,7 +127,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -248,7 +248,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -317,7 +317,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -417,7 +417,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -463,7 +463,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -521,7 +521,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
-                deviceName: "Kestrel MacBook Pro",
+                deviceName: "Kestrel Laptop Pro",
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
