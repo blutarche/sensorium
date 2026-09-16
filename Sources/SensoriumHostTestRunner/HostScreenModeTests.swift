@@ -81,7 +81,6 @@ private func makeModeFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -97,7 +96,6 @@ private func makeModeFixture(
         inputInjectorFactory: FakeInputInjectorFactory(),
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: ApprovingProofVerifier(),
         hostScreenLocalActivitySignal: LongIdleSignal(),

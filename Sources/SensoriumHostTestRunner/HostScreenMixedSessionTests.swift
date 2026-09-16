@@ -64,7 +64,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -77,7 +76,6 @@ func runHostScreenMixedSessionTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
@@ -124,7 +122,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -137,7 +134,6 @@ func runHostScreenMixedSessionTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
@@ -202,7 +198,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(firstDisplay), HostScreenDisplayIdentity(secondDisplay)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -215,7 +210,6 @@ func runHostScreenMixedSessionTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [firstDisplay, secondDisplay] },
             hostScreenCurrentDisplaysProvider: { [firstDisplay, secondDisplay] },
             hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
@@ -278,7 +272,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -290,7 +283,6 @@ func runHostScreenMixedSessionTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()

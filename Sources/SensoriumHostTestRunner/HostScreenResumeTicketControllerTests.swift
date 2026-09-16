@@ -56,7 +56,8 @@ private func makeReconnectableController(
     resumeTicketStore: (any HostScreenResumeTicketStoring)?,
     presenceProofVerifier: (any HostScreenPresenceProofVerifying)? = nil,
     presenceGate: (any HostScreenPresenceGating)? = nil,
-    presenceSignal: any HostLocalActivitySignal = AlwaysIdleSignal()
+    presenceSignal: any HostLocalActivitySignal = AlwaysIdleSignal(),
+    liveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil
 ) -> HostSessionController {
     let controller = HostSessionController(
         sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
@@ -65,10 +66,10 @@ private func makeReconnectableController(
         inputInjectorFactory: FakeInputInjectorFactory(),
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: presenceProofVerifier,
         hostScreenResumeTicketStore: resumeTicketStore,
+        hostScreenLiveSessionRegistry: liveSessionRegistry,
         hostScreenLocalActivitySignal: presenceSignal,
         hostScreenPresenceGate: presenceGate
     )
@@ -127,7 +128,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -191,7 +191,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -222,7 +221,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -251,7 +249,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -321,7 +318,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(mintedDisplay), HostScreenDisplayIdentity(otherDisplay)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -337,7 +333,6 @@ func runHostScreenResumeTicketControllerTests() async {
                 inputInjectorFactory: FakeInputInjectorFactory(),
                 keyConfinement: .hostScreen,
                 hostScreenArmingProvider: { arming },
-                hostScreenPreSessionSnapshotProvider: { [mintedDisplay, otherDisplay] },
                 hostScreenCurrentDisplaysProvider: { [mintedDisplay, otherDisplay] },
                 hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
                 hostScreenResumeTicketStore: store,
@@ -393,7 +388,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -424,7 +418,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -471,7 +464,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -516,5 +508,71 @@ func runHostScreenResumeTicketControllerTests() async {
         )
 
         print("PASS: Stop on a live host-screen session invalidates its resume ticket end to end")
+    }
+
+    do {
+        // The one-live-session-per-device registry and the resume path meet: a
+        // reconnect after a dropped session is exactly a second connection for a
+        // device whose first entry is now stale, so the registry must let a
+        // resume replace a dead session tap-free while still refusing a resume
+        // that would run alongside a first session genuinely still live.
+        let identity = try! DeviceIdentity.generate()
+        let display = hostScreenTestDisplay()
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: identity.publicKey,
+                deviceName: "Kestrel MacBook Pro",
+                minimumCredentialStrength: .hardwareBound,
+                armedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ])
+        let store = HostScreenResumeTicketStore()
+        let registry = HostScreenLiveSessionRegistry()
+
+        var firstConnection: HostSessionController? = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store,
+            presenceProofVerifier: AlwaysApprovingVerifier(), liveSessionRegistry: registry
+        )
+        let firstToken = offerAndExtractToken(firstConnection!)
+        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection!.handle(.hostScreenRequest(
+            token: firstToken,
+            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+        )) else {
+            expect(false, "the first connection's own admission must succeed")
+            return
+        }
+
+        // While the first session is genuinely still live, a resume for the same
+        // device is a second concurrent session, refused with the registry's own
+        // reason -- not the resume path's, since the ticket itself is valid.
+        let whileLive = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store,
+            liveSessionRegistry: registry
+        )
+        let whileLiveToken = offerAndExtractToken(whileLive)
+        expect(
+            try! whileLive.handle(.hostScreenRequest(token: whileLiveToken, presence: .resumeTicket(mintedTicket)))
+                == .hostScreenRefused(reason: "host-screen-already-live"),
+            "a resume that would run alongside a first session still live is refused as a second concurrent session"
+        )
+
+        // The first session's connection drops without a goodbye ever reaching
+        // its controller (a hard transport loss): releasing its only strong
+        // reference frees it, so the registry's liveness check reads its entry as
+        // dead. A reconnect for the same device then resumes tap-free.
+        firstConnection = nil
+        let reconnect = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store,
+            liveSessionRegistry: registry
+        )
+        let reconnectToken = offerAndExtractToken(reconnect)
+        guard case .hostScreenReady = try! reconnect.handle(.hostScreenRequest(
+            token: reconnectToken, presence: .resumeTicket(mintedTicket)
+        )) else {
+            expect(false, "a reconnect replacing a dead session resumes tap-free through the shared registry")
+            return
+        }
+
+        print("PASS: the live-session registry refuses a resume alongside a live session yet lets a reconnect replace a dead one tap-free")
     }
 }

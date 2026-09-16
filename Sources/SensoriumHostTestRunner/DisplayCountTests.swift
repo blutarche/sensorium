@@ -120,7 +120,6 @@ func runDisplayCountTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey, deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound, armedAt: Date()
             )
         ])
@@ -137,7 +136,6 @@ func runDisplayCountTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()

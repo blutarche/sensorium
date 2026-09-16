@@ -61,7 +61,6 @@ func runHostScreenOfferOnHelloTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             ),
@@ -72,7 +71,6 @@ func runHostScreenOfferOnHelloTests() async {
             requireAuthentication: true,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] }
         )
         let channel = FakeHostByteChannel(scriptedMessages: [helloScript(for: identity)])
@@ -99,7 +97,6 @@ func runHostScreenOfferOnHelloTests() async {
             requireAuthentication: true,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { HostScreenArming() },
-            hostScreenPreSessionSnapshotProvider: { [] },
             hostScreenCurrentDisplaysProvider: { [] }
         )
         let channel = FakeHostByteChannel(scriptedMessages: [helloScript(for: identity)])
@@ -127,7 +124,6 @@ func runHostScreenOfferOnHelloTests() async {
             requireAuthentication: true,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { HostScreenArming() },
-            hostScreenPreSessionSnapshotProvider: { [] },
             hostScreenCurrentDisplaysProvider: { [] }
         )
         let channel = FakeHostByteChannel(scriptedMessages: [

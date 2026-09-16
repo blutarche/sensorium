@@ -29,10 +29,20 @@ public final class HostConnectionSessionFactory {
     /// `HostSessionController`. Shared across connections like `sessions`
     /// and `pairing`, because these stores outlive any one connection.
     private let hostScreenArmingProvider: (() -> HostScreenArming)?
-    private let hostScreenPreSessionSnapshotProvider: (() -> [DisplaySnapshot])?
     private let hostScreenCurrentDisplaysProvider: () -> [DisplaySnapshot]
     private let hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)?
     private let hostScreenResumeTicketStore: (any HostScreenResumeTicketStoring)?
+    /// One budget for the whole host process, shared into every controller so a
+    /// device's wrong-guess count is spent across all its connections, not
+    /// reset per connection. Shared for the same reason the resume ticket store
+    /// is: the count must outlive any one connection.
+    private let hostScreenUnlockThrottle: (any HostScreenUnlockThrottling)?
+    /// One registry for the whole host process, shared into every controller so
+    /// the one-live-host-screen-session-per-device rule holds across all of a
+    /// device's connections, not per connection. Shared for the same reason the
+    /// throttle and resume-ticket store are: the "already live" fact must outlive
+    /// any one connection.
+    private let hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)?
     private let hostScreenLocalActivitySignal: (any HostLocalActivitySignal)?
     private let hostScreenPresenceGate: (any HostScreenPresenceGating)?
     /// Shared rather than per-connection for a reason of its own: this is
@@ -55,10 +65,11 @@ public final class HostConnectionSessionFactory {
         keyConfinement: HostKeyConfinement,
         maxSurfaceCount: Int = CanvasSurfaceID.capacity,
         hostScreenArmingProvider: (() -> HostScreenArming)? = nil,
-        hostScreenPreSessionSnapshotProvider: (() -> [DisplaySnapshot])? = nil,
         hostScreenCurrentDisplaysProvider: @escaping () -> [DisplaySnapshot] = DisplayInventory.online,
         hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)? = nil,
         hostScreenResumeTicketStore: (any HostScreenResumeTicketStoring)? = nil,
+        hostScreenUnlockThrottle: (any HostScreenUnlockThrottling)? = nil,
+        hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
         hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
@@ -73,10 +84,11 @@ public final class HostConnectionSessionFactory {
         self.keyConfinement = keyConfinement
         self.maxSurfaceCount = maxSurfaceCount
         self.hostScreenArmingProvider = hostScreenArmingProvider
-        self.hostScreenPreSessionSnapshotProvider = hostScreenPreSessionSnapshotProvider
         self.hostScreenCurrentDisplaysProvider = hostScreenCurrentDisplaysProvider
         self.hostScreenPresenceProofVerifier = hostScreenPresenceProofVerifier
         self.hostScreenResumeTicketStore = hostScreenResumeTicketStore
+        self.hostScreenUnlockThrottle = hostScreenUnlockThrottle
+        self.hostScreenLiveSessionRegistry = hostScreenLiveSessionRegistry
         self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
         self.hostScreenPresenceGate = hostScreenPresenceGate
         self.hostScreenModeController = hostScreenModeController
@@ -99,10 +111,11 @@ public final class HostConnectionSessionFactory {
             keyConfinement: keyConfinement,
             maxSurfaceCount: maxSurfaceCount,
             hostScreenArmingProvider: hostScreenArmingProvider,
-            hostScreenPreSessionSnapshotProvider: hostScreenPreSessionSnapshotProvider,
             hostScreenCurrentDisplaysProvider: hostScreenCurrentDisplaysProvider,
             hostScreenPresenceProofVerifier: hostScreenPresenceProofVerifier,
             hostScreenResumeTicketStore: hostScreenResumeTicketStore,
+            hostScreenUnlockThrottle: hostScreenUnlockThrottle,
+            hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
             hostScreenLocalActivitySignal: hostScreenLocalActivitySignal,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,

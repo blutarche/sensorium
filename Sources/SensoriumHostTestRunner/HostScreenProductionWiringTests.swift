@@ -118,13 +118,11 @@ private func armThroughCoordinator(
     armingStore: HostScreenArmingStore,
     approvedStore: any ApprovedDeviceStoring,
     devicePublicKey: Data,
-    deviceName: String,
-    armedDisplays: [HostScreenDisplayIdentity]
+    deviceName: String
 ) {
     armingStore.arm(HostScreenDeviceArming(
         devicePublicKey: devicePublicKey,
         deviceName: deviceName,
-        armedDisplays: armedDisplays,
         minimumCredentialStrength: approvedStore.presenceCredential(for: devicePublicKey)?.strength,
         armedAt: Date()
     ))
@@ -151,7 +149,6 @@ func runHostScreenProductionWiringTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: nil,
             hostScreenResumeTicketStore: resumeTicketStore,
@@ -189,7 +186,6 @@ func runHostScreenProductionWiringTests() async {
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: identity.publicKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             armedAt: Date()
         ))
         let resumeTicketStore = HostScreenResumeTicketStore()
@@ -203,7 +199,6 @@ func runHostScreenProductionWiringTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: nil,
             hostScreenResumeTicketStore: resumeTicketStore,
@@ -255,7 +250,6 @@ func runHostScreenProductionWiringTests() async {
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: deviceIdentity.publicKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         ))
@@ -266,7 +260,6 @@ func runHostScreenProductionWiringTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore),
             hostScreenResumeTicketStore: HostScreenResumeTicketStore(),
@@ -319,7 +312,6 @@ func runHostScreenProductionWiringTests() async {
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: deviceIdentity.publicKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         ))
@@ -330,7 +322,6 @@ func runHostScreenProductionWiringTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore),
             hostScreenResumeTicketStore: HostScreenResumeTicketStore(),
@@ -382,8 +373,7 @@ func runHostScreenProductionWiringTests() async {
             armingStore: armingStore,
             approvedStore: approvedDeviceStore,
             devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)]
+            deviceName: "Kestrel MacBook Pro"
         )
         let armedRecord = armingStore.load().devices.first { $0.devicePublicKey == deviceIdentity.publicKey }
         expect(
@@ -397,7 +387,6 @@ func runHostScreenProductionWiringTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore),
             hostScreenResumeTicketStore: HostScreenResumeTicketStore(),

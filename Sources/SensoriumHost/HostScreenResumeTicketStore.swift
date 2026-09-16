@@ -2,24 +2,22 @@ import Foundation
 import Security
 
 /// A snapshot of everything about a device's own arming record that a
-/// resumed session must not silently outlive: which displays it may
-/// capture, the credential strength required of it, and when it was armed.
-/// Two fingerprints taken from arming records that differ in any of these
+/// resumed session must not silently outlive: the credential strength
+/// required of it, when it was armed, and whether it asks first. Two
+/// fingerprints taken from arming records that differ in any of these
 /// compare unequal, so a ticket minted under one arming record is refused
 /// the moment the record it was minted under changes, enforced by
 /// comparing values rather than by a side channel a call site could forget
 /// to check.
 ///
-/// `armedDisplays` is compared as a `Set`: re-arming the same displays in a
-/// different order must not itself invalidate a still-valid ticket.
-public struct HostScreenArmingFingerprint: Equatable, Sendable {
-    private let armedDisplays: Set<HostScreenDisplayIdentity>
+/// Which display a ticket may resume is not arming state -- arming is per
+/// machine -- and is bound by the ticket's own `displayIdentity` instead.
+public struct HostScreenArmingFingerprint: Equatable, Hashable, Sendable {
     private let minimumCredentialStrength: HostScreenCredentialStrength?
     private let armedAt: Date
     private let asksWhenSomeoneIsUsingThisMachine: Bool
 
     public init(_ device: HostScreenDeviceArming) {
-        armedDisplays = Set(device.armedDisplays)
         minimumCredentialStrength = device.minimumCredentialStrength
         armedAt = device.armedAt
         asksWhenSomeoneIsUsingThisMachine = device.asksWhenSomeoneIsUsingThisMachine

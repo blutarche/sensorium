@@ -29,6 +29,17 @@ public enum HostScreenModeOutcome: Equatable, Sendable {
     case refused(reason: String)
 }
 
+/// The host screen's own lock and unlock traffic, host to viewer: whether the
+/// screen is locked, and what one unlock attempt did.
+public enum HostScreenUnlockInbound: Equatable, Sendable {
+    case lockState(locked: Bool)
+    case result(HostScreenUnlockOutcome)
+    /// The host's single-use challenge, minted in reply to a submit's
+    /// `hostScreenUnlockChallengeRequest`, to be signed by a live presence
+    /// check before the arm.
+    case challenge(challenge: Data)
+}
+
 /// Pulls packets off a live connection and feeds each kind to the right place:
 /// video to the decoder behind the canvas gate, control to the session.
 ///
@@ -50,6 +61,11 @@ public final class ClientSessionRunner {
     /// only at construction -- see `attachSecondDisplay`/`detachSecondDisplay`.
     private var secondaryWindow: ClientCanvasWindowController?
     private let router = SurfaceFrameRouter()
+    /// The submit-time presence-arm sequence and its one pending-challenge
+    /// awaiter. Owned here because the challenge reply lands in this runner's
+    /// receive loop; the flow correlates that reply back to the submission
+    /// waiting for it.
+    private let unlockArmFlow = HostScreenUnlockArmFlow()
     public let latency = SessionLatencyMonitor()
     private var receiveTask: Task<Void, Never>?
     private var clockTask: Task<Void, Never>?
@@ -182,12 +198,56 @@ public final class ClientSessionRunner {
     /// untouched: only this one request was refused.
     public var onHostScreenModeRefused: ((_ reason: String) -> Void)?
 
+    /// The host's report of whether its screen is locked, sent unprompted on
+    /// host-screen bring-up and again after every unlock attempt. Drives
+    /// whether the viewer offers the unlock prompt.
+    public var onHostScreenLockState: ((_ locked: Bool) -> Void)?
+    /// The host's answer to an unlock request: what the attempt did. Drives the
+    /// brief success or failure notice the viewer shows.
+    public var onHostScreenUnlockResult: ((_ outcome: HostScreenUnlockOutcome) -> Void)?
+
     /// The Resolution submenu's own action: asks the host to set the screen
     /// it is streaming to one of the modes it offered. The answer -- applied
     /// or refused -- arrives through the receive loop like everything else,
     /// never returned here.
     public func requestHostScreenMode(_ modeID: String) async {
         try? await connection.send(.control(.hostScreenModeRequest(modeID: modeID)))
+    }
+
+    /// Runs the submit-time unlock sequence -- request a single-use challenge,
+    /// sign that exact challenge with a live presence check, arm, then send the
+    /// unlock request -- and reports what it did. Triggered only when a person
+    /// confirms the unlock with a password, never when the prompt appears, so an
+    /// always-on headless host hitting its lock timer never provokes a presence
+    /// prompt on its own. The host's spoken answer (unlocked, wrong password,
+    /// still `.presenceRequired`) still arrives through the receive loop.
+    ///
+    /// The password is raw UTF-8 bytes so nothing here holds a `String` copy of
+    /// it; the returned result is what the submit did, not that host answer, so
+    /// the caller can say why a fail-closed abort sent nothing rather than leave
+    /// the cleared field looking ignored.
+    public func requestHostScreenUnlock(password: Data) async -> HostScreenUnlockSubmitResult {
+        await unlockArmFlow.run(
+            password: password,
+            send: { message in try await self.connection.send(.control(message)) },
+            sign: { challenge in try await self.session.signUnlockChallenge(challenge) }
+        )
+    }
+
+    /// The host screen's own lock and unlock traffic, classified for the same
+    /// reason `hostScreenModeOutcome(for:)` is: verifiable without the live
+    /// connection and windows the receive loop needs.
+    public nonisolated static func hostScreenUnlockInbound(for message: SensoriumMessage) -> HostScreenUnlockInbound? {
+        switch message {
+        case let .hostScreenLockState(locked):
+            return .lockState(locked: locked)
+        case let .hostScreenUnlockResult(outcome):
+            return .result(outcome)
+        case let .hostScreenUnlockChallenge(challenge):
+            return .challenge(challenge: challenge)
+        default:
+            return nil
+        }
     }
 
     /// The host's own unprompted offer, on the canvas connection -- design
@@ -752,6 +812,22 @@ public final class ClientSessionRunner {
         case nil:
             break
         }
+        // The host screen's lock state and unlock answers. None ends a
+        // session: an unlock is a control on a live host-screen session, not a
+        // reason to drop one.
+        switch Self.hostScreenUnlockInbound(for: message) {
+        case let .lockState(locked):
+            onHostScreenLockState?(locked)
+        case let .result(outcome):
+            onHostScreenUnlockResult?(outcome)
+        case let .challenge(challenge):
+            // Correlated back to the one unlock submission waiting for it; a
+            // challenge with none waiting (late, duplicate, or unsolicited) is
+            // ignored inside the flow.
+            unlockArmFlow.deliverChallenge(challenge)
+        case nil:
+            break
+        }
         return false
     }
 
@@ -765,6 +841,10 @@ public final class ClientSessionRunner {
     /// Reports the session's ending from the receive loop, which no longer runs
     /// on the actor the callback belongs to.
     private func reportEnded(_ reason: String) {
+        // A submission still waiting for a challenge on a connection that just
+        // dropped is resolved as a failure now, rather than left to wait out
+        // the full challenge timeout.
+        unlockArmFlow.abandonPendingUnlock()
         onEnded?(reason)
     }
 }

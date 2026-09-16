@@ -14,8 +14,8 @@ public struct DisplaySnapshot: Equatable, Hashable, Sendable {
     /// `CGDisplayIsAsleep` -- online, physically present, but showing
     /// nothing right now. `CGGetActiveDisplayList` omits a display in this
     /// state; `CGGetOnlineDisplayList` does not, which is the whole reason
-    /// `DisplayInventory.online()` exists: a pre-session snapshot taken
-    /// while a display slept must still remember it was there.
+    /// `DisplayInventory.online()` exists: a display that slept through a
+    /// read must still be seen and named, not treated as gone.
     public let asleep: Bool
     /// `CGDisplayMirrorsDisplay`, or `0` (`kCGNullDirectDisplay`) when this
     /// display is not a mirror of another. A mirrored secondary shows

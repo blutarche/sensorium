@@ -139,8 +139,9 @@ struct SensoriumLocalHostScreenProbe {
 
     /// Writes the host's arming record through the host's own store, so this
     /// rig cannot drift from the format the host reads. Names this probe's own
-    /// device key, the one display `enter` will open its window on, and the
-    /// strength that device registered at pairing.
+    /// device key and the strength that device registered at pairing; arming
+    /// is per machine, so the display `enter` will open its window on is only
+    /// printed, never armed for.
     private static func arm(armingFilePath: String) throws {
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
         guard let display = targetDisplay() else {
@@ -150,7 +151,6 @@ struct SensoriumLocalHostScreenProbe {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: deviceName,
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )

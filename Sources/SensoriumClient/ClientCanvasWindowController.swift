@@ -146,6 +146,10 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// `statusOverlay`: that overlay means the session itself is down, this
     /// means one request was refused and the session is otherwise fine.
     private let displayCountNotice = ViewerTransientNoticeView()
+    /// The in-window prompt for unlocking the host's locked login window. Shown
+    /// only while the host reports its screen locked -- see
+    /// `applyHostScreenLockState(locked:)`.
+    private let unlockPanel = ViewerUnlockPanelView()
     /// Where this window's stream-scale choice is persisted, so it survives
     /// relaunch -- see `selectStreamScale`. `nil` for a caller with nothing to
     /// persist to (the probes, the verification runners' fakes).
@@ -322,6 +326,18 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         NSLayoutConstraint.activate([
             displayCountNotice.topAnchor.constraint(equalTo: surfaceView.topAnchor, constant: ViewerDesign.Space.md),
             displayCountNotice.centerXAnchor.constraint(equalTo: surfaceView.centerXAnchor)
+        ])
+
+        // Below the refusal banner, so a refusal never hides behind the unlock
+        // prompt. Hidden until the host reports its screen locked.
+        unlockPanel.isHidden = true
+        unlockPanel.onSubmit = { [weak self] password in
+            self?.onRequestHostScreenUnlock?(password)
+        }
+        surfaceView.addSubview(unlockPanel, positioned: .above, relativeTo: displayCountNotice)
+        NSLayoutConstraint.activate([
+            unlockPanel.topAnchor.constraint(equalTo: displayCountNotice.bottomAnchor, constant: ViewerDesign.Space.sm),
+            unlockPanel.centerXAnchor.constraint(equalTo: surfaceView.centerXAnchor)
         ])
 
         surfaceView.onReleaseToLocalMac = { [weak self] in
@@ -882,6 +898,42 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         displayCountNotice.show(line)
     }
 
+    /// The host's report of whether its screen is locked. When locked, the
+    /// unlock prompt is offered; when not, it is hidden -- the viewer never
+    /// offers to unlock a screen that is already in use. Offering a prompt
+    /// that is already up is idempotent (see `ViewerUnlockPanelView.show`), so
+    /// a lock report arriving right after an unlock result leaves that
+    /// result's notice on screen.
+    public func applyHostScreenLockState(locked: Bool) {
+        if HostScreenUnlockCopy.shouldOfferUnlockPrompt(locked: locked) {
+            unlockPanel.show()
+        } else {
+            unlockPanel.hide()
+        }
+    }
+
+    /// The host's answer to one unlock attempt, in plain words. A wrong
+    /// password leaves the prompt up to try again; the host's own lock-state
+    /// notice that follows the attempt hides the prompt on success.
+    public func showHostScreenUnlockResult(_ outcome: HostScreenUnlockOutcome) {
+        unlockPanel.showResult(HostScreenUnlockCopy.noticeLine(for: outcome))
+    }
+
+    /// A submit-time notice the host never spoke -- the presence check was
+    /// cancelled, the challenge timed out, or the request could not be sent.
+    /// Shown on the prompt in plain words so the cleared field does not read as
+    /// an ignored click. It goes through the same `showResult` an outcome notice
+    /// does, so a still-locked lock report right after leaves it standing to be
+    /// read, exactly like a wrong-password notice.
+    public func showHostScreenUnlockNotice(_ line: String) {
+        unlockPanel.showResult(line)
+    }
+
+    /// The typed-password submission, forwarded on the live connection this
+    /// window does not hold -- see `ClientSessionHost` in `Sensorium/main.swift`.
+    /// The bytes are already the field's cleared copy by the time this fires.
+    public var onRequestHostScreenUnlock: ((Data) -> Void)?
+
     /// Chooses this window's own stream scale, or hands the decision back to
     /// the viewer's own geometry with `.automatic`, and persists the choice
     /// with the saved host so it survives relaunch. Goes through
@@ -944,6 +996,12 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         // while already down costs nothing.
         if status.isOverlayVisible {
             surfaceView.endPointerCaptureIfNeeded()
+            // A session that is no longer live can no longer unlock anything,
+            // and this window is reused across reconnects. Hiding the prompt
+            // here makes the next lock report a first-time offer, so a notice
+            // left over from the session that just ended never carries into
+            // the next one.
+            unlockPanel.hide()
         }
         surfaceView.sessionOverlayVisibilityChanged(status.isOverlayVisible)
         statusOverlay.apply(status)

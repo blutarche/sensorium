@@ -176,9 +176,9 @@ private final class HostScreenArmingCoordinator {
             HostScreenArmingPresentation.pairedMachineRows(
                 approvedDevices: approvedDevices,
                 arming: arming,
-                // `online()`, not `active()`: a row for a display that is
-                // merely asleep or mirrored right now must still see it, so
-                // it can say why in words rather than treating it as gone.
+                // `online()`, not `active()`: a row judges from every
+                // display this Mac has, so one merely asleep or mirrored is
+                // counted and reported rather than silently dropped.
                 activeDisplays: DisplayInventory.online()
             )
         )
@@ -188,8 +188,8 @@ private final class HostScreenArmingCoordinator {
     /// One row's own Share host screen toggle. Arms or disarms exactly the
     /// device named, through the same `HostScreenDeviceArming.onPairing`
     /// builder `armOnPairing` below uses, so a person's own click and a
-    /// fresh pairing snapshot the strength and the displays the same way
-    /// and cannot drift apart.
+    /// fresh pairing record the credential strength the same way and cannot
+    /// drift apart.
     ///
     /// `onPairing` returns `nil`, and this writes nothing, only when no
     /// credential is registered for this device at all -- unreachable in
@@ -198,12 +198,9 @@ private final class HostScreenArmingCoordinator {
     /// `blockedReason`).
     func toggle(devicePublicKey: Data, isOn: Bool) {
         if isOn {
-            // `online()`, not `active()`: a display merely asleep right now
-            // is still a legitimate display to arm for later.
             if let record = HostScreenDeviceArming.onPairing(
                 devicePublicKey: devicePublicKey,
                 approvedStore: approvedStore,
-                displays: DisplayInventory.online(),
                 now: Date()
             ) {
                 armingStore.arm(record)
@@ -225,7 +222,6 @@ private final class HostScreenArmingCoordinator {
         guard let record = HostScreenDeviceArming.onPairing(
             devicePublicKey: devicePublicKey,
             approvedStore: approvedStore,
-            displays: DisplayInventory.online(),
             now: Date()
         ) else {
             return
@@ -449,18 +445,14 @@ struct sensoriumd {
         }
         // Capture the physical topology before Sensorium creates anything.
         // The workspace uses this deny-list in addition to the owned handle
-        // check, so an external monitor can never become its target. The
-        // same snapshot is host screen's own proof that a target display
-        // was present before this process started and was not created by
-        // Sensorium -- taken once, here, before anything below can create
-        // a canvas of its own.
+        // check, so an external monitor can never become its target --
+        // taken once, here, before anything below can create a canvas of
+        // its own.
         //
         // `online()`, not `active()`: a display asleep at the moment this
         // process starts (the host restarted overnight while a monitor
-        // slept) is still present, and must still count as present, or it
-        // is never offered again until the next restart.
-        let preSessionDisplaySnapshot = DisplayInventory.online()
-        let physicalDisplayIDs = Set(preSessionDisplaySnapshot.map(\.id))
+        // slept) is still present, and must still count as present.
+        let physicalDisplayIDs = Set(DisplayInventory.online().map(\.id))
         // Measurement opt-in; unset, `serve` encodes at the canvas's
         // 1920x1200 logical size.
         let encoderConfiguration: VideoEncoderConfiguration =
@@ -496,6 +488,16 @@ struct sensoriumd {
         // local-input-idle signal.
         let hostScreenArmingStore = HostScreenArmingStore(url: hostScreenArmingFileURL())
         let hostScreenResumeTicketStore = HostScreenResumeTicketStore()
+        // One wrong-guess budget for lock-screen unlock, shared across every
+        // connection for the life of this process, so a reconnecting attacker
+        // cannot reset it. In memory only: a host restart clears it and voids
+        // every resume ticket anyway.
+        let hostScreenUnlockThrottle = HostScreenUnlockThrottle()
+        // One live host-screen session per device, across every connection: a
+        // second concurrent one is refused rather than silently replacing the
+        // first. In memory only, like the throttle -- a host restart starts it
+        // empty, which is exactly right.
+        let hostScreenLiveSessionRegistry = HostScreenLiveSessionRegistry()
         let hostScreenLocalActivitySignal = CoreGraphicsLocalActivitySignal()
         // The accountability record: who drove this machine's screen, which
         // display, and when. Reused from the caller when one was already
@@ -573,9 +575,10 @@ struct sensoriumd {
             // wired, this host serves every canvas it can address.
             maxSurfaceCount: CanvasSurfaceID.capacity,
             hostScreenArmingProvider: { hostScreenArmingStore.load() },
-            hostScreenPreSessionSnapshotProvider: { preSessionDisplaySnapshot },
             hostScreenPresenceProofVerifier: hostScreenPresenceProofVerifier,
             hostScreenResumeTicketStore: hostScreenResumeTicketStore,
+            hostScreenUnlockThrottle: hostScreenUnlockThrottle,
+            hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
             hostScreenLocalActivitySignal: hostScreenLocalActivitySignal,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,

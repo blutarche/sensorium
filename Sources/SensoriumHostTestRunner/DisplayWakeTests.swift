@@ -63,8 +63,53 @@ func sleepingDisplaySnapshot(id: UInt32 = 7, asleep: Bool) -> DisplaySnapshot {
     )
 }
 
-/// An authenticated controller armed for one display, wired so the same
+/// An authenticated controller armed for this machine, wired so the same
 /// mutable display list the wake controller polls is what the offer reads.
+/// A display showing another display's picture, never its own. Online and
+/// physically there, so only the mirror flag keeps it out of an offer.
+@MainActor
+func mirroringDisplaySnapshot(id: UInt32 = 9, asleep: Bool, mirrors: UInt32 = 7) -> DisplaySnapshot {
+    DisplaySnapshot(
+        id: id,
+        pixelWidth: 2560,
+        pixelHeight: 1440,
+        modeWidth: 2560,
+        modeHeight: 1440,
+        modePixelWidth: 2560,
+        modePixelHeight: 1440,
+        bounds: CGRect(x: 0, y: 0, width: 2560, height: 1440),
+        online: true,
+        asleep: asleep,
+        mirrorsDisplay: mirrors,
+        builtin: false,
+        main: false,
+        vendorNumber: 1553,
+        modelNumber: 41
+    )
+}
+
+/// A session canvas of this host's own making, asleep or awake. Never a
+/// host-screen target, so never something to wake either.
+@MainActor
+func sleepingCanvasSnapshot(id: UInt32 = 11, asleep: Bool) -> DisplaySnapshot {
+    DisplaySnapshot(
+        id: id,
+        pixelWidth: 3840,
+        pixelHeight: 2160,
+        modeWidth: 1920,
+        modeHeight: 1080,
+        modePixelWidth: 3840,
+        modePixelHeight: 2160,
+        bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+        online: true,
+        asleep: asleep,
+        builtin: false,
+        main: false,
+        vendorNumber: CanvasDisplayIdentity.vendorID,
+        modelNumber: 0x31
+    )
+}
+
 @MainActor
 func armedHostScreenController(
     displays: FakeDisplayList,
@@ -73,12 +118,10 @@ func armedHostScreenController(
 ) -> HostSessionController {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
-    let armed = sleepingDisplaySnapshot(asleep: false)
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(armed)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -89,7 +132,6 @@ func armedHostScreenController(
         requireAuthentication: true,
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [armed] },
         hostScreenCurrentDisplaysProvider: { displays.read() },
         displayWake: displayWake,
         log: log
@@ -146,7 +188,6 @@ func makeWakeHostScreenFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -157,7 +198,6 @@ func makeWakeHostScreenFixture(
         requireAuthentication: true,
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: WakeTestApprovingVerifier(),
         displayWake: wake,
@@ -351,6 +391,112 @@ func runDisplayWakeTests() async {
     }
 
     print("PASS: a host screen that stays asleep after being woken is refused exactly as before")
+
+    do {
+        // A canvas Sensorium created is never a host-screen target, so a
+        // sleeping one is no reason to touch this machine's power state.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([
+            sleepingDisplaySnapshot(asleep: false),
+            sleepingCanvasSnapshot(asleep: true)
+        ])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        let controller = armedHostScreenController(
+            displays: list, displayWake: wake, log: { _ in }
+        )
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "the awake display is still offered with a canvas asleep beside it")
+            return
+        }
+        expect(
+            displays.map(\.label) == ["External Display"],
+            "the canvas is not offered and the physical display still is, got \(displays.map(\.label))"
+        )
+        expect(
+            power.userActivityDeclarations == 0,
+            "and a sleeping canvas reaches no power call on this machine, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a sleeping canvas Sensorium created is never woken")
+
+    do {
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([
+            sleepingDisplaySnapshot(asleep: true),
+            sleepingCanvasSnapshot(asleep: true)
+        ])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in
+                list.displays = [
+                    sleepingDisplaySnapshot(asleep: false),
+                    sleepingCanvasSnapshot(asleep: true)
+                ]
+            },
+            timeoutSeconds: 0.5,
+            pollSeconds: 0.1
+        )
+        let controller = armedHostScreenController(
+            displays: list, displayWake: wake, log: { _ in }
+        )
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "the woken physical display is offered")
+            return
+        }
+        expect(
+            displays.map(\.label) == ["External Display"],
+            "a canvas that stays asleep does not hold up the display that woke, got \(displays.map(\.label))"
+        )
+        expect(
+            power.userActivityDeclarations == 1,
+            "the physical display asleep beside it is still what the wake was for, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a physical display wakes while a sleeping canvas beside it is left alone")
+
+    do {
+        // A display mirroring another one shows that display's picture and
+        // is never offerable, so waking it would be a power call made for a
+        // screen no session could ever stream.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([
+            sleepingDisplaySnapshot(asleep: false),
+            mirroringDisplaySnapshot(asleep: true)
+        ])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        let controller = armedHostScreenController(
+            displays: list, displayWake: wake, log: { _ in }
+        )
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "the display being mirrored is still offered")
+            return
+        }
+        expect(
+            displays.map(\.label) == ["External Display"],
+            "the mirror is not offered and the display it mirrors still is, got \(displays.map(\.label))"
+        )
+        expect(
+            power.userActivityDeclarations == 0,
+            "and a sleeping mirror reaches no power call on this machine, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a sleeping display that mirrors another one is never woken")
 
     do {
         let power = FakeDisplayPower()
@@ -637,7 +783,7 @@ func runDisplayWakeTests() async {
             onStreamUnrecoverable: { unrecoverable.record($0) },
             hostScreenMediaFactory: { _ in hostScreenMedia }
         )
-        guard case .hostScreenReady = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+        guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token,
             presence: .signed(
                 credentialID: Data([0x01]),

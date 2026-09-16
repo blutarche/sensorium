@@ -179,11 +179,142 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// itself is untouched -- a refused mode change is never a refused
     /// session, and the display is on whatever mode it was already on.
     case hostScreenModeRefused(reason: String)
+    /// The viewer's login password for the locked host, sent so the host can
+    /// type it into its own login window. `password` is raw UTF-8 bytes rather
+    /// than a `String` so the host can zero the buffer the moment the unlock
+    /// is done: it is held in memory only for that, never written to disk and
+    /// never logged. Host-screen only -- a session canvas has no login window
+    /// to unlock -- and admitted only for an already-authenticated,
+    /// already-streaming host-screen session.
+    case hostScreenUnlockRequest(password: Data)
+    /// The viewer's signal that it is about to try an unlock, so the host mints
+    /// the single-use challenge a fresh presence proof must sign. Carries
+    /// nothing: it asks only that a challenge be issued, and the host issues one
+    /// only for an already-authenticated, already-streaming host-screen session
+    /// -- a request from anything else is ignored, disclosing nothing. Viewer to
+    /// host only.
+    case hostScreenUnlockChallengeRequest
+    /// The host's single-use, connection-bound challenge for one unlock. The
+    /// viewer signs exactly these bytes with its presence credential and returns
+    /// the signature in `hostScreenUnlockArm`. Host to viewer only.
+    case hostScreenUnlockChallenge(challenge: Data)
+    /// The viewer's fresh presence proof over the challenge the host just
+    /// issued, arming exactly one subsequent `hostScreenUnlockRequest`. The same
+    /// `HostScreenPresenceProof` a `hostScreenRequest` carries, so a live human
+    /// confirmed at the viewer at the moment of unlock, not merely when the
+    /// session was admitted. Viewer to host only.
+    case hostScreenUnlockArm(presence: HostScreenPresenceProof)
+    /// The host's answer to a `hostScreenUnlockRequest`: what the unlock
+    /// attempt did, as one of `HostScreenUnlockOutcome`'s stable cases.
+    case hostScreenUnlockResult(HostScreenUnlockOutcome)
+    /// Whether the host's screen is locked, so the viewer knows whether to
+    /// offer the unlock prompt. Sent unprompted right after `hostScreenReady`
+    /// and again after every unlock attempt. Host to viewer only.
+    case hostScreenLockState(locked: Bool)
     /// A wire `type` this build does not know, from a peer running a
     /// different protocol revision. Decode-only: nothing ever constructs this
     /// to send, and `encode` refuses it -- fabricating wire bytes for it
     /// would itself be inventing a new message type.
     case unrecognized(type: String)
+}
+
+/// What one `hostScreenUnlockRequest` did, as stable string tokens rather
+/// than prose -- the same discipline `GoodbyeReason` and `CanvasRefusalReason`
+/// follow, so a viewer can branch on the outcome. Every case but `failed`
+/// carries nothing: the token is the whole answer. `failed` carries a reason
+/// for the cases that are neither a wrong password nor an unavailable service
+/// nor an already-unlocked screen.
+public enum HostScreenUnlockOutcome: Equatable, Sendable {
+    /// The password was accepted and the screen is no longer locked.
+    case unlocked
+    /// The login window refused the password. The screen is still locked and
+    /// the viewer may offer the prompt again.
+    case wrongPassword
+    /// The host could not reach the built-in screen-sharing service on
+    /// loopback, or that service does not offer the security type this unlock
+    /// needs. Nothing was typed.
+    case screenSharingUnavailable
+    /// The host's screen was already unlocked when the request arrived, so
+    /// there was nothing to type.
+    case notLocked
+    /// The request arrived on a connection that has not earned the right to
+    /// it -- not authenticated, or not an active host-screen session.
+    case notAuthorized
+    /// Too many wrong passwords have been tried against this host, across every
+    /// connection this device has opened, so the host has stopped accepting
+    /// unlock attempts. Retrying, on this connection or a fresh one, cannot
+    /// help; the budget is cleared only by a successful unlock or by the person
+    /// at the host re-arming this device.
+    case tooManyAttempts
+    /// The password is longer than the unlock method's credential field can
+    /// hold without truncating it. Nothing was typed, and retrying the same
+    /// password would only truncate it the same way again -- a distinct
+    /// outcome from `wrongPassword` because the remedy is different: a
+    /// shorter password, typed at the login window itself, not another try.
+    case passwordTooLong
+    /// The request arrived without a fresh, single-use presence arm for this
+    /// attempt. Every unlock requires a live human to confirm presence at the
+    /// viewer again, independent of how the session was admitted, so the viewer
+    /// must obtain a challenge and arm it before the password is accepted.
+    /// Nothing was typed and no guess was spent. Distinct from `notAuthorized`
+    /// (the session is valid) and from `wrongPassword` (the password was never
+    /// read): the remedy is to confirm presence again, not to reconnect or to
+    /// retype.
+    case presenceRequired
+    /// The password was accepted but the screen is still locked afterwards,
+    /// or some other step failed. `reason` names which, for the operator log.
+    case failed(reason: String)
+
+    /// The stable wire token for this outcome. `failed` carries its reason
+    /// separately, so its token alone does not round-trip -- see
+    /// `SensoriumFrameCodec`'s own encode/decode of `hostScreenUnlockResult`.
+    /// Public so the host's operator log can name an unlock outcome by this
+    /// same token, never by the password or its length.
+    public var wireToken: String {
+        switch self {
+        case .unlocked: return "unlocked"
+        case .wrongPassword: return "wrong-password"
+        case .screenSharingUnavailable: return "screen-sharing-unavailable"
+        case .notLocked: return "not-locked"
+        case .notAuthorized: return "not-authorized"
+        case .tooManyAttempts: return "too-many-attempts"
+        case .passwordTooLong: return "password-too-long"
+        case .presenceRequired: return "presence-required"
+        case .failed: return "failed"
+        }
+    }
+
+    /// The reason `failed` carries, or `nil` for every other case, which
+    /// carries none.
+    var wireReason: String? {
+        if case let .failed(reason) = self {
+            return reason
+        }
+        return nil
+    }
+
+    init(wireToken: String, reason: String?) throws {
+        switch wireToken {
+        case "unlocked": self = .unlocked
+        case "wrong-password": self = .wrongPassword
+        case "screen-sharing-unavailable": self = .screenSharingUnavailable
+        case "not-locked": self = .notLocked
+        case "not-authorized": self = .notAuthorized
+        case "too-many-attempts": self = .tooManyAttempts
+        case "password-too-long": self = .passwordTooLong
+        case "presence-required": self = .presenceRequired
+        case "failed":
+            guard let reason else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            self = .failed(reason: reason)
+        default:
+            // A token this build does not recognise on a message type it does
+            // -- read as malformed, never as a silently-accepted third
+            // outcome, the same rule `streamScalePreference`'s kind follows.
+            throw SensoriumProtocolError.malformedMessage
+        }
+    }
 }
 
 /// The reasons a `canvasRefused` can name. Stable tokens rather than prose,
@@ -492,6 +623,15 @@ public enum SensoriumFrameCodec {
         /// current, whichever message it rides on.
         var hostScreenModes: [WireHostScreenModeEntry]? = nil
         var hostScreenModeID: String? = nil
+        /// `hostScreenUnlockRequest`'s own password bytes -- its own field so
+        /// it can never be read out of another message's `Data` field, and
+        /// zeroed by the host the moment the unlock is done.
+        var hostScreenUnlockPassword: Data? = nil
+        /// `hostScreenUnlockResult`'s own outcome token. `reason` above is
+        /// reused as-is for the `failed` case's reason.
+        var hostScreenUnlockOutcome: String? = nil
+        /// `hostScreenLockState`'s own value.
+        var hostScreenLocked: Bool? = nil
     }
 
     private struct WireHostScreenModeEntry: Codable {
@@ -870,6 +1010,33 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "streamScalePreference", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: surfaceID, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, streamScalePreferenceKind: kind, streamScalePreferenceValue: value)
         case let .displayCount(count):
             wire = WireMessage(type: "displayCount", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, displayCount: count)
+        case let .hostScreenUnlockRequest(password):
+            wire = WireMessage(type: "hostScreenUnlockRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenUnlockPassword: password)
+        case let .hostScreenUnlockResult(outcome):
+            wire = WireMessage(type: "hostScreenUnlockResult", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: outcome.wireReason, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenUnlockOutcome: outcome.wireToken)
+        case let .hostScreenLockState(locked):
+            wire = WireMessage(type: "hostScreenLockState", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenLocked: locked)
+        case .hostScreenUnlockChallengeRequest:
+            wire = WireMessage(type: "hostScreenUnlockChallengeRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
+        case let .hostScreenUnlockChallenge(challenge):
+            wire = WireMessage(type: "hostScreenUnlockChallenge", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, challenge: challenge)
+        case let .hostScreenUnlockArm(presence):
+            // The same two presence-proof shapes `hostScreenRequest` carries,
+            // encoded into the same wire fields, so an unlock arm and a session
+            // request speak one proof format rather than two.
+            var wireCredentialID: Data? = nil
+            var wireCredentialFormat: String? = nil
+            var wireSignature: Data? = nil
+            var wireResumeTicket: Data? = nil
+            switch presence {
+            case let .signed(credentialID, credentialFormat, signature):
+                wireCredentialID = credentialID
+                wireCredentialFormat = credentialFormat
+                wireSignature = signature
+            case let .resumeTicket(ticket):
+                wireResumeTicket = ticket
+            }
+            wire = WireMessage(type: "hostScreenUnlockArm", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: wireSignature, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, credentialID: wireCredentialID, credentialFormat: wireCredentialFormat, resumeTicket: wireResumeTicket)
         case .unrecognized:
             // Decode-only sentinel: sending it would fabricate a wire type
             // nobody agreed on.
@@ -1172,6 +1339,42 @@ public enum SensoriumFrameCodec {
                 throw SensoriumProtocolError.malformedMessage
             }
             return .displayCount(count)
+        case "hostScreenUnlockRequest":
+            guard let password = wire.hostScreenUnlockPassword else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .hostScreenUnlockRequest(password: password)
+        case "hostScreenUnlockResult":
+            guard let outcome = wire.hostScreenUnlockOutcome else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .hostScreenUnlockResult(try HostScreenUnlockOutcome(wireToken: outcome, reason: wire.reason))
+        case "hostScreenLockState":
+            guard let locked = wire.hostScreenLocked else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .hostScreenLockState(locked: locked)
+        case "hostScreenUnlockChallengeRequest":
+            return .hostScreenUnlockChallengeRequest
+        case "hostScreenUnlockChallenge":
+            guard let challenge = wire.challenge else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .hostScreenUnlockChallenge(challenge: challenge)
+        case "hostScreenUnlockArm":
+            // Exactly one of the two proof shapes `hostScreenRequest` accepts,
+            // read the same way: neither a partial one nor a mixture is
+            // admitted as "whichever half looks valid".
+            let presence: HostScreenPresenceProof
+            switch (wire.resumeTicket, wire.credentialID, wire.credentialFormat, wire.signature) {
+            case let (.some(ticket), nil, nil, nil):
+                presence = .resumeTicket(ticket)
+            case let (nil, .some(credentialID), .some(credentialFormat), .some(signature)):
+                presence = .signed(credentialID: credentialID, credentialFormat: credentialFormat, signature: signature)
+            default:
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .hostScreenUnlockArm(presence: presence)
         default:
             // A message kind this build doesn't know, from a peer running a
             // different protocol revision. The length prefix already let the

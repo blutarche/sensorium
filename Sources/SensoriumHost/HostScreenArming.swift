@@ -8,7 +8,7 @@ import SensoriumCore
 /// case.
 ///
 /// This is a report, not proof: see `HostScreenDeviceArming.minimumCredentialStrength`.
-public enum HostScreenCredentialStrength: String, Codable, Equatable, Sendable {
+public enum HostScreenCredentialStrength: String, Codable, Equatable, Hashable, Sendable {
     case hardwareBound
     case softwarePresence
 }
@@ -56,34 +56,27 @@ public struct HostScreenDisplayIdentity: Codable, Equatable, Hashable, Sendable 
     }
 }
 
-/// Why one armed display is missing from what `offerHostScreenList` actually
-/// offers, or from a paired-machine row's own "may share" sentence -- the
-/// same five gaps, checked in the same order `offerHostScreenList`'s own
-/// eligibility filter already checks them, so the operator log and the Host
-/// Setup window never disagree about why.
+/// Why one of this Mac's displays is missing from what `offerHostScreenList`
+/// actually offers -- the same four gaps, decided by `HostScreenOfferEligibility`
+/// alone, so the operator log and the Host Setup window never disagree about why.
 public enum HostScreenOfferGapReason: Equatable, Sendable {
-    /// Absent from the current display list entirely, or present but
-    /// CoreGraphics itself reports it not online -- genuinely disconnected,
-    /// not merely quiet. `DisplayInventory.online()` still lists a sleeping
-    /// or mirrored display, so this case means neither of those.
+    /// `CGDisplayIsOnline` is false: genuinely disconnected, not merely
+    /// quiet. `DisplayInventory.online()` still lists a sleeping or mirrored
+    /// display, so this case means neither of those.
     case notOnline
     /// `CGDisplayIsAsleep`: online, physically present, showing nothing
-    /// right now. Told apart from `notOnline` precisely so a display that
-    /// was merely asleep when this host started, or is asleep only at the
-    /// moment of one offer, reads as recoverable rather than gone.
+    /// right now, and nothing else standing in its way. Told apart from
+    /// `notOnline` precisely so a display that is asleep only at the moment
+    /// of one offer reads as recoverable rather than gone -- this is the one
+    /// gap waking a display can close.
     case asleep
     /// `CGDisplayMirrorsDisplay` names another display: this one shows that
-    /// display's picture, never its own, so it can never be a legitimate
-    /// host-screen target however it came to be armed.
+    /// display's picture, never its own, so it is never a legitimate
+    /// host-screen target.
     case mirrored
-    /// The current display carrying this identity is a canvas Sensorium
-    /// itself created, never a display a person could be looking at.
+    /// The display is a canvas Sensorium itself created, never a display a
+    /// person could be looking at.
     case createdBySensorium
-    /// Online, awake, unmirrored, and not ours right now, but absent from
-    /// the snapshot taken once when this host started -- attaching it after
-    /// that moment must not silently arm it; restarting the host takes a
-    /// fresh snapshot.
-    case notPresentAtHostStart
 
     /// The plain-words reason an operator log line or a paired-machine row
     /// names this gap by.
@@ -97,9 +90,56 @@ public enum HostScreenOfferGapReason: Equatable, Sendable {
             "mirrored"
         case .createdBySensorium:
             "created by Sensorium"
-        case .notPresentAtHostStart:
-            "not present when the host started (restart the host to offer it)"
         }
+    }
+}
+
+/// Which of this Mac's displays an armed machine may be offered. Arming is
+/// per machine, exactly as it is for the screen sharing macOS ships: a
+/// machine armed here may be offered whatever this Mac has when a session
+/// starts, including a monitor attached after this host launched. Nothing
+/// here reads the arming record, and nothing here is reachable from the
+/// wire.
+///
+/// A session canvas Sensorium itself created is the one display that never
+/// qualifies. `CanvasDisplayIdentity.vendorID` is what tells it apart, so a
+/// host whose only screen is a canvas offers nothing rather than offering
+/// its own canvas back.
+public enum HostScreenOfferEligibility {
+    /// A display that can be captured and shown right now: not ours, online,
+    /// awake, and showing its own picture rather than another display's.
+    public static func isOfferable(_ display: DisplaySnapshot) -> Bool {
+        offerGapReason(for: display) == nil
+    }
+
+    /// Every display in `displays` that `isOfferable` accepts, in the order
+    /// given.
+    public static func offerable(from displays: [DisplaySnapshot]) -> [DisplaySnapshot] {
+        displays.filter(isOfferable)
+    }
+
+    /// Why `display` cannot be offered right now, `nil` when it can. A
+    /// canvas answers `.createdBySensorium` rather than `nil`, so a caller
+    /// that hands one in is never told it is offerable.
+    ///
+    /// Mirroring is answered before sleep, so `.asleep` means sleep is the
+    /// only thing in the way. That is what lets the wake path treat this one
+    /// answer as "waking this display would make it offerable", rather than
+    /// waking a mirror no session could stream however awake it gets.
+    public static func offerGapReason(for display: DisplaySnapshot) -> HostScreenOfferGapReason? {
+        if PhysicalDisplayEvidence.isSensoriumCanvas(display) {
+            return .createdBySensorium
+        }
+        if !display.online {
+            return .notOnline
+        }
+        if display.mirrorsDisplay != 0 {
+            return .mirrored
+        }
+        if display.asleep {
+            return .asleep
+        }
+        return nil
     }
 }
 
@@ -115,10 +155,6 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     /// What the person at this machine typed while arming, never a value
     /// read back from a live connection.
     public var deviceName: String
-    /// Which of this machine's displays this device may capture. Naming
-    /// displays, not counting them, is the whole point: attaching a monitor
-    /// months later must not silently arm it.
-    public var armedDisplays: [HostScreenDisplayIdentity]
     /// Only decoded so a file written by an earlier version still loads;
     /// nothing reads it.
     public var credentialKind: HostScreenCredentialStrength?
@@ -138,7 +174,6 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     public init(
         devicePublicKey: Data,
         deviceName: String,
-        armedDisplays: [HostScreenDisplayIdentity],
         credentialKind: HostScreenCredentialStrength? = nil,
         minimumCredentialStrength: HostScreenCredentialStrength? = nil,
         armedAt: Date,
@@ -146,15 +181,18 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     ) {
         self.devicePublicKey = devicePublicKey
         self.deviceName = deviceName
-        self.armedDisplays = armedDisplays
         self.credentialKind = credentialKind
         self.minimumCredentialStrength = minimumCredentialStrength
         self.armedAt = armedAt
         self.asksWhenSomeoneIsUsingThisMachine = asksWhenSomeoneIsUsingThisMachine
     }
 
+    /// No key for the per-display list an earlier version wrote: arming is
+    /// per machine now, and a key nothing decodes is a key a file may still
+    /// carry. An existing record keeps working, and is written back without
+    /// it.
     private enum CodingKeys: String, CodingKey {
-        case devicePublicKey, deviceName, armedDisplays, credentialKind, minimumCredentialStrength, armedAt
+        case devicePublicKey, deviceName, credentialKind, minimumCredentialStrength, armedAt
         case asksWhenSomeoneIsUsingThisMachine
     }
 
@@ -162,7 +200,6 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         devicePublicKey = try container.decode(Data.self, forKey: .devicePublicKey)
         deviceName = try container.decode(String.self, forKey: .deviceName)
-        armedDisplays = try container.decode([HostScreenDisplayIdentity].self, forKey: .armedDisplays)
         credentialKind = try container.decodeIfPresent(HostScreenCredentialStrength.self, forKey: .credentialKind)
         minimumCredentialStrength = try container.decodeIfPresent(
             HostScreenCredentialStrength.self, forKey: .minimumCredentialStrength
@@ -176,31 +213,26 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
 
 extension HostScreenDeviceArming {
     /// Host screen's own default: a machine that pairs and registers a
-    /// presence credential is armed at once, for every display present at
-    /// that moment that Sensorium did not create. `nil` when the pairing
-    /// device registered no credential -- it may still pair and use a
-    /// session canvas, but this pairing does not arm host screen for it.
+    /// presence credential is armed at once, for this Mac's displays as they
+    /// stand whenever a session starts. `nil` when the pairing device
+    /// registered no credential -- it may still pair and use a session
+    /// canvas, but this pairing does not arm host screen for it.
     ///
     /// `HostScreenArmingCoordinator.toggle(isOn: true)` in `sensoriumd`
     /// builds through this exact function rather than repeating the same
-    /// filter and snapshot, so the two paths that can ever arm a device
-    /// cannot drift apart.
+    /// checks, so the two paths that can ever arm a device cannot drift
+    /// apart.
     public static func onPairing(
         devicePublicKey: Data,
         approvedStore: any ApprovedDeviceStoring,
-        displays: [DisplaySnapshot],
         now: Date
     ) -> HostScreenDeviceArming? {
         guard let strength = approvedStore.presenceCredential(for: devicePublicKey)?.strength else {
             return nil
         }
-        let armedDisplays = displays
-            .filter { !PhysicalDisplayEvidence.isSensoriumCanvas($0) }
-            .map(HostScreenDisplayIdentity.init)
         return HostScreenDeviceArming(
             devicePublicKey: devicePublicKey,
             deviceName: ApprovedDeviceDisplayName.resolve(for: devicePublicKey, in: approvedStore),
-            armedDisplays: armedDisplays,
             minimumCredentialStrength: strength,
             armedAt: now,
             asksWhenSomeoneIsUsingThisMachine: false
@@ -357,16 +389,13 @@ public enum HostScreenArmingPresentation {
         /// armed device with nothing snapshotted.
         public let blockedReason: String?
         /// "May share Built-in Display.", the permission, not a live share.
-        /// `nil` when no armed display matches one of this machine's
-        /// active displays: an armed display that cannot be named is left
-        /// out rather than guessed at from vendor and model numbers.
+        /// Names the displays this Mac could hand this machine right now,
+        /// since arming is per machine; `nil` when there are none.
         public let sharedDisplaysLine: String?
-        /// Why this row's own `sharedDisplaysLine` is `nil` even though it is
-        /// sharing and armed for at least one display -- the same reason
-        /// `offerHostScreenList` would log for that display, on this row's
-        /// own line rather than a new window. `nil` whenever
-        /// `sharedDisplaysLine` has something to say instead, or this row
-        /// is not sharing, or it is armed for nothing at all.
+        /// Why this row has no `sharedDisplaysLine`: this Mac has displays,
+        /// but none of them can be shared right now. `nil` whenever
+        /// `sharedDisplaysLine` has something to say instead, this row is
+        /// not sharing, or the caller passed no display list to judge.
         public let notOfferedReason: String?
         /// Whether this device's own sharing session still asks the person
         /// at this machine when it saw recent local input. `false` for a row
@@ -404,8 +433,10 @@ public enum HostScreenArmingPresentation {
     /// A not-yet-armed row gates on the credential registered now; an
     /// armed row on the strength snapshotted when it was armed, with
     /// `needsRearmingNotice` when that snapshot is missing. `activeDisplays`
-    /// is needed because a `HostScreenDisplayIdentity` carries no name or
-    /// built-in flag of its own.
+    /// is this Mac's own displays right now, which is what an armed row
+    /// names: arming is per machine, so what a machine may share is decided
+    /// afresh from that list. Passing none leaves an armed row silent about
+    /// displays rather than claiming this Mac has none.
     public static func pairedMachineRows(
         approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)],
         arming: HostScreenArming,
@@ -416,14 +447,10 @@ public enum HostScreenArmingPresentation {
             let keyFingerprintLine = device.name != nil ? "Key \(ApprovedDeviceDisplayName.hex(of: device.publicKey))" : nil
             if let armed = arming.devices.first(where: { $0.devicePublicKey == device.publicKey }) {
                 let snapshotted = armed.minimumCredentialStrength
-                let sharedDisplaysLine = sharedDisplaysLine(for: armed.armedDisplays, activeDisplays: activeDisplays)
-                var notOfferedReason: String?
-                if sharedDisplaysLine == nil, let firstArmed = armed.armedDisplays.first {
-                    let reason = offerGapReason(for: firstArmed, current: activeDisplays, preSessionSnapshot: nil)
-                        ?? .notOnline
-                    let label = displayLabel(forArmed: firstArmed, current: activeDisplays, preSessionSnapshot: [])
-                    notOfferedReason = "Cannot currently share \(label): \(reason.words)."
-                }
+                let sharedDisplaysLine = sharedDisplaysLine(activeDisplays: activeDisplays)
+                let notOfferedReason = sharedDisplaysLine == nil && !activeDisplays.isEmpty
+                    ? noShareableDisplayNotice
+                    : nil
                 return PairedMachineRow(
                     devicePublicKey: device.publicKey,
                     deviceName: resolvedName,
@@ -450,17 +477,13 @@ public enum HostScreenArmingPresentation {
 
     /// "May share Built-in Display." for one, "May share Built-in Display
     /// and External Display." for two, an Oxford-style list for three or more.
-    /// `nil` when nothing armed matches a display that is online, awake, and
-    /// unmirrored right now -- an asleep or mirrored display is never
-    /// actually shareable, whatever `offerHostScreenList` once offered, so
-    /// it is left out here too rather than named as if it still were.
-    /// An empty sentence is worse than no sentence.
-    private static func sharedDisplaysLine(for armedDisplays: [HostScreenDisplayIdentity], activeDisplays: [DisplaySnapshot]) -> String? {
-        let matched = armedDisplays.compactMap { identity in
-            activeDisplays.first {
-                $0.online && !$0.asleep && $0.mirrorsDisplay == 0 && HostScreenDisplayIdentity($0) == identity
-            }
-        }
+    /// `nil` when this Mac has no display an armed machine could be handed
+    /// right now -- an asleep, mirrored, or Sensorium-created display is
+    /// never actually shareable, so it is left out here exactly as
+    /// `offerHostScreenList` leaves it out. An empty sentence is worse than
+    /// no sentence.
+    private static func sharedDisplaysLine(activeDisplays: [DisplaySnapshot]) -> String? {
+        let matched = HostScreenOfferEligibility.offerable(from: activeDisplays)
         guard !matched.isEmpty else { return nil }
         let mainDisplay = activeDisplays.first { $0.main }
         let labels = disambiguatedLabels(for: matched, mainDisplay: mainDisplay)
@@ -567,62 +590,15 @@ public enum HostScreenArmingPresentation {
     /// arm time -- never claims no credential exists, since one plainly
     /// does (it is armed), only that this machine never captured it. Turning
     /// sharing off and back on re-arms it and takes a fresh snapshot.
+    /// An armed machine with nothing to hand it: this Mac has displays, but
+    /// every one of them is offline, asleep, mirroring another, or a canvas
+    /// Sensorium created. Nothing about the machine's own arming is wrong,
+    /// so this never reads as a permission problem.
+    public static let noShareableDisplayNotice =
+        "No display on this Mac can be shared right now."
+
     public static let needsRearmingNotice =
         "How this machine holds its presence key was not recorded when it paired. Turn Share host screen off and on again to record it."
-
-    /// Why `identity` is not currently offerable, checked in the same order
-    /// `offerHostScreenList`'s own eligibility filter checks it -- `nil`
-    /// means nothing found here explains a gap, i.e. `identity` is
-    /// offerable right now. `preSessionSnapshot` `nil` skips the last
-    /// check rather than reading it as a gap: a caller with no session in
-    /// progress (the paired-machines row, before this host has even
-    /// started serving one) has no "at host start" moment to compare
-    /// `identity` against.
-    public static func offerGapReason(
-        for identity: HostScreenDisplayIdentity,
-        current: [DisplaySnapshot],
-        preSessionSnapshot: [DisplaySnapshot]?
-    ) -> HostScreenOfferGapReason? {
-        guard let match = current.first(where: { HostScreenDisplayIdentity($0) == identity }) else {
-            return .notOnline
-        }
-        guard match.online else {
-            return .notOnline
-        }
-        guard !match.asleep else {
-            return .asleep
-        }
-        guard match.mirrorsDisplay == 0 else {
-            return .mirrored
-        }
-        guard !PhysicalDisplayEvidence.isSensoriumCanvas(match) else {
-            return .createdBySensorium
-        }
-        if let preSessionSnapshot,
-           !preSessionSnapshot.contains(where: { HostScreenDisplayIdentity($0) == identity }) {
-            return .notPresentAtHostStart
-        }
-        return nil
-    }
-
-    /// `identity`'s own label for a gap line, when there is no live match to
-    /// label it from directly (there usually is not, or there would be no
-    /// gap to report): `current`'s own match if it has one, else
-    /// `preSessionSnapshot`'s, else a fallback naming nothing but the EDID
-    /// pair `identity` itself carries.
-    public static func displayLabel(
-        forArmed identity: HostScreenDisplayIdentity,
-        current: [DisplaySnapshot],
-        preSessionSnapshot: [DisplaySnapshot]
-    ) -> String {
-        if let match = current.first(where: { HostScreenDisplayIdentity($0) == identity }) {
-            return displayLabel(for: match)
-        }
-        if let match = preSessionSnapshot.first(where: { HostScreenDisplayIdentity($0) == identity }) {
-            return displayLabel(for: match)
-        }
-        return "Display \(identity.wireStableIdentifier)"
-    }
 
     /// The words `hostScreenList`'s own `label` field already uses --
     /// shared so a caller that names the same display later (the session

@@ -13,13 +13,11 @@ private final class FakeClock {
 
 private func fingerprint(
     strength: HostScreenCredentialStrength? = .hardwareBound,
-    armedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
-    displays: [HostScreenDisplayIdentity] = [HostScreenDisplayIdentity(vendorNumber: 1552, modelNumber: 40)]
+    armedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)
 ) -> HostScreenArmingFingerprint {
     HostScreenArmingFingerprint(HostScreenDeviceArming(
         devicePublicKey: Data([0xAA]),
         deviceName: "Probe",
-        armedDisplays: displays,
         minimumCredentialStrength: strength,
         armedAt: armedAt
     ))
@@ -83,13 +81,6 @@ func runHostScreenResumeTicketStoreTests() async {
         expect(
             !store.validate(token: token, devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint(armedAt: Date(timeIntervalSince1970: 1_800_000_000))),
             "an arming record that changed only in when it was armed still counts as changed"
-        )
-        expect(
-            !store.validate(
-                token: token, devicePublicKey: deviceKey, displayIdentity: display,
-                armingFingerprint: fingerprint(displays: [display, otherDisplay])
-            ),
-            "an arming record armed for an additional display still counts as changed"
         )
         // None of the four failed presentations above consumed the ticket:
         // a mismatched attempt is not itself an expiry.

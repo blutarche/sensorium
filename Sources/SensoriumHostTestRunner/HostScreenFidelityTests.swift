@@ -125,7 +125,6 @@ private func makeFidelityFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
@@ -137,7 +136,6 @@ private func makeFidelityFixture(
         inputInjectorFactory: FakeInputInjectorFactory(),
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: FidelityApprovingVerifier(),
         hostScreenLocalActivitySignal: FidelityIdleSignal(),
@@ -425,7 +423,6 @@ func runHostScreenFidelityTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
@@ -437,7 +434,6 @@ func runHostScreenFidelityTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: FidelityApprovingVerifier(),
             hostScreenLocalActivitySignal: FidelityIdleSignal()

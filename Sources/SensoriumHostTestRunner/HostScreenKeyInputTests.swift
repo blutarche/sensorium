@@ -61,7 +61,6 @@ func runHostScreenKeyInputTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -82,7 +81,6 @@ func runHostScreenKeyInputTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .confined(to: workspaces, scanning: FakeFrontmostWindowScan()),
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingHostScreenKeyVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleHostScreenKeySignal()

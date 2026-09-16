@@ -128,7 +128,6 @@ func runInputRoundTripTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -141,7 +140,6 @@ func runInputRoundTripTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingInputRoundTripVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleInputRoundTripSignal()

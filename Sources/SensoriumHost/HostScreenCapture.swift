@@ -14,9 +14,9 @@ public enum HostScreenCaptureError: Error, Equatable {
 /// admitted for this session.
 ///
 /// This does no admission checking of its own -- `HostSessionController`'s
-/// `HostScreenSelectionGuard` already proved this exact display ID is armed,
-/// live, not a session canvas, and part of the pre-session snapshot before
-/// this is ever called. Re-checking any of that here would be a second,
+/// `HostScreenSelectionGuard` already proved this exact display ID belongs
+/// to an armed machine, is live, and is not a session canvas, before this is
+/// ever called. Re-checking any of that here would be a second,
 /// divergent copy of an obligation `HostScreenSelectionGuard` already owns.
 ///
 /// Running this requires the user to grant Screen Recording permission to

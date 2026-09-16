@@ -552,7 +552,6 @@ private func runArmTimeMinimumStrengthSnapshotTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: minimumCredentialStrength,
                 armedAt: Date()
             )
@@ -563,7 +562,6 @@ private func runArmTimeMinimumStrengthSnapshotTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: store),
             hostScreenLocalActivitySignal: AlwaysIdleActivitySignal()
@@ -657,7 +655,6 @@ private func runPresenceCredentialControllerIntegrationTests() async {
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
@@ -668,7 +665,6 @@ private func runPresenceCredentialControllerIntegrationTests() async {
         requireAuthentication: true,
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: store),
         hostScreenLocalActivitySignal: AlwaysIdleActivitySignal()

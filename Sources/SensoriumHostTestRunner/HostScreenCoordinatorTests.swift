@@ -90,7 +90,6 @@ private func makeHostScreenFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000),
             // This fixture is broken by exactly one thing per test, including
@@ -109,7 +108,6 @@ private func makeHostScreenFixture(
         inputInjectorFactory: injectorFactory,
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
         hostScreenLocalActivitySignal: localActivitySignal ?? AlwaysIdleSignal(),
@@ -163,7 +161,7 @@ func runHostScreenCoordinatorTests() async {
             }
         )
         let token = offerAndExtractToken(fixture.controller)
-        let response = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+        let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: token,
             presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
         ))
@@ -283,7 +281,6 @@ func runHostScreenCoordinatorTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -295,7 +292,6 @@ func runHostScreenCoordinatorTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
@@ -373,7 +369,7 @@ func runHostScreenCoordinatorTests() async {
             hostScreenMediaFactory: { _ in hostScreenMedia }
         )
         let token = offerAndExtractToken(fixture.controller)
-        let response = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+        let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: token,
             presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
         ))
@@ -406,7 +402,7 @@ func runHostScreenCoordinatorTests() async {
             hostScreenMediaFactory: { _ in hostScreenMedia }
         )
         let token = offerAndExtractToken(fixture.controller)
-        let response = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+        let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: token,
             presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
         ))
@@ -583,8 +579,8 @@ func runHostScreenModeCoordinatorTests() async {
             writtenMessages.append(message)
             written.record("\(message)")
         }
-        guard writtenMessages.count == 2 else {
-            expect(false, "a host-screen bring-up writes the ready reply and then the mode list -- got: \(writtenMessages)")
+        guard writtenMessages.count == 3 else {
+            expect(false, "a host-screen bring-up writes the ready reply, then the mode list, then the lock-state notice -- got: \(writtenMessages)")
             return
         }
         guard case .hostScreenReady = writtenMessages[0] else {
@@ -593,6 +589,10 @@ func runHostScreenModeCoordinatorTests() async {
         }
         guard case let .hostScreenModeList(listed, currentModeID) = writtenMessages[1] else {
             expect(false, "the mode list follows it unprompted -- got: \(writtenMessages[1])")
+            return
+        }
+        guard case .hostScreenLockState = writtenMessages[2] else {
+            expect(false, "the lock-state notice follows the mode list so the viewer knows whether to offer the unlock prompt -- got: \(writtenMessages[2])")
             return
         }
         expect(

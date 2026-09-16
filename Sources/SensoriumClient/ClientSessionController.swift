@@ -429,6 +429,20 @@ public actor ClientSessionController {
         )
     }
 
+    /// Signs a supplied unlock challenge with this session's registered
+    /// presence credential, for the opt-in lock-screen unlock's submit-time
+    /// arm. Reuses the connect-time signer so there is exactly one signing
+    /// path, and keeps `credentialProvider` private to this actor. A live
+    /// presence check is required to produce the signature; a
+    /// machine with no registered credential fails closed here rather than
+    /// arming with nothing.
+    public func signUnlockChallenge(_ challenge: Data) async throws -> HostScreenPresenceProof {
+        guard let credentialProvider else {
+            throw ClientSessionError.hostScreenRefused("host-screen-credential-unknown")
+        }
+        return try await Self.hostScreenPresenceProof(challenge: challenge, credentialProvider: credentialProvider)
+    }
+
     /// The host pushes its host-screen offer unprompted, right after
     /// `authenticatedHello`, before `canvasRequest` is ever sent -- so
     /// this reads exactly one message first, but only when this connect sent

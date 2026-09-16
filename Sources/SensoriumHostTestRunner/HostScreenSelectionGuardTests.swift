@@ -9,17 +9,15 @@ import SensoriumHost
 
 /// One bit per obligation of docs/host-screen-design.md §5.4, so a test
 /// scenario can be built by naming exactly which ones are unmet rather than
-/// hand-assembling six independent fixtures per case.
+/// hand-assembling four independent fixtures per case.
 private struct BrokenObligation: OptionSet {
     let rawValue: Int
     static let deviceArmed = BrokenObligation(rawValue: 1 << 0)
-    static let displayArmed = BrokenObligation(rawValue: 1 << 1)
-    static let tokenMinted = BrokenObligation(rawValue: 1 << 2)
-    static let displayGone = BrokenObligation(rawValue: 1 << 3)
-    static let vendorID = BrokenObligation(rawValue: 1 << 4)
-    static let preSession = BrokenObligation(rawValue: 1 << 5)
+    static let tokenMinted = BrokenObligation(rawValue: 1 << 1)
+    static let displayGone = BrokenObligation(rawValue: 1 << 2)
+    static let vendorID = BrokenObligation(rawValue: 1 << 3)
 
-    static let all: [BrokenObligation] = [.deviceArmed, .displayArmed, .tokenMinted, .displayGone, .vendorID, .preSession]
+    static let all: [BrokenObligation] = [.deviceArmed, .tokenMinted, .displayGone, .vendorID]
 }
 
 private func guardDisplay(id: UInt32, identity: HostScreenDisplayIdentity) -> DisplaySnapshot {
@@ -49,8 +47,7 @@ private func guardScenario(breaking: BrokenObligation) -> (
     token: Data,
     mintedTokens: [Data: HostScreenDisplayIdentity],
     arming: HostScreenArming,
-    currentDisplays: [DisplaySnapshot],
-    preSessionSnapshot: [DisplaySnapshot]
+    currentDisplays: [DisplaySnapshot]
 ) {
     let deviceKey = Data([0x10, 0x20, 0x30])
     let mintedToken = Data([0xAA, 0xBB, 0xCC])
@@ -66,22 +63,19 @@ private func guardScenario(breaking: BrokenObligation) -> (
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: breaking.contains(.displayArmed) ? [] : [identity],
                 armedAt: Date()
             )
         ])
 
     let live = guardDisplay(id: 7, identity: identity)
     let currentDisplays = breaking.contains(.displayGone) ? [] : [live]
-    let preSessionSnapshot = breaking.contains(.preSession) ? [] : [live]
 
     return (
         deviceKey: deviceKey,
         token: requestedToken,
         mintedTokens: [mintedToken: identity],
         arming: arming,
-        currentDisplays: currentDisplays,
-        preSessionSnapshot: preSessionSnapshot
+        currentDisplays: currentDisplays
     )
 }
 
@@ -92,19 +86,18 @@ private func admit(_ breaking: BrokenObligation) -> Result<UInt32, HostScreenSel
         token: scenario.token,
         mintedTokens: scenario.mintedTokens,
         arming: scenario.arming,
-        currentDisplays: scenario.currentDisplays,
-        preSessionSnapshot: scenario.preSessionSnapshot
+        currentDisplays: scenario.currentDisplays
     )
 }
 
 @MainActor
 func runHostScreenSelectionGuardTests() async {
     do {
-        // All six obligations met: the only shape that admits.
+        // All four obligations met: the only shape that admits.
         let result = admit([])
-        expect(result == .success(7), "a display that is armed, minted, present, not a canvas, and in the pre-session snapshot is admitted with its live display ID")
+        expect(result == .success(7), "a display whose machine is armed, whose token this session minted, that is present, and that Sensorium did not create is admitted with its live display ID")
 
-        print("PASS: HostScreenSelectionGuard admits a display only when every one of the six obligations holds")
+        print("PASS: HostScreenSelectionGuard admits a display only when every one of the four obligations holds")
     }
 
     do {
@@ -112,29 +105,27 @@ func runHostScreenSelectionGuardTests() async {
         // refusal -- design §12's "a distinct typed refusal for each".
         let expected: [(BrokenObligation, HostScreenSelectionRefusal)] = [
             (.deviceArmed, .deviceNotArmed),
-            (.displayArmed, .displayNotArmed),
             (.tokenMinted, .tokenNotMinted),
             (.displayGone, .displayGone),
-            (.vendorID, .displayIsSensoriumCanvas),
-            (.preSession, .displayAbsentFromPreSessionSnapshot)
+            (.vendorID, .displayIsSensoriumCanvas)
         ]
         for (broken, reason) in expected {
             expect(admit(broken) == .failure(reason), "breaking only \(broken) refuses with exactly \(reason), no other obligation's reason")
         }
 
-        print("PASS: each of the six obligations, broken alone, produces its own distinct refusal")
+        print("PASS: each of the four obligations, broken alone, produces its own distinct refusal")
     }
 
     do {
         // The property that matters: a refusal is a refusal, never a
         // reduced admission. Every non-empty combination of broken
-        // obligations -- all 63 of them -- refuses. None ever returns
+        // obligations -- all 15 of them -- refuses. None ever returns
         // .success, because .success carries a display ID and a display ID
-        // is exactly what "no input yields ... without all six" forbids
+        // is exactly what "no input yields ... without all four" forbids
         // when even one obligation is unmet.
         var admittedDespiteAFault = 0
         var casesChecked = 0
-        for rawValue in 1..<64 {
+        for rawValue in 1..<16 {
             let breaking = BrokenObligation(rawValue: rawValue)
             casesChecked += 1
             switch admit(breaking) {
@@ -144,9 +135,9 @@ func runHostScreenSelectionGuardTests() async {
                 break
             }
         }
-        expect(casesChecked == 63, "every non-empty combination of the six obligations was exercised")
-        expect(admittedDespiteAFault == 0, "no combination of unmet obligations -- one, several, or all six -- ever produces a display ID; the guard refuses the whole request, it does not degrade to a partial one")
+        expect(casesChecked == 15, "every non-empty combination of the four obligations was exercised")
+        expect(admittedDespiteAFault == 0, "no combination of unmet obligations -- one, several, or all four -- ever produces a display ID; the guard refuses the whole request, it does not degrade to a partial one")
 
-        print("PASS: none of the 63 combinations of unmet obligations admits a display, so no input reduces a refusal to a session")
+        print("PASS: none of the 15 combinations of unmet obligations admits a display, so no input reduces a refusal to a session")
     }
 }

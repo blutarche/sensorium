@@ -56,13 +56,14 @@ is streaming, on the viewer's request, and is always undone.
 Host screen is additionally gated, and no frame of it may leave the host
 until all of these hold. Screen Recording is granted. Host screen is armed
 by pairing. The person at this Mac shows the pairing code. The machine that
-pairs is armed for the displays present at that moment. Arming needs a
+pairs is armed for this Mac itself, not for a fixed set of screens: it may
+be offered any display this Mac has when a session starts. Arming needs a
 registered presence credential. The person at this Mac can turn off
 arming for one machine. The person can turn it back on. The record
 persists across restarts, so an unattended Mac stays reachable. It is
 stored on this Mac alone. No message on the wire can create, re-arm, or
-widen it. The target display was present before this process started.
-Sensorium did not create it. The person at this Mac can also turn on
+widen it. The target display is one Sensorium did not create.
+The person at this Mac can also turn on
 asking first. Someone who used this Mac in the last few minutes is then
 asked. That person must agree first. Asking first is off by default. An
 armed device is otherwise not asked.
@@ -72,10 +73,12 @@ holds a presence-bound credential — a keypair its operating system or
 authenticator will not use without a live human confirming at that moment —
 whose public half is registered with this host when the devices pair, and
 which signs a challenge this host issues for the session. The host verifies
-that signature against the registered public key. No credential, biometric,
-or password is ever transmitted, stored, or seen by this code, and this rule
-names no specific platform mechanism: any operating system that can hold
-such a credential can satisfy it.
+that signature against the registered public key. This presence credential,
+and any biometric or password its authenticator checks, is never transmitted,
+stored, or seen by this code, and this rule names no specific platform
+mechanism: any operating system that can hold such a credential can satisfy
+it. The one exception is the opt-in lock-screen unlock described below, which
+is the only place a password crosses the wire.
 
 Credentials register at one of two acceptable strengths, and which one a
 device registered is recorded and shown to the person arming it: a key held
@@ -94,6 +97,18 @@ is exactly when it is least clear who is at the viewer. What this proves is
 that a person was present and approved; it does not prove they understood
 what they were approving, and nothing in the codebase or its documentation
 may describe it as more than that.
+
+Lock-screen unlock is an opt-in action inside a live, authenticated,
+presence-verified host-screen session. When the person at the viewer chooses
+to unlock a locked host, and only then, the host's login password travels once
+over the same encrypted, authenticated, presence-gated channel, is held in
+memory only long enough to enter it, and is never written to disk, never
+logged, and never stored. The host types it into its own login window through
+the operating system's built-in screen-sharing service over the loopback
+interface only; Sensorium opens no network listener of its own to do this, and
+speaks that service's protocol from the public specification without copying
+any other implementation. Enabling that built-in service is the operator's
+own choice on the host.
 
 While a host-screen session is live, the person at this Mac must see a
 continuous, unmissable indication naming the connected device, with a

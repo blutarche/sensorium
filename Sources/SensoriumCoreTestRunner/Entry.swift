@@ -80,6 +80,7 @@ struct SensoriumCoreTestRunner {
             ("host-screen types: geometry round-trips and a capture intent is never silently substituted", testHostScreenTypes),
             ("host-screen protocol round-trips, skips on an older peer, and can only reference an arming", testHostScreenProtocol),
             ("host-screen display mode messages round-trip, refuse malformed fields, and stay skippable for an older peer", testHostScreenModeProtocol),
+            ("host-screen unlock messages round-trip, keep the password intact, and refuse malformed outcomes", testHostScreenUnlockProtocol),
             ("stream scale preference message round-trips both directions", testStreamScalePreferenceMessageRoundTripsBothDirections),
             ("a malformed stream scale preference refuses as malformed", testStreamScalePreferenceMessageMalformedRefusesAsMalformed),
             ("an off-quantum or out-of-range fixed value is not rejected at the wire", testStreamScalePreferenceMessageDoesNotRejectOffQuantumOrOutOfRangeValues),

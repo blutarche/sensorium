@@ -311,6 +311,38 @@ extension HostSessionCoordinator {
         }
         return returned ?? written.message
     }
+
+    /// Like `handleWritingResponse`, but hands back the *first* message written
+    /// rather than the last. Host-screen bring-up writes the ready reply first
+    /// and then follows it with the mode list and the lock-state notice, so a
+    /// test that only cares that the request was admitted reads the ready reply
+    /// here without depending on how many notices trail it.
+    func handleFirstResponse(_ message: SensoriumMessage) async throws -> SensoriumMessage? {
+        let first = FirstWrittenResponseBox()
+        let returned = try await handle(message) { reply in
+            first.recordIfFirst(reply)
+        }
+        return returned ?? first.message
+    }
+}
+
+final class FirstWrittenResponseBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var written: SensoriumMessage?
+
+    func recordIfFirst(_ message: SensoriumMessage) {
+        lock.lock()
+        defer { lock.unlock() }
+        if written == nil {
+            written = message
+        }
+    }
+
+    var message: SensoriumMessage? {
+        lock.lock()
+        defer { lock.unlock() }
+        return written
+    }
 }
 
 /// Stands in for `VideoToolboxEncoder` at the one seam `EncodeAdmissionGate`

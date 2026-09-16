@@ -743,6 +743,32 @@ final class ClientSessionHost {
                 )
             }
         }
+        // The host says whether its screen is locked; the window offers or
+        // hides the unlock prompt accordingly.
+        runner.onHostScreenLockState = { locked in
+            Task { @MainActor in
+                primaryWindow.applyHostScreenLockState(locked: locked)
+            }
+        }
+        runner.onHostScreenUnlockResult = { outcome in
+            Task { @MainActor in
+                primaryWindow.showHostScreenUnlockResult(outcome)
+            }
+        }
+        // The typed password, forwarded on the live connection. The window has
+        // already cleared its field, so this closure holds the only viewer-side
+        // reference and drops it as soon as the request is sent. It is never
+        // logged or written to disk. Copy-on-write `Data` gives no way to wipe
+        // the transient copies the transport makes while framing it, so this
+        // does not claim to erase every byte from memory.
+        primaryWindow.onRequestHostScreenUnlock = { password in
+            Task { @MainActor in
+                let result = await runner.requestHostScreenUnlock(password: password)
+                if let notice = HostScreenUnlockCopy.submitNotice(for: result) {
+                    primaryWindow.showHostScreenUnlockNotice(notice)
+                }
+            }
+        }
         let ended = QuitSignal()
         // An ending a person at the host chose, told apart from the dropped
         // transport it otherwise looks exactly like -- see the throw below.

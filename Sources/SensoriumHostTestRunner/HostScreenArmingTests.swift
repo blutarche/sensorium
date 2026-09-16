@@ -23,7 +23,6 @@ func runHostScreenArmingTests() async {
         let device = HostScreenDeviceArming(
             devicePublicKey: key,
             deviceName: "Device 01020304",
-            armedDisplays: [HostScreenDisplayIdentity(vendorNumber: 1552, modelNumber: 40)],
             credentialKind: .hardwareBound,
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
@@ -136,13 +135,11 @@ func runHostScreenArmingTests() async {
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: key,
             deviceName: "Device 0A0B",
-            armedDisplays: [],
             armedAt: Date()
         ))
         armingStore.arm(HostScreenDeviceArming(
             devicePublicKey: otherKey,
             deviceName: "Device 0C0D",
-            armedDisplays: [],
             armedAt: Date()
         ))
 
@@ -186,7 +183,6 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: Data([0xAB]),
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(vendorNumber: 1552, modelNumber: 40)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -201,7 +197,6 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: Data([0xAC]),
                 deviceName: "Kestrel MacBook Air",
-                armedDisplays: [HostScreenDisplayIdentity(vendorNumber: 1552, modelNumber: 40)],
                 minimumCredentialStrength: .softwarePresence,
                 armedAt: Date()
             )
@@ -216,7 +211,6 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: Data([0xCD]),
                 deviceName: "Unregistered Device",
-                armedDisplays: [],
                 armedAt: Date()
             )
         ]))
@@ -342,7 +336,6 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: sharingKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -421,14 +414,12 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: armedKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             ),
             HostScreenDeviceArming(
                 devicePublicKey: legacyKey,
                 deviceName: "Kestrel iMac",
-                armedDisplays: [],
                 armedAt: Date()
             )
         ])
@@ -458,8 +449,8 @@ func runHostScreenArmingTests() async {
     }
 
     do {
-        // Item 5, decided without a picker: the row shows what the
-        // person already granted -- naming the displays an armed
+        // The row shows what the person already granted, with no
+        // picker of its own -- naming the displays an armed
         // device may capture, matched against this machine's own
         // currently active displays for their human labels. Never
         // shown for a row that is not sharing.
@@ -478,19 +469,23 @@ func runHostScreenArmingTests() async {
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             builtin: false, main: false, vendorNumber: 0x03, modelNumber: 0x03
         )
-        let unplugged = DisplaySnapshot(
+        let asleepDisplay = DisplaySnapshot(
             id: 4, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
-            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
+            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true, asleep: true,
             builtin: false, main: false, vendorNumber: 0x99, modelNumber: 0x99
         )
+        let canvas = DisplaySnapshot(
+            id: 5, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
+            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
+            builtin: false, main: false, vendorNumber: CanvasDisplayIdentity.vendorID, modelNumber: 0x05
+        )
 
-        func row(armedDisplays: [HostScreenDisplayIdentity], activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
+        func row(activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
             let key = Data([0xEE])
             let arming = HostScreenArming(devices: [
                 HostScreenDeviceArming(
                     devicePublicKey: key,
                     deviceName: "Kestrel MacBook Pro",
-                    armedDisplays: armedDisplays,
                     minimumCredentialStrength: .hardwareBound,
                     armedAt: Date()
                 )
@@ -504,30 +499,38 @@ func runHostScreenArmingTests() async {
         }
 
         expect(
-            row(armedDisplays: [HostScreenDisplayIdentity(builtin)], activeDisplays: [builtin]).sharedDisplaysLine
-                == "May share Built-in Display.",
-            "one armed display reads as a single-item sentence, not a list of one -- and as permission, not as a "
+            row(activeDisplays: [builtin]).sharedDisplaysLine == "May share Built-in Display.",
+            "one shareable display reads as a single-item sentence, not a list of one -- and as permission, not as a "
                 + "live share, since this row shows whether or not a machine is connected"
         )
         expect(
-            row(armedDisplays: [HostScreenDisplayIdentity(builtin), HostScreenDisplayIdentity(external)], activeDisplays: [builtin, external]).sharedDisplaysLine
+            row(activeDisplays: [builtin, external]).sharedDisplaysLine
                 == "May share Built-in Display and External Display.",
-            "two armed displays join with a plain \u{201c}and\u{201d}, no Oxford comma yet"
+            "two shareable displays join with a plain \u{201c}and\u{201d}, no Oxford comma yet"
         )
         expect(
             row(
-                armedDisplays: [HostScreenDisplayIdentity(builtin), HostScreenDisplayIdentity(external), HostScreenDisplayIdentity(secondExternal)],
                 activeDisplays: [builtin, external, secondExternal]
             ).sharedDisplaysLine == "May share Built-in Display, External Display (2), and External Display (3).",
-            "three or more armed displays read as an Oxford-style list, and the two same-named externals here (identical size, identical position) fall back to telling them apart by id"
+            "three or more shareable displays read as an Oxford-style list, and the two same-named externals here (identical size, identical position) fall back to telling them apart by id"
         )
         expect(
-            row(armedDisplays: [], activeDisplays: []).sharedDisplaysLine == nil,
-            "a device armed for no display shows no line rather than an empty sentence"
+            row(activeDisplays: []).sharedDisplaysLine == nil && row(activeDisplays: []).notOfferedReason == nil,
+            "a caller that passes no display list gets neither a sentence nor a complaint, rather than a claim this Mac has no display at all"
         )
         expect(
-            row(armedDisplays: [HostScreenDisplayIdentity(unplugged)], activeDisplays: [builtin]).sharedDisplaysLine == nil,
-            "an armed display this machine cannot currently see is left out rather than guessed at, and an empty result hides the line entirely"
+            row(activeDisplays: [canvas]).sharedDisplaysLine == nil
+                && row(activeDisplays: [canvas]).notOfferedReason == HostScreenArmingPresentation.noShareableDisplayNotice,
+            "a Mac whose only display is a canvas Sensorium created shares nothing, and the row says so rather than naming the canvas"
+        )
+        expect(
+            row(activeDisplays: [asleepDisplay]).notOfferedReason == HostScreenArmingPresentation.noShareableDisplayNotice,
+            "a display asleep right now is not shareable right now, and the row says so instead of naming it"
+        )
+        expect(
+            row(activeDisplays: [builtin, canvas]).sharedDisplaysLine == "May share Built-in Display."
+                && row(activeDisplays: [builtin, canvas]).notOfferedReason == nil,
+            "one shareable display beside a canvas still reads as shareable, with nothing blocked to report"
         )
 
         let unarmed = HostScreenArmingPresentation.pairedMachineRows(
@@ -585,13 +588,12 @@ func runHostScreenArmingTests() async {
             online: true, builtin: false, main: false, vendorNumber: 0x07, modelNumber: 0x07
         )
 
-        func sharingRow(armedDisplays: [DisplaySnapshot], activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
+        func sharingRow(activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
             let key = Data([0xFA])
             let arming = HostScreenArming(devices: [
                 HostScreenDeviceArming(
                     devicePublicKey: key,
                     deviceName: "Kestrel MacBook Pro",
-                    armedDisplays: armedDisplays.map(HostScreenDisplayIdentity.init),
                     minimumCredentialStrength: .hardwareBound,
                     armedAt: Date()
                 )
@@ -604,22 +606,22 @@ func runHostScreenArmingTests() async {
         }
 
         expect(
-            sharingRow(armedDisplays: [fourK, fullHD], activeDisplays: [mainDisplay, fourK, fullHD]).sharedDisplaysLine
+            sharingRow(activeDisplays: [fourK, fullHD]).sharedDisplaysLine
                 == "May share External Display (3840\u{00d7}2160) and External Display (1920\u{00d7}1080).",
             "two same-named displays of different pixel size are told apart by size first"
         )
         expect(
-            sharingRow(armedDisplays: [leftExternal, rightExternal], activeDisplays: [mainDisplay, leftExternal, rightExternal]).sharedDisplaysLine
-                == "May share External Display (left) and External Display (right).",
+            sharingRow(activeDisplays: [mainDisplay, leftExternal, rightExternal]).sharedDisplaysLine
+                == "May share Built-in Display, External Display (left), and External Display (right).",
             "two same-named, same-size displays are told apart by where they sit relative to the main display"
         )
         expect(
-            sharingRow(armedDisplays: [stackedA, stackedB], activeDisplays: [mainDisplay, stackedA, stackedB]).sharedDisplaysLine
+            sharingRow(activeDisplays: [stackedA, stackedB]).sharedDisplaysLine
                 == "May share External Display (6) and External Display (7).",
             "two same-named, same-size, same-position displays are told apart by id as a last resort"
         )
         expect(
-            sharingRow(armedDisplays: [fourK], activeDisplays: [mainDisplay, fourK]).sharedDisplaysLine
+            sharingRow(activeDisplays: [fourK]).sharedDisplaysLine
                 == "May share External Display.",
             "a display whose name nothing else shares keeps the plain sentence, with no disambiguator appended"
         )
@@ -744,7 +746,6 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: key,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [firstOfSameModel, secondOfSameModel].map(HostScreenDisplayIdentity.init),
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -780,7 +781,6 @@ func runHostScreenArmingTests() async {
         let device = HostScreenDeviceArming(
             devicePublicKey: key,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [],
             armedAt: Date(timeIntervalSince1970: 1_700_000_000),
             asksWhenSomeoneIsUsingThisMachine: true
         )
@@ -795,7 +795,7 @@ func runHostScreenArmingTests() async {
             .appendingPathComponent("sensorium-host-screen-arming-asks-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = HostScreenArmingStore(url: url)
-        store.arm(HostScreenDeviceArming(devicePublicKey: key, deviceName: "Kestrel MacBook Pro", armedDisplays: [], armedAt: Date()))
+        store.arm(HostScreenDeviceArming(devicePublicKey: key, deviceName: "Kestrel MacBook Pro", armedAt: Date()))
         let writesBefore = store.writeCount
         store.setAsksWhenInUse(devicePublicKey: key, true)
         expect(
@@ -805,11 +805,11 @@ func runHostScreenArmingTests() async {
         expect(store.writeCount == writesBefore + 1, "the store setter bumps writeCount, the same as arm and disarm")
 
         let fingerprintOff = HostScreenArmingFingerprint(HostScreenDeviceArming(
-            devicePublicKey: key, deviceName: "Kestrel MacBook Pro", armedDisplays: [],
+            devicePublicKey: key, deviceName: "Kestrel MacBook Pro",
             armedAt: Date(timeIntervalSince1970: 1_700_000_000), asksWhenSomeoneIsUsingThisMachine: false
         ))
         let fingerprintOn = HostScreenArmingFingerprint(HostScreenDeviceArming(
-            devicePublicKey: key, deviceName: "Kestrel MacBook Pro", armedDisplays: [],
+            devicePublicKey: key, deviceName: "Kestrel MacBook Pro",
             armedAt: Date(timeIntervalSince1970: 1_700_000_000), asksWhenSomeoneIsUsingThisMachine: true
         ))
         expect(
@@ -831,7 +831,6 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: key,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: true
@@ -848,118 +847,79 @@ func runHostScreenArmingTests() async {
     }
 
     do {
-        // A row with nothing to share says why, on its own line, the same
-        // reason `offerHostScreenList` would log for the same display --
-        // never a second window, and never shown alongside a real
-        // sharedDisplaysLine, since there is nothing left unexplained then.
-        let mirrored = DisplaySnapshot(
+        // A row with nothing shareable says so on its own line, and never
+        // alongside a real sharedDisplaysLine, since there is nothing left
+        // unexplained then. Arming is per machine, so the line is about
+        // this Mac's displays, never about the machine's permission.
+        func row(name: String, key: Data, activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
+            HostScreenArmingPresentation.pairedMachineRows(
+                approvedDevices: [(key, name, .hardwareBound)],
+                arming: HostScreenArming(devices: [
+                    HostScreenDeviceArming(
+                        devicePublicKey: key,
+                        deviceName: name,
+                        minimumCredentialStrength: .hardwareBound,
+                        armedAt: Date()
+                    )
+                ]),
+                activeDisplays: activeDisplays
+            )[0]
+        }
+
+        let shareable = DisplaySnapshot(
             id: 1, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             builtin: false, main: false, vendorNumber: 0x50, modelNumber: 0x50
         )
-        let absentIdentity = HostScreenDisplayIdentity(vendorNumber: 0x99, modelNumber: 0x99)
-        let key = Data([0xFC])
-        let arming = HostScreenArming(devices: [
-            HostScreenDeviceArming(
-                devicePublicKey: key,
-                deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [absentIdentity],
-                minimumCredentialStrength: .hardwareBound,
-                armedAt: Date()
-            )
-        ])
-        let rows = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(key, "Kestrel MacBook Pro", .hardwareBound)],
-            arming: arming,
-            activeDisplays: [mirrored]
+        let offline = DisplaySnapshot(
+            id: 2, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
+            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: false,
+            builtin: false, main: false, vendorNumber: 0x51, modelNumber: 0x51
         )
-        expect(rows[0].sharedDisplaysLine == nil, "nothing armed matches an active display, so there is still no shared-displays line")
-        expect(
-            rows[0].notOfferedReason
-                == "Cannot currently share Display \(absentIdentity.wireStableIdentifier): not online.",
-            "the row explains the gap in the same words offerHostScreenList would log -- got: \(rows[0].notOfferedReason ?? "nil")"
-        )
-
         let actuallyMirrored = DisplaySnapshot(
             id: 5, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             mirrorsDisplay: 7, builtin: false, main: false, vendorNumber: 0x52, modelNumber: 0x52
         )
-        let mirroredRow = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFB]), "Kestrel MacBook Air", .hardwareBound)],
-            arming: HostScreenArming(devices: [
-                HostScreenDeviceArming(
-                    devicePublicKey: Data([0xFB]),
-                    deviceName: "Kestrel MacBook Air",
-                    armedDisplays: [HostScreenDisplayIdentity(actuallyMirrored)],
-                    minimumCredentialStrength: .hardwareBound,
-                    armedAt: Date()
-                )
-            ]),
-            activeDisplays: [actuallyMirrored]
-        )[0]
-        expect(mirroredRow.sharedDisplaysLine == nil, "a mirror secondary is never actually shareable, so the row shows no shared-displays line for it")
-        expect(
-            mirroredRow.notOfferedReason == "Cannot currently share External Display: mirrored.",
-            "an armed display that is now a mirror secondary reads as mirrored, not as merely gone -- got: \(mirroredRow.notOfferedReason ?? "nil")"
-        )
-
         let actuallyAsleep = DisplaySnapshot(
             id: 6, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             asleep: true, builtin: false, main: false, vendorNumber: 0x53, modelNumber: 0x53
         )
-        let sleepingRow = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFA]), "Kestrel Studio Display", .hardwareBound)],
-            arming: HostScreenArming(devices: [
-                HostScreenDeviceArming(
-                    devicePublicKey: Data([0xFA]),
-                    deviceName: "Kestrel Studio Display",
-                    armedDisplays: [HostScreenDisplayIdentity(actuallyAsleep)],
-                    minimumCredentialStrength: .hardwareBound,
-                    armedAt: Date()
-                )
-            ]),
-            activeDisplays: [actuallyAsleep]
-        )[0]
-        expect(sleepingRow.sharedDisplaysLine == nil, "a sleeping display is never actually shareable, so the row shows no shared-displays line for it")
-        expect(
-            sleepingRow.notOfferedReason == "Cannot currently share External Display: asleep.",
-            "an armed display that is only asleep right now reads as asleep, not as merely gone -- got: \(sleepingRow.notOfferedReason ?? "nil")"
-        )
 
-        let sharingRow = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFD]), "Kestrel MacBook Air", .hardwareBound)],
-            arming: HostScreenArming(devices: [
-                HostScreenDeviceArming(
-                    devicePublicKey: Data([0xFD]),
-                    deviceName: "Kestrel MacBook Air",
-                    armedDisplays: [HostScreenDisplayIdentity(mirrored)],
-                    minimumCredentialStrength: .hardwareBound,
-                    armedAt: Date()
-                )
-            ]),
-            activeDisplays: [mirrored]
-        )[0]
+        for (display, description) in [
+            (offline, "offline"),
+            (actuallyMirrored, "a mirror secondary"),
+            (actuallyAsleep, "asleep")
+        ] {
+            let blocked = row(name: "Kestrel MacBook Pro", key: Data([0xFC]), activeDisplays: [display])
+            expect(
+                blocked.sharedDisplaysLine == nil
+                    && blocked.notOfferedReason == HostScreenArmingPresentation.noShareableDisplayNotice,
+                "a Mac whose only display is \(description) shows the blocked line instead of naming it -- got: \(blocked.notOfferedReason ?? "nil")"
+            )
+        }
+
+        let mixed = row(name: "Kestrel MacBook Air", key: Data([0xFD]), activeDisplays: [shareable, actuallyAsleep])
         expect(
-            sharingRow.sharedDisplaysLine != nil && sharingRow.notOfferedReason == nil,
-            "a row with something real to share never also carries a not-offered reason"
+            mixed.sharedDisplaysLine != nil && mixed.notOfferedReason == nil,
+            "a row with something real to share never also carries a not-offered reason, whatever else this Mac has"
         )
 
         let unarmedRow = HostScreenArmingPresentation.pairedMachineRows(
             approvedDevices: [(Data([0xFE]), "Kestrel iMac", nil)],
             arming: HostScreenArming(),
-            activeDisplays: [mirrored]
+            activeDisplays: [offline]
         )[0]
         expect(unarmedRow.notOfferedReason == nil, "a row that is not sharing carries no not-offered reason either")
 
-        print("PASS: a row with nothing shareable names the same reason offerHostScreenList would log, only when it is sharing and armed for something")
+        print("PASS: a row with nothing shareable says so once, only when it is sharing and this Mac has displays to judge")
     }
 
     do {
         // The owner's decision: pairing itself arms host screen, when the
-        // pairing device registered a presence credential, for every
-        // display present at that moment that Sensorium did not create.
+        // pairing device registered a presence credential, for this Mac's
+        // displays as they stand whenever a session starts.
         // `HostScreenArmingCoordinator.toggle(isOn: true)` in `sensoriumd`
         // builds through this exact function, so the two paths cannot
         // drift.
@@ -967,20 +927,10 @@ func runHostScreenArmingTests() async {
         let approvedStore = InMemoryApprovedDeviceStore(keys: [key])
         approvedStore.setName("Kestrel MacBook Pro", for: key)
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        let builtin = DisplaySnapshot(
-            id: 1, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
-            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
-            builtin: true, main: true, vendorNumber: 0x01, modelNumber: 0x01
-        )
-        let canvas = DisplaySnapshot(
-            id: 2, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
-            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
-            builtin: false, main: false, vendorNumber: CanvasDisplayIdentity.vendorID, modelNumber: 0x02
-        )
 
         expect(
             HostScreenDeviceArming.onPairing(
-                devicePublicKey: key, approvedStore: approvedStore, displays: [builtin, canvas], now: now
+                devicePublicKey: key, approvedStore: approvedStore, now: now
             ) == nil,
             "a device with no registered presence credential is not armed at pairing -- it may still pair and use a session canvas"
         )
@@ -995,11 +945,7 @@ func runHostScreenArmingTests() async {
             for: key
         )
         let armed = HostScreenDeviceArming.onPairing(
-            devicePublicKey: key, approvedStore: approvedStore, displays: [builtin, canvas], now: now
-        )
-        expect(
-            armed?.armedDisplays == [HostScreenDisplayIdentity(builtin)],
-            "a device with a registered presence credential is armed for every display present at pairing that Sensorium did not create -- got \(armed?.armedDisplays ?? [])"
+            devicePublicKey: key, approvedStore: approvedStore, now: now
         )
         expect(
             armed?.deviceName == "Kestrel MacBook Pro" && armed?.minimumCredentialStrength == .hardwareBound
@@ -1007,6 +953,33 @@ func runHostScreenArmingTests() async {
             "the built record names the device by the name it gave at pairing, snapshots the strength it registered, defaults asking-first off, and stamps the moment it was armed -- got \(String(describing: armed))"
         )
 
-        print("PASS: HostScreenDeviceArming.onPairing arms a device for every non-Sensorium display present at pairing, only when it registered a presence credential")
+        print("PASS: HostScreenDeviceArming.onPairing arms a machine, with no display list of its own, only when it registered a presence credential")
+    }
+
+    do {
+        // Arming used to name displays. A record written then must still
+        // load, and must be written back without the list it no longer
+        // means.
+        let key = Data([0x0A, 0x0B])
+        let legacyJSON = """
+        {"devices":[{"devicePublicKey":"\(key.base64EncodedString())",\
+        "deviceName":"Kestrel MacBook Pro",\
+        "armedDisplays":[{"vendorNumber":1633775724,"modelNumber":4660}],\
+        "minimumCredentialStrength":"hardwareBound","armedAt":719000000}]}
+        """
+        let decoded = try! JSONDecoder().decode(HostScreenArming.self, from: legacyJSON.data(using: .utf8)!)
+        expect(
+            decoded.devices.count == 1 && decoded.devices[0].deviceName == "Kestrel MacBook Pro"
+                && decoded.devices[0].minimumCredentialStrength == .hardwareBound,
+            "a record naming displays still loads, so a machine armed before this change stays armed"
+        )
+
+        let reEncoded = String(data: try! JSONEncoder().encode(HostScreenArming(devices: decoded.devices)), encoding: .utf8)!
+        expect(
+            !reEncoded.contains("armedDisplays"),
+            "writing that record back drops the display list rather than carrying a field nothing reads -- got \(reEncoded)"
+        )
+
+        print("PASS: an arming record written with a per-display list still loads, and is written back without it")
     }
 }

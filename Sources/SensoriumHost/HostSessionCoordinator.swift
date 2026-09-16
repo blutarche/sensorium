@@ -232,6 +232,14 @@ public final class HostSessionCoordinator {
     /// coordinator) rather than raw geometry, so this factory only ever
     /// has to construct a media object, never decide how big to make it.
     private let hostScreenMediaFactory: ((VideoEncoderConfiguration) -> any CanvasMediaStreaming)?
+    /// Reads whether this Mac's screen is locked, so the viewer is told whether
+    /// to offer the unlock prompt and so an unlock is confirmed after it types.
+    private let lockStateReader: any ScreenLockStateReading
+    /// Types the login password into the locked login window over loopback RFB.
+    /// Neither the password nor that IO lives in the controller; both are here,
+    /// where the `.goodbye` short-circuit already keeps IO out of the
+    /// controller's dispatch.
+    private let lockScreenUnlocker: any LockScreenUnlocking
     /// Host-screen frames are tagged surface 0 inside the telemetry,
     /// admission-priority and send machinery shared with the canvas path.
     /// Safe because a connection is one shape for its whole life: a
@@ -371,8 +379,12 @@ public final class HostSessionCoordinator {
         onSessionEnded: (@Sendable () -> Void)? = nil,
         onStreamUnrecoverable: (@Sendable (String) -> Void)? = nil,
         hostScreenMediaFactory: ((VideoEncoderConfiguration) -> any CanvasMediaStreaming)? = nil,
-        captureAvailability: HostCaptureAvailability = .shared
+        captureAvailability: HostCaptureAvailability = .shared,
+        lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
+        lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker()
     ) {
+        self.lockStateReader = lockStateReader
+        self.lockScreenUnlocker = lockScreenUnlocker
         self.captureAvailability = captureAvailability
         self.controller = controller
         self.media = media
@@ -408,6 +420,30 @@ public final class HostSessionCoordinator {
             await tearDownSurfaces()
             defer { focus.setFocusedSurface(controller.focusedSurface) }
             return try controller.handle(message)
+        }
+        if case let .hostScreenUnlockRequest(password) = message {
+            // Short-circuited before the controller dispatch below, the same
+            // way `.goodbye` is: the password and the loopback IO stay out of
+            // the controller entirely. The reply is written, not returned, so
+            // no caller writes it twice. The password is passed straight to the
+            // unlocker, which zeroes the credential buffer it builds; it is
+            // never logged or written to disk. It still lives for this message's
+            // lifetime, which copy-on-write `Data` does not let this code cut
+            // short.
+            // The lock state is itself a disclosure: an unauthenticated or
+            // non-host-screen peer must not learn whether this Mac is locked by
+            // sending a bogus request. Decided before the attempt so a refused
+            // request writes only its `.notAuthorized` result and no lock
+            // state, while the attempt itself still flows through `unlock` --
+            // the one place every outcome, refused ones included, reaches the
+            // operator log line.
+            let mayObserveLockState = controller.canObserveHostScreenLockState()
+            let outcome = await unlock(password: password)
+            try await writeResponse(.hostScreenUnlockResult(outcome))
+            if mayObserveLockState {
+                try await writeResponse(.hostScreenLockState(locked: lockStateReader.isScreenLocked()))
+            }
+            return nil
         }
         await wakeDisplaysForSessionStart(message)
         let response: SensoriumMessage?
@@ -589,6 +625,10 @@ public final class HostSessionCoordinator {
                 if let modeList = controller.hostScreenModeListMessage() {
                     try await writeResponse(modeList)
                 }
+                // Whether this Mac is locked, so the viewer knows to offer the
+                // unlock prompt. Last, like the mode list: it describes a
+                // session that has now actually started streaming.
+                try await writeResponse(.hostScreenLockState(locked: lockStateReader.isScreenLocked()))
             } catch {
                 // Never leave a session the viewer believes is receiving
                 // video that never actually starts -- the same "one broken
@@ -664,6 +704,100 @@ public final class HostSessionCoordinator {
             didWriteResponse = true
         }
         return didWriteResponse ? nil : response
+    }
+
+    /// Runs one unlock request and leaves the operator one line naming its
+    /// outcome. The password never touches the controller and is never logged:
+    /// the record carries the outcome token alone, not the password or its
+    /// length.
+    private func unlock(password: Data) async -> HostScreenUnlockOutcome {
+        let outcome = await resolveUnlock(password: password)
+        onEvent?("host-screen unlock attempt: \(outcome.wireToken)")
+        return outcome
+    }
+
+    /// Gates the request, decides whether there is anything to unlock, then
+    /// hands the password to the loopback typer. Split from `unlock` so every
+    /// outcome, the gated ones included, flows through the one log line there.
+    private func resolveUnlock(password: Data) async -> HostScreenUnlockOutcome {
+        // A valid, authenticated host-screen session first: everything below,
+        // the lock state included, is a disclosure this connection has not
+        // earned otherwise.
+        guard controller.canObserveHostScreenLockState() else {
+            return .notAuthorized
+        }
+        // A fresh, single-use presence arm for this exact attempt, consumed
+        // here whether or not the attempt goes on to type: every unlock proves
+        // a live human at the viewer again, independent of how the session was
+        // admitted -- a resume-ticket session that skipped the fresh presence
+        // check must not be able to type a password with nobody confirming.
+        // Consumed before the reserve below, so a `.presenceRequired` refusal
+        // spends no guess budget. Distinct from `.notAuthorized`: the session
+        // is valid, only the per-attempt presence proof is missing.
+        guard controller.consumeUnlockArmed() else {
+            return .presenceRequired
+        }
+        // An empty submit is not a guess: it never reaches the login window and
+        // leaks nothing, so it is refused here without reserving a slot, before
+        // the loopback channel is ever opened.
+        guard !password.isEmpty else {
+            return .wrongPassword
+        }
+        // Reserve a guess slot atomically before any lock-state probe or
+        // attempt. The reservation IS the charge, and it happens on this side
+        // of the multi-second `await` below so concurrent connections cannot
+        // all pass a stale check and attempt in parallel. Reserving before the
+        // lock-state probe also keeps that probe budgeted -- otherwise it would
+        // be an unbounded lock-state oracle. `false` means the device is at the
+        // cap (or has no budget configured); retrying cannot help, which is
+        // told apart from an invalid session so the viewer does not read it as
+        // something a reconnect could fix.
+        guard let reservation = controller.tryReserveUnlockAttempt() else {
+            return .tooManyAttempts
+        }
+        // Release the slot on any exit that did not consume a real guess,
+        // including a throw or cancellation mid-attempt: a connection that dies
+        // while the login window is being typed into must not permanently burn
+        // a slot. The refund names the key captured at reserve time, so a
+        // surface torn down or re-armed during the attempt still releases the
+        // right slot. `settled` is set true only for the outcomes that keep the
+        // charge.
+        var settled = false
+        defer {
+            if !settled {
+                controller.refund(reservation)
+            }
+        }
+        guard lockStateReader.isScreenLocked() else {
+            return .notLocked
+        }
+        let outcome = await lockScreenUnlocker.unlock(password: password)
+        switch outcome {
+        case .unlocked:
+            // The correct password: clear the whole budget, not merely refund
+            // this one slot.
+            controller.recordUnlockSuccess(reservation)
+            settled = true
+        case .wrongPassword:
+            // The only outcome that keeps its reserved charge: the login window
+            // rejected the password before any unlock, which is the one thing
+            // that proves a wrong guess reached it. The budget therefore counts
+            // exactly confirmed wrong guesses.
+            settled = true
+        case .failed, .notLocked, .screenSharingUnavailable, .passwordTooLong, .notAuthorized,
+             .tooManyAttempts, .presenceRequired:
+            // None of these carries wrong-guess information, so none consumes a
+            // guess: the `defer` refunds the reserved slot. `.failed` is
+            // reachable only after authenticate already accepted the real
+            // password, so it never reflects a wrong guess; a legitimate user
+            // who reaches it retries into `.unlocked`, which resets the budget.
+            // Listed explicitly, with no `default`, so a new
+            // `HostScreenUnlockOutcome` case is a compile error here rather than
+            // a silent refund. `.presenceRequired` never reaches this switch --
+            // it is returned before the attempt -- but is named for exhaustiveness.
+            break
+        }
+        return outcome
     }
 
     /// Brings host-screen capture back up at a new size: the display's mode

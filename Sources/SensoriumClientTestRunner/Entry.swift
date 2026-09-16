@@ -65,5 +65,7 @@ struct SensoriumClientTestRunner {
         runViewerTelemetryAndFidelityHUDTests()
         runSessionHUDSparklineAndAddressTests()
         testAboutPanelCreditTests()
+        await testHostScreenUnlockClientTests()
+        await testHostScreenUnlockArmFlowTests()
     }
 }

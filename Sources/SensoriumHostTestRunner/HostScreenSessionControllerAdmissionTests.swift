@@ -62,9 +62,8 @@ private func hostScreenTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
 }
 
 /// One controller wired for a full, real (fake-backed) host-screen
-/// admission: armed for `deviceKey`, one eligible display live and in the
-/// pre-session snapshot, idle well past the threshold, and a verifier that
-/// approves by default. Every test starts here and breaks exactly one
+/// admission: armed for `deviceKey`, one eligible display live, idle well
+/// past the threshold, and a verifier that approves by default. Every test starts here and breaks exactly one
 /// thing.
 @MainActor
 private func makeAdmissibleFixture() -> (
@@ -78,12 +77,10 @@ private func makeAdmissibleFixture() -> (
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
     let display = hostScreenTestDisplay()
-    let armedIdentity = HostScreenDisplayIdentity(display)
     let arming = HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [armedIdentity],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(),
             // This fixture exists to exercise the presence rule and gate;
@@ -108,7 +105,6 @@ private func makeAdmissibleFixture() -> (
         inputInjectorFactory: injectorFactory,
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: verifier,
         hostScreenLocalActivitySignal: signal
@@ -142,7 +138,6 @@ private func makeAdmissibleFixtureWithGate() -> (
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel MacBook Pro",
-            armedDisplays: [HostScreenDisplayIdentity(display)],
             minimumCredentialStrength: .hardwareBound,
             armedAt: Date(),
             // Same reasoning as makeAdmissibleFixture: this fixture exists
@@ -162,7 +157,6 @@ private func makeAdmissibleFixtureWithGate() -> (
         inputInjectorFactory: FakeInputInjectorFactory(),
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
-        hostScreenPreSessionSnapshotProvider: { [display] },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceProofVerifier: verifier,
         hostScreenLocalActivitySignal: signal,
@@ -243,7 +237,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { HostScreenArming() },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal
@@ -297,7 +290,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 armedAt: Date()
             )
         ])
@@ -309,7 +301,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             inputInjectorFactory: injectorFactory,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenLocalActivitySignal: FakeHostScreenLocalActivitySignal()
             // hostScreenPresenceProofVerifier deliberately omitted.
@@ -473,8 +464,8 @@ func runHostScreenSessionControllerAdmissionTests() async {
     }
 
     do {
-        // Critical: a failed presence-credential proof must never
-        // pop the host prompt. Design §6.1 orders the signature
+        // A failed presence-credential proof must never pop the
+        // host prompt. Design §6.1 orders the signature
         // check (#5) before the host-presence rule (#6) -- a paired
         // device with a valid arming record and a legitimately-
         // minted token, but no live human at the viewer, must not
@@ -668,7 +659,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [firstMonitor, secondMonitor].map(HostScreenDisplayIdentity.init),
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -682,7 +672,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [firstMonitor, secondMonitor] },
             hostScreenCurrentDisplaysProvider: { [firstMonitor, secondMonitor] },
             hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal
@@ -716,7 +705,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: false
@@ -734,7 +722,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal,
@@ -778,7 +765,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: true
@@ -796,7 +782,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             inputInjectorFactory: FakeInputInjectorFactory(),
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal,
@@ -822,10 +807,12 @@ func runHostScreenSessionControllerAdmissionTests() async {
     }
 
     do {
-        // A gap between what a device is armed for and what it is actually
-        // offered must never be silent: `offerHostScreenList` logs one line
-        // per armed display it left out, naming the display and the exact
-        // reason, and one "offered" line naming what it did include.
+        // A gap between what this Mac has and what it can actually hand
+        // over must never be silent: `offerHostScreenList` logs one line
+        // per display it left out, naming the display and the exact
+        // reason, and one "offered" line naming what it did include. A
+        // canvas Sensorium created is not a gap and is not logged: it was
+        // never a candidate.
         let identity = try! DeviceIdentity.generate()
         let deviceKey = identity.publicKey
 
@@ -840,27 +827,21 @@ func runHostScreenSessionControllerAdmissionTests() async {
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             builtin: false, main: false, vendorNumber: CanvasDisplayIdentity.vendorID, modelNumber: 0x20
         )
-        let lateArrivingDisplay = DisplaySnapshot(
+        let asleepDisplay = DisplaySnapshot(
             id: 4, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
-            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
+            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true, asleep: true,
             builtin: false, main: false, vendorNumber: 0x30, modelNumber: 0x30
         )
-        // Armed for a fifth display that is present nowhere at all right
-        // now -- absent from `current`, exactly the state a mirrored
-        // secondary or a sleeping display leaves behind.
-        let mirroredIdentity = HostScreenDisplayIdentity(vendorNumber: 0x40, modelNumber: 0x40)
+        let mirroredDisplay = DisplaySnapshot(
+            id: 5, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
+            modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true, mirrorsDisplay: 1,
+            builtin: false, main: false, vendorNumber: 0x40, modelNumber: 0x40
+        )
 
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [
-                    HostScreenDisplayIdentity(eligible),
-                    HostScreenDisplayIdentity(offlineDisplay),
-                    HostScreenDisplayIdentity(sensoriumCanvasDisplay),
-                    HostScreenDisplayIdentity(lateArrivingDisplay),
-                    mirroredIdentity,
-                ],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -872,11 +853,9 @@ func runHostScreenSessionControllerAdmissionTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            // `lateArrivingDisplay` is deliberately absent here: present in
-            // `current` but not in this pre-session snapshot is exactly
-            // what "not present when the host started" means.
-            hostScreenPreSessionSnapshotProvider: { [eligible, offlineDisplay, sensoriumCanvasDisplay] },
-            hostScreenCurrentDisplaysProvider: { [eligible, offlineDisplay, sensoriumCanvasDisplay, lateArrivingDisplay] },
+            hostScreenCurrentDisplaysProvider: {
+                [eligible, offlineDisplay, sensoriumCanvasDisplay, asleepDisplay, mirroredDisplay]
+            },
             log: { loggedLines.append($0) }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -886,109 +865,41 @@ func runHostScreenSessionControllerAdmissionTests() async {
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
         guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
-            expect(false, "an armed device with one eligible display still receives hostScreenList")
+            expect(false, "an armed device with one shareable display still receives hostScreenList")
             return
         }
-        expect(displays.count == 1, "only the one genuinely eligible display is offered")
+        expect(displays.count == 1, "only the one display that can actually be captured is offered")
 
         let eligibleLabel = HostScreenArmingPresentation.displayLabel(for: eligible)
-        let offlineLabel = HostScreenArmingPresentation.displayLabel(for: offlineDisplay)
-        let canvasLabel = HostScreenArmingPresentation.displayLabel(for: sensoriumCanvasDisplay)
-        let lateLabel = HostScreenArmingPresentation.displayLabel(for: lateArrivingDisplay)
-        let mirroredLabel = "Display \(mirroredIdentity.wireStableIdentifier)"
-
         expect(
-            loggedLines.contains("Sensorium host: did not offer host screen \"\(offlineLabel)\" to Kestrel MacBook Pro: not online"),
-            "an armed display CoreGraphics reports not online is logged with that exact reason -- got: \(loggedLines)"
+            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: not online"),
+            "a display CoreGraphics reports not online is logged with that exact reason -- got: \(loggedLines)"
         )
         expect(
-            loggedLines.contains(
-                "Sensorium host: did not offer host screen \"\(mirroredLabel)\" to Kestrel MacBook Pro: not online"
-            ),
-            "an armed display absent from the current display list entirely is logged as not online -- got: \(loggedLines)"
+            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: asleep"),
+            "a display asleep right now is logged as asleep -- got: \(loggedLines)"
         )
         expect(
-            loggedLines.contains(
-                "Sensorium host: did not offer host screen \"\(canvasLabel)\" to Kestrel MacBook Pro: created by Sensorium"
-            ),
-            "an armed display that is a Sensorium canvas is logged as created by Sensorium -- got: \(loggedLines)"
+            loggedLines.contains("Sensorium host: did not offer host screen \"External Display\" to Kestrel MacBook Pro: mirrored"),
+            "a display showing another display's picture is logged as mirrored -- got: \(loggedLines)"
         )
         expect(
-            loggedLines.contains(
-                "Sensorium host: did not offer host screen \"\(lateLabel)\" to Kestrel MacBook Pro: "
-                    + "not present when the host started (restart the host to offer it)"
-            ),
-            "an armed display absent only from the pre-session snapshot is logged with the restart remedy -- got: \(loggedLines)"
+            !loggedLines.contains { $0.contains("created by Sensorium") },
+            "a canvas Sensorium created is not reported as a missing display -- got: \(loggedLines)"
         )
         expect(
             loggedLines.contains("Sensorium host: offered 1 host screens to Kestrel MacBook Pro: \(eligibleLabel)"),
             "what was actually offered is logged too, naming the device and the offered labels -- got: \(loggedLines)"
         )
-        expect(loggedLines.count == 5, "exactly one line per missing display plus one offered line, no more -- got: \(loggedLines)")
+        expect(loggedLines.count == 4, "exactly one line per unshareable display plus one offered line, no more -- got: \(loggedLines)")
 
-        print("PASS: offerHostScreenList logs why each missing armed display was not offered, and what was offered instead")
+        print("PASS: offerHostScreenList logs why each display it could not share was left out, and what it offered instead")
     }
 
     do {
-        // Today's actual bug: a display asleep when this host started is
-        // still present, not gone -- `DisplayInventory.online()`, unlike
-        // `.active()`, still lists it, so an armed display asleep in the
-        // pre-session snapshot and awake by the time of the offer must be
-        // offered, not left waiting for a restart that was never needed.
-        let identity = try! DeviceIdentity.generate()
-        let deviceKey = identity.publicKey
-        let awakeNow = hostScreenTestDisplay()
-        let asleepAtStart = DisplaySnapshot(
-            id: awakeNow.id, pixelWidth: awakeNow.pixelWidth, pixelHeight: awakeNow.pixelHeight,
-            modeWidth: awakeNow.modeWidth, modeHeight: awakeNow.modeHeight,
-            modePixelWidth: awakeNow.modePixelWidth, modePixelHeight: awakeNow.modePixelHeight,
-            bounds: awakeNow.bounds, online: true, asleep: true,
-            builtin: awakeNow.builtin, main: awakeNow.main,
-            vendorNumber: awakeNow.vendorNumber, modelNumber: awakeNow.modelNumber
-        )
-        let arming = HostScreenArming(devices: [
-            HostScreenDeviceArming(
-                devicePublicKey: deviceKey,
-                deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(awakeNow)],
-                minimumCredentialStrength: .hardwareBound,
-                armedAt: Date()
-            )
-        ])
-        var loggedLines: [String] = []
-        let controller = HostSessionController(
-            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            approvedPublicKeys: [deviceKey],
-            requireAuthentication: true,
-            keyConfinement: .hostScreen,
-            hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [asleepAtStart] },
-            hostScreenCurrentDisplaysProvider: { [awakeNow] },
-            log: { loggedLines.append($0) }
-        )
-        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
-        )
-        _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
-        ))
-        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
-            expect(false, "a display asleep at host start and awake at offer time is still offered")
-            return
-        }
-        expect(displays.count == 1, "the once-sleeping, now-awake display is the one display offered -- got: \(displays.count)")
-        expect(
-            loggedLines == ["Sensorium host: offered 1 host screens to Kestrel MacBook Pro: External Display"],
-            "a display asleep only at host start logs a clean offer, never a gap line -- got: \(loggedLines)"
-        )
-
-        print("PASS: a display asleep in the pre-session snapshot and awake at offer time is offered")
-    }
-
-    do {
-        // The other direction: a display awake at host start but asleep
-        // right now must not be offered, and the gap is logged as asleep,
-        // not conflated with a display that was never there at all.
+        // A display that is asleep right now must not be offered, and the
+        // gap is logged as asleep, not conflated with a display that is not
+        // there at all.
         let identity = try! DeviceIdentity.generate()
         let deviceKey = identity.publicKey
         let awakeAtStart = hostScreenTestDisplay()
@@ -1004,7 +915,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(awakeAtStart)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -1016,7 +926,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [awakeAtStart] },
             hostScreenCurrentDisplaysProvider: { [asleepNow] },
             log: { loggedLines.append($0) }
         )
@@ -1050,7 +959,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel MacBook Pro",
-                armedDisplays: [HostScreenDisplayIdentity(display)],
                 minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
@@ -1062,7 +970,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             requireAuthentication: true,
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
-            hostScreenPreSessionSnapshotProvider: { [display] },
             hostScreenCurrentDisplaysProvider: { [display] },
             log: { loggedLines.append($0) }
         )
@@ -1075,9 +982,57 @@ func runHostScreenSessionControllerAdmissionTests() async {
         _ = try! controller.offerHostScreenList()
         expect(
             loggedLines == ["Sensorium host: offered 1 host screens to Kestrel MacBook Pro: External Display"],
-            "every armed display offered cleanly logs nothing but the one offered line -- got: \(loggedLines)"
+            "a display offered cleanly logs nothing but the one offered line -- got: \(loggedLines)"
         )
 
         print("PASS: an offer with no gaps logs only the offered line, nothing about a missing display")
+    }
+
+    do {
+        // Arming is per machine, not per display: an armed machine is
+        // offered whatever this Mac has at session time, including a
+        // monitor attached after this host started, and never a canvas
+        // Sensorium created.
+        let identity = try! DeviceIdentity.generate()
+        let deviceKey = identity.publicKey
+        let monitor = hostScreenTestDisplay(id: 11)
+        let canvas = DisplaySnapshot(
+            id: 12, pixelWidth: 1920, pixelHeight: 1200, modeWidth: 1920, modeHeight: 1200,
+            modePixelWidth: 1920, modePixelHeight: 1200, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1200),
+            online: true, builtin: false, main: false,
+            vendorNumber: CanvasDisplayIdentity.vendorID, modelNumber: 0x1234
+        )
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: deviceKey,
+                deviceName: "Kestrel MacBook Pro",
+                minimumCredentialStrength: .hardwareBound,
+                armedAt: Date()
+            )
+        ])
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            approvedPublicKeys: [deviceKey],
+            requireAuthentication: true,
+            keyConfinement: .hostScreen,
+            hostScreenArmingProvider: { arming },
+            hostScreenCurrentDisplaysProvider: { [monitor, canvas] }
+        )
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        )
+        _ = try! controller.handle(.authenticatedHello(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+        ))
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
+            expect(false, "an armed machine is offered this Mac's current displays, not refused")
+            return
+        }
+        expect(
+            displays.map(\.displayIdentity) == [HostScreenDisplayIdentity(monitor).wireStableIdentifier],
+            "the one online display Sensorium did not create is offered, and the canvas is not -- got: \(displays.map(\.label))"
+        )
+
+        print("PASS: an armed machine is offered every online display Sensorium did not create, and never a canvas")
     }
 }
