@@ -67,5 +67,6 @@ struct SensoriumClientTestRunner {
         testAboutPanelCreditTests()
         await testHostScreenUnlockClientTests()
         await testHostScreenUnlockArmFlowTests()
+        await testSilenceWatchdogTests()
     }
 }

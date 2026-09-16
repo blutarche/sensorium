@@ -292,6 +292,10 @@ public final class HostSessionController {
     /// `goodbye`.
     private var unlockArmed = false
     private var hostScreenSurface: HostScreenSurfaceState?
+    /// Set by `HostNetworkSession` the instant its transport ends or its own
+    /// Stop path begins, ahead of the async `goodbye` teardown that follows
+    /// either one -- see `hasLiveHostScreenSession`.
+    private var transportClosed = false
     /// The first admitted `canvasRequest` or `hostScreenRequest` fixes this
     /// connection's shape; the other kind refuses for the rest of its life.
     /// Both kinds share `CanvasSurfaceID`-keyed machinery and host screen
@@ -616,9 +620,21 @@ public final class HostSessionController {
     /// stale one. A session that has ended (`goodbye`) has cleared its surface,
     /// and a connection whose object is gone answers `false` through the weak
     /// reference the registry holds -- so a teardown that never fired cannot
-    /// leave a device permanently marked busy.
+    /// leave a device permanently marked busy. Also `false` once
+    /// `noteSessionEnding()` has run, even before the `goodbye` teardown that
+    /// follows it finishes: a teardown that stalls -- a slow capture stop, a
+    /// stuck farewell write -- must not keep the device marked busy for as
+    /// long as the stall lasts, whether the teardown started because the
+    /// transport dropped or because a person at this machine pressed Stop.
     public var hasLiveHostScreenSession: Bool {
-        hostScreenSurface != nil
+        hostScreenSurface != nil && !transportClosed
+    }
+
+    /// Called by `HostNetworkSession` the moment its transport ends, or the
+    /// moment its own Stop path begins, before the `goodbye` teardown that
+    /// follows either one has run -- see `hasLiveHostScreenSession`.
+    public func noteSessionEnding() {
+        transportClosed = true
     }
 
     /// Atomically claims one unlock guess against this device's shared budget:

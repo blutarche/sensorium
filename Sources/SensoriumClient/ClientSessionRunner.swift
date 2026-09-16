@@ -345,6 +345,11 @@ public final class ClientSessionRunner {
         receiveTask = Task.detached(priority: .userInitiated) { [weak self] in
             await self?.receiveLoop()
         }
+        // Armed here, not any earlier: pairing's retyped-digit wait and this
+        // connection's own pre-live handshake can both sit silent on
+        // purpose, bounded by their own timeouts. From here on the host is
+        // expected to answer clock sync on its own schedule below.
+        connection.beginHostSilenceWatch()
         clockTask = Task { [weak self] in
             await self?.clockSyncLoop()
         }
@@ -360,6 +365,7 @@ public final class ClientSessionRunner {
 
     public func stop() {
         onEnded = nil
+        connection.endHostSilenceWatch()
         receiveTask?.cancel()
         receiveTask = nil
         clockTask?.cancel()

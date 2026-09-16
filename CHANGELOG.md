@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 once it reaches 1.0.
 
+## [Unreleased]
+
+### Fixed
+
+- A host now notices a viewer that went silent -- lost link, quit app --
+  after twenty seconds without a message, drops that connection, and frees
+  its host-screen slot, instead of leaving the device marked busy until
+  the process restarts. The `host-screen-already-live` refusal shown to a
+  reconnecting viewer no longer states a second open window as fact; it
+  now also names the wait-and-retry path.
+- A viewer now notices a host that went silent for thirty seconds and ends
+  the session and reconnects, instead of freezing on the last picture with
+  no way back.
+
 ## [0.1.1] - 2026-09-16
 
 ### Changed

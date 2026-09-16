@@ -5,6 +5,12 @@ import SensoriumCore
 public enum HostNetworkSessionError: Error, Equatable {
     case closed
     case receiveFailed
+    /// The viewer-silence watchdog concluded the link is dead after this much
+    /// true silence and cancelled the channel itself, rather than the
+    /// transport reporting a failure of its own. Carries the timeout this
+    /// session was actually configured with, so the operator log names the
+    /// value that fired rather than a hardcoded default.
+    case viewerSilent(after: Duration)
 }
 
 /// The byte stream a host session runs over. NWConnection serves the QUIC
@@ -162,6 +168,47 @@ private final class SurfaceAwarePeerFlag: @unchecked Sendable {
     }
 }
 
+/// When bytes were last actually received, and whether the watchdog has
+/// already fired -- read by the watchdog task and written by the receive
+/// loop, both off the main actor. `markDetected()` is one-shot the same way
+/// `OneShotFlag` is, since only the watchdog itself calls it and it must act
+/// at most once.
+private final class ViewerSilenceState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastReceivedNanoseconds: Int64
+    private var detected = false
+
+    init(nowNanoseconds: Int64) {
+        lastReceivedNanoseconds = nowNanoseconds
+    }
+
+    func noteReceived(atNanoseconds nanoseconds: Int64) {
+        lock.lock()
+        defer { lock.unlock() }
+        lastReceivedNanoseconds = nanoseconds
+    }
+
+    func silentNanoseconds(asOf nowNanoseconds: Int64) -> Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return nowNanoseconds - lastReceivedNanoseconds
+    }
+
+    func markDetected() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !detected else { return false }
+        detected = true
+        return true
+    }
+
+    var isDetected: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return detected
+    }
+}
+
 public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     private let connection: any HostByteChannel
     private let controller: HostSessionController
@@ -196,6 +243,28 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// Started whenever there is a `latencyRecorder`, which is every
     /// production session.
     private let telemetryPollTask = CancellableTaskBox()
+    /// Silence tracked from this connection's own construction, in
+    /// nanoseconds -- see `startViewerSilenceWatchdog()`.
+    private let viewerSilenceState = ViewerSilenceState(nowNanoseconds: MonotonicClock.nowNanoseconds())
+    private let viewerSilenceWatchdogTask = CancellableTaskBox()
+    /// Kept alongside `viewerSilenceTimeoutNanoseconds` so the close reason
+    /// can name the value this session actually ran with.
+    private let viewerSilenceTimeout: Duration
+    private let viewerSilenceTimeoutNanoseconds: Int64
+
+    /// The viewer sends a clock-sync message roughly every ten seconds while
+    /// a session is live, so this much true silence means the link is dead,
+    /// not merely quiet. Not the transport's own idle timeout: that fires
+    /// only once the OS itself gives up on the socket, which in the field
+    /// can run far longer than this. Shorter than the viewer's own
+    /// thirty-second silence watchdog, which redials right after it fires --
+    /// the host has to have freed the slot by then, not merely be about to.
+    public static let defaultViewerSilenceTimeout: Duration = .seconds(20)
+
+    private static func nanoseconds(for duration: Duration) -> Int64 {
+        let components = duration.components
+        return components.seconds * 1_000_000_000 + components.attoseconds / 1_000_000_000
+    }
 
     public init(
         connection: any HostByteChannel,
@@ -203,6 +272,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         coordinator: HostSessionCoordinator? = nil,
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         clipboard: ClipboardSyncSession? = nil,
+        viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
         onEvent: (@Sendable (String) -> Void)? = nil,
         onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil
     ) {
@@ -211,6 +281,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         self.coordinator = coordinator
         self.latencyRecorder = latencyRecorder
         self.clipboard = clipboard
+        self.viewerSilenceTimeout = viewerSilenceTimeout
+        self.viewerSilenceTimeoutNanoseconds = Self.nanoseconds(for: viewerSilenceTimeout)
         self.onEvent = onEvent
         self.onPeerPresence = onPeerPresence
     }
@@ -221,6 +293,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         coordinator: HostSessionCoordinator? = nil,
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         clipboard: ClipboardSyncSession? = nil,
+        viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
         onEvent: (@Sendable (String) -> Void)? = nil,
         onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil
     ) {
@@ -230,6 +303,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             coordinator: coordinator,
             latencyRecorder: latencyRecorder,
             clipboard: clipboard,
+            viewerSilenceTimeout: viewerSilenceTimeout,
             onEvent: onEvent,
             onPeerPresence: onPeerPresence
         )
@@ -336,6 +410,55 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         }
         startClipboardPolling()
         startTelemetryPolling()
+        startViewerSilenceWatchdog()
+    }
+
+    /// Watches for the viewer having gone silent, independently of the
+    /// transport's own idle timeout -- see `defaultViewerSilenceTimeout`.
+    /// Cancelling the channel is what actually ends the session: the pending
+    /// `receiveBytes` in `run()` then throws, and the existing catch-block
+    /// teardown runs unchanged.
+    ///
+    /// Gated on `isSessionAuthenticatedAndStreaming`, the same condition
+    /// `startTelemetryPolling` uses: pairing a new device can sit idle for
+    /// minutes while a person reads a code off the host and types it into
+    /// the viewer, and none of that silence is evidence the viewer is gone.
+    /// The clock only ever counts down once a session is actually live.
+    private func startViewerSilenceWatchdog() {
+        viewerSilenceWatchdogTask.replace(with: Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                let isStreaming = await MainActor.run { [controller = self.controller] in
+                    controller.isSessionAuthenticatedAndStreaming
+                }
+                guard isStreaming else {
+                    // Not yet a live session -- still pairing, or authenticated
+                    // but not yet given a surface -- so there is no silence to
+                    // measure. Poll rather than sleep for the full timeout: the
+                    // clock starts counting from the moment streaming is first
+                    // observed, not from whenever this poll happens to land.
+                    do {
+                        try await Task.sleep(for: .milliseconds(200))
+                    } catch {
+                        return
+                    }
+                    continue
+                }
+                let remaining = self.viewerSilenceTimeoutNanoseconds
+                    - self.viewerSilenceState.silentNanoseconds(asOf: MonotonicClock.nowNanoseconds())
+                guard remaining <= 0 else {
+                    do {
+                        try await Task.sleep(for: .nanoseconds(remaining))
+                    } catch {
+                        return
+                    }
+                    continue
+                }
+                guard self.viewerSilenceState.markDetected() else { return }
+                self.connection.cancel()
+                return
+            }
+        })
     }
 
     /// Sends one `telemetry` message per `TelemetryPolicy.sendIntervalSeconds`,
@@ -450,8 +573,14 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     public func stop() {
         clipboardPollTask.cancel()
         telemetryPollTask.cancel()
+        viewerSilenceWatchdogTask.cancel()
         onPeerPresence?(.closed(reason: nil))
         Task { @MainActor [controller, coordinator] in
+            // Set before the teardown below, which can stall (a slow capture
+            // stop, say): a device this connection holds busy must not stay
+            // marked busy for as long as that stall lasts, the same ordering
+            // the transport-closed path in `run()` uses.
+            controller.noteSessionEnding()
             if let coordinator {
                 await coordinator.sessionDidEnd(reason: GoodbyeReason.stoppedByHost)
             } else {
@@ -591,11 +720,22 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         } catch {
             clipboardPollTask.cancel()
             telemetryPollTask.cancel()
+            viewerSilenceWatchdogTask.cancel()
+            // A watchdog-triggered cancel reaches here as an ordinary
+            // channel error; naming it explicitly is what lets the close
+            // reason say why the link ended instead of just that it did.
+            let closingError: any Error = viewerSilenceState.isDetected
+                ? HostNetworkSessionError.viewerSilent(after: viewerSilenceTimeout)
+                : error
             // The error that ended the read loop is the only place this
             // machine learns why a viewer went away, so it is named in the
             // close reason.
-            onPeerPresence?(.closed(reason: HostOperatorLog.closeReason(for: error)))
+            onPeerPresence?(.closed(reason: HostOperatorLog.closeReason(for: closingError)))
             Task { @MainActor [controller, coordinator] in
+                // Set before the teardown below, which can stall (a slow
+                // capture stop, say): a device this connection held busy
+                // must not stay marked busy for as long as that stall lasts.
+                controller.noteSessionEnding()
                 if let coordinator {
                     await coordinator.sessionDidEnd(reason: "transport-closed")
                 } else {
@@ -630,6 +770,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     }
 
     private func receiveBytes(count: Int) async throws -> Data {
-        try await connection.receiveBytes(count: count)
+        let data = try await connection.receiveBytes(count: count)
+        viewerSilenceState.noteReceived(atNanoseconds: MonotonicClock.nowNanoseconds())
+        return data
     }
 }

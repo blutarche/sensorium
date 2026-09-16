@@ -1035,6 +1035,90 @@ func runHostScreenLiveSessionTests() async {
         print("PASS: a host-screen session teardown releases its device's live-session entry, so the device can start again")
     }
 
+    // A connection whose transport has already ended no longer counts toward
+    // the one-live-host-screen-session-per-device rule, even before its own
+    // `goodbye` teardown has run -- a stalled teardown must not keep the
+    // device marked busy for as long as the stall lasts.
+    do {
+        let registry = HostScreenLiveSessionRegistry()
+        let identity = try! DeviceIdentity.generate()
+
+        let first = makeUnlockFixture(
+            authenticate: true,
+            lockStateReader: FakeScreenLockState(locked: true),
+            unlocker: RecordingUnlocker(outcome: .wrongPassword),
+            identity: identity,
+            liveSessionRegistry: registry
+        )
+        expect(await admitHostScreenResult(first) == .admitted, "the first host-screen session for a device is admitted")
+
+        let second = makeUnlockFixture(
+            authenticate: true,
+            lockStateReader: FakeScreenLockState(locked: true),
+            unlocker: RecordingUnlocker(outcome: .wrongPassword),
+            identity: identity,
+            liveSessionRegistry: registry
+        )
+        expect(
+            await admitHostScreenResult(second) == .refused(reason: "host-screen-already-live"),
+            "a second concurrent session for the same device is refused while the first's transport is still open"
+        )
+
+        first.controller.noteSessionEnding()
+
+        let third = makeUnlockFixture(
+            authenticate: true,
+            lockStateReader: FakeScreenLockState(locked: true),
+            unlocker: RecordingUnlocker(outcome: .wrongPassword),
+            identity: identity,
+            liveSessionRegistry: registry
+        )
+        expect(
+            await admitHostScreenResult(third) == .admitted,
+            "once the first connection's transport has closed, the device admits a fresh session even before goodbye runs"
+        )
+
+        print("PASS: a connection whose transport has closed stops counting toward the live-session cap immediately")
+    }
+
+    // Pressing Stop frees the device's live-session slot the same way a
+    // dropped transport does: immediately, not only once the goodbye
+    // teardown Stop starts has actually finished.
+    do {
+        let registry = HostScreenLiveSessionRegistry()
+        let identity = try! DeviceIdentity.generate()
+
+        let first = makeUnlockFixture(
+            authenticate: true,
+            lockStateReader: FakeScreenLockState(locked: true),
+            unlocker: RecordingUnlocker(outcome: .wrongPassword),
+            identity: identity,
+            liveSessionRegistry: registry
+        )
+        expect(await admitHostScreenResult(first) == .admitted, "the first host-screen session for a device is admitted")
+
+        let channel = FakeHostByteChannel(scriptedMessages: [])
+        let networkSession = HostNetworkSession(connection: channel, controller: first.controller)
+        networkSession.attach(coordinator: first.coordinator)
+
+        networkSession.stop()
+        try! await Task.sleep(for: .milliseconds(200))
+
+        let again = makeUnlockFixture(
+            authenticate: true,
+            lockStateReader: FakeScreenLockState(locked: true),
+            unlocker: RecordingUnlocker(outcome: .wrongPassword),
+            identity: identity,
+            liveSessionRegistry: registry
+        )
+        expect(
+            await admitHostScreenResult(again) == .admitted,
+            "once Stop has been pressed, the device admits a fresh session"
+        )
+
+        print("PASS: pressing Stop frees a device's live-session slot immediately, the same way a dropped transport does")
+    }
+
     // An admission whose injector construction fails releases the
     // live-session claim it took, so a leaked entry never holds the device busy.
     do {

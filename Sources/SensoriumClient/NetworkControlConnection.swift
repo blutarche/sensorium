@@ -73,7 +73,15 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "com.sensorium.control-connection")
     private let pinMismatchFlag = PinMismatchFlag()
+    private let silenceWatchdog: SilenceWatchdog
     public let deferredPackets = DeferredPacketQueue()
+
+    /// The viewer sends a clock-sync message roughly every ten seconds while
+    /// a session is live, so this much true silence means the link is dead,
+    /// not merely quiet. Not the transport's own idle timeout: that fires
+    /// only once the OS itself gives up on the socket, which in the field
+    /// can run far longer than this.
+    public static let defaultHostSilenceTimeout: Duration = .seconds(30)
 
     /// `nil` is allowed only during the one-time pairing ceremony; the signed
     /// pairing approval binds the returned certificate hash to the host key.
@@ -85,7 +93,7 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
         tlsCertificateHash: Data? = nil,
         transport: ClientTransportKind = .quic
     ) {
-        connection = NWConnection(
+        let nwConnection = NWConnection(
             host: host,
             port: port,
             using: Self.parameters(
@@ -94,6 +102,10 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
                 pinMismatchFlag: pinMismatchFlag
             )
         )
+        connection = nwConnection
+        silenceWatchdog = SilenceWatchdog(timeout: Self.defaultHostSilenceTimeout) {
+            nwConnection.cancel()
+        }
     }
 
     public static func certificatePinMatches(certificateDER: Data, expectedHash: Data) -> Bool {
@@ -116,8 +128,10 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
             return .tcp
         }
         let quic = NWProtocolQUIC.Options()
-        // Matches the host: 30s of silence fails the connection, so a dead
-        // host surfaces as an error on the pending receive instead of a hang.
+        // The silence watchdog on this connection is what actually ends a
+        // dead link: it does not wait on the OS to give up on the socket,
+        // which in the field can run far longer than this value. This idle
+        // timeout is only a backstop underneath it.
         quic.idleTimeout = 30_000
         sec_protocol_options_add_tls_application_protocol(
             quic.securityProtocolOptions,
@@ -227,6 +241,22 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
         }
     }
 
+    /// Arms the silence watchdog. Never automatic: a connection sits ready
+    /// but silent for as long as pairing's own retyped-digit flow or a
+    /// session's pre-live handshake need, both already bounded by their own
+    /// timeouts. `ClientSessionRunner` is the one caller, once a session is
+    /// live and expected to hear from the host on its own schedule.
+    /// Idempotent.
+    public func beginHostSilenceWatch() {
+        silenceWatchdog.start()
+    }
+
+    /// Disarms the silence watchdog. Idempotent, and safe to call on a
+    /// connection that was never armed.
+    public func endHostSilenceWatch() {
+        silenceWatchdog.stop()
+    }
+
     public func send(_ message: SensoriumMessage) async throws {
         try await sendRaw(try SensoriumTransportPacketCodec.encode(.control(message)))
     }
@@ -262,6 +292,7 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
     }
 
     public func close() async {
+        silenceWatchdog.stop()
         connection.cancel()
     }
 
@@ -273,6 +304,7 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
                 maximumLength: count
             ) { data, _, isComplete, error in
                 if let data, data.count == count {
+                    self.silenceWatchdog.heard()
                     continuation.resume(returning: data)
                 } else if isComplete || error != nil {
                     continuation.resume(throwing: NetworkControlConnectionError.closed)

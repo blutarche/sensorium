@@ -48,8 +48,10 @@ public enum HostScreenRefusalCopy {
             return "That machine was already showing this machine a host screen. That session has ended. "
                 + "Connect with a virtual display, then choose a host screen from the Screen menu."
         case "host-screen-already-live":
-            return "This machine is already showing that machine\u{2019}s screen in another window. Use that "
-                + "window, or close it and choose the host screen again from the Screen menu."
+            return "That machine still counts a host-screen session from this machine as live. If another "
+                + "window here is showing its screen, use that one. Otherwise wait about thirty seconds for "
+                + "that machine to notice the old connection is gone, then connect with a virtual display "
+                + "and choose the host screen again from the Screen menu."
         default:
             return "That machine gave a reason this version of Sensorium does not know: "
                 + "\u{201C}\(nonBreaking(reason)).\u{201D} Update both apps, then connect with a virtual display."

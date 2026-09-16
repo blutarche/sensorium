@@ -20,6 +20,9 @@ public enum HostOperatorLog {
                     + "The other machine can ask again."
             }
         }
+        if let error = error as? HostNetworkSessionError, case let .viewerSilent(after) = error {
+            return "No message from the viewer for \(describeSilenceDuration(after)), so the connection was treated as dead."
+        }
         if #available(macOS 13.0, *), let error = error as? HostMediaPipelineError {
             switch error {
             case .stillRefreshNotDelivered:
@@ -71,6 +74,20 @@ public enum HostOperatorLog {
             return String(format: "%.1f MB", Double(bytes) / 1_000_000)
         }
         return "\(bytes / 1_000) KB"
+    }
+
+    /// A silence window as a person reads it, in the configured value rather
+    /// than a hardcoded one: whole seconds when there are only whole seconds
+    /// to report, milliseconds for a value finer than this log line will ever
+    /// see outside a test.
+    private static func describeSilenceDuration(_ duration: Duration) -> String {
+        let components = duration.components
+        let totalMilliseconds = components.seconds * 1_000 + components.attoseconds / 1_000_000_000_000_000
+        guard totalMilliseconds % 1_000 == 0 else {
+            return "\(totalMilliseconds) milliseconds"
+        }
+        let seconds = totalMilliseconds / 1_000
+        return seconds == 1 ? "1 second" : "\(seconds) seconds"
     }
 
     public static func sourceRefused(address: String) -> String {
