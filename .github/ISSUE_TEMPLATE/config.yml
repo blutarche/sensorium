@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/blutarche/sensorium/security
+    about: Do not open a public issue for a security vulnerability. See SECURITY.md and use GitHub's private vulnerability reporting instead.

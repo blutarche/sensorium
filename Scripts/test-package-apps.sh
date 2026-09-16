@@ -2,6 +2,7 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 PACKAGE="$ROOT/Scripts/package-apps.sh"
 KIT="$ROOT/Artifacts/Sensorium"
 ARCHIVE="$ROOT/Artifacts/Sensorium.zip"
@@ -40,8 +41,8 @@ plutil -lint "$KIT/Sensorium Host.app/Contents/Info.plist"
 # CFBundleDisplayName is what some surfaces prefer over CFBundleName.
 [ "$(plutil -extract CFBundleName raw -o - "$KIT/Sensorium Host.app/Contents/Info.plist")" = "Sensorium Host" ]
 [ "$(plutil -extract CFBundleDisplayName raw -o - "$KIT/Sensorium Host.app/Contents/Info.plist")" = "Sensorium Host" ]
-[ "$(plutil -extract CFBundleShortVersionString raw -o - "$KIT/Sensorium.app/Contents/Info.plist")" = "0.1.0" ]
-[ "$(plutil -extract CFBundleShortVersionString raw -o - "$KIT/Sensorium Host.app/Contents/Info.plist")" = "0.1.0" ]
+[ "$(plutil -extract CFBundleShortVersionString raw -o - "$KIT/Sensorium.app/Contents/Info.plist")" = "$VERSION" ]
+[ "$(plutil -extract CFBundleShortVersionString raw -o - "$KIT/Sensorium Host.app/Contents/Info.plist")" = "$VERSION" ]
 # The About panel falls back to this when the running binary is bundled.
 [ "$(plutil -extract NSHumanReadableCopyright raw -o - "$KIT/Sensorium.app/Contents/Info.plist")" = "© 2026 blutarche · GPL-3.0" ]
 [ "$(plutil -extract NSHumanReadableCopyright raw -o - "$KIT/Sensorium Host.app/Contents/Info.plist")" = "© 2026 blutarche · GPL-3.0" ]

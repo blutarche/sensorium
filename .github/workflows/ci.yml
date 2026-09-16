@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Public-repository audit
+        run: python3 Scripts/audit-public-repo.py
+
+      - name: Python unit tests
+        run: |
+          python3 Scripts/test-audit-public-repo.py
+          python3 Scripts/test-classify-host-permission-blocker.py
+          python3 Scripts/test-classify-workspace-focus-blocker.py
+          python3 Scripts/test-compare-display-inventory.py
+          python3 Scripts/test-check-display-active.py
+          python3 Scripts/test-documentation-status.py
+
+      - name: Build (release)
+        run: swift build -c release
+
+      # SensoriumHostTestRunner and SensoriumClientTestRunner open real
+      # AppKit windows and hang on a headless runner; only
+      # SensoriumCoreTestRunner is free of that dependency, so it is the
+      # only runner CI executes. Run the full suite locally with
+      # ./Scripts/run-unit-tests.sh before opening a pull request.
+      - name: SensoriumCoreTestRunner (release)
+        run: swift run -c release SensoriumCoreTestRunner
