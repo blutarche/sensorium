@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-19
+
 ### Changed
 
 - Default shortcut routing is remote-when-focused: a system-reserved
@@ -74,6 +76,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.1.3]: https://github.com/blutarche/sensorium/releases/tag/v0.1.3
 [0.1.2]: https://github.com/blutarche/sensorium/releases/tag/v0.1.2
 [0.1.1]: https://github.com/blutarche/sensorium/releases/tag/v0.1.1
 [0.1.0]: https://github.com/blutarche/sensorium/releases/tag/v0.1.0
