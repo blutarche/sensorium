@@ -557,8 +557,9 @@ func testDualCanvasReconnectAndUITests() async {
         print("PASS: SurfaceFrameRouter bounds window storage to the two-slot surfaceID cap")
         print("PASS: SurfaceFrameRouter teardown stops decoding on every window it knows about")
 
-        // System shortcut routing: the default mode with a windowed viewer
-        // must leave every system-reserved chord on the local machine.
+        // System shortcut routing: the default mode forwards a system-reserved
+        // chord from a windowed viewer as soon as it has key focus -- a
+        // windowed viewer never traps Cmd-Tab away from the remote machine.
         let defaultRouter = SystemShortcutRouter()
         let windowedPrimary = ViewerWindowState(surfaceID: 0, hasKeyFocus: true, isFullscreen: false)
         expect(
@@ -566,11 +567,20 @@ func testDualCanvasReconnectAndUITests() async {
                 chord: KeyChord(keyCode: 48, modifiers: [.command]),
                 viewer: windowedPrimary,
                 accessibilityGranted: true
+            ) == .forwardToHost(surfaceID: 0),
+            "the default mode forwards Cmd-Tab from a focused windowed viewer"
+        )
+        let unfocusedWindowedPrimary = ViewerWindowState(surfaceID: 0, hasKeyFocus: false, isFullscreen: false)
+        expect(
+            defaultRouter.decide(
+                chord: KeyChord(keyCode: 48, modifiers: [.command]),
+                viewer: unfocusedWindowedPrimary,
+                accessibilityGranted: true
             ) == .deliverToLocalMachine,
-            "the default mode with a windowed viewer leaves Cmd-Tab on the local machine"
+            "the default mode leaves Cmd-Tab on the local machine when no viewer window has key focus"
         )
 
-        print("PASS: the default mode with a windowed viewer leaves Cmd-Tab on the local machine")
+        print("PASS: the default mode forwards Cmd-Tab from a focused windowed viewer, and leaves it local without focus")
 
         // Each mode routes a representative system shortcut correctly across
         // focus and fullscreen. Cmd-Tab stands in for the tap-required half;
@@ -623,8 +633,8 @@ func testDualCanvasReconnectAndUITests() async {
             "remoteInFullscreen needs key focus as well as fullscreen"
         )
         expect(
-            SystemShortcutMode.default == .remoteInFullscreen,
-            "remoteInFullscreen is the default mode"
+            SystemShortcutMode.default == .remoteWhenFocused,
+            "remoteWhenFocused is the default mode"
         )
 
         // Without Accessibility on the client, the tap-required half is never
@@ -882,13 +892,19 @@ func testDualCanvasReconnectAndUITests() async {
             }
         }
 
-        // The default mode with a windowed viewer forwards nothing
-        // system-reserved: the local machine keeps every one of them.
+        // The default mode forwards every system-reserved shortcut from a
+        // focused windowed viewer, and leaves every one of them local once
+        // that viewer loses key focus.
         for shortcut in SystemShortcutCatalog.all {
             expect(
                 defaultRouter.decide(chord: shortcut.chord, viewer: focusedWindowed, accessibilityGranted: true)
+                    == .forwardToHost(surfaceID: 0),
+                "the default mode forwards \(shortcut.name) from a focused windowed viewer"
+            )
+            expect(
+                defaultRouter.decide(chord: shortcut.chord, viewer: unfocusedWindowed, accessibilityGranted: true)
                     == .deliverToLocalMachine,
-                "the default windowed viewer leaves \(shortcut.name) on the local machine"
+                "the default mode leaves \(shortcut.name) on the local machine once the viewer loses key focus"
             )
             expect(
                 !shortcut.name.contains("minimise"),
@@ -980,7 +996,9 @@ func testDualCanvasReconnectAndUITests() async {
             let ungrantedForwarder = SystemShortcutForwarder(
                 mode: .remoteInFullscreen,
                 accessibility: FixedAccessibilityAuthorization(granted: false),
-                interceptor: ungrantedInterceptor
+                interceptor: ungrantedInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: { _ in }
             )
             let ungrantedTarget = RecordingShortcutTarget(
                 state: ViewerWindowState(surfaceID: 0, hasKeyFocus: true, isFullscreen: true)
@@ -1103,7 +1121,9 @@ func testDualCanvasReconnectAndUITests() async {
             let neverInstalledForwarder = SystemShortcutForwarder(
                 mode: .remoteInFullscreen,
                 accessibility: FixedAccessibilityAuthorization(granted: false),
-                interceptor: neverInstalledInterceptor
+                interceptor: neverInstalledInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: { _ in }
             )
             neverInstalledForwarder.startInterceptingIfPermitted { _ in }
             neverInstalledForwarder.stop()
@@ -1292,6 +1312,188 @@ func testDualCanvasReconnectAndUITests() async {
             print("PASS: tapDisabledByUserInput is never auto re-enabled, in a single occurrence or repeated ones")
             print("PASS: repeated tapDisabledByTimeout stops re-enabling after a small bound and reports it exactly once")
             print("PASS: a degraded interceptor's report reaches the forwarder's log closure")
+
+            // The one-time Accessibility prompt: at most once for the whole
+            // process (tracked by the ledger, not by any one forwarder),
+            // never in local mode, never once already granted, and — since
+            // the real dialog is asynchronous — never starting the tap
+            // synchronously on a decline, only once a later poll finds the
+            // grant.
+            let promptingInterceptor = FakeShortcutInterceptor()
+            let promptingAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let promptingForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: promptingAccessibility,
+                interceptor: promptingInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: { _ in }
+            )
+            promptingForwarder.startInterceptingIfPermitted { _ in }
+            promptingForwarder.startInterceptingIfPermitted { _ in }
+            expect(
+                promptingAccessibility.promptCount == 1,
+                "an ungranted forwarder in a remote mode prompts exactly once across two session starts"
+            )
+
+            // The prompt policy belongs to the ledger, not to any one
+            // forwarder: two forwarders sharing a ledger prompt once between
+            // them, and the one that loses the claim still reports the
+            // missing grant on its own call, and still polls for it -- a
+            // later reconnect from this machine's own "Your machines" list
+            // is a new forwarder that never gets its own dialog, so losing
+            // the claim must not also mean giving up on noticing the grant.
+            let firstSharedLedger = AccessibilityPromptLedger()
+            let firstSharedInterceptor = FakeShortcutInterceptor()
+            let firstSharedAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let firstSharedForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: firstSharedAccessibility,
+                interceptor: firstSharedInterceptor,
+                promptLedger: firstSharedLedger,
+                scheduleGrantCheck: { _ in }
+            )
+            let secondSharedInterceptor = FakeShortcutInterceptor()
+            let secondSharedAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let secondSharedScheduler = FakeGrantCheckScheduler()
+            let secondSharedForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: secondSharedAccessibility,
+                interceptor: secondSharedInterceptor,
+                promptLedger: firstSharedLedger,
+                scheduleGrantCheck: secondSharedScheduler.schedule
+            )
+            var firstSharedLog: [String] = []
+            var secondSharedLog: [String] = []
+            firstSharedForwarder.startInterceptingIfPermitted { firstSharedLog.append($0) }
+            secondSharedForwarder.startInterceptingIfPermitted { secondSharedLog.append($0) }
+            expect(firstSharedAccessibility.promptCount == 1, "the first forwarder to reach a shared ledger prompts")
+            expect(
+                secondSharedAccessibility.promptCount == 0,
+                "the second forwarder sharing that ledger never prompts, having lost the claim"
+            )
+            expect(
+                secondSharedLog.first?.contains("not granted") == true,
+                "the forwarder that lost the claim still reports Accessibility is not granted, on its own call"
+            )
+            expect(
+                secondSharedScheduler.scheduledChecks.count == 1,
+                "the forwarder that lost the claim still polls for the grant, having asked for no dialog of its own"
+            )
+            secondSharedAccessibility.grantNow()
+            secondSharedScheduler.fireOldest()
+            expect(
+                secondSharedInterceptor.isRunning,
+                "a grant noticed by the forwarder that lost the claim still starts its own interceptor"
+            )
+
+            let localAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let localPromptForwarder = SystemShortcutForwarder(
+                mode: .local,
+                accessibility: localAccessibility,
+                interceptor: FakeShortcutInterceptor(),
+                promptLedger: AccessibilityPromptLedger()
+            )
+            localPromptForwarder.startInterceptingIfPermitted { _ in }
+            expect(localAccessibility.promptCount == 0, "local mode never prompts for Accessibility")
+
+            let grantedAccessibility = FakeAccessibilityAuthorization(granted: true)
+            let grantedPromptForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: grantedAccessibility,
+                interceptor: FakeShortcutInterceptor(),
+                promptLedger: AccessibilityPromptLedger()
+            )
+            grantedPromptForwarder.startInterceptingIfPermitted { _ in }
+            expect(grantedAccessibility.promptCount == 0, "an already-granted forwarder never prompts")
+
+            // A decline schedules a grant check rather than starting the tap:
+            // once the fake is flipped to granted from outside any prompt —
+            // standing in for the person granting it in System Settings after
+            // dismissing the dialog — firing that check starts the tap and
+            // logs that the grant arrived.
+            let acceptedInterceptor = FakeShortcutInterceptor()
+            let acceptedAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let acceptedScheduler = FakeGrantCheckScheduler()
+            let acceptedForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: acceptedAccessibility,
+                interceptor: acceptedInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: acceptedScheduler.schedule
+            )
+            var acceptedLog: [String] = []
+            acceptedForwarder.startInterceptingIfPermitted { acceptedLog.append($0) }
+            expect(acceptedAccessibility.promptCount == 1, "the decline is still exactly one prompt")
+            expect(!acceptedInterceptor.isRunning, "a decline never starts the interceptor synchronously")
+            expect(acceptedScheduler.scheduledChecks.count == 1, "a decline schedules exactly one grant check")
+
+            acceptedAccessibility.grantNow()
+            acceptedScheduler.fireOldest()
+            expect(acceptedInterceptor.isRunning, "firing the grant check once granted starts the interceptor")
+            expect(
+                acceptedLog.last?.contains("granted") == true,
+                "a grant discovered by polling is logged"
+            )
+
+            // A grant check fired while still ungranted must reschedule
+            // itself rather than give up after one look.
+            let reschedulingInterceptor = FakeShortcutInterceptor()
+            let reschedulingAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let reschedulingScheduler = FakeGrantCheckScheduler()
+            let reschedulingForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: reschedulingAccessibility,
+                interceptor: reschedulingInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: reschedulingScheduler.schedule
+            )
+            reschedulingForwarder.startInterceptingIfPermitted { _ in }
+            expect(reschedulingScheduler.scheduledChecks.count == 1, "a decline schedules one grant check")
+            reschedulingScheduler.fireOldest()
+            expect(!reschedulingInterceptor.isRunning, "still ungranted, the check does not start the interceptor")
+            expect(
+                reschedulingScheduler.scheduledChecks.count == 1,
+                "still ungranted, the check reschedules exactly one more"
+            )
+
+            // A grant check fired after stop() must never start the
+            // interceptor, even if the grant did arrive in the meantime.
+            let stoppedInterceptor = FakeShortcutInterceptor()
+            let stoppedAccessibility = FakeAccessibilityAuthorization(granted: false)
+            let stoppedScheduler = FakeGrantCheckScheduler()
+            let stoppedForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: stoppedAccessibility,
+                interceptor: stoppedInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: stoppedScheduler.schedule
+            )
+            stoppedForwarder.startInterceptingIfPermitted { _ in }
+            expect(stoppedScheduler.scheduledChecks.count == 1, "a decline schedules one grant check")
+            stoppedForwarder.stop()
+            stoppedAccessibility.grantNow()
+            stoppedScheduler.fireOldest()
+            expect(!stoppedInterceptor.isRunning, "a grant check fired after stop() never starts the interceptor")
+
+            let refusedInterceptor = FakeShortcutInterceptor()
+            let refusedAccessibility = FakeAccessibilityAuthorization(granted: false, grantsOnPrompt: false)
+            let refusedForwarder = SystemShortcutForwarder(
+                mode: .remoteWhenFocused,
+                accessibility: refusedAccessibility,
+                interceptor: refusedInterceptor,
+                promptLedger: AccessibilityPromptLedger(),
+                scheduleGrantCheck: { _ in }
+            )
+            var refusedLog: [String] = []
+            refusedForwarder.startInterceptingIfPermitted { refusedLog.append($0) }
+            expect(!refusedInterceptor.isRunning, "a refused prompt never starts the interceptor")
+            expect(refusedLog.count == 1, "a refused prompt is reported exactly once")
+            expect(
+                refusedLog.first?.contains("Accessibility") == true,
+                "the refused-prompt notice names Accessibility as what is missing"
+            )
+
+            print("PASS: the viewer asks for Accessibility at most once for the whole process, and polls for a late grant instead of starting the tap synchronously on decline")
         }
 
         print("PASS: the forwarder hands a shortcut to the focused window only, and claims it so this machine never sees it")

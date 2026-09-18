@@ -31,8 +31,9 @@ public enum ClientShortcutPermissionReport {
             lines.append(
                 "Blocked by that: \(tapRequiredNames). macOS gives these to the WindowServer before any app sees " +
                 "them, so without Accessibility Sensorium cannot observe them and they act on this machine instead, " +
-                "not the remote workstation. Nothing here requests that permission; grant it yourself if you want " +
-                "those shortcuts forwarded."
+                "not the remote workstation. The viewer will ask for this permission once per run, at your first " +
+                "session start; grant it there, or beforehand in System Settings > Privacy & Security > " +
+                "Accessibility. Forwarding starts as soon as the grant is given — no reconnect needed."
             )
             lines.append(
                 "Still forwarded without it: \(applicationLevelNames), and all ordinary typing. Cmd-Q and Cmd-H " +

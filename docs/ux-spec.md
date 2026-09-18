@@ -91,7 +91,7 @@ While the host reports its screen locked, a panel titled *Unlock the host* appea
 
 ### Sending system shortcuts
 
-Some shortcuts never reach the host, because the machine in front of the person takes them first: Mission Control, Spotlight, Command-Tab, and the rest. A slim strip hangs from the top of the session window and sends them on. Every overlay names the host: the strip's label and every button's tooltip say which machine a shortcut goes to.
+With Accessibility granted and a focused viewer window, shortcuts the machine in front of the person would otherwise take first — Mission Control, Spotlight, Command-Tab, and the rest — reach the host by key, the same as ordinary typing. A slim strip hangs from the top of the session window as the pointer path for them, and remains the only path when Accessibility is not granted. Every overlay names the host: the strip's label and every button's tooltip say which machine a shortcut goes to.
 
 A small rounded tab at top centre is all that shows while a session is live. Hovering opens the strip, clicking toggles it, and Command-Control-Shift-Space does the same without the pointer, sliding away a second after the pointer leaves or on Escape over it.
 

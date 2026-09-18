@@ -2,17 +2,17 @@ import SensoriumCore
 
 /// Where a system-reserved shortcut typed into the viewer takes effect.
 ///
-/// `remoteInFullscreen` is the default on purpose: a windowed viewer shares a
-/// screen with this machine's own apps, and stealing Cmd-Tab from the machine
-/// the user is physically sitting at is worse than not forwarding it.
-/// Fullscreen is the unambiguous signal that the user means the remote
-/// workstation.
+/// `remoteWhenFocused` is the default: whenever a viewer window has key
+/// focus, macOS-reserved shortcuts go to the remote workstation, windowed or
+/// fullscreen, the same as ordinary typing already does. Control-Option-
+/// Command-Escape is always the way back to the local machine, so a
+/// windowed viewer never traps the user on the remote side.
 public enum SystemShortcutMode: String, Sendable, CaseIterable, Equatable {
     case local
     case remoteWhenFocused
     case remoteInFullscreen
 
-    public static let `default` = SystemShortcutMode.remoteInFullscreen
+    public static let `default` = SystemShortcutMode.remoteWhenFocused
 
     /// The `--system-shortcuts` launch flag's spelling, kebab-cased to match
     /// the other flags rather than the Swift case name.

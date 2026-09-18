@@ -43,24 +43,26 @@ The viewer needs no permission to run. It needs Accessibility only to forward sh
 
 | Permission | Used for | Checked by the app |
 |---|---|---|
-| Accessibility | Watching for reserved shortcuts before macOS acts on them, so they reach the host instead | Yes, without prompting |
+| Accessibility | Watching for reserved shortcuts before macOS acts on them, so they reach the host instead | Yes, prompting once |
 
-Nothing in this project requests or grants this permission. The viewer shows its shortcut routing mode and Accessibility status before the first keystroke.
+The viewer asks for this permission once per run, at the first session start, and never prompts again until the app is relaunched. Because macOS's own approval dialog is asynchronous, a decline does not end the ask: the viewer keeps watching for the grant, and forwarding starts as soon as it is given, with no reconnect needed. The viewer shows its shortcut routing mode and Accessibility status before the first keystroke.
+
+If the viewer asks for Accessibility again after the toggle is already on, the row in System Settings belongs to an older build signed differently. Remove that row, or run `tccutil reset Accessibility com.sensorium.viewer`, then relaunch the viewer and grant the one prompt.
 
 ### Shortcut routing
 
 | Mode | Reserved shortcuts act on |
 |---|---|
 | `local` | The viewer machine. Nothing is forwarded. |
-| `remote-when-focused` | The host, whenever a viewer window has key focus. |
-| `remote-in-fullscreen` (default) | The host, only while a viewer window is fullscreen. |
+| `remote-when-focused` (default) | The host, whenever a viewer window has key focus. |
+| `remote-in-fullscreen` | The host, only while a viewer window is fullscreen. |
 
-The default keeps a windowed viewer from taking Cmd-Tab away from the viewer machine's own apps.
+The default forwards these shortcuts to the host as soon as a viewer window has key focus, windowed or fullscreen, the same as ordinary typing already does. Control-Option-Command-Escape is always the way back to the local machine.
 
 Without the grant, these still forward in a remote mode, since they need no permission: Cmd-Q, Cmd-W, Cmd-H, Cmd-M, and ordinary typing.
 
-These reserved shortcuts stay on the viewer machine in every mode: Cmd-Tab, Cmd-Shift-Tab, Cmd-Space, Cmd-` and Cmd-Shift-`, and Ctrl-Up, Ctrl-Down, Ctrl-Left, Ctrl-Right.
+These reserved shortcuts stay on the viewer machine without the Accessibility grant, or in `local` mode: Cmd-Tab, Cmd-Shift-Tab, Cmd-Space, Cmd-` and Cmd-Shift-`, and Ctrl-Up, Ctrl-Down, Ctrl-Left, Ctrl-Right.
 
 **Control-Option-Command-Escape** returns the person to the machine in front of them. It leaves fullscreen, hides the viewer, and releases anything the session canvas still holds. No mode forwards it.
 
-Cmd-Q forwards only in the same case as the shortcuts above, fullscreen only by default. Otherwise it stays on the viewer machine.
+Cmd-Q forwards under the same condition as the shortcuts above: whenever a viewer window has key focus by default, or only while fullscreen if the mode was changed to `remote-in-fullscreen`. In `local` mode it stays on the viewer machine.

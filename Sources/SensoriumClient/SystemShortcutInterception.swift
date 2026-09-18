@@ -1,25 +1,59 @@
+import Dispatch
 import SensoriumCore
 
-/// Whether Sensorium itself holds macOS Accessibility approval. Reading
-/// is all this project does: nothing here requests, prompts for, or grants the
-/// permission, and nothing installs anything to obtain it.
+/// Whether Sensorium itself holds macOS Accessibility approval, and the one
+/// way this project ever asks macOS to grant it: `requestAccessibility()`,
+/// called at most once for the whole process, at the first session start.
 public protocol ClientAccessibilityAuthorization: Sendable {
     var isAccessibilityGranted: Bool { get }
+    /// May present macOS's own approval dialog. Returns the grant this
+    /// process holds at the moment this call returns, not the outcome of the
+    /// dialog: the dialog is asynchronous, so on a real device a call that
+    /// shows it returns `false` here every time, and the grant only becomes
+    /// true later, once the person answers it.
+    func requestAccessibility() -> Bool
+}
+
+/// The process-wide policy behind the Accessibility prompt: macOS's dialog is
+/// asked for at most once per run, never once per forwarder. A forwarder that
+/// started granted and later lost the grant does not get a second ask either
+/// — this ledger, not any one forwarder's own history, is what "once" means.
+@MainActor
+public final class AccessibilityPromptLedger {
+    public static let shared = AccessibilityPromptLedger()
+
+    private var hasPrompted = false
+
+    public init() {}
+
+    /// Returns `true` only the first time it is called on this ledger.
+    public func claimPrompt() -> Bool {
+        guard !hasPrompted else { return false }
+        hasPrompted = true
+        return true
+    }
 }
 
 /// A fixed answer, for verifying routing without any TCC state at all.
+/// Prompting never changes it: there is no dialog behind a fixed answer to
+/// accept or decline.
 public struct FixedAccessibilityAuthorization: ClientAccessibilityAuthorization {
     public let isAccessibilityGranted: Bool
 
     public init(granted: Bool) {
         isAccessibilityGranted = granted
     }
+
+    public func requestAccessibility() -> Bool {
+        isAccessibilityGranted
+    }
 }
 
 public enum SystemShortcutInterceptorError: Error, Equatable {
     /// Refused before touching CoreGraphics: creating a tap without the grant
-    /// is what makes macOS show its approval dialog, and this project never
-    /// asks for a permission on the user's behalf.
+    /// would make macOS show its approval dialog from inside tap creation
+    /// itself, bypassing `requestAccessibility()`, the one place this project
+    /// asks for the permission on the user's behalf.
     case accessibilityNotGranted
     case tapCreationFailed
 }
@@ -117,18 +151,37 @@ public final class SystemShortcutForwarder {
     private let router: SystemShortcutRouter
     private let accessibility: any ClientAccessibilityAuthorization
     private let interceptor: (any SystemShortcutInterceptor)?
+    private let promptLedger: AccessibilityPromptLedger
+    private let scheduleGrantCheck: (@escaping @MainActor () -> Void) -> Void
     private var targets: [any ShortcutForwardingTarget] = []
     private var reportedBlockedShortcuts: Set<String> = []
     private var isIntercepting = false
+    /// Invalidates any grant check still in flight: bumped by every `stop()`,
+    /// so a check scheduled before a stop never starts a tap after it, and a
+    /// check captured by a test never has to be found and cancelled by hand.
+    private var pollingGeneration = 0
+
+    /// Bounds how long this forwarder keeps polling for a grant the person
+    /// has not yet given — five minutes at the default two-second interval —
+    /// so a session that is never granted does not poll forever in silence.
+    private static let maxGrantChecks = 150
 
     public init(
         mode: SystemShortcutMode,
         accessibility: any ClientAccessibilityAuthorization,
-        interceptor: (any SystemShortcutInterceptor)?
+        interceptor: (any SystemShortcutInterceptor)?,
+        promptLedger: AccessibilityPromptLedger = .shared,
+        scheduleGrantCheck: @escaping (@escaping @MainActor () -> Void) -> Void = { check in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                MainActor.assumeIsolated { check() }
+            }
+        }
     ) {
         router = SystemShortcutRouter(mode: mode)
         self.accessibility = accessibility
         self.interceptor = interceptor
+        self.promptLedger = promptLedger
+        self.scheduleGrantCheck = scheduleGrantCheck
     }
 
     public var mode: SystemShortcutMode { router.mode }
@@ -140,9 +193,15 @@ public final class SystemShortcutForwarder {
         targets.append(target)
     }
 
-    /// Starts the tap only when the mode can actually use one and the grant
-    /// already exists. Reports what it did through `log` rather than deciding
-    /// silently; a failure here degrades routing, it never stops the session.
+    /// Starts the tap when the mode can actually use one. Asks for
+    /// Accessibility at most once for the whole process if the grant is
+    /// still missing — the one prompt the viewer ever shows, at the first
+    /// session start, tracked by `promptLedger` rather than by this forwarder
+    /// alone. macOS's dialog is asynchronous, so a decline here does not mean
+    /// "never": it polls for the grant afterward and starts the tap as soon
+    /// as it appears, no reconnect required. Reports what it did through
+    /// `log` rather than deciding silently; a failure here degrades routing,
+    /// it never stops the session.
     public func startInterceptingIfPermitted(log: @escaping (String) -> Void) {
         // Idempotent: a session start that races a still-pending stop (or a
         // caller that calls this twice) must never stack a second tap behind
@@ -150,11 +209,36 @@ public final class SystemShortcutForwarder {
         guard !isIntercepting else { return }
         guard router.mode != .local, let interceptor else { return }
         guard accessibility.isAccessibilityGranted else {
-            // Nothing to report here beyond what the launch report already
-            // said: without the grant the tap cannot exist, and the chords it
-            // would have carried are never delivered to this process at all.
+            if promptLedger.claimPrompt() {
+                if accessibility.requestAccessibility() {
+                    startTap(interceptor, log: log)
+                    return
+                }
+                log(
+                    "System shortcuts: requested Accessibility approval for Sensorium. Reserved shortcuts will " +
+                    "act on this machine until it is granted; forwarding will start as soon as it is."
+                )
+            } else {
+                // Some forwarder already spent the one process-wide prompt
+                // and the grant still is not there: say so on every call
+                // rather than returning silently, so a session start that
+                // never forwards anything is still visible in the log.
+                log(
+                    "System shortcuts: Accessibility is not granted for Sensorium; reserved shortcuts act on " +
+                    "this machine."
+                )
+            }
+            // Whether or not this call was the one that prompted, a grant
+            // that appears while this session runs — from the dialog above,
+            // or from System Settings — must not need a reconnect to be
+            // noticed.
+            beginPollingForGrant(interceptor: interceptor, log: log)
             return
         }
+        startTap(interceptor, log: log)
+    }
+
+    private func startTap(_ interceptor: any SystemShortcutInterceptor, log: @escaping (String) -> Void) {
         do {
             try interceptor.start(
                 { [weak self] chord, isDown in
@@ -168,7 +252,50 @@ public final class SystemShortcutForwarder {
         }
     }
 
+    private func beginPollingForGrant(interceptor: any SystemShortcutInterceptor, log: @escaping (String) -> Void) {
+        pollingGeneration += 1
+        enqueueGrantCheck(generation: pollingGeneration, remainingChecks: Self.maxGrantChecks, interceptor: interceptor, log: log)
+    }
+
+    private func enqueueGrantCheck(
+        generation: Int,
+        remainingChecks: Int,
+        interceptor: any SystemShortcutInterceptor,
+        log: @escaping (String) -> Void
+    ) {
+        scheduleGrantCheck { [weak self] in
+            self?.performGrantCheck(generation: generation, remainingChecks: remainingChecks, interceptor: interceptor, log: log)
+        }
+    }
+
+    private func performGrantCheck(
+        generation: Int,
+        remainingChecks: Int,
+        interceptor: any SystemShortcutInterceptor,
+        log: @escaping (String) -> Void
+    ) {
+        // A stop() since this check was scheduled bumps the generation, and
+        // an already-running tap (started some other way) needs no help —
+        // either way there is nothing left for this check to do.
+        guard generation == pollingGeneration, !isIntercepting else { return }
+        if accessibility.isAccessibilityGranted {
+            startTap(interceptor, log: log)
+            // `startTap` may itself fail (a tap creation error) and already
+            // reports that case on its own; only claim success here if the
+            // tap is actually the reason `isIntercepting` is now true.
+            if isIntercepting {
+                log("System shortcuts: Accessibility granted; reserved shortcuts now reach the host.")
+            }
+            return
+        }
+        guard remainingChecks > 1 else { return }
+        enqueueGrantCheck(generation: generation, remainingChecks: remainingChecks - 1, interceptor: interceptor, log: log)
+    }
+
     public func stop() {
+        // Cancels any grant check still in flight, whether or not a tap was
+        // ever actually running to tear down.
+        pollingGeneration += 1
         guard isIntercepting else { return }
         interceptor?.stop()
         isIntercepting = false
@@ -233,13 +360,20 @@ public final class SystemShortcutForwarder {
 #if canImport(ApplicationServices)
 @preconcurrency import ApplicationServices
 
-/// Reads this process's Accessibility trust without the prompting option, so
-/// it can never present macOS's approval dialog.
+/// Reads this process's Accessibility trust, and the one way this project
+/// asks macOS to grant it. `AccessibilityPermissionGate` on the host is the
+/// same shape for the same reason: reading never prompts, and only an
+/// explicit request may present macOS's approval dialog.
 public struct SystemAccessibilityAuthorization: ClientAccessibilityAuthorization {
     public init() {}
 
     public var isAccessibilityGranted: Bool {
         AXIsProcessTrusted()
+    }
+
+    public func requestAccessibility() -> Bool {
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
     }
 }
 #endif

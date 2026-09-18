@@ -8,6 +8,20 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Default shortcut routing is remote-when-focused: a system-reserved
+  shortcut such as Cmd-Tab now reaches the host as soon as a viewer
+  window has key focus, windowed or fullscreen, instead of only in
+  fullscreen.
+
+### Added
+
+- The viewer asks for Accessibility once per run, at the first session
+  start, so reserved shortcuts can actually be forwarded instead of
+  requiring the grant to already exist. Forwarding starts as soon as the
+  grant is given, with no reconnect needed.
+
 ## [0.1.2] - 2026-09-17
 
 ### Fixed

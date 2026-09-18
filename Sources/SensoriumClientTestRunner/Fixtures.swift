@@ -435,6 +435,71 @@ final class RecordingShortcutTarget: ShortcutForwardingTarget {
     }
 }
 
+/// Stands in for macOS's own Accessibility trust and its approval dialog,
+/// without ever presenting one. `requestAccessibility()` counts its calls so
+/// a test can assert a forwarder never prompts more than once, and can be
+/// told to grant on request, standing in for the person clicking Allow.
+final class FakeAccessibilityAuthorization: ClientAccessibilityAuthorization, @unchecked Sendable {
+    private let lock = NSLock()
+    private var granted: Bool
+    /// Whether a prompt should grant, standing in for the person clicking
+    /// Allow (`true`) or Don't Allow / dismissing the dialog (`false`).
+    var grantsOnPrompt: Bool
+
+    private(set) var promptCount = 0
+
+    init(granted: Bool = false, grantsOnPrompt: Bool = false) {
+        self.granted = granted
+        self.grantsOnPrompt = grantsOnPrompt
+    }
+
+    var isAccessibilityGranted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return granted
+    }
+
+    func requestAccessibility() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        promptCount += 1
+        if grantsOnPrompt {
+            granted = true
+        }
+        return granted
+    }
+
+    /// Simulates the person granting the permission after the dialog was
+    /// already dismissed — the asynchronous case a real prompt always takes,
+    /// discovered later by a poll rather than by this fake's own prompt call.
+    func grantNow() {
+        lock.lock()
+        defer { lock.unlock() }
+        granted = true
+    }
+}
+
+/// Stands in for `DispatchQueue.main.asyncAfter` in `SystemShortcutForwarder`:
+/// captures each scheduled grant check instead of waiting on a real timer, so
+/// a test can fire one deterministically and see whether it reschedules.
+@MainActor
+final class FakeGrantCheckScheduler {
+    private(set) var scheduledChecks: [@MainActor () -> Void] = []
+
+    var schedule: (@escaping @MainActor () -> Void) -> Void {
+        { [weak self] check in
+            self?.scheduledChecks.append(check)
+        }
+    }
+
+    /// Fires and removes the oldest still-pending check, standing in for its
+    /// timer elapsing.
+    func fireOldest() {
+        guard !scheduledChecks.isEmpty else { return }
+        scheduledChecks.removeFirst()()
+    }
+}
+
 /// Stands in for the CGEventTap: `deliver` plays the part macOS would, without
 /// a tap, a TCC grant, or a run loop.
 @MainActor
