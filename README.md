@@ -39,6 +39,18 @@ Docs:
 - [Testing](docs/testing.md)
 - [Uninstall](docs/uninstall.md)
 
+## Uninstall
+
+Nothing runs in the background, so removal is manual. On each machine:
+
+1. Quit the app. On the host, end any session first so its canvas is released.
+2. Delete `Sensorium.app` or `Sensorium Host.app`.
+3. Delete its data, which forgets the pairing:
+   `rm -rf ~/Library/Application\ Support/Sensorium`
+4. Remove its permission rows in System Settings, Privacy & Security.
+
+If you added the optional PF firewall rule, see [Uninstall](docs/uninstall.md).
+
 ## Status
 
 Works between the two machines it was built for. Pairing, virtual display,

@@ -15,12 +15,9 @@ Reversible by design. Nothing installs a launch agent, login item, background se
    The files inside are `device-identity.json`, `saved-host.json`, and `presence-credential.json`.
 4. **Remove everything the host wrote**, on the host machine.
    ```sh
-   rm ~/Library/Application\ Support/Sensorium/device-identity.json
-   rm ~/Library/Application\ Support/Sensorium/host-tls-identity.json
-   rm ~/Library/Application\ Support/Sensorium/host-screen-arming.json
-   rm ~/Library/Application\ Support/Sensorium/host-screen-sessions.log
+   rm -rf ~/Library/Application\ Support/Sensorium
    ```
-   The first two are its keys. The third is the record of which machines may reach the host screen. The fourth is the local log of host-screen sessions that ran.
+   This holds its keys (`device-identity.json`, `host-tls-identity.json`), the record of which machines may reach the host screen (`host-screen-arming.json`), the local log of host-screen sessions (`host-screen-sessions.log`), and small UI and display-mode preferences.
 5. **Delete `Sensorium.app` and `Sensorium Host.app`.**
 
 There is no cached account state and no telemetry to revoke, because none was ever created.
