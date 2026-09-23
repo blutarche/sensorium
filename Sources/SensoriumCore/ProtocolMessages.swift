@@ -55,9 +55,17 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// from its own pasteboard is sent, and nothing the viewer sends is
     /// applied. `true` resumes without replaying anything that changed
     /// while off -- see `ClipboardSyncEngine.setEnabled(_:)`, the one place
-    /// that owns what either transition actually does. A session begins
-    /// with sharing on; this message only ever changes it from there.
+    /// that owns what either transition actually does. The host starts each
+    /// connection off (`ClipboardSyncEngine.hostSharingEnabledAtConnect`),
+    /// and the viewer sends its choice after every connect as well as on
+    /// every change.
     case clipboardSharing(enabled: Bool)
+    /// A clipboard the host did not share, and why: its own copy it would
+    /// not send, or the viewer's it would not apply. Host to viewer only, so
+    /// a person at the viewer can see why a copy did not arrive. Carries the
+    /// reason and sizes only, never any of the content. Sent only for an
+    /// admitted session, and never for `syncDisabled`.
+    case clipboardRefused(ClipboardRefusal)
     /// `presenceCredential` is docs/host-screen-design.md §6.3's registration, riding the
     /// pairing exchange rather than a message of its own: "whose public
     /// half is registered with this host when the devices pair." `nil` is
@@ -610,6 +618,11 @@ public enum SensoriumFrameCodec {
         var presenceCredentialPublicKey: Data? = nil
         var presenceCredentialStrength: String? = nil
         var clipboardSharingEnabled: Bool? = nil
+        /// `clipboardRefused`'s own reason token and, for `too-large`, its
+        /// two sizes.
+        var clipboardRefusal: String? = nil
+        var clipboardByteCount: Int? = nil
+        var clipboardLimit: Int? = nil
         /// `input`'s own round-trip tag, and `inputApplied`'s echo of it.
         var inputSequence: UInt64? = nil
         /// `viewerTelemetry`'s whole payload, carried as the value type
@@ -950,6 +963,14 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "pairIntent", protocolVersion: nil, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .clipboardSharing(enabled):
             wire = WireMessage(type: "clipboardSharing", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, clipboardSharingEnabled: enabled)
+        case let .clipboardRefused(refusal):
+            var byteCount: Int? = nil
+            var limit: Int? = nil
+            if case let .tooLarge(refusedByteCount, refusedLimit) = refusal {
+                byteCount = refusedByteCount
+                limit = refusedLimit
+            }
+            wire = WireMessage(type: "clipboardRefused", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, clipboardRefusal: refusal.wireToken, clipboardByteCount: byteCount, clipboardLimit: limit)
         case let .pairRequest(deviceName, publicKey, code, presenceCredential, signature):
             wire = WireMessage(type: "pairRequest", protocolVersion: nil, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: publicKey, signature: signature, tlsCertificateHash: nil, code: code, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, credentialID: presenceCredential?.credentialID, credentialFormat: presenceCredential?.credentialFormat, presenceCredentialPublicKey: presenceCredential?.publicKey, presenceCredentialStrength: presenceCredential?.strength)
         case let .pairApproved(hostPublicKey, tlsCertificateHash, signature):
@@ -1126,6 +1147,17 @@ public enum SensoriumFrameCodec {
                 throw SensoriumProtocolError.malformedMessage
             }
             return .clipboardSharing(enabled: enabled)
+        case "clipboardRefused":
+            // An unknown reason token is malformed rather than
+            // `.unrecognized`, the same rule `streamScalePreference`'s kind
+            // follows: the message type is known, so its shape is too.
+            guard let token = wire.clipboardRefusal,
+                  let refusal = ClipboardRefusal(
+                      wireToken: token, byteCount: wire.clipboardByteCount, limit: wire.clipboardLimit
+                  ) else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .clipboardRefused(refusal)
         case "pairRequest":
             guard let deviceName = wire.deviceName, let publicKey = wire.publicKey, let code = wire.code else {
                 throw SensoriumProtocolError.malformedMessage

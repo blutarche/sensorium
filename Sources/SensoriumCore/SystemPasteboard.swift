@@ -6,8 +6,8 @@ import Foundation
 /// thinnest possible glue: every decision — what may be sent, what may be
 /// applied, what must never leave the machine, and how a loop is prevented —
 /// lives in `ClipboardSyncEngine`, which has no AppKit dependency and is
-/// verified against a fake pasteboard. Nothing here is exercised by the test
-/// runners; a real pasteboard needs a window server session.
+/// verified against a fake pasteboard. Only `pngData(fromTIFF:)` is exercised
+/// by the test runners; a real pasteboard needs a window server session.
 public final class SystemPasteboard: ClipboardPasteboard {
     private let pasteboard: NSPasteboard
 
@@ -19,8 +19,9 @@ public final class SystemPasteboard: ClipboardPasteboard {
         pasteboard.changeCount
     }
 
-    /// Images are preferred over text: a copied screenshot often also offers a
-    /// throwaway string flavour, and the picture is what was copied.
+    /// Reads every form this project can send and leaves choosing between
+    /// them to `ClipboardSyncEngine`. A TIFF is converted to PNG only if the
+    /// engine asks for the image.
     public func read() -> ClipboardReadout {
         // Every item's types, not `pasteboard.types`, which reports the first
         // item only: a marker on any item marks the pasteboard.
@@ -28,18 +29,33 @@ public final class SystemPasteboard: ClipboardPasteboard {
             item.types.map(\.rawValue)
         }
         guard !ClipboardPolicy.isExcluded(itemTypeIdentifiers: itemTypeIdentifiers) else {
-            return ClipboardReadout(content: nil, isExcludedByType: true)
+            return ClipboardReadout(text: nil, image: nil, firstItemTypeIdentifiers: [], isExcludedByType: true)
         }
+        let loadImage: @Sendable () -> ClipboardImage?
         if let png = pasteboard.data(forType: .png) {
-            return ClipboardReadout(content: .image(format: .png, data: png), isExcludedByType: false)
+            loadImage = { ClipboardImage(format: .png, data: png) }
+        } else if let tiff = pasteboard.data(forType: .tiff) {
+            loadImage = {
+                Self.pngData(fromTIFF: tiff).map { ClipboardImage(format: .png, data: $0) }
+                    ?? ClipboardImage(format: .tiff, data: tiff)
+            }
+        } else {
+            loadImage = { nil }
         }
-        if let tiff = pasteboard.data(forType: .tiff) {
-            return ClipboardReadout(content: .image(format: .tiff, data: tiff), isExcludedByType: false)
-        }
-        if let text = pasteboard.string(forType: .string) {
-            return ClipboardReadout(content: .text(text), isExcludedByType: false)
-        }
-        return ClipboardReadout(content: nil, isExcludedByType: false)
+        return ClipboardReadout(
+            text: pasteboard.string(forType: .string),
+            loadImage: loadImage,
+            firstItemTypeIdentifiers: itemTypeIdentifiers?.first ?? [],
+            hasItems: !(itemTypeIdentifiers ?? []).isEmpty,
+            isExcludedByType: false
+        )
+    }
+
+    /// TIFF on a pasteboard is usually uncompressed, often several times the
+    /// size of the same picture as PNG. `nil` when the data is not an image
+    /// AppKit can read.
+    public static func pngData(fromTIFF tiff: Data) -> Data? {
+        NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
     }
 
     /// Reads the change count back after writing rather than trusting

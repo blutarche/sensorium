@@ -250,9 +250,8 @@ final class ClientSessionHost {
     /// docs/ux-spec.md's "Clipboard" control: the person's own live choice,
     /// sent at connect and whenever it changes -- the same "kept here so a
     /// mid-run reconnect asks for it again" reasoning `desiredDisplayCount`
-    /// above already carries. A session starts with sharing off, matching
-    /// `ClipboardSyncEngine.sharingEnabledByDefault`, until the viewer turns
-    /// it on.
+    /// above already carries. Starts at
+    /// `ClipboardSyncEngine.sharingEnabledByDefault`.
     private var desiredClipboardSharingEnabled = ClipboardSyncEngine.sharingEnabledByDefault
     /// Which target the live session streams, or the next connect will: the
     /// target is always named explicitly, and a reconnect after a drop
@@ -621,16 +620,22 @@ final class ClientSessionHost {
 
         shortcuts.startInterceptingIfPermitted { print($0) }
 
-        // Built here, after `connect()` returned a signed canvas, and torn
-        // down with the runner: on this side the authenticated-and-active
-        // gate is structural rather than a flag the session has to re-check.
+        // Built here, after `connect()` returned a signed canvas or a granted
+        // host screen, and torn down with the runner: on this side the
+        // session gate is structural rather than a flag the session has to
+        // re-check.
         // `desiredClipboardSharingEnabled`, not a hardcoded default: a
-        // reconnect after the person turned sharing on must not hand the
-        // freshly-rebuilt engine a moment where it is disabled again,
-        // however briefly, before the re-send below reaches the host.
+        // reconnect must rebuild the engine in the state the person last
+        // chose, which the message sent before `start()` below repeats to
+        // the host.
         let clipboard = ClipboardSyncSession(
             engine: ClipboardSyncEngine(pasteboard: SystemPasteboard(), isEnabled: desiredClipboardSharingEnabled),
-            log: { print("Sensorium: \($0)") }
+            log: { print("Sensorium: \($0)") },
+            onRefusal: { refusal in
+                if let line = ClipboardRefusalCopy.line(for: refusal) {
+                    primaryWindow.showClipboardRefusal(line)
+                }
+            }
         )
         // Fresh per attempt, matching `hostScreenModes`' own per-session
         // reset just above: "never request twice per session automatically"
@@ -743,6 +748,13 @@ final class ClientSessionHost {
                 )
             }
         }
+        runner.onClipboardRefused = { refusal in
+            Task { @MainActor in
+                if let line = ClipboardRefusalCopy.line(for: refusal) {
+                    primaryWindow.showClipboardRefusal(line)
+                }
+            }
+        }
         // The host says whether its screen is locked; the window offers or
         // hides the unlock prompt accordingly.
         runner.onHostScreenLockState = { locked in
@@ -784,6 +796,11 @@ final class ClientSessionHost {
                 await self.markCanvasLive()
             }
         }
+        // Sent on every connect, whatever the choice, and before `start()`
+        // begins polling: the host starts each connection off
+        // (`ClipboardSyncEngine.hostSharingEnabledAtConnect`) and follows
+        // this message, so a copy polled before it arrived would be dropped.
+        await runner.setClipboardSharing(enabled: desiredClipboardSharingEnabled)
         try runner.start(
             onEnded: { _ in
                 Task { @MainActor in
@@ -829,12 +846,6 @@ final class ClientSessionHost {
         // Displays menu is disabled for exactly this reason above.
         if desiredDisplayCount == 2, !isHostScreenSession {
             await runner.setDisplayCount(2)
-        }
-        // A reconnect's own fresh runner and fresh host-side session both
-        // start off, the same default `desiredClipboardSharingEnabled`
-        // itself carries -- only an on choice needs telling again.
-        if desiredClipboardSharingEnabled {
-            await runner.setClipboardSharing(enabled: true)
         }
         let sessionSummary = displayID.map { "session canvas \($0)" } ?? "the host screen"
         print("Entered \(saved.displayName); \(sessionSummary)")

@@ -2,8 +2,8 @@
 import AppKit
 
 /// A brief, dismissible banner over the canvas for something that failed
-/// without ending the session -- only a "Displays" increase the host
-/// refused (`ClientCanvasWindowController.showDisplayCountRefusal(reason:)`).
+/// without ending the session: a refused request, such as a "Displays"
+/// increase, or a clipboard that was not shared.
 /// Distinct from `ViewerSessionStatusOverlay`: that overlay means the session
 /// itself is down and dims the whole picture; this means one request did not
 /// go through and the picture underneath is exactly as live as it was a

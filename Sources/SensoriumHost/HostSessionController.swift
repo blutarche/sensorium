@@ -564,15 +564,13 @@ public final class HostSessionController {
         hostScreenSurface.map { HostScreenEncoderSizing.maximumStreamScale(for: $0.geometry) }
     }
 
-    /// Whether this connection has earned the right to a side effect on
-    /// this machine beyond its own canvas — today, writing the viewer's clipboard onto
-    /// the host pasteboard.
+    /// Whether this connection is authenticated and holds at least one live
+    /// session canvas.
     ///
     /// The authentication half is exactly `input`'s gate. The active half is
-    /// session-scoped rather than surface-scoped on purpose: there is one
-    /// pasteboard per machine however many canvases the session opened, so any
-    /// live canvas means a live session. A pairing-only connection never
-    /// creates one, and `goodbye` clears them, so neither is admissible.
+    /// session-scoped rather than surface-scoped: any live canvas means a
+    /// live session. A pairing-only connection never creates one, and
+    /// `goodbye` clears them, so neither satisfies this.
     public var isSessionAuthenticatedAndActive: Bool {
         guard !requireAuthentication || isAuthenticated else {
             return false
@@ -582,6 +580,33 @@ public final class HostSessionController {
         }
     }
 
+    /// Whether this connection may exchange clipboards with this machine:
+    /// read the host pasteboard for the viewer, and write the viewer's
+    /// clipboard onto it.
+    ///
+    /// Session-scoped rather than surface-scoped: there is one pasteboard
+    /// per machine however many surfaces the session has. Either target
+    /// qualifies. A session canvas qualifies once it is live. A host screen
+    /// qualifies once its request has been fully granted, which is the only
+    /// point `hostScreenSurface` is ever set: authenticated, the presence
+    /// proof verified against the arming record, and, when asking first is
+    /// on, the person at this machine agreed. A pairing-only or
+    /// still-handshaking connection has neither. Admission closes as soon as
+    /// the session starts ending (`noteSessionEnding()`), not only once its
+    /// `goodbye` teardown has finished.
+    public var isClipboardAdmissible: Bool {
+        guard !transportClosed else {
+            return false
+        }
+        if isSessionAuthenticatedAndActive {
+            return true
+        }
+        guard !requireAuthentication || isAuthenticated else {
+            return false
+        }
+        return hasLiveHostScreenSession
+    }
+
     /// Whether this connection is authenticated and has a live surface of
     /// either kind, which is what a per-surface picture decision and the
     /// telemetry reporting it are driven off.
@@ -589,10 +614,8 @@ public final class HostSessionController {
     /// Deliberately wider than `isSessionAuthenticatedAndActive` above, and
     /// never a replacement for it: a host-screen session streams a display it
     /// did not create, so it opens no canvas and would never satisfy that
-    /// one. The right to steer this session's own encoder and to describe
-    /// what it is producing is not the right to write this machine's
-    /// pasteboard, so the two are separate properties rather than one
-    /// loosened to cover both.
+    /// one. Clipboard admission is `isClipboardAdmissible`, a property of its
+    /// own, so that neither gate can be widened by changing the other.
     public var isSessionAuthenticatedAndStreaming: Bool {
         if isSessionAuthenticatedAndActive {
             return true
@@ -1705,8 +1728,9 @@ public final class HostSessionController {
             }
             return hostScreenModeChange(toModeID: modeID)
         case .hostScreenList, .hostScreenReady, .hostScreenRefused,
-             .hostScreenModeList, .hostScreenModeApplied, .hostScreenModeRefused:
-            // All six are host-to-viewer only; the host itself never
+             .hostScreenModeList, .hostScreenModeApplied, .hostScreenModeRefused,
+             .clipboardRefused:
+            // All seven are host-to-viewer only; the host itself never
             // expects to receive any of them, the same as
             // timeSyncReply/telemetry/canvasRefused above.
             throw HostSessionControllerError.unexpectedMessage

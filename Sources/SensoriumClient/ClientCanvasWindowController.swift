@@ -119,11 +119,8 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// lazily and needs a synchronous answer.
     private var cachedStartTargetPreference: StartTarget = .hostScreenWhenOffered
     /// docs/ux-spec.md's "Clipboard: on or off", cached the same way
-    /// `cachedDisplayCount` is and for the same reason. A session starts with
-    /// sharing on, so this window's own starting
-    /// truth matches the Clipboard item's own static default in
-    /// `ViewerMenuPlan`.
-    private var cachedClipboardSharingEnabled = true
+    /// `cachedDisplayCount` is and for the same reason.
+    private var cachedClipboardSharingEnabled = ClipboardSyncEngine.sharingEnabledByDefault
     /// The system shortcuts this machine takes for itself -- Mission Control,
     /// Spotlight, Command-Tab -- offered as buttons that send them to the
     /// machine being worked on instead. Closed but for its handle until that
@@ -142,9 +139,10 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// Deliberately separate from `SystemShortcutRouter`, like the two monitors
     /// above: both are local to this machine and never reach the wire.
     nonisolated(unsafe) private var shortcutStripKeyMonitor: Any?
-    /// A transient "a live request was refused" banner, distinct from
+    /// A transient "something was refused" banner, distinct from
     /// `statusOverlay`: that overlay means the session itself is down, this
-    /// means one request was refused and the session is otherwise fine.
+    /// means one request or one clipboard was refused and the session is
+    /// otherwise fine.
     private let displayCountNotice = ViewerTransientNoticeView()
     /// The in-window prompt for unlocking the host's locked login window. Shown
     /// only while the host reports its screen locked -- see
@@ -450,7 +448,13 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
                 forName: NSWindow.didBecomeKeyNotification,
                 object: window,
                 queue: .main
-            ) { _ in
+            ) { [weak self] _ in
+                // Synchronously, not in a task: anything this hook sends is
+                // then on the connection ahead of whatever is sent after the
+                // notification is handled.
+                MainActor.assumeIsolated {
+                    self?.onDidBecomeKey?()
+                }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
                     self.report(self.focusReporter?.viewerWindowDidBecomeKey(surfaceID: self.surfaceID))
@@ -880,6 +884,10 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
 
     public var onSelectClipboardSharing: ((Bool) -> Void)?
 
+    /// Runs every time this window takes key focus, synchronously on the
+    /// main thread. Set by the live session's runner.
+    public var onDidBecomeKey: (() -> Void)?
+
     /// A "Displays" increase the host refused, said in this window in the
     /// host's own plain words rather than only logged -- docs/ux-spec.md:
     /// "There is no error whose remedy is a command, a file, or another
@@ -895,6 +903,13 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// reason: the session is fine, one request was not, and it must not
     /// look like the picture is about to disappear.
     public func showHostScreenModeRefusal(_ line: String) {
+        displayCountNotice.show(line)
+    }
+
+    /// A clipboard that was not shared, from either machine, in the same
+    /// transient notice and for the same reason as a refused request: the
+    /// session is fine, one copy did not go through.
+    public func showClipboardRefusal(_ line: String) {
         displayCountNotice.show(line)
     }
 

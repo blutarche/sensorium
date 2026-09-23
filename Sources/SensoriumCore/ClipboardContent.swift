@@ -4,7 +4,7 @@ import Foundation
 /// TIFF are what macOS actually puts on a pasteboard for a copied image, and
 /// every other pasteboard flavour (rich text, file promises, app-private
 /// types) is out of scope — v1 has no file transfer.
-public enum ClipboardImageFormat: String, Equatable, Sendable {
+public enum ClipboardImageFormat: String, CaseIterable, Equatable, Sendable {
     case png
     case tiff
 }
@@ -56,8 +56,9 @@ public enum ClipboardRefusal: Equatable, Sendable {
     /// The pasteboard holds something this project does not sync, e.g. a rich
     /// or app-private flavour with no plain text or image alongside it.
     case unsupportedContent
-    /// A clipboard arrived on a connection that has not authenticated and
-    /// created a canvas — a pairing-only session, or one still handshaking.
+    /// A clipboard arrived on a connection that has no authenticated,
+    /// granted session: a pairing-only connection, one still handshaking,
+    /// or one whose session has ended.
     case sessionNotActive
 
     public var logReason: String {
@@ -71,21 +72,63 @@ public enum ClipboardRefusal: Equatable, Sendable {
         case .unsupportedContent:
             "the pasteboard holds no plain text or image"
         case .sessionNotActive:
-            "the session is not authenticated with an active canvas"
+            "the connection has no granted session"
+        }
+    }
+}
+
+extension ClipboardRefusal {
+    /// The token `SensoriumMessage.clipboardRefused` carries on the wire.
+    public var wireToken: String {
+        switch self {
+        case .syncDisabled:
+            "sync-disabled"
+        case .excludedType:
+            "excluded-type"
+        case .tooLarge:
+            "too-large"
+        case .unsupportedContent:
+            "unsupported-content"
+        case .sessionNotActive:
+            "session-not-active"
+        }
+    }
+
+    /// `nil` for a token this build does not know, and for `too-large`
+    /// without two non-negative sizes.
+    public init?(wireToken: String, byteCount: Int?, limit: Int?) {
+        switch wireToken {
+        case "sync-disabled":
+            self = .syncDisabled
+        case "excluded-type":
+            self = .excludedType
+        case "too-large":
+            guard let byteCount, let limit, byteCount >= 0, limit >= 0 else {
+                return nil
+            }
+            self = .tooLarge(byteCount: byteCount, limit: limit)
+        case "unsupported-content":
+            self = .unsupportedContent
+        case "session-not-active":
+            self = .sessionNotActive
+        default:
+            return nil
         }
     }
 }
 
 public enum ClipboardPolicy {
-    /// The largest clipboard payload that will be sent or applied.
+    /// The largest clipboard payload that will be sent or applied: whatever
+    /// one transport packet can carry after the clipboard header, about
+    /// 4 MiB.
     ///
-    /// Chosen against what shares the wire, not against what a pasteboard can
-    /// hold: the same connection carries 60 fps video, and a clipboard write
-    /// is a single blocking send ahead of the next frame. 1 MiB covers
-    /// ordinary copied text and a typical screenshot while bounding that stall
-    /// to a fraction of the 4 MiB a single video frame is already allowed.
-    /// Anything larger is refused with a reason rather than truncated.
-    public static let maximumContentBytes = 1024 * 1024
+    /// A clipboard travels as one packet on the same connection as the
+    /// video, so this is also the longest stall one can put ahead of the next
+    /// frame, and it is no longer than a single video frame is already
+    /// allowed to cause. Anything larger is refused with a reason rather than
+    /// truncated.
+    public static let maximumContentBytes =
+        SensoriumTransportPacketCodec.maximumPayloadLength - ClipboardPacketCodec.maximumHeaderLength
 
     /// macOS has no pasteboard-change notification, so `changeCount` must be
     /// polled. 200 ms puts worst-case detection inside the window where a
@@ -113,9 +156,8 @@ public enum ClipboardPolicy {
     /// The three `org.nspasteboard.*` markers are the community convention
     /// (nspasteboard.org) that password managers and clipboard managers
     /// actually use; macOS itself exposes no concealed or transient flag on
-    /// `NSPasteboard`. Honouring them is therefore best effort — an app that
-    /// sets none of them is indistinguishable from any other copy — which is
-    /// why clipboard sync is opt-in rather than on by default.
+    /// `NSPasteboard`. Honouring them is therefore best effort: an app that
+    /// sets none of them is indistinguishable from any other copy.
     ///
     /// `public.file-url` is here for a different reason: a Finder copy is a
     /// file reference, and file transfer is an explicit v1 non-goal. Skipping
@@ -126,6 +168,44 @@ public enum ClipboardPolicy {
         "org.nspasteboard.AutoGeneratedType",
         "public.file-url"
     ]
+
+    /// Pasteboard types that mean "this copy has a text form", plain or rich.
+    /// Only plain text is ever sent, but a rich form listed ahead of an
+    /// image still says the copying app considers the copy text.
+    public static let textTypeIdentifiers: Set<String> = [
+        "public.utf8-plain-text",
+        "public.utf16-plain-text",
+        "public.utf16-external-plain-text",
+        "public.plain-text",
+        "public.rtf",
+        "com.apple.flat-rtfd",
+        "public.html"
+    ]
+
+    /// Pasteboard types that mean "this copy has an image form" this project
+    /// can send.
+    public static let imageTypeIdentifiers: Set<String> = [
+        "public.png",
+        "public.tiff"
+    ]
+
+    /// Whether a copy offering both forms should be sent as its image.
+    /// Follows the copying app's own order for the first item: a screenshot
+    /// lists its image first, a spreadsheet lists its text first. With no
+    /// order to go by, the image wins, since a copy that has one usually is
+    /// a picture.
+    public static func prefersImage(firstItemTypeIdentifiers: [String]) -> Bool {
+        let firstText = firstItemTypeIdentifiers.firstIndex { textTypeIdentifiers.contains($0) }
+        let firstImage = firstItemTypeIdentifiers.firstIndex { imageTypeIdentifiers.contains($0) }
+        switch (firstText, firstImage) {
+        case let (.some(text), .some(image)):
+            return image < text
+        case (.some, nil):
+            return false
+        default:
+            return true
+        }
+    }
 
     /// Whether a pasteboard holding these items must not be copied off this
     /// machine. `itemTypeIdentifiers` is every item's own type list, not just
@@ -158,6 +238,9 @@ public enum ClipboardPacketCodec {
     /// "CLIP".
     private static let magic: UInt32 = 0x434C_4950
     private static let headerLength = 4 + 1 + 1 + 4
+    /// The header plus the longest format name any payload can carry.
+    public static let maximumHeaderLength =
+        headerLength + ClipboardImageFormat.allCases.map { $0.rawValue.utf8.count }.max()!
     private static let textKind: UInt8 = 0
     private static let imageKind: UInt8 = 1
 

@@ -265,6 +265,17 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
         try await sendRaw(SensoriumTransportPacketCodec.encode(packet))
     }
 
+    /// Hands `packet` to the connection before returning, so it goes out
+    /// ahead of anything sent after this call, whichever task sends it. A
+    /// packet that cannot be encoded, or a send that fails, is dropped: a
+    /// dead connection is reported by the receive loop.
+    public func enqueue(_ packet: SensoriumTransportPacket) {
+        guard let frame = try? SensoriumTransportPacketCodec.encode(packet) else {
+            return
+        }
+        connection.send(content: frame, completion: .contentProcessed { _ in })
+    }
+
     public func receiveWirePacket() async throws -> SensoriumTransportPacket {
         let header = try await receiveBytes(count: 5)
         let payloadLength = header.withUnsafeBytes { bytes in

@@ -1,4 +1,5 @@
 import Foundation
+import SensoriumCore
 
 /// What the viewer's menu bar contains, as data: titles, chords, and which
 /// existing capability each item reaches. AppKit-free on purpose, so the whole
@@ -137,14 +138,13 @@ public enum ViewerMenuPlan {
                 keyEquivalent: "g",
                 modifiers: [.command, .shift]
             ),
-            // A session starts with sharing on (docs/ux-spec.md), so this is
-            // the checked state before any window has said otherwise.
+            // The state before any window has said otherwise.
             ViewerMenuItem(
                 title: "Share Clipboard",
                 command: .toggleClipboardSharing,
                 keyEquivalent: "c",
                 modifiers: [.command, .shift],
-                isSelected: true
+                isSelected: ClipboardSyncEngine.sharingEnabledByDefault
             )
         ]),
         ViewerMenu(title: "Help", items: [

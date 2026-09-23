@@ -629,19 +629,6 @@ struct sensoriumd {
                 // is looking at is a property of this session, and a new
                 // connection must start with none.
                 let focus = CanvasFocusTracker()
-                // One clipboard per connection, gated on that
-                // connection's own authentication and active canvas: the
-                // right to write this machine's pasteboard must not outlive
-                // the session that earned it.
-                let clipboard = ClipboardSyncSession(
-                    engine: ClipboardSyncEngine(
-                        pasteboard: SystemPasteboard(),
-                        isEnabled: ClipboardSyncEngine.sharingEnabledByDefault
-                    ),
-                    isSessionAdmissible: { controller.isSessionAuthenticatedAndActive },
-                    log: { print("Sensorium host: \($0)") }
-                )
-                clipboardBox.session = clipboard
                 // Dropped as soon as this session ends on its own, so a
                 // day of reconnects cannot pile up quit teardowns for
                 // sessions long gone. Filled in below, once there is a
@@ -661,6 +648,25 @@ struct sensoriumd {
                 // not take the live session's own headline and Stop control
                 // off the window.
                 let connectionToken = HostConnectionToken()
+                // One clipboard per connection, gated on that
+                // connection's own granted session: the right to write
+                // this machine's pasteboard must not outlive the session
+                // that earned it.
+                let clipboard = ClipboardSyncSession(
+                    engine: ClipboardSyncEngine(
+                        pasteboard: SystemPasteboard(),
+                        isEnabled: ClipboardSyncEngine.hostSharingEnabledAtConnect
+                    ),
+                    isSessionAdmissible: { controller.isClipboardAdmissible },
+                    log: { print("Sensorium host: \($0)") },
+                    // The viewer is told, so a person there can see why a
+                    // copy did not arrive.
+                    onRefusal: { refusal in
+                        guard let session = thisConnection.session else { return }
+                        Task { await session.reportClipboardRefusal(refusal) }
+                    }
+                )
+                clipboardBox.session = clipboard
                 let session = HostNetworkSession(
                     connection: channel,
                     controller: controller,

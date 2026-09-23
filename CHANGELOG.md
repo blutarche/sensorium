@@ -8,6 +8,22 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Clipboard sharing is on by default. The viewer can still turn it off
+  from the View menu, and the host follows the viewer's choice.
+- Clipboards up to about 4 MB are shared, up from 1 MB. A copied TIFF
+  image is sent as PNG.
+- A copy that offers both text and an image is sent as whichever the
+  copying app listed first. If that one is too large, the other is sent.
+
+### Fixed
+
+- Clipboard sharing works during host-screen sessions.
+- A clipboard that is not shared now says why in the session window.
+- A copy made in another app just before switching back to the viewer
+  is sent before the first keystroke, so pasting right away pastes it.
+
 ## [0.1.3] - 2026-09-19
 
 ### Changed

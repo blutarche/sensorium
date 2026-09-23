@@ -39,11 +39,11 @@ No screen contents, keystrokes, or input history reach disk. Opt-in local latenc
 
 ## Clipboard sharing
 
-Off by default, on each machine independently. Turn it on from the viewer's View menu, live during a session.
+On by default. The viewer decides: turn it off from the viewer's View menu, live during a session. The host shares nothing on a new connection until the viewer has said it wants sharing on.
 
-It defaults off because a pasteboard often holds a credential a password manager put there. Honoring the markers that would flag one is best effort, not a guarantee.
+A pasteboard often holds a credential a password manager put there. Honoring the markers that flag one is best effort, not a guarantee. Turn sharing off before copying anything that must stay on one machine.
 
-With it on, sharing carries text and images only, up to 1 MiB. Anything larger is refused, not cut down. Content is never logged or written to disk. Log lines carry only the kind, the byte count, and the outcome.
+With it on, sharing carries text and images only, up to about 4 MiB. Anything larger is refused, not cut down. A refusal is shown in the session window, naming the reason and sizes only. Content is never logged or written to disk. Log lines carry only the kind, the byte count, and the outcome.
 
 Content marked concealed, transient, auto-generated, or as a file reference is never sent. A pasteboard that cannot be read is refused, not sent. Only copies made after clipboard sharing turns on are sent, nothing already on the pasteboard.
 

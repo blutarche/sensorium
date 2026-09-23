@@ -69,9 +69,9 @@ public final class ClientSessionRunner {
     public let latency = SessionLatencyMonitor()
     private var receiveTask: Task<Void, Never>?
     private var clockTask: Task<Void, Never>?
-    /// `nil` whenever clipboard sync is off, which is the default. A runner
-    /// without one neither polls this machine's pasteboard nor applies anything
-    /// the host sends.
+    /// `nil` for a runner built without clipboard sync, which neither polls
+    /// this machine's pasteboard nor applies anything the host sends. Turning
+    /// sharing off is the engine's own state, not a `nil` here.
     private let clipboard: ClipboardSyncSession?
     /// The machine this session is streaming from, as every other viewer surface
     /// names it -- threaded into the HUD's own telemetry snapshot so its
@@ -205,6 +205,9 @@ public final class ClientSessionRunner {
     /// The host's answer to an unlock request: what the attempt did. Drives the
     /// brief success or failure notice the viewer shows.
     public var onHostScreenUnlockResult: ((_ outcome: HostScreenUnlockOutcome) -> Void)?
+    /// The host did not share a clipboard, its own copy or this machine's,
+    /// and says why. Never ends the session.
+    public var onClipboardRefused: ((ClipboardRefusal) -> Void)?
 
     /// The Resolution submenu's own action: asks the host to set the screen
     /// it is streaming to one of the modes it offered. The answer -- applied
@@ -279,6 +282,9 @@ public final class ClientSessionRunner {
         secondaryWindow = window
         router.setWindow(window, atSurfaceID: 1)
         router.setVideoSink(window.videoSink, atSurfaceID: 1)
+        if clipboard != nil {
+            window.onDidBecomeKey = { [weak self] in self?.pollClipboardNow() }
+        }
         try window.startDecoding(latency: latency) { [streamStatistics] frame in
             streamStatistics.recordDecodedFrame(
                 surfaceID: 1,
@@ -299,6 +305,7 @@ public final class ClientSessionRunner {
     public func detachSecondDisplay() -> ClientCanvasWindowController? {
         guard let window = secondaryWindow else { return nil }
         window.stopDecoding()
+        window.onDidBecomeKey = nil
         secondaryWindow = nil
         router.setWindow(nil, atSurfaceID: 1)
         router.setVideoSink(nil, atSurfaceID: 1)
@@ -357,6 +364,8 @@ public final class ClientSessionRunner {
             clipboardTask = Task { [weak self] in
                 await self?.clipboardPollLoop()
             }
+            primaryWindow.onDidBecomeKey = { [weak self] in self?.pollClipboardNow() }
+            secondaryWindow?.onDidBecomeKey = { [weak self] in self?.pollClipboardNow() }
         }
         telemetryRefreshTask = Task { [weak self] in
             await self?.telemetryRefreshLoop()
@@ -372,6 +381,8 @@ public final class ClientSessionRunner {
         clockTask = nil
         clipboardTask?.cancel()
         clipboardTask = nil
+        primaryWindow.onDidBecomeKey = nil
+        secondaryWindow?.onDidBecomeKey = nil
         telemetryRefreshTask?.cancel()
         telemetryRefreshTask = nil
         // Fire-and-forget: `stop()` is not `async`, and nothing here observes exactly when teardown
@@ -388,6 +399,18 @@ public final class ClientSessionRunner {
         // actor, and this is the one place the total is reported.
         await latency.setDroppedAtViewerCount(router.droppedFrameCount())
         return await latency.summaryLine()
+    }
+
+    /// Polls this machine's pasteboard now rather than at the next interval,
+    /// and puts anything to send on the connection before returning. Run the
+    /// moment a session window takes key focus, so a copy made in another app
+    /// goes out ahead of any keystroke sent after that: without it, Command-V
+    /// typed after switching back could paste the host's old clipboard.
+    public func pollClipboardNow() {
+        guard let packet = clipboard?.poll() else {
+            return
+        }
+        connection.enqueue(packet)
     }
 
     /// macOS has no pasteboard-change notification, so a local copy is found
@@ -673,6 +696,16 @@ public final class ClientSessionRunner {
         }
     }
 
+    /// The host's report that it did not share a clipboard, classified for
+    /// the same reason `hostScreenOutcome(for:)` above is: verifiable without
+    /// a live connection.
+    public nonisolated static func clipboardRefusal(for message: SensoriumMessage) -> ClipboardRefusal? {
+        guard case let .clipboardRefused(refusal) = message else {
+            return nil
+        }
+        return refusal
+    }
+
     /// Nonisolated, and started on a task of its own, because the main actor is
     /// where this viewer draws, lays out its chrome and handles input. A packet
     /// that had to wait for all of that would arrive in a burst with the
@@ -817,6 +850,9 @@ public final class ClientSessionRunner {
             onHostScreenModeRefused?(reason)
         case nil:
             break
+        }
+        if let refusal = Self.clipboardRefusal(for: message) {
+            onClipboardRefused?(refusal)
         }
         // The host screen's lock state and unlock answers. None ends a
         // session: an unlock is a control on a live host-screen session, not a

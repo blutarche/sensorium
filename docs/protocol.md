@@ -42,13 +42,17 @@ Tag 3 carries text or an image between the two machines' pasteboards, in both di
 
 `magic` is `"CLIP"`. `kind` is 0 for UTF-8 text (`formatLen` 0) or 1 for an image, whose `format` is `png` or `tiff`. This is binary, not a JSON control frame, because an image is megabytes and the control frame is capped at 64 KiB.
 
-**Size.** 1 MiB, enforced at encode, at decode, and again in `ClipboardSyncEngine`. Over the limit, the clipboard is refused with a reason and the session continues.
+**Size.** The largest payload one transport packet carries after this header, about 4 MiB (`ClipboardPolicy.maximumContentBytes`). Enforced at encode, at decode, and again in `ClipboardSyncEngine`. Over the limit, the clipboard is refused with a reason and the session continues. A TIFF image is converted to PNG before it is sized.
+
+**Text or image.** A copy can offer both. The sender picks whichever the copying app listed first in the first pasteboard item's types, treating plain and rich text alike as text. If that one is over the limit and the other fits, the other is sent.
 
 **No loop.** Both machines poll their own pasteboard, since macOS has no pasteboard-change notification: `changeCount` is polled every 200 ms. `ClipboardSyncEngine` tracks every `changeCount` it has dealt with and acts only on one that differs. `apply()` records the change count its own write produced in the same call, so that write is never read back as a new local copy.
 
-**Gating.** The host applies a peer's clipboard only for a connection that is both authenticated and holds an active canvas (`HostSessionController.isSessionAuthenticatedAndActive`): not during pairing, not mid-handshake, not after `goodbye`. On the client, the clipboard session is built after `connect()` returns a signed canvas.
+**Gating.** The host exchanges clipboards only for a connection with a granted session (`HostSessionController.isClipboardAdmissible`): authenticated and holding a live session canvas, or authenticated and holding a fully granted host screen, the same point at which its frames may leave the host. Not during pairing, not mid-handshake, not once the session starts ending. On the client, the clipboard session is built after `connect()` returns a signed canvas or a granted host screen.
 
-**Scope.** One pasteboard per machine, however many canvases a session opened, so tag 3 carries no `surfaceID`. Off by default on both ends. A peer with it off neither polls nor applies, and skips any tag-3 frame that reaches it. See `docs/privacy.md`.
+**Scope.** One pasteboard per machine, however many canvases a session opened, so tag 3 carries no `surfaceID`. The viewer decides: sharing is on by default there, and the viewer sends `clipboardSharing` after every connect. The host starts each connection off and follows that message. A peer with it off neither polls nor applies, and skips any tag-3 frame that reaches it. See `docs/privacy.md`.
+
+**Refusals.** When the host does not share a clipboard, its own or the viewer's, it sends `clipboardRefused` so the viewer can say why. The viewer shows its own refusals the same way. Neither carries any content.
 
 ## Messages
 
@@ -69,7 +73,8 @@ Tag 3 carries text or an image between the two machines' pasteboards, in both di
 | `viewerFocus(surfaceID, hasViewerFocus)` | client → host | Which canvas the user is looking at, or that no canvas is. Sets scheduling preference |
 | `streamScalePreference(preference, surfaceID)` | client → host | A person's explicit stream-scale choice, or a return to automatic |
 | `displayCount(count)` | client → host | The viewer's live choice of `1` or `2` session displays |
-| `clipboardSharing(enabled)` | client → host | Live per-session on/off from the viewer's View menu. No reply |
+| `clipboardSharing(enabled)` | client → host | The viewer's on/off choice, sent after every connect and on every change. No reply |
+| `clipboardRefused(reason)` | host → client | A clipboard the host did not share: `too-large` (with `clipboardByteCount` and `clipboardLimit`), `excluded-type`, or `unsupported-content`. Never carries content |
 | `timeSyncRequest(clientTimeNanoseconds)` | client → host | Relates the two monotonic clocks. Requires authentication |
 | `timeSyncReply(clientTimeNanoseconds, hostTimeNanoseconds)` | host → client | Echoes the request timestamp and stamps the host clock |
 | `telemetry(surfaces)` | host → client | Per-surface capture/encode/send latency, fps, and drop counts |

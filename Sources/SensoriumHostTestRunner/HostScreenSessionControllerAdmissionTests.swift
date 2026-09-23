@@ -1035,4 +1035,117 @@ func runHostScreenSessionControllerAdmissionTests() async {
 
         print("PASS: an armed machine is offered every online display Sensorium did not create, and never a canvas")
     }
+
+    do {
+        // Clipboard admission opens only at the point a host-screen session
+        // is fully granted, and closes the moment it starts ending.
+        let signed = HostScreenPresenceProof.signed(
+            credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02])
+        )
+
+        let granted = makeAdmissibleFixture()
+        expect(
+            !granted.controller.isClipboardAdmissible,
+            "an authenticated connection that has not been granted a host screen is not admissible for clipboard"
+        )
+        let token = offerAndExtractToken(granted.controller)
+        expect(
+            !granted.controller.isClipboardAdmissible,
+            "an offer alone grants nothing"
+        )
+        guard case .hostScreenReady = try! granted.controller.handle(.hostScreenRequest(token: token, presence: signed)) else {
+            expect(false, "the admissible fixture's request is admitted")
+            return
+        }
+        expect(
+            granted.controller.isClipboardAdmissible,
+            "a fully granted host-screen session is admissible for clipboard"
+        )
+        expect(
+            !granted.controller.isSessionAuthenticatedAndActive,
+            "without widening the canvas-only gate"
+        )
+        granted.controller.noteSessionEnding()
+        expect(
+            !granted.controller.isClipboardAdmissible,
+            "a host-screen session that has started ending is no longer admissible"
+        )
+        _ = try! granted.controller.handle(.goodbye(reason: "client-disconnected"))
+        expect(
+            !granted.controller.isClipboardAdmissible,
+            "nor after its goodbye"
+        )
+
+        let unverified = makeAdmissibleFixture()
+        unverified.verifier.result = false
+        _ = try! unverified.controller.handle(.hostScreenRequest(
+            token: offerAndExtractToken(unverified.controller), presence: signed
+        ))
+        expect(
+            !unverified.controller.isClipboardAdmissible,
+            "a request whose presence proof fails is never admissible for clipboard"
+        )
+
+        for refusal in [HostScreenPresenceRule.declinedReason, HostScreenPresenceRule.unansweredReason] {
+            let asked = makeAdmissibleFixtureWithGate()
+            asked.signal.reading = .idleFor(0)
+            asked.gate.outcome = .refused(reason: refusal)
+            _ = try! asked.controller.handle(.hostScreenRequest(
+                token: offerAndExtractToken(asked.controller), presence: signed
+            ))
+            expect(
+                !asked.controller.isClipboardAdmissible,
+                "a request the person at this machine did not agree to (\(refusal)) is never admissible for clipboard"
+            )
+        }
+
+        let approved = makeAdmissibleFixtureWithGate()
+        approved.signal.reading = .idleFor(0)
+        approved.gate.outcome = .proceed
+        _ = try! approved.controller.handle(.hostScreenRequest(
+            token: offerAndExtractToken(approved.controller), presence: signed
+        ))
+        expect(
+            approved.controller.isClipboardAdmissible,
+            "a request the person at this machine agreed to is admissible for clipboard"
+        )
+
+        print("PASS: clipboard admission for host screen opens only once the session is fully granted and closes as it ends")
+    }
+
+    do {
+        // A session canvas follows the same rule: admission opens with the
+        // live canvas and closes the moment the session starts ending, not
+        // once its goodbye teardown has finished.
+        let identity = try! DeviceIdentity.generate()
+        let controller = HostSessionController(
+            sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
+            approvedPublicKeys: [identity.publicKey],
+            requireAuthentication: true,
+            keyConfinement: .unconfined
+        )
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1,
+            deviceName: "Laptop",
+            publicKey: identity.publicKey
+        )
+        _ = try! controller.handle(.authenticatedHello(
+            protocolVersion: 1,
+            deviceName: "Laptop",
+            publicKey: identity.publicKey,
+            signature: try! identity.sign(transcript)
+        ))
+        expect(!controller.isClipboardAdmissible, "an authenticated connection with no canvas is not admissible for clipboard")
+        _ = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
+        expect(controller.isClipboardAdmissible, "an authenticated session with a live canvas is admissible for clipboard")
+        controller.noteSessionEnding()
+        expect(
+            !controller.isClipboardAdmissible,
+            "a canvas session that has started ending is no longer admissible, before its goodbye teardown runs"
+        )
+        _ = try! controller.handle(.goodbye(reason: "client-disconnected"))
+        expect(!controller.isClipboardAdmissible, "nor after its goodbye")
+
+        print("PASS: clipboard admission for a session canvas closes as the session starts ending")
+    }
 }

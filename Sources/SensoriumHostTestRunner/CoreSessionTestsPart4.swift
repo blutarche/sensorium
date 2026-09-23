@@ -402,9 +402,154 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             )
         }
 
+        // A clipboard refusal is the host's own report to the viewer, never
+        // something a viewer may send the host.
+        do {
+            let refusedController = HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined
+            )
+            expectThrows(
+                HostSessionControllerError.unexpectedMessage,
+                { _ = try refusedController.handle(.clipboardRefused(.excludedType)) },
+                "a host never accepts a clipboardRefused"
+            )
+        }
+
+        // Every refusal a person could act on reaches `onRefusal`, from
+        // either direction; the two that describe the session rather than
+        // the copy never do.
+        do {
+            let refusalPasteboard = FakeClipboardPasteboard()
+            let refusalEngine = ClipboardSyncEngine(pasteboard: refusalPasteboard, isEnabled: true, maximumContentBytes: 50)
+            final class RefusalState {
+                var admissible = true
+                var refusals: [ClipboardRefusal] = []
+            }
+            let state = RefusalState()
+            let refusalLog = DiagnosticsRecorder()
+            let refusalClipboard = ClipboardSyncSession(
+                engine: refusalEngine,
+                isSessionAdmissible: { state.admissible },
+                log: { refusalLog.record($0) },
+                onRefusal: { state.refusals.append($0) }
+            )
+            _ = refusalClipboard.poll()
+
+            refusalPasteboard.stageLocalCopy(ClipboardReadout(content: .text(String(repeating: "x", count: 60)), isExcludedByType: false))
+            _ = refusalClipboard.poll()
+            refusalPasteboard.stageLocalCopy(ClipboardReadout(content: .text("secret"), isExcludedByType: true))
+            _ = refusalClipboard.poll()
+            refusalPasteboard.stageLocalCopy(ClipboardReadout(content: nil, isExcludedByType: false))
+            _ = refusalClipboard.poll()
+            refusalClipboard.receive(.text(String(repeating: "y", count: 70)))
+            expect(
+                state.refusals == [
+                    .tooLarge(byteCount: 60, limit: 50),
+                    .excludedType,
+                    .unsupportedContent,
+                    .tooLarge(byteCount: 70, limit: 50)
+                ],
+                "a local copy too large, marked private, or of no shareable kind, and an incoming one too large, each reach onRefusal -- got \(state.refusals)"
+            )
+            expect(
+                refusalLog.messages.filter { $0.contains("clipboard not sent") || $0.contains("clipboard refused") }.count == 4,
+                "and each is still logged"
+            )
+
+            state.refusals.removeAll()
+            state.admissible = false
+            refusalClipboard.receive(.text("arrived with no session"))
+            state.admissible = true
+            refusalClipboard.setEnabled(false)
+            try! await Task.sleep(for: .seconds(ClipboardPolicy.minimumApplyIntervalSeconds * 2))
+            refusalClipboard.receive(.text("arrived while off"))
+            expect(
+                state.refusals.isEmpty,
+                "a clipboard refused because there is no session, or because sharing is off, is never reported -- got \(state.refusals)"
+            )
+        }
+
+        // A clipboard held back by the apply floor never lands once the
+        // session has started ending, or once the host session is stopped,
+        // whatever the gate would say by the time the floor expires.
+        do {
+            let endingController = HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined
+            )
+            _ = try! endingController.handle(
+                .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
+            )
+            let endingPasteboard = FakeClipboardPasteboard()
+            let endingClipboard = ClipboardSyncSession(
+                engine: ClipboardSyncEngine(pasteboard: endingPasteboard, isEnabled: true),
+                isSessionAdmissible: { endingController.isClipboardAdmissible }
+            )
+            endingClipboard.receive(.text("applied"))
+            endingClipboard.receive(.text("held by the floor"))
+            endingController.noteSessionEnding()
+            try! await Task.sleep(for: .seconds(ClipboardPolicy.minimumApplyIntervalSeconds * 3))
+            expect(
+                endingPasteboard.writtenContents == [.text("applied")],
+                "a clipboard held by the floor is not written once the session has started ending -- got \(endingPasteboard.writtenContents)"
+            )
+
+            let stoppedPasteboard = FakeClipboardPasteboard()
+            let stoppedClipboard = ClipboardSyncSession(
+                engine: ClipboardSyncEngine(pasteboard: stoppedPasteboard, isEnabled: true)
+            )
+            let stoppedSession = HostNetworkSession(
+                connection: FakeHostByteChannel(scriptedPackets: []),
+                controller: HostSessionController(
+                    sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                    keyConfinement: .unconfined
+                ),
+                clipboard: stoppedClipboard
+            )
+            stoppedClipboard.receive(.text("applied"))
+            stoppedClipboard.receive(.text("held by the floor"))
+            stoppedSession.stop()
+            try! await Task.sleep(for: .seconds(ClipboardPolicy.minimumApplyIntervalSeconds * 3))
+            expect(
+                stoppedPasteboard.writtenContents == [.text("applied")],
+                "stopping the host session drops a clipboard held by the floor -- got \(stoppedPasteboard.writtenContents)"
+            )
+
+            let cancelledPasteboard = FakeClipboardPasteboard()
+            let cancelledClipboard = ClipboardSyncSession(
+                engine: ClipboardSyncEngine(pasteboard: cancelledPasteboard, isEnabled: true)
+            )
+            cancelledClipboard.receive(.text("applied"))
+            cancelledClipboard.receive(.text("held by the floor"))
+            cancelledClipboard.cancelPendingApply()
+            try! await Task.sleep(for: .seconds(ClipboardPolicy.minimumApplyIntervalSeconds * 3))
+            expect(
+                cancelledPasteboard.writtenContents == [.text("applied")],
+                "a cancelled pending apply never lands -- got \(cancelledPasteboard.writtenContents)"
+            )
+        }
+
+        // The host tells its viewer about a refusal on the control channel.
+        do {
+            let reportController = HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined
+            )
+            let reportChannel = FakeHostByteChannel(scriptedPackets: [])
+            let reportSession = HostNetworkSession(connection: reportChannel, controller: reportController)
+            await reportSession.reportClipboardRefusal(.tooLarge(byteCount: 6_000_000, limit: 4_000_000))
+            await reportSession.reportClipboardRefusal(.syncDisabled)
+            await reportSession.reportClipboardRefusal(.sessionNotActive)
+            expect(
+                reportChannel.sentPackets == [.control(.clipboardRefused(.tooLarge(byteCount: 6_000_000, limit: 4_000_000)))],
+                "a refusal is sent to the viewer as clipboardRefused, and the two session-state refusals never are -- got \(reportChannel.sentPackets)"
+            )
+        }
+
         // Clipboard sync. Writing the peer's pasteboard onto the Mini is a
         // real side effect on the user's own machine, so the host gate is
-        // authentication plus an active canvas -- never a pairing-only or
+        // authentication plus a granted session -- never a pairing-only or
         // still-handshaking connection.
         do {
             let clipboardIdentity = try! DeviceIdentity.generate()
@@ -419,13 +564,13 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let clipboardLog = DiagnosticsRecorder()
             let clipboard = ClipboardSyncSession(
                 engine: ClipboardSyncEngine(pasteboard: clipboardPasteboard, isEnabled: true),
-                isSessionAdmissible: { clipboardController.isSessionAuthenticatedAndActive },
+                isSessionAdmissible: { clipboardController.isClipboardAdmissible },
                 log: { clipboardLog.record($0) }
             )
             let fromPeer = ClipboardContent.text("from the peer")
 
             expect(
-                !clipboardController.isSessionAuthenticatedAndActive,
+                !clipboardController.isClipboardAdmissible,
                 "a connection that has not authenticated is not admissible for clipboard"
             )
             clipboard.receive(fromPeer)
@@ -444,7 +589,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 signature: try! clipboardIdentity.sign(clipboardTranscript)
             ))
             expect(
-                !clipboardController.isSessionAuthenticatedAndActive,
+                !clipboardController.isClipboardAdmissible,
                 "authentication alone is not an active session"
             )
             clipboard.receive(fromPeer)
@@ -452,7 +597,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
 
             _ = try! clipboardController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
             expect(
-                clipboardController.isSessionAuthenticatedAndActive,
+                clipboardController.isClipboardAdmissible,
                 "an authenticated session with an active canvas is admissible"
             )
             clipboard.receive(fromPeer)
@@ -469,7 +614,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 "the applied clipboard is logged by kind and size"
             )
             expect(
-                clipboardLog.messages.contains { $0.contains("the session is not authenticated with an active canvas") },
+                clipboardLog.messages.contains { $0.contains("the connection has no granted session") },
                 "and a refused one is logged with its reason"
             )
             expect(
@@ -483,7 +628,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
 
             _ = try! clipboardController.handle(.goodbye(reason: "client-disconnected"))
             expect(
-                !clipboardController.isSessionAuthenticatedAndActive,
+                !clipboardController.isClipboardAdmissible,
                 "a session whose canvas is released is no longer admissible"
             )
             clipboardPasteboard.stageLocalCopy(ClipboardReadout(content: .text("after the session"), isExcludedByType: false))
@@ -634,7 +779,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let wiredPasteboard = FakeClipboardPasteboard()
             let wiredClipboard = ClipboardSyncSession(
                 engine: ClipboardSyncEngine(pasteboard: wiredPasteboard, isEnabled: true),
-                isSessionAdmissible: { wiredController.isSessionAuthenticatedAndActive }
+                isSessionAdmissible: { wiredController.isClipboardAdmissible }
             )
             let wiredChannel = FakeHostByteChannel(scriptedPackets: [
                 .control(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)),
@@ -701,7 +846,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let authPasteboard = FakeClipboardPasteboard()
             let authClipboard = ClipboardSyncSession(
                 engine: ClipboardSyncEngine(pasteboard: authPasteboard, isEnabled: true),
-                isSessionAdmissible: { authController.isSessionAuthenticatedAndActive }
+                isSessionAdmissible: { authController.isClipboardAdmissible }
             )
             clipboardBox.session = authClipboard
 
@@ -748,7 +893,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let sharingPasteboard = FakeClipboardPasteboard()
             let sharingClipboard = ClipboardSyncSession(
                 engine: ClipboardSyncEngine(pasteboard: sharingPasteboard, isEnabled: true),
-                isSessionAdmissible: { sharingController.isSessionAuthenticatedAndActive }
+                isSessionAdmissible: { sharingController.isClipboardAdmissible }
             )
             sharingClipboardBox.session = sharingClipboard
             let sharingChannel = FakeHostByteChannel(scriptedPackets: [

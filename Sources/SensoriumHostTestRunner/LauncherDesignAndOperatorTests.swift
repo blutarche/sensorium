@@ -1291,7 +1291,7 @@ func runLauncherDesignAndOperatorTests() async {
         print("PASS: host stage latency is keyed per surface, so two canvases sharing a timestamp are not matched across surfaces")
         print("PASS: tag 2 goes only to a client that supplied a surfaceID and received the echo, on every path")
         print("PASS: a surface-aware client's frames carry the surfaceID they were captured from, one send in flight at a time")
-        print("PASS: the host applies a peer clipboard only for an authenticated session with an active canvas, and never echoes it back")
+        print("PASS: the host applies a peer clipboard only for a granted session, and never echoes it back")
         print("PASS: a clipboard frame reaching a host with no clipboard session is ignored, not fatal")
         print("PASS: a clipboard frame off the wire is applied, and a local copy is polled and sent on tag 3 exactly once")
         print("PASS: received clipboards are floored and coalesced, so a burst lands the newest content once per interval")

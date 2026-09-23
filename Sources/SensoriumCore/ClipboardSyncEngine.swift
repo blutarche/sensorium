@@ -1,17 +1,80 @@
 import Foundation
 
+/// An image candidate read off the pasteboard.
+public struct ClipboardImage: Equatable, Sendable {
+    public let format: ClipboardImageFormat
+    public let data: Data
+
+    public init(format: ClipboardImageFormat, data: Data) {
+        self.format = format
+        self.data = data
+    }
+}
+
 /// What the local pasteboard currently holds, as far as clipboard sync is
-/// concerned. `content` is `nil` when the pasteboard holds nothing this
-/// project syncs; `isExcludedByType` says the payload carries one of
+/// concerned. A single copy can offer both a text and an image form;
+/// `firstItemTypeIdentifiers` is the first item's type list in the copying
+/// app's own order, which is how `ClipboardSyncEngine` picks between them.
+/// `isExcludedByType` says the payload carries one of
 /// `ClipboardPolicy.excludedTypeIdentifiers` and must never leave the machine
 /// whatever it is.
-public struct ClipboardReadout: Equatable, Sendable {
-    public let content: ClipboardContent?
+public struct ClipboardReadout: Sendable {
+    public let text: String?
+    /// Produces the image form, or `nil` when there is none. Producing it can
+    /// mean converting a large image, so the engine calls this only once the
+    /// image is the form it is about to size and send.
+    public let loadImage: @Sendable () -> ClipboardImage?
+    public let firstItemTypeIdentifiers: [String]
+    /// `false` for a pasteboard that was cleared and left empty, which is
+    /// not a copy at all.
+    public let hasItems: Bool
     public let isExcludedByType: Bool
 
-    public init(content: ClipboardContent?, isExcludedByType: Bool) {
-        self.content = content
+    public init(
+        text: String?,
+        loadImage: @escaping @Sendable () -> ClipboardImage?,
+        firstItemTypeIdentifiers: [String],
+        hasItems: Bool = true,
+        isExcludedByType: Bool
+    ) {
+        self.text = text
+        self.loadImage = loadImage
+        self.firstItemTypeIdentifiers = firstItemTypeIdentifiers
+        self.hasItems = hasItems
         self.isExcludedByType = isExcludedByType
+    }
+
+    public init(
+        text: String?,
+        image: ClipboardImage?,
+        firstItemTypeIdentifiers: [String],
+        hasItems: Bool = true,
+        isExcludedByType: Bool
+    ) {
+        self.init(
+            text: text,
+            loadImage: { image },
+            firstItemTypeIdentifiers: firstItemTypeIdentifiers,
+            hasItems: hasItems,
+            isExcludedByType: isExcludedByType
+        )
+    }
+
+    /// A pasteboard offering exactly one form, or none.
+    public init(content: ClipboardContent?, isExcludedByType: Bool) {
+        switch content {
+        case let .text(text):
+            self.init(text: text, image: nil, firstItemTypeIdentifiers: [], isExcludedByType: isExcludedByType)
+        case let .image(format, data):
+            self.init(
+                text: nil,
+                image: ClipboardImage(format: format, data: data),
+                firstItemTypeIdentifiers: [],
+                isExcludedByType: isExcludedByType
+            )
+        case nil:
+            self.init(text: nil, image: nil, firstItemTypeIdentifiers: [], isExcludedByType: isExcludedByType)
+        }
     }
 }
 
@@ -58,9 +121,18 @@ public enum ClipboardApplyDecision: Equatable, Sendable {
 /// the counter again, does not match, and is sent — which is the behaviour
 /// that matters.
 public final class ClipboardSyncEngine {
-    /// The pasteboard often holds secrets, so a session starts with sharing
-    /// off until the viewer turns it on.
-    public static let sharingEnabledByDefault = false
+    /// The viewer's starting choice. Copying on one machine and pasting on
+    /// the other is what a person expects of a remote session; what must not
+    /// leave a machine is handled by `ClipboardPolicy.excludedTypeIdentifiers`
+    /// and the session gate, and the viewer can turn sharing off at any time.
+    public static let sharingEnabledByDefault = true
+
+    /// The host's state for a new connection, before the viewer has said
+    /// what it wants. The viewer decides (docs/ux-spec.md) and sends
+    /// `clipboardSharing(enabled:)` after every connect, so a host that
+    /// started on could send a copy to a viewer that had turned sharing off
+    /// in the moment before that message arrives.
+    public static let hostSharingEnabledAtConnect = false
 
     private let pasteboard: any ClipboardPasteboard
     private let maximumContentBytes: Int
@@ -112,16 +184,33 @@ public final class ClipboardSyncEngine {
         }
         lastAccountedChangeCount = changeCount
         let readout = pasteboard.read()
+        guard readout.hasItems else {
+            return .nothingToSend
+        }
         guard !readout.isExcludedByType else {
             return .refused(.excludedType)
         }
-        guard let content = readout.content else {
+        let text: () -> ClipboardContent? = { readout.text.map(ClipboardContent.text) }
+        let image: () -> ClipboardContent? = {
+            readout.loadImage().map { ClipboardContent.image(format: $0.format, data: $0.data) }
+        }
+        let forms = ClipboardPolicy.prefersImage(firstItemTypeIdentifiers: readout.firstItemTypeIdentifiers)
+            ? [image, text]
+            : [text, image]
+        var preferred: ClipboardContent?
+        for form in forms {
+            guard let content = form() else {
+                continue
+            }
+            if content.byteCount <= maximumContentBytes {
+                return .send(content)
+            }
+            preferred = preferred ?? content
+        }
+        guard let preferred else {
             return .refused(.unsupportedContent)
         }
-        guard content.byteCount <= maximumContentBytes else {
-            return .refused(.tooLarge(byteCount: content.byteCount, limit: maximumContentBytes))
-        }
-        return .send(content)
+        return .refused(.tooLarge(byteCount: preferred.byteCount, limit: maximumContentBytes))
     }
 
     /// Records whatever the pasteboard holds now as already dealt with, so it
@@ -163,6 +252,7 @@ public final class ClipboardSyncSession {
     private let engine: ClipboardSyncEngine
     private let isSessionAdmissible: @MainActor () -> Bool
     private let log: (@MainActor (String) -> Void)?
+    private let onRefusal: (@MainActor (ClipboardRefusal) -> Void)?
     /// When the last received clipboard was written to the pasteboard, which
     /// is what `ClipboardPolicy.minimumApplyIntervalSeconds` is measured from.
     private var lastApplyNanoseconds: Int64?
@@ -183,19 +273,27 @@ public final class ClipboardSyncSession {
         engine.setEnabled(enabled)
     }
 
-    /// `isSessionAdmissible` is the host's authenticated-and-active gate.
+    /// `isSessionAdmissible` is the host's granted-session gate.
     /// It defaults to `true` for the client, where the gate is structural:
     /// the client only builds this after `connect()` has returned a signed
-    /// canvas, and tears it down when the session ends, so there is no
-    /// pairing-only or pre-handshake state for it to exist in.
+    /// canvas or a granted host screen, and tears it down when the session
+    /// ends, so there is no pairing-only or pre-handshake state for it to
+    /// exist in.
+    ///
+    /// `onRefusal` hears every refusal a person could act on, in either
+    /// direction, alongside the log line. `syncDisabled` and
+    /// `sessionNotActive` never reach it: they describe the session, not
+    /// the copy.
     public init(
         engine: ClipboardSyncEngine,
         isSessionAdmissible: @escaping @MainActor () -> Bool = { true },
-        log: (@MainActor (String) -> Void)? = nil
+        log: (@MainActor (String) -> Void)? = nil,
+        onRefusal: (@MainActor (ClipboardRefusal) -> Void)? = nil
     ) {
         self.engine = engine
         self.isSessionAdmissible = isSessionAdmissible
         self.log = log
+        self.onRefusal = onRefusal
     }
 
     /// The packet to send, or `nil` when there is nothing to say. Never logs
@@ -225,6 +323,7 @@ public final class ClipboardSyncSession {
             return nil
         case let .refused(reason):
             log?("clipboard not sent: \(reason.logReason)")
+            reportRefusal(reason)
             return nil
         case let .send(content):
             log?("clipboard sent: \(content.logDescription)")
@@ -266,6 +365,14 @@ public final class ClipboardSyncSession {
 
     /// How long the floor still has to run, or `nil` when an apply may happen
     /// now.
+    /// Drops a clipboard held by the apply floor, so it never lands. Called
+    /// when the session ends, so nothing from it is written afterwards.
+    public func cancelPendingApply() {
+        pendingApplyTask?.cancel()
+        pendingApplyTask = nil
+        pendingApply = nil
+    }
+
     private func nanosecondsUntilApplyAllowed() -> Int64? {
         guard let lastApplyNanoseconds else {
             return nil
@@ -302,6 +409,16 @@ public final class ClipboardSyncSession {
             log?("clipboard applied: \(description)")
         case let .refused(reason):
             log?("clipboard refused: \(reason.logReason) (\(content.logDescription))")
+            reportRefusal(reason)
+        }
+    }
+
+    private func reportRefusal(_ refusal: ClipboardRefusal) {
+        switch refusal {
+        case .syncDisabled, .sessionNotActive:
+            return
+        case .excludedType, .tooLarge, .unsupportedContent:
+            onRefusal?(refusal)
         }
     }
 }

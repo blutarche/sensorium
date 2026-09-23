@@ -235,9 +235,9 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// that supplied one. Until then every frame goes out on tag 1.
     private let isPeerSurfaceAware = SurfaceAwarePeerFlag()
     private let latencyRecorder: HostMediaLatencyRecorder?
-    /// `nil` whenever clipboard sync is off, which is the default. A session
-    /// without one neither polls the host pasteboard nor applies anything a
-    /// viewer sends it.
+    /// `nil` for a session built without clipboard sync, which neither polls
+    /// the host pasteboard nor applies anything a viewer sends it. Turning
+    /// sharing off is the engine's own state, not a `nil` here.
     private let clipboard: ClipboardSyncSession?
     private let clipboardPollTask = CancellableTaskBox()
     /// Started whenever there is a `latencyRecorder`, which is every
@@ -541,7 +541,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// macOS has no pasteboard-change notification, so the host's own copies
     /// are found by polling `changeCount`; the engine behind
     /// `ClipboardSyncSession` decides whether anything actually changed.
-    /// Nothing starts when clipboard sync is off.
+    /// Nothing starts for a session built without clipboard sync.
     private func startClipboardPolling() {
         guard let clipboard else {
             return
@@ -575,12 +575,13 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         telemetryPollTask.cancel()
         viewerSilenceWatchdogTask.cancel()
         onPeerPresence?(.closed(reason: nil))
-        Task { @MainActor [controller, coordinator] in
+        Task { @MainActor [controller, coordinator, clipboard] in
             // Set before the teardown below, which can stall (a slow capture
             // stop, say): a device this connection holds busy must not stay
             // marked busy for as long as that stall lasts, the same ordering
             // the transport-closed path in `run()` uses.
             controller.noteSessionEnding()
+            clipboard?.cancelPendingApply()
             if let coordinator {
                 await coordinator.sessionDidEnd(reason: GoodbyeReason.stoppedByHost)
             } else {
@@ -624,9 +625,9 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 packet.append(payload)
                 let decoded = try SensoriumTransportPacketCodec.decode(packet)
                 if case let .clipboard(content) = decoded {
-                    // Applying it is gated inside the session on
-                    // authentication plus an active canvas; a host with
-                    // clipboard sync off has no session and drops it here.
+                    // Applying it is gated inside the session on a granted
+                    // session; a host built without clipboard sync has no
+                    // session and drops it here.
                     if let clipboard {
                         await MainActor.run { clipboard.receive(content) }
                     }
@@ -731,11 +732,12 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             // machine learns why a viewer went away, so it is named in the
             // close reason.
             onPeerPresence?(.closed(reason: HostOperatorLog.closeReason(for: closingError)))
-            Task { @MainActor [controller, coordinator] in
+            Task { @MainActor [controller, coordinator, clipboard] in
                 // Set before the teardown below, which can stall (a slow
                 // capture stop, say): a device this connection held busy
                 // must not stay marked busy for as long as that stall lasts.
                 controller.noteSessionEnding()
+                clipboard?.cancelPendingApply()
                 if let coordinator {
                     await coordinator.sessionDidEnd(reason: "transport-closed")
                 } else {
@@ -743,6 +745,20 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 }
             }
             connection.cancel()
+        }
+    }
+
+    /// Tells the viewer that a clipboard was not shared, and why. A refusal
+    /// that only describes the session, `syncDisabled` or
+    /// `sessionNotActive`, is never sent: the second is exactly the case of a
+    /// connection that has not been admitted. A send failure is left to the
+    /// receive loop to report, as for a clipboard.
+    public func reportClipboardRefusal(_ refusal: ClipboardRefusal) async {
+        switch refusal {
+        case .syncDisabled, .sessionNotActive:
+            return
+        case .excludedType, .tooLarge, .unsupportedContent:
+            try? await send(.clipboardRefused(refusal))
         }
     }
 
