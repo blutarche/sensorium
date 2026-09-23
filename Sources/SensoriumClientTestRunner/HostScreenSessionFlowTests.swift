@@ -1,26 +1,7 @@
+#if canImport(AppKit)
 import Foundation
 import SensoriumClient
 import SensoriumCore
-
-/// Counts `sign()` calls -- design §6.5's own point of a resume ticket: a
-/// held ticket is a self-contained substitute for a fresh presence check,
-/// so presenting one must never touch the credential at all. Ordinary
-/// `SoftwarePresenceCredential`, never the Secure Enclave, wrapped rather
-/// than modified so no production type carries test-only bookkeeping.
-private actor CountingPresenceCredential: PresenceCredentialProviding {
-    private let inner = SoftwarePresenceCredential()
-    nonisolated let strength = PresenceCredentialStrength.softwarePresence
-    private(set) var signCount = 0
-
-    func register() async throws -> PresenceCredentialRegistration {
-        try await inner.register()
-    }
-
-    func sign(challenge: Data) async throws -> Data {
-        signCount += 1
-        return try await inner.sign(challenge: challenge)
-    }
-}
 
 /// Counts calls -- design §6.5's "never in a retry loop": a refused resume
 /// ticket must end the run without a second connection attempt following it.
@@ -91,8 +72,7 @@ func testHostScreenSessionFlowTests() async {
             "canvas-session-active",
             "host-screen-not-allowed",
             "host-screen-presence-check-required",
-            "host-screen-needs-rearming",
-            "host-screen-credential-unknown",
+            "host-screen-retry-needs-person",
             "host-screen-session-active"
         ]
         // The overlay's headline names the host above every reason line, so
@@ -228,73 +208,6 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
-        // Copy that names a button not on screen: the overlay only
-        // ever offers to reconnect with a virtual display here, never
-        // "Try again" or a direct return to a host screen.
-        let retryNeedsPerson = HostScreenRefusalCopy.line(reason: "host-screen-retry-needs-person")
-        expect(
-            retryNeedsPerson == "The connection dropped. Showing a host screen again needs a "
-                + "fresh confirmation on this machine. Connect with a virtual display, then choose a host screen "
-                + "from the Screen menu.",
-            "host-screen-retry-needs-person must say the check proves a person at the viewer, not at "
-                + "the host -- got \(retryNeedsPerson)"
-        )
-
-        print("PASS: host-screen-retry-needs-person never promises a check the one button on screen cannot do")
-    }
-
-    do {
-        // "host-screen-needs-rearming" is a host-side fix: the
-        // device is armed and did register a credential, but the
-        // host's arming record predates its strength snapshot, and
-        // only turning the host's own toggle off and back on fixes
-        // it -- pairing again changes nothing here.
-        let needsRearming = HostScreenRefusalCopy.line(reason: "host-screen-needs-rearming")
-        expect(
-            needsRearming == "That machine needs \u{201C}Share host screen\u{201D} for this machine turned off and "
-                + "back on. Do that in Sensorium Host there.",
-            "host-screen-needs-rearming quotes the host's own toggle by its exact label -- got \(needsRearming)"
-        )
-
-        // The key belongs to this viewer and is registered with the
-        // host, never the other way round, and the sentence has to
-        // say plainly what pairing again is for: the host holds a
-        // key this machine no longer has.
-        let credentialUnknown = HostScreenRefusalCopy.line(reason: "host-screen-credential-unknown")
-        expect(
-            credentialUnknown == "That machine does not have this machine's current presence key. Pair with that "
-                + "machine again to register it, then try the host screen again.",
-            "host-screen-credential-unknown names what is missing and what to do about it, in that order, "
-                + "without repeating the host's name the headline above already shows -- got \(credentialUnknown)"
-        )
-
-        print("PASS: host-screen-needs-rearming names the host's own toggle, and host-screen-credential-unknown says which machine is missing the key and what to do about it")
-    }
-
-    do {
-        // Only the one reason pairing again can actually fix offers
-        // it; every other reason, including needs-rearming's own
-        // host-side fix, keeps its one button.
-        expect(
-            HostScreenRefusalCopy.offersPairAgain(reason: "host-screen-credential-unknown"),
-            "a credential the host no longer recognizes can only be replaced by pairing again"
-        )
-        for reason in [
-            "canvas-session-active", "host-screen-not-allowed", "host-screen-presence-check-required",
-            "host-screen-presence-declined", "host-screen-presence-unanswered",
-            "host-screen-needs-rearming", "host-screen-display-unavailable", "host-screen-retry-needs-person",
-            "host-screen-resume-refused", "host-screen-session-active", "a-reason-this-build-has-never-seen"
-        ] {
-            expect(
-                !HostScreenRefusalCopy.offersPairAgain(reason: reason),
-                "\(reason) is not fixed by pairing again, so it offers no pairing shortcut, got true"
-            )
-        }
-
-        print("PASS: offersPairAgain is true only for host-screen-credential-unknown")
-    }
-
-    do {
         // hostScreenOutcome classifies every session-time host-screen
         // reply, the same way secondDisplayOutcome already does for
         // the Displays menu's own live reply.
@@ -303,10 +216,9 @@ func testHostScreenSessionFlowTests() async {
             logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0, isBuiltin: true,
             displayIdentity: "00000610-0000a038"
         )]
-        let challenge = Data("a-challenge".utf8)
         expect(
-            ClientSessionRunner.hostScreenOutcome(for: .hostScreenList(displays: displays, challenge: challenge))
-                == .offered(displays: displays, challenge: challenge),
+            ClientSessionRunner.hostScreenOutcome(for: .hostScreenList(displays: displays))
+                == .offered(displays: displays),
             "a hostScreenList reply is classified as the host's own offer, unchanged"
         )
 
@@ -329,21 +241,19 @@ func testHostScreenSessionFlowTests() async {
         // design §9's "no mixed session": a connection that only ever
         // speaks the host-screen shape must never speak the other one,
         // not even by accident.
-        let credential = SoftwarePresenceCredential()
         let displayIdentity = "00000610-0000a038"
         let entry = HostScreenListEntry(
             opaqueToken: Data([0x09]), label: "Built-in Display",
             logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0, isBuiltin: true,
             displayIdentity: displayIdentity
         )
-        let challenge = Data("host-screen-challenge".utf8)
         let geometry = SessionSurfaceGeometry(logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0)
         let resumeTicket = Data([0x01, 0x02])
         let transport = ScriptedClientTransport(responses: [
-            .hostScreenList(displays: [entry], challenge: challenge),
+            .hostScreenList(displays: [entry]),
             .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket)
         ])
-        let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+        let controller = ClientSessionController(transport: transport)
 
         let outcome = try! await controller.connect(
             deviceName: "Laptop",
@@ -390,11 +300,10 @@ func testHostScreenSessionFlowTests() async {
         // error, carrying the host's own reason -- never a silent
         // fallback to a session canvas, since a failed presence check
         // is exactly when it is least clear who is at the viewer.
-        let credential = SoftwarePresenceCredential()
         let transport = ScriptedClientTransport(responses: [
             .hostScreenRefused(reason: "host-screen-not-allowed")
         ])
-        let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+        let controller = ClientSessionController(transport: transport)
 
         do {
             _ = try await controller.connect(
@@ -420,7 +329,6 @@ func testHostScreenSessionFlowTests() async {
         // not silently resolved to whichever one `first(where:)`
         // happens to find -- which of the two was meant is not this
         // client's to guess.
-        let credential = SoftwarePresenceCredential()
         let displayIdentity = "00000610-0000a038"
         let first = HostScreenListEntry(
             opaqueToken: Data([0x01]), label: "Built-in Display",
@@ -433,9 +341,9 @@ func testHostScreenSessionFlowTests() async {
             displayIdentity: displayIdentity
         )
         let transport = ScriptedClientTransport(responses: [
-            .hostScreenList(displays: [first, second], challenge: Data("a-challenge".utf8))
+            .hostScreenList(displays: [first, second])
         ])
-        let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+        let controller = ClientSessionController(transport: transport)
 
         do {
             _ = try await controller.connect(deviceName: "Laptop", target: .hostScreen(displayIdentity: displayIdentity))
@@ -454,13 +362,10 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
-        // A connect that presents a held resume ticket sends
-        // `.resumeTicket`, carrying exactly those bytes, and never
-        // signs -- design §6.5: the ticket is a self-contained
-        // substitute for a fresh presence check, and this is the
-        // ordinary, silent case a transport interruption resumes
-        // through.
-        let credential = CountingPresenceCredential()
+        // A connect that presents a held resume ticket carries exactly
+        // those bytes -- design §6.5: the ticket says this is the prior
+        // session resuming, the ordinary, silent case a transport
+        // interruption comes back through.
         let displayIdentity = "00000610-0000a038"
         let entry = HostScreenListEntry(
             opaqueToken: Data([0x07]), label: "Built-in Display",
@@ -471,10 +376,10 @@ func testHostScreenSessionFlowTests() async {
         let geometry = SessionSurfaceGeometry(logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0)
         let refreshedTicket = Data([0x44, 0x55])
         let transport = ScriptedClientTransport(responses: [
-            .hostScreenList(displays: [entry], challenge: Data("a-challenge".utf8)),
+            .hostScreenList(displays: [entry]),
             .hostScreenReady(geometry: geometry, resumeTicket: refreshedTicket)
         ])
-        let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+        let controller = ClientSessionController(transport: transport)
 
         let outcome = try! await controller.connect(
             deviceName: "Laptop",
@@ -487,14 +392,13 @@ func testHostScreenSessionFlowTests() async {
             "a resumed connect returns the host's freshly minted ticket, not the one that was presented"
         )
         let sentRequest = await transport.sent.first { if case .hostScreenRequest = $0 { return true } else { return false } }
-        guard case let .hostScreenRequest(_, presence) = sentRequest else {
+        guard case let .hostScreenRequest(_, presentedTicket) = sentRequest else {
             expect(false, "the connect never sent a hostScreenRequest at all")
             return
         }
-        expect(presence == .resumeTicket(heldTicket), "the request presents exactly the held ticket's own bytes")
-        expect(await credential.signCount == 0, "presenting a held ticket never signs the challenge")
+        expect(presentedTicket == heldTicket, "the request presents exactly the held ticket's own bytes")
 
-        print("PASS: a connect given a held resume ticket presents it and never signs")
+        print("PASS: a connect given a held resume ticket presents exactly its bytes")
     }
 
     do {
@@ -502,7 +406,6 @@ func testHostScreenSessionFlowTests() async {
         // outright -- design §6.5's "automatic reconnection either
         // presents a valid ticket or stops," never a second attempt
         // that falls back to signing on the same run.
-        let credential = CountingPresenceCredential()
         let displayIdentity = "00000610-0000a038"
         let entry = HostScreenListEntry(
             opaqueToken: Data([0x08]), label: "Built-in Display",
@@ -516,10 +419,10 @@ func testHostScreenSessionFlowTests() async {
             runSession: {
                 attempts.increment()
                 let transport = ScriptedClientTransport(responses: [
-                    .hostScreenList(displays: [entry], challenge: Data("a-challenge".utf8)),
-                    .hostScreenRefused(reason: "host-screen-needs-rearming")
+                    .hostScreenList(displays: [entry]),
+                    .hostScreenRefused(reason: "host-screen-not-allowed")
                 ])
-                let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+                let controller = ClientSessionController(transport: transport)
                 _ = try await controller.connect(
                     deviceName: "Laptop",
                     target: .hostScreen(displayIdentity: displayIdentity),
@@ -536,23 +439,133 @@ func testHostScreenSessionFlowTests() async {
 
         expect(outcome == .stopped, "a refused resume ticket ends the run outright, got: \(outcome)")
         expect(attempts.value == 1, "no second connection attempt follows a refused resume ticket")
-        expect(await credential.signCount == 0, "a refused resume ticket never falls back to a signed proof")
         expect(
-            events.all == [.attemptFailed(.hostScreenRefused(reason: "host-screen-needs-rearming"))],
+            events.all == [.attemptFailed(.hostScreenRefused(reason: "host-screen-not-allowed"))],
             "exactly one failure is reported, with no retrying event ever following it"
         )
 
-        print("PASS: a refused resume ticket on automatic redial stops without a second attempt or a sign")
+        print("PASS: a refused resume ticket on automatic redial stops without a second attempt")
     }
 
     do {
-        // A connect given no ticket -- a user-initiated pick --
-        // always signs and sends no `resumeTicket`, even when the
-        // caller could have held one for this exact display.
+        // Copy that names a button not on screen: the overlay only ever
+        // offers to reconnect with a virtual display here, never a direct
+        // return to a host screen, so the sentence asks for exactly the
+        // two steps that button can start.
+        let retryNeedsPerson = HostScreenRefusalCopy.line(reason: "host-screen-retry-needs-person")
+        expect(
+            retryNeedsPerson == "The connection dropped, and showing a host screen again needs someone at "
+                + "this machine to ask for it. Connect with a virtual display, then choose a host screen "
+                + "from the Screen menu.",
+            "host-screen-retry-needs-person asks the person at this machine, not the one at the host -- "
+                + "got \(retryNeedsPerson)"
+        )
+
+        print("PASS: host-screen-retry-needs-person names the person at this machine and the button that is on screen")
+    }
+
+    do {
+        // An automatic redial holding no ticket for its target stops
+        // outright -- the `HostScreenResumeTicketRetention` decision
+        // `ClientSessionHost.runOnce()` makes before it dials, exercised
+        // through the driver so the "no second attempt" half of the rule is
+        // proven too. Dialling instead would ask the person at a host set
+        // to ask first once per backoff attempt.
+        let displayIdentity = "00000610-0000a038"
+        let attempts = AttemptCounter()
+        let events = RecordedReconnectEvents()
+        let driver = ClientReconnectDriver(
+            policy: ReconnectPolicy(initialDelay: 0.5, maximumDelay: 0.5, multiplier: 1, maximumAttempts: 3),
+            runSession: {
+                attempts.increment()
+                let plan = HostScreenConnectPlan.compute(
+                    target: .hostScreen(displayIdentity: displayIdentity),
+                    heldTicket: nil,
+                    isPersonInitiated: false
+                )
+                if plan.mustStopWithoutTicket {
+                    throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
+                }
+            },
+            sleep: { _ in
+                expect(false, "an automatic redial with no ticket held must never wait for a retry")
+            },
+            onEvent: { events.append($0) }
+        )
+
+        let outcome = await driver.runUntilConnectedSessionEnds()
+
+        expect(outcome == .stopped, "an automatic redial with no ticket held ends the run outright, got: \(outcome)")
+        expect(attempts.value == 1, "no second connection attempt follows it")
+        expect(
+            events.all == [.attemptFailed(.hostScreenRefused(reason: "host-screen-retry-needs-person"))],
+            "exactly one failure is reported, with no retrying event ever following it"
+        )
+
+        print("PASS: an automatic redial with no ticket held stops without a second attempt")
+    }
+
+    do {
+        // A transport whose own start() throws once (a host briefly
+        // unreachable) and would then succeed, driven through the real
+        // `ClientReconnectDriver`, must stop on the automatic redial that
+        // follows. `ClientSessionHost`/`runOnce()` are internal to
+        // `SensoriumClient` and cannot be constructed here; this composes
+        // the same two pieces `runOnce()` composes -- `HostScreenConnectPlan`,
+        // computed first, and a `transport.start()` that can fail and be
+        // retried after it -- in the same order, to prove the flag's own
+        // consumption is what closes the gap.
+        let displayIdentity = "00000610-0000a038"
+        let attempts = AttemptCounter()
+        let dialled = AttemptCounter()
+        let isPersonInitiated = UncheckedFlag()
+        isPersonInitiated.set(true)
+        let hasTransportStarted = UncheckedFlag()
+        let driver = ClientReconnectDriver(
+            policy: ReconnectPolicy(initialDelay: 0.01, maximumDelay: 0.01, multiplier: 1, maximumAttempts: 3),
+            runSession: {
+                attempts.increment()
+                // Computed and consumed before the transport's own start(),
+                // exactly where `runOnce()` does it -- this line, not the
+                // throw below, is what decides whether this attempt dials.
+                let plan = HostScreenConnectPlan.compute(
+                    target: .hostScreen(displayIdentity: displayIdentity),
+                    heldTicket: nil,
+                    isPersonInitiated: isPersonInitiated.value
+                )
+                isPersonInitiated.set(false)
+                if !hasTransportStarted.value {
+                    hasTransportStarted.set(true)
+                    throw ClientSessionError.notConnected
+                }
+                if plan.mustStopWithoutTicket {
+                    throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
+                }
+                dialled.increment()
+            },
+            sleep: { _ in }
+        )
+
+        let outcome = await driver.runUntilConnectedSessionEnds()
+
+        expect(outcome == .stopped, "the automatic redial's own plan stops the run outright, got: \(outcome)")
+        expect(attempts.value == 2, "the first attempt's own transport failure, then the automatic redial that stops -- no third attempt")
+        expect(
+            dialled.value == 0,
+            "no attempt ever dials -- the first never got past start(), the second's own plan stopped it first"
+        )
+
+        print("PASS: a transport that fails once never lets the automatic redial that follows dial without a ticket")
+    }
+
+    do {
+        // A connect given no ticket -- a person's own pick -- asks for the
+        // display and presents nothing else. Pairing is what arms this
+        // machine, so a connect carries no proof of a person at the viewer
+        // and needs nothing registered to succeed.
         // `ClientSessionHost.selectRealScreen` is what guarantees
         // `resumeTicket` is `nil` on that call; this confirms what
         // `connect()` itself does with that `nil`.
-        let credential = CountingPresenceCredential()
         let displayIdentity = "00000610-0000a038"
         let entry = HostScreenListEntry(
             opaqueToken: Data([0x0A]), label: "Built-in Display",
@@ -562,29 +575,25 @@ func testHostScreenSessionFlowTests() async {
         let geometry = SessionSurfaceGeometry(logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0)
         let mintedTicket = Data([0x66])
         let transport = ScriptedClientTransport(responses: [
-            .hostScreenList(displays: [entry], challenge: Data("a-challenge".utf8)),
+            .hostScreenList(displays: [entry]),
             .hostScreenReady(geometry: geometry, resumeTicket: mintedTicket)
         ])
-        let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+        let controller = ClientSessionController(transport: transport)
 
         _ = try! await controller.connect(
             deviceName: "Laptop",
             target: .hostScreen(displayIdentity: displayIdentity)
         )
 
-        expect(await credential.signCount == 1, "a connect given no ticket signs exactly once")
         let sentRequest = await transport.sent.first { if case .hostScreenRequest = $0 { return true } else { return false } }
-        guard case let .hostScreenRequest(_, presence) = sentRequest else {
+        guard case let .hostScreenRequest(sentToken, presentedTicket) = sentRequest else {
             expect(false, "the connect never sent a hostScreenRequest at all")
             return
         }
-        if case .resumeTicket = presence {
-            expect(false, "a connect given no ticket must never send .resumeTicket")
-        } else {
-            expect(true, "a connect given no ticket sends a signed proof, never a ticket")
-        }
+        expect(sentToken == entry.opaqueToken, "the request names the display the offer listed")
+        expect(presentedTicket == nil, "a connect given no ticket presents none")
 
-        print("PASS: a connect given no ticket always signs and never sends a resume ticket")
+        print("PASS: a connect given no ticket asks for the display and presents nothing else")
     }
 
     do {
@@ -625,49 +634,6 @@ func testHostScreenSessionFlowTests() async {
         )
 
         print("PASS: a host-screen connect's own geometry maps pointer input, and returning to Virtual display restores the preset")
-    }
-
-    do {
-        // Design §6.5 "never in a retry loop": an automatic redial
-        // holding no ticket for the target signs nothing and stops
-        // outright -- the same `HostScreenResumeTicketRetention`
-        // decision `ClientSessionHost.runOnce()` calls before ever
-        // touching the credential, exercised through the driver so
-        // the "no second attempt" half of the rule is proven too.
-        let credential = CountingPresenceCredential()
-        let displayIdentity = "00000610-0000a038"
-        let attempts = AttemptCounter()
-        let events = RecordedReconnectEvents()
-        let driver = ClientReconnectDriver(
-            policy: ReconnectPolicy(initialDelay: 0.5, maximumDelay: 0.5, multiplier: 1, maximumAttempts: 3),
-            runSession: {
-                attempts.increment()
-                if HostScreenResumeTicketRetention.mustStopBeforeSigning(
-                    target: .hostScreen(displayIdentity: displayIdentity),
-                    ticketToPresent: nil,
-                    isPersonInitiated: false
-                ) {
-                    throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
-                }
-                _ = try await credential.sign(challenge: Data())
-            },
-            sleep: { _ in
-                expect(false, "an automatic redial with no ticket held must never wait for a retry")
-            },
-            onEvent: { events.append($0) }
-        )
-
-        let outcome = await driver.runUntilConnectedSessionEnds()
-
-        expect(outcome == .stopped, "an automatic redial with no ticket held ends the run outright, got: \(outcome)")
-        expect(attempts.value == 1, "no second connection attempt follows it")
-        expect(await credential.signCount == 0, "an automatic redial with no ticket held never signs")
-        expect(
-            events.all == [.attemptFailed(.hostScreenRefused(reason: "host-screen-retry-needs-person"))],
-            "exactly one failure is reported, with no retrying event ever following it"
-        )
-
-        print("PASS: an automatic redial with no ticket held signs nothing and stops without a second attempt")
     }
 
     do {
@@ -734,11 +700,10 @@ func testHostScreenSessionFlowTests() async {
                     logicalWidth: 2560, logicalHeight: 1440, backingScale: 2.0, isBuiltin: true,
                     displayIdentity: displayIdentity
                 )
-            ], challenge: Data("a-challenge".utf8)),
+            ]),
             .hostScreenReady(geometry: geometry, resumeTicket: Data([0x77]))
         ])
-        let credential = CountingPresenceCredential()
-        let controller = ClientSessionController(transport: transport, credentialProvider: credential)
+        let controller = ClientSessionController(transport: transport)
         await controller.setCanvasObserver(viewport)
 
         let connectTask = Task {
@@ -763,67 +728,10 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
-        // A transport whose own start() throws once (a host briefly
-        // unreachable) and would then succeed, driven through the real
-        // `ClientReconnectDriver`, must
-        // never sign on the automatic redial that follows.
-        // `ClientSessionHost`/`runOnce()` live in the `Sensorium`
-        // executable target and cannot be constructed here; this
-        // composes the same two pieces `runOnce()` composes --
-        // `HostScreenConnectPlan`, computed first, and a
-        // `transport.start()` that can fail and be retried after it
-        // -- in the same order, to prove the flag's own consumption
-        // is what closes the gap, not something about `runOnce()`
-        // itself that a unit test elsewhere could not reach.
-        let displayIdentity = "00000610-0000a038"
-        let credential = CountingPresenceCredential()
-        let attempts = AttemptCounter()
-        let isPersonInitiated = UncheckedFlag()
-        isPersonInitiated.set(true)
-        let hasTransportStarted = UncheckedFlag()
-        let driver = ClientReconnectDriver(
-            policy: ReconnectPolicy(initialDelay: 0.01, maximumDelay: 0.01, multiplier: 1, maximumAttempts: 3),
-            runSession: {
-                attempts.increment()
-                // Computed and consumed before the transport's own start(),
-                // exactly where `runOnce()` now does it -- the fix under
-                // test is that this line, not the throw below, is what
-                // decides whether this attempt may sign.
-                let plan = HostScreenConnectPlan.compute(
-                    target: .hostScreen(displayIdentity: displayIdentity),
-                    heldTicket: nil,
-                    isPersonInitiated: isPersonInitiated.value
-                )
-                isPersonInitiated.set(false)
-                if !hasTransportStarted.value {
-                    hasTransportStarted.set(true)
-                    throw ClientSessionError.notConnected
-                }
-                if plan.mustStopBeforeSigning {
-                    throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
-                }
-                _ = try await credential.sign(challenge: Data())
-            },
-            sleep: { _ in }
-        )
-
-        let outcome = await driver.runUntilConnectedSessionEnds()
-
-        expect(outcome == .stopped, "the automatic redial's own plan stops the run outright, got: \(outcome)")
-        expect(attempts.value == 2, "the first attempt's own transport failure, then the automatic redial that stops -- no third attempt")
-        expect(
-            await credential.signCount == 0,
-            "no attempt ever signs -- the first never reached the credential, the second's own plan stopped it first"
-        )
-
-        print("PASS: a transport that fails once and would then succeed never lets the automatic redial that follows sign")
-    }
-
-    do {
         // A host that recently saw activity puts up its own confirmation
         // prompt first -- a person there may take up to
         // `HostScreenPresenceRule.promptTimeout` to answer it, on top
-        // of the viewer's own presence check and network transport. A
+        // of network transport. A
         // `.hostScreen` connect must default to `hostScreenGrant`, sized
         // for that wait, never `canvasCreation`, which waits on no other
         // person. Both targets share one small `SessionTimeouts` here so
@@ -834,7 +742,6 @@ func testHostScreenSessionFlowTests() async {
         let shortTimeouts = SessionTimeouts(handshake: 0.05, canvasCreation: 0.1, hostScreenGrant: 0.5)
         let perReplyDelay = Duration.milliseconds(150)
 
-        let credential = SoftwarePresenceCredential()
         let displayIdentity = "00000610-0000a038"
         let entry = HostScreenListEntry(
             opaqueToken: Data([0x0C]), label: "Built-in Display",
@@ -848,12 +755,12 @@ func testHostScreenSessionFlowTests() async {
         // canvas connect ever takes, but well inside hostScreenGrant's 500ms.
         let hostScreenTransport = DelayedClientTransport(
             responses: [
-                .hostScreenList(displays: [entry], challenge: Data("a-challenge".utf8)),
+                .hostScreenList(displays: [entry]),
                 .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket)
             ],
             delay: perReplyDelay
         )
-        let hostScreenController = ClientSessionController(transport: hostScreenTransport, credentialProvider: credential)
+        let hostScreenController = ClientSessionController(transport: hostScreenTransport)
 
         let hostScreenOutcome = try! await hostScreenController.connect(
             deviceName: "Laptop",
@@ -972,3 +879,4 @@ func testHostScreenSessionFlowTests() async {
         print("PASS: a live display-mode change re-derives and resends the scale against the new geometry")
     }
 }
+#endif

@@ -33,6 +33,7 @@ Top to bottom:
    - **Ask me first if this machine is in use**, shown while sharing is on, off by default.
    - A line naming its key fingerprint and why sharing is or is not available now.
 4. **Last screen session.** Machine, display, and when, if there has been one.
+5. **Open at login.** A checkbox, on by default, so an unattended host comes back reachable after a restart; turning it off is the person at the host's own choice and stands until they change it again.
 
 ### Menu bar
 
@@ -83,11 +84,13 @@ Controls, in the menu bar, reachable while connected, applying live:
 
 - **Displays: 1 or 2** session displays the host creates. Changing it mid-session adds or removes a window.
 - **Resolution:** per display, each scale listed with its pixel size. Automatic is the default and only fidelity setting. A link that cannot sustain it shows the HUD naming the frame rate and encoder quality in use, as a measured limit, not a pick.
-- **Screen: Virtual display (default) or Host screen**, one of the host's screens, offered only when the host allowed this machine to see one. Choosing one triggers the presence check. A failed check ends the whole session. Live, the menu also carries a **Resolution** submenu of that screen's own display modes, and a **Start with** submenu naming the target tried first next time: *Host screen when offered*, the default, *Virtual display*, or a screen. Whether of a mode change or an unavailable screen, a refusal must be said in the window in plain words, never left silent. **Screen** and **Displays** are both disabled while a host screen is live.
+- **Screen: Virtual display (default) or Host screen**, one of the host's screens, offered only when the host allowed this machine to see one. Live, the menu also carries a **Resolution** submenu of that screen's own display modes, and a **Start with** submenu naming the target tried first next time: *Host screen when offered*, the default, *Virtual display*, or a screen. Whether of a mode change or an unavailable screen, a refusal must be said in the window in plain words, never left silent. **Screen** and **Displays** are both disabled while a host screen is live.
 - **Clipboard: on or off.**
 - **Pointer capture**, its shortcut named next to it. Leaving the window releases it, and outside capture this machine's own pointer draws locally, not waiting on the video.
 
-While the host reports its screen locked, a panel titled *Unlock the host* appears in the session window: a **Login password** secure field and an **Unlock** button. Submitting confirms presence, then sends the password once, over the same connection. A wrong password keeps the panel up to try again; every other outcome clears the field and shows a brief notice, listed in *Errors the viewer may show* below.
+While the host reports its screen locked, the person at the viewer unlocks it the way they would at the machine: they type the login password directly into the session window and press Return. There is no panel and no button. A transient notice reads "Type the login password and press Return." and shows one dot per character typed, nothing else. Backspace removes the last character and Escape clears it; an empty Return does nothing. Submitting sends the password once, over the same connection. A wrong password clears what was typed so the person can try again; every other outcome also clears it and shows a brief notice, listed in *Errors the viewer may show* below. Clicking or scrolling in the session window also reaches the locked screen, the same as typing does.
+
+If the host machine was locked during a host-screen session and was later found unlocked, whether by this unlock or by the person at the host, it locks itself again once the session ends -- unless someone is using the machine itself, in which case it is left alone. This happens silently, with no notice in this window.
 
 ### Sending system shortcuts
 
@@ -107,7 +110,7 @@ Lock Screen and Quit App ask once first. Nothing on the strip takes keyboard foc
 
 Every error names the machine, says what happened in one sentence, and offers the fix as a button. No remedy is a command, a file, or another app.
 
-The unlock panel's own notices, shown beneath its password field after an attempt:
+The unlock notices, shown in the session window after an attempt:
 
 - "The host is unlocked."
 - "That password did not unlock the host. Try again."
@@ -116,8 +119,6 @@ The unlock panel's own notices, shown beneath its password field after an attemp
 - "This session is not allowed to unlock the host."
 - "Too many wrong passwords. The host stopped accepting unlock attempts. Someone at the host can re-arm this machine to allow more."
 - "That password is too long for this unlock method. Type it at the login window instead."
-- "Confirm you are here to unlock the host, then try again."
 - "The host could not be unlocked. Try again."
 - "The unlock request could not be sent. Try again."
-- "Presence confirmation was cancelled or failed. Try unlocking again."
 - "The host did not answer the unlock request in time. Try again."

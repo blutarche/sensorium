@@ -2,42 +2,37 @@ import Foundation
 import Security
 
 /// A snapshot of everything about a device's own arming record that a
-/// resumed session must not silently outlive: the credential strength
-/// required of it, when it was armed, and whether it asks first. Two
-/// fingerprints taken from arming records that differ in any of these
-/// compare unequal, so a ticket minted under one arming record is refused
-/// the moment the record it was minted under changes, enforced by
-/// comparing values rather than by a side channel a call site could forget
-/// to check.
+/// resumed session must not silently outlive: when it was armed, and
+/// whether it asks first. Two fingerprints taken from arming records that
+/// differ in either of these compare unequal, so a ticket minted under one
+/// arming record is refused the moment the record it was minted under
+/// changes, enforced by comparing values rather than by a side channel a
+/// call site could forget to check.
 ///
 /// Which display a ticket may resume is not arming state -- arming is per
 /// machine -- and is bound by the ticket's own `displayIdentity` instead.
 public struct HostScreenArmingFingerprint: Equatable, Hashable, Sendable {
-    private let minimumCredentialStrength: HostScreenCredentialStrength?
     private let armedAt: Date
     private let asksWhenSomeoneIsUsingThisMachine: Bool
 
     public init(_ device: HostScreenDeviceArming) {
-        minimumCredentialStrength = device.minimumCredentialStrength
         armedAt = device.armedAt
         asksWhenSomeoneIsUsingThisMachine = device.asksWhenSomeoneIsUsingThisMachine
     }
 }
 
 /// The host alone decides what counts as the same host-screen session; the
-/// viewer is never trusted to decide when it may skip its own presence
-/// check. This is that decision: minting a resume ticket on admission, and
-/// validating a later presentation of one against a five-minute grace
-/// window (refreshed on every successful resume), a twelve-hour ceiling
-/// measured from the original mint, and a bind to the exact device key,
-/// display, and arming record the ticket was minted under. Any mismatch, an
-/// unknown token, or either window having elapsed refuses outright -- there
-/// is no partial credit, matching every other host-screen refusal in this
-/// codebase.
+/// viewer is never trusted to decide when its session may resume without
+/// asking the person at this machine again. This is that decision: minting
+/// a resume ticket on admission, and validating a later presentation of one
+/// against a five-minute grace window (refreshed on every successful
+/// resume), a twelve-hour ceiling measured from the original mint, and a
+/// bind to the exact device key, display, and arming record the ticket was
+/// minted under. Any mismatch, an unknown token, or either window having
+/// elapsed refuses outright -- there is no partial credit, matching every
+/// other host-screen refusal in this codebase.
 ///
-/// A ticket answers only "does this resume something already granted?", it
-/// is never itself a presence proof, and `HostSessionController` never
-/// asks this store about a `.signed` proof.
+/// A ticket answers only "does this resume something already granted?"
 public protocol HostScreenResumeTicketStoring: AnyObject, Sendable {
     /// Mints a fresh, single ticket for exactly this device/display/arming
     /// combination, replacing nothing -- a device may hold more than one
@@ -81,10 +76,10 @@ private struct HostScreenResumeTicketRecord {
 
 /// The real, in-process implementation. Deliberately holds every ticket in
 /// memory only, with no disk persistence: a resume ticket is a bearer
-/// credential that substitutes for a live presence check, and keeping it
-/// nowhere but this process's own memory is what makes a host restart an
-/// invalidation this store enforces for free, by construction -- a
-/// restarted process starts this store empty.
+/// token that skips a check the person at this machine would otherwise be
+/// asked, and keeping it nowhere but this process's own memory is what
+/// makes a host restart an invalidation this store enforces for free, by
+/// construction -- a restarted process starts this store empty.
 public final class HostScreenResumeTicketStore: HostScreenResumeTicketStoring, @unchecked Sendable {
     /// Enough for a network handover or a closed lid, not enough for a
     /// machine that changed hands.

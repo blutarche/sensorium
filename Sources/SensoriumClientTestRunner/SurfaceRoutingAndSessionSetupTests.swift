@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -29,66 +30,6 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             Foundation.exit(1)
         }
 
-        let modifierSink = RecordingInputSink()
-        let modifierViewport = ClientViewportController(
-            mapper: VirtualCanvasInputMapper(logicalWidth: 1920, logicalHeight: 1200),
-            pointerSink: modifierSink
-        )
-        await modifierViewport.canvasDidBecomeReady()
-        let modifierRouter = CanvasSurfaceEventRouter(viewport: modifierViewport)
-        await modifierRouter.route(.modifiersChanged(keyCode: 56, modifiers: [.shift]))
-        await modifierRouter.route(.modifiersChanged(keyCode: 56, modifiers: []))
-        await modifierRouter.route(.modifiersChanged(keyCode: 56, modifiers: [.shift]))
-        guard await modifierSink.events == [
-            .key(keyCode: 56, isDown: true, modifiers: [.shift]),
-            .key(keyCode: 56, isDown: false, modifiers: []),
-            .key(keyCode: 56, isDown: true, modifiers: [.shift])
-        ] else {
-            print("FAIL: a modifier key pressed and held alone did not forward as a key event")
-            Foundation.exit(1)
-        }
-
-        // Regression test: `CanvasModifierFlags` has no left/right
-        // distinction, so Left Shift and Right Shift both report as
-        // `[.shift]`. Holding Left Shift, then pressing and releasing Right
-        // Shift, must still forward Right Shift's own key-down and key-up
-        // even though the aggregate mask never changes across any of these
-        // three events (it is `[.shift]` throughout).
-        let sharedBitSink = RecordingInputSink()
-        let sharedBitViewport = ClientViewportController(
-            mapper: VirtualCanvasInputMapper(logicalWidth: 1920, logicalHeight: 1200),
-            pointerSink: sharedBitSink
-        )
-        await sharedBitViewport.canvasDidBecomeReady()
-        let sharedBitRouter = CanvasSurfaceEventRouter(viewport: sharedBitViewport)
-        await sharedBitRouter.route(.modifiersChanged(keyCode: 56, modifiers: [.shift]))
-        await sharedBitRouter.route(.modifiersChanged(keyCode: 60, modifiers: [.shift]))
-        await sharedBitRouter.route(.modifiersChanged(keyCode: 60, modifiers: [.shift]))
-        guard await sharedBitSink.events == [
-            .key(keyCode: 56, isDown: true, modifiers: [.shift]),
-            .key(keyCode: 60, isDown: true, modifiers: [.shift]),
-            .key(keyCode: 60, isDown: false, modifiers: [.shift])
-        ] else {
-            print("FAIL: releasing Right Shift while Left Shift stays held did not forward Right Shift's own key-up even though the aggregate modifier mask never changed")
-            Foundation.exit(1)
-        }
-
-        let focusSink = RecordingInputSink()
-        let focusViewport = ClientViewportController(
-            mapper: VirtualCanvasInputMapper(logicalWidth: 1920, logicalHeight: 1200),
-            pointerSink: focusSink
-        )
-        let focusRouter = CanvasSurfaceEventRouter(viewport: focusViewport)
-        let focusLostBeforeReady = await focusRouter.route(.focusLost)
-        await focusViewport.canvasDidBecomeReady()
-        let focusLostWhileReady = await focusRouter.route(.focusLost)
-        guard focusLostBeforeReady == .droppedNotConnected,
-              focusLostWhileReady == .deliveredWithoutLocation,
-              await focusSink.events == [.releaseAllInput] else {
-            print("FAIL: losing focus did not release all input exactly once while the session was connected")
-            Foundation.exit(1)
-        }
-
         guard CanvasModifierFlags(appKitFlags: [.command, .shift]) == [.command, .shift],
               CanvasModifierFlags(appKitFlags: [.control, .option]) == [.control, .option],
               CanvasModifierFlags(appKitFlags: [.capsLock, .function, .numericPad]) == [],
@@ -114,7 +55,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         // key it names, verified rather than compared byte for byte: the
         // host refuses to rewrite an already-paired machine's own record
         // without one.
-        guard case let .pairRequest(sentName, sentKey, sentCode, sentCredential, sentSignature?) =
+        guard case let .pairRequest(sentName, sentKey, sentCode, sentSignature) =
                 await approvingTransport.sent.first,
               await approvingTransport.sent.count == 1,
               pairingApproval.hostPublicKey == hostKey,
@@ -122,14 +63,12 @@ func testSurfaceRoutingAndSessionSetupTests() async {
               sentName == "Laptop",
               sentKey == pairingIdentity.publicKey,
               sentCode == "424242",
-              sentCredential == nil,
               DeviceIdentity.verify(
                 signature: sentSignature,
                 message: SensoriumFrameCodec.pairRequestTranscript(
                     deviceName: "Laptop",
                     clientPublicKey: pairingIdentity.publicKey,
-                    code: "424242",
-                    presenceCredential: nil
+                    code: "424242"
                 ),
                 publicKey: pairingIdentity.publicKey
               ) else {
@@ -494,3 +433,4 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             "a tag-1 frame never leaks into surface 1's ingress"
         )
 }
+#endif

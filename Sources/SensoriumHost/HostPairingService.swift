@@ -69,83 +69,51 @@ public final class HostPairingService {
     /// Returns the reply to send back: approval pins the host key on the viewer,
     /// rejection names the reason without revealing the expected code.
     ///
-    /// `presenceCredential`, when present, is registered for `publicKey`
-    /// only once the code above has genuinely been approved -- this is the
-    /// one call site in this codebase that ever writes a machine's
-    /// registered presence-bound credential, and the host's own invariant
-    /// requires that write to happen nowhere else: a new credential
-    /// reaches this host only through the pairing ceremony,
-    /// never a later message trusted on its own. A `pairRequest` that
-    /// carries none leaves whatever this machine already had registered
-    /// untouched -- an ordinary re-pair is not itself a reason to forget a
-    /// still-valid credential.
-    ///
     /// A valid code proves a person read it off this host and typed it
     /// somewhere -- it says nothing about which key that person's machine
     /// actually holds, because `PairingAuthority.issue` takes no key at
-    /// issue time. That is an acceptable gap for a *new* key: there is
-    /// nothing registered yet for an impostor to touch. It is not for a key
-    /// this host already approved -- a valid code for some unrelated
-    /// pairing, replayed with an already-approved machine's own public key
-    /// and a fresh credential, would otherwise let anyone who merely
-    /// observed that key overwrite its owner's registered credential
-    /// wholesale, refusing that machine's own future host-screen requests
-    /// and, combined with a still-unarmed minimum, a downgrade path. So a
-    /// credential write for an *already-approved* key is allowed only when
-    /// this exact connection has separately proven it holds that key's
-    /// private half -- `connectionProvenPublicKey`, which the caller
-    /// establishes either from an `authenticatedHello` verified earlier on
-    /// this same connection or from the `pairRequest`'s own signature over
-    /// `SensoriumFrameCodec.pairRequestTranscript(...)`. The name the
-    /// request reports does not narrow that further: a proven key is the
-    /// same machine whatever the person has since renamed it to, and
-    /// refusing the credential over the rename would only make that machine
-    /// pair twice to register one key.
-    ///
-    /// The same replay changes the *name* recorded for an already-approved
-    /// key just as easily. Lower severity than the credential (a display
-    /// name is not a security boundary), but the same root cause deserves
-    /// the same fix: an already-approved key's recorded name changes only
-    /// when this connection has proven it holds that key.
+    /// issue time. `signature` closes that gap and is required: the
+    /// requesting machine's own signature over
+    /// `SensoriumFrameCodec.pairRequestTranscript(...)`, which covers every
+    /// value this request asks this host to write. It is checked here,
+    /// before the code is examined and before anything is written, so a
+    /// request that cannot prove possession never reaches the ceremony and
+    /// never spends a guess from the code's budget. Pairing is what arms a
+    /// machine for host screen, so this is the one check standing between a
+    /// six-digit code someone read and an arming record.
     public func handlePairRequest(
         deviceName: String,
         publicKey: Data,
         code: String,
-        presenceCredential: PresenceCredentialRegistration? = nil,
-        connectionProvenPublicKey: Data? = nil,
+        signature: Data,
         now: Date = Date()
     ) -> SensoriumMessage {
         guard !deviceName.isEmpty, !publicKey.isEmpty else {
             return .pairRejected(reason: "invalid-request")
         }
-        // Read before anything below mutates either: what decides whether
-        // this request may write a credential is what was already true of
-        // `publicKey`, never a fact this same request just wrote.
+        guard DeviceIdentity.verify(
+            signature: signature,
+            message: SensoriumFrameCodec.pairRequestTranscript(
+                deviceName: deviceName,
+                clientPublicKey: publicKey,
+                code: code
+            ),
+            publicKey: publicKey
+        ) else {
+            return .pairRejected(reason: "invalid-request")
+        }
+        // Read before anything below mutates it: whether this request is the
+        // very first approval of `publicKey` is what `onDeviceApproved`
+        // reports, and it must be what was already true, never a fact this
+        // same request just wrote.
         let wasAlreadyApproved = approvedKeys.contains(publicKey)
         do {
             _ = try authority.approve(code: code, deviceID: deviceName, now: now)
             approvedKeys.insert(publicKey)
             approvedStore?.save(approvedKeys)
-            // One rule for both records this request can change: a key
-            // nothing is on file for yet, or a request that proved it holds
-            // the key it names.
-            let writeAllowed = !wasAlreadyApproved || connectionProvenPublicKey == publicKey
-            if writeAllowed {
-                approvedStore?.setName(deviceName, for: publicKey)
-            }
-            if writeAllowed,
-               let presenceCredential,
-               let strength = HostScreenCredentialStrength(rawValue: presenceCredential.strength) {
-                approvedStore?.setPresenceCredential(
-                    PresenceCredentialRecord(
-                        credentialID: presenceCredential.credentialID,
-                        publicKey: presenceCredential.publicKey,
-                        credentialFormat: presenceCredential.credentialFormat,
-                        strength: strength
-                    ),
-                    for: publicKey
-                )
-            }
+            // Every request that reaches here proved it holds the key it
+            // names, so the name it gives is this machine's own.
+            approvedStore?.setName(deviceName, for: publicKey)
             onDeviceApproved?(PairingApproval(
                 deviceName: deviceName,
                 devicePublicKey: publicKey,

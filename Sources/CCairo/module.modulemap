@@ -1,0 +1,8 @@
+module CCairo [system] {
+    header "shim.h"
+    link "cairo"
+    link "pango-1.0"
+    link "pangocairo-1.0"
+    link "gobject-2.0"
+    export *
+}

@@ -152,6 +152,26 @@ public struct SavedHost: Codable, Equatable, Sendable {
         )
     }
 
+    /// The same machine, with a new stream-scale preference -- the Display
+    /// menu's resolution rows writing back a person's own pick. Everything
+    /// else carries straight over: choosing a resolution says nothing about
+    /// where this machine starts, what it last streamed, or which host
+    /// screens it was offered.
+    public func withStreamScalePreference(_ preference: StreamScalePreference) -> SavedHost {
+        SavedHost(
+            displayName: displayName,
+            host: host,
+            port: port,
+            hostPublicKey: hostPublicKey,
+            tlsCertificateHash: tlsCertificateHash,
+            streamScalePreference: preference,
+            lastConnectedAt: lastConnectedAt,
+            startTargetPreference: startTargetPreference,
+            lastLiveTarget: lastLiveTarget,
+            rememberedHostScreenOffer: rememberedHostScreenOffer
+        )
+    }
+
     /// The same machine, remembering a fresh host-screen offer -- a live
     /// session's own report of what a canvas connect just offered it, so
     /// `.hostScreenWhenOffered` can connect to it directly next time.
@@ -190,6 +210,33 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// supplies a port, public key, or certificate pin.
     public func matches(_ entryURL: SensoriumEntryURL) -> Bool {
         host.caseInsensitiveCompare(entryURL.host) == .orderedSame
+    }
+}
+
+public enum SavedHostLookupError: Error, Equatable {
+    case notPaired(host: String)
+}
+
+/// Which saved machine a dial is for. Separate from the stores so the one
+/// answer that must never be "none, carry on" is verified without a file.
+public enum SavedHostLookup {
+    /// The machine saved under this address, or an error. Never an optional
+    /// a caller can quietly turn into a dial with no pinned key and no
+    /// certificate hash: that is the unauthenticated first-pairing flow, and
+    /// reaching it by typing an address that happens not to be saved would
+    /// hand a stranger at that address a session.
+    ///
+    /// Matched the same way a deep link is: case-insensitively on the
+    /// address, since a machine name is not case-sensitive anywhere a person
+    /// types one.
+    public static func resolve(
+        host: String,
+        in hosts: [SavedHost]
+    ) -> Result<SavedHost, SavedHostLookupError> {
+        guard let match = hosts.first(where: { $0.host.caseInsensitiveCompare(host) == .orderedSame }) else {
+            return .failure(.notPaired(host: host))
+        }
+        return .success(match)
     }
 }
 
@@ -304,6 +351,14 @@ public extension SavedHostStoring {
         save(stored.withStartTargetPreference(preference))
     }
 
+    /// Records a person's own resolution pick, reading the stored record
+    /// first for the same reason `setStartTargetPreference` does. A machine
+    /// no longer held here is not written.
+    func setStreamScalePreference(hostPublicKey: Data, to preference: StreamScalePreference) {
+        guard let stored = load(hostPublicKey: hostPublicKey) else { return }
+        save(stored.withStreamScalePreference(preference))
+    }
+
     /// Records a live session's own report of a fresh host-screen offer,
     /// reading the stored record first for the same reason `stampConnected`
     /// does. A machine no longer held here is not written.
@@ -346,9 +401,12 @@ public final class InMemorySavedHostStore: SavedHostStoring, @unchecked Sendable
     }
 }
 
-/// Writes one JSON file at an explicitly supplied URL. No test executes this: it
-/// would write outside the repository. What it writes and what an older file
-/// means are `SavedHostFileCoding`'s decisions, which are verified.
+/// Writes one JSON file at an explicitly supplied URL, owner-only. What a
+/// saved machine holds -- the address a session dials, the host key it pins
+/// and the certificate hash it checks -- decides which machine this viewer
+/// will trust without asking again, so it is written exactly as narrowly as
+/// the device key beside it. What it writes and what an older file means are
+/// `SavedHostFileCoding`'s decisions, which are verified separately.
 public final class FileSavedHostStore: SavedHostStoring, @unchecked Sendable {
     private let url: URL
 
@@ -357,6 +415,7 @@ public final class FileSavedHostStore: SavedHostStoring, @unchecked Sendable {
     }
 
     public func loadAll() -> [SavedHost] {
+        OwnerOnlyFileWrite.removeStalePartialFiles(for: url)
         guard let data = try? Data(contentsOf: url) else {
             return []
         }
@@ -389,10 +448,6 @@ public final class FileSavedHostStore: SavedHostStoring, @unchecked Sendable {
         guard let data = SavedHostFileCoding.encode(hosts) else {
             return
         }
-        try? FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
-        try? data.write(to: url, options: [.atomic])
+        try? OwnerOnlyFileWrite.write(data, to: url)
     }
 }

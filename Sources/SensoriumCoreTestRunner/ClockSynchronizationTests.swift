@@ -249,6 +249,13 @@ func testMonotonicClockOnlyMovesForward() {
     expect(last > first, "the monotonic clock advances over a thousand reads")
 }
 
+func testMonotonicClockSuccessiveReadsAreCloseAndNonDecreasing() {
+    let first = MonotonicClock.nowNanoseconds()
+    let second = MonotonicClock.nowNanoseconds()
+    expect(second >= first, "a second immediate read never goes backwards")
+    expect(second - first < 1_000_000_000, "two successive reads stay well under a second apart")
+}
+
 func testClockSynchronizerAcceptsOnlyRepliesToRequestsItSent() {
     var synchronizer = SessionClockSynchronizer()
 

@@ -12,14 +12,14 @@ private final class FakeClock {
 }
 
 private func fingerprint(
-    strength: HostScreenCredentialStrength? = .hardwareBound,
-    armedAt: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    armedAt: Date = Date(timeIntervalSince1970: 1_700_000_000),
+    asksWhenInUse: Bool = false
 ) -> HostScreenArmingFingerprint {
     HostScreenArmingFingerprint(HostScreenDeviceArming(
         devicePublicKey: Data([0xAA]),
         deviceName: "Probe",
-        minimumCredentialStrength: strength,
-        armedAt: armedAt
+        armedAt: armedAt,
+        asksWhenSomeoneIsUsingThisMachine: asksWhenInUse
     ))
 }
 
@@ -75,7 +75,7 @@ func runHostScreenResumeTicketStoreTests() async {
             "a ticket presented for a different display refuses -- design §6.5's 'a different display was requested'"
         )
         expect(
-            !store.validate(token: token, devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint(strength: .softwarePresence)),
+            !store.validate(token: token, devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint(asksWhenInUse: true)),
             "a ticket presented against a changed arming record refuses -- design §6.5's 'the arming record changed'"
         )
         expect(

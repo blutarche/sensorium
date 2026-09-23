@@ -67,7 +67,7 @@ end. On screen it is called "resolution".
 _Avoid_: display mode, screen resolution change, scaling profile
 
 **Lock-screen unlock**:
-An opt-in action inside a live, authenticated, presence-verified host-screen
+An opt-in action inside a live, authenticated host-screen
 session: the person at the viewer types the host machine's login password, and
 the host types it into its own locked login window. What locks is the
 machine's login session, not any one display, so this has nothing to do with
@@ -96,14 +96,6 @@ the consent the feature needs; this is an extra a person may switch on for
 one machine alone. With it off, the badge and Stop are what protect a person
 working at the host.
 _Avoid_: presence prompt, consent prompt
-
-**Presence-bound credential**:
-A keypair a viewer's operating system or authenticator will not use without a
-live human confirming at that moment, registered with the host when the two
-machines pair, and signed over a challenge the host issues for each
-host-screen session. Proves a person was present; names no specific
-platform mechanism.
-_Avoid_: biometric, passkey, security key
 
 **Surface**:
 One of the at most two slots a session streams, each owning its own canvas,

@@ -55,11 +55,11 @@ Tag 3 carries text or an image between the two machines' pasteboards, in both di
 | Message | Direction | Purpose |
 |---|---|---|
 | `pairIntent(deviceName)` | client → host | Sent the moment the pairing screen appears, before a code exists. Unauthenticated, no reply |
-| `pairRequest(deviceName, publicKey, code, presenceCredential, signature)` | client → host | One-time ceremony. `presenceCredential` optionally registers a host-screen credential. `signature` proves possession of `publicKey` |
+| `pairRequest(deviceName, publicKey, code, signature)` | client → host | One-time ceremony. `signature` proves possession of `publicKey` and is required: a request without one is refused as malformed by the decoder |
 | `pairApproved(hostPublicKey, tlsCertificateHash, signature)` | host → client | Key to pin, plus the TLS certificate hash for pinned reconnects |
 | `pairRejected(reason)` | host → client | `invalid-code`, `code-expired`, `code-already-consumed`, `code-attempts-exhausted`, `no-active-code`, `invalid-request` |
 | `hello(protocolVersion, deviceName)` | client → host | Unauthenticated. Refused when authentication is required |
-| `authenticatedHello(protocolVersion, deviceName, publicKey, signature)` | client → host | Proves the client device key |
+| `authenticatedHello(protocolVersion, deviceName, publicKey, hostCertificateHash, signature)` | client → host | Proves the client device key, bound to the host it is sent to. `hostCertificateHash` is the SHA-256 of that host's TLS certificate, the one the viewer pinned; the host refuses a hello naming any other, so a host cannot replay a hello it received to another host |
 | `canvasRequest(logicalWidth, logicalHeight, scale, surfaceID)` | client → host | Only the 1920×1200 scale-2 preset is accepted |
 | `canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, hostName)` | host → client | Canvas exists. Signature proves the host. `hostName` is the host's own machine name, or absent when unconfigured |
 | `canvasRefused(reason, surfaceID)` | host → client | The other answer to a `canvasRequest`: `canvas-creation-in-progress`, `canvas-unavailable` |
@@ -115,17 +115,17 @@ Only the sample with the **lowest** round trip is retained. A reply is accepted 
 Both directions sign a byte string with explicit separators, never a concatenation that could be shifted between fields.
 
 ```text
-sensorium-authenticated-hello-v1|<version>\0<deviceName>\0<publicKey base64>
+sensorium-authenticated-hello-v2|<version>\0<deviceName>\0<publicKey base64>\0<hostCertificateHash base64|"none">
 sensorium-canvas-ready-v1|<displayID>\0<width>\0<height>\0<clientPublicKey base64>\0<surfaceID|"none">
 sensorium-pair-approved-v1|<deviceName>\0<clientPublicKey base64>\0<tlsCertificateHash base64|"none">
-sensorium-pair-request-v1|<deviceName>\0<clientPublicKey base64>\0<code>\0<presenceCredential fields|"none">
+sensorium-pair-request-v2|<deviceName>\0<clientPublicKey base64>\0<code>
 ```
 
-The canvas transcript names the client key, so a signature captured for one client cannot be replayed to another. An absent surfaceID and a present one can never collide on the same transcript bytes.
+Both the hello and the pairing-request transcripts are at `v2`: their field lists changed after `v1` shipped, and moving the prefix with them means a signature made over either version can never be read as the other. The canvas transcript names the client key, so a signature captured for one client cannot be replayed to another. The hello transcript names the host's own certificate, so a hello signed for one host is refused by every other. An absent surfaceID, an absent certificate hash, and present ones can never collide on the same transcript bytes.
 
 ## Input events
 
-`pointerMoved`, `pointerMovedRelative` (raw unaccelerated deltas, sent only while the client has captured the pointer), `pointerButton`, `scrolled`, `key`, `releaseAllInput`, `pointerCaptureChanged(isCaptured)`. Coordinates are canvas logical points with the origin at the **top left**. AppKit's opposite convention is flipped once, on the client. Validated on both sides: coordinates must be finite and inside 1920×1200, scroll deltas finite and within ±10000, and modifier bits outside the four forwarded modifiers are rejected.
+`pointerMoved`, `pointerMovedRelative` (raw unaccelerated deltas, sent only while the client has captured the pointer), `pointerButton`, `scrolled`, `key`, `releaseAllInput`, `pointerCaptureChanged(isCaptured)`. Coordinates are canvas logical points with the origin at the **top left**. AppKit's opposite convention is flipped once, on the client. `key.keyCode` is the macOS virtual keycode of the physical key, and a viewer on another platform translates its own scancodes into that space before sending. Validated on both sides: coordinates must be finite and inside 1920×1200, scroll deltas finite and within ±10000, and modifier bits outside the four forwarded modifiers are rejected.
 
 ## Streamed resolution
 
@@ -228,22 +228,19 @@ The host-screen path offers one of the host's own displays instead of a session 
 
 | Message | Direction | Purpose |
 |---|---|---|
-| `hostScreenList(displays, challenge)` | host → client | Sent instead of `canvasReady` on this path. Each entry is an opaque per-connection token, a label, logical size, backing scale, and a stable `displayIdentity`. `challenge` is single-use, minted for this offer |
-| `hostScreenRequest(token, presence)` | client → host | Names one offered display by its token. `presence` proves a human is at the viewer (see below) |
-| `hostScreenReady(geometry, resumeTicket)` | host → client | The display's logical size and backing scale. `resumeTicket` is minted fresh and presented back on a silent reconnect |
-| `hostScreenRefused(reason)` | host → client | `host-screen-not-allowed`, `canvas-session-active`, `host-screen-session-active`, `host-screen-presence-declined`, `host-screen-presence-unanswered`, `host-screen-presence-check-required`, `host-screen-credential-unknown`, `host-screen-needs-rearming`, `host-screen-resume-refused` |
+| `hostScreenList(displays)` | host → client | Sent instead of `canvasReady` on this path. Each entry is an opaque per-connection token, a label, logical size, backing scale, and a stable `displayIdentity` |
+| `hostScreenRequest(token, resumeTicket)` | client → host | Names one offered display by its token. `resumeTicket`, when present, asks the host to resume a session already granted without a fresh host-presence check (see `docs/host-screen-design.md` §6.4) |
+| `hostScreenReady(geometry, resumeTicket)` | host → client | The display's logical size and backing scale. `resumeTicket` is minted fresh for this session and presented back on a silent reconnect |
+| `hostScreenRefused(reason)` | host → client | `host-screen-not-allowed`, `canvas-session-active`, `host-screen-session-active`, `host-screen-presence-declined`, `host-screen-presence-unanswered`, `host-screen-presence-check-required`, `host-screen-resume-refused` |
 | `hostScreenModeList(modes, currentModeID)` | host → client | Every mode macOS already offers for this display, and which one it is on now. Sent right after `hostScreenReady` and again after every applied change |
 | `hostScreenModeRequest(modeID)` | client → host | One `modeID` from that list. Never a width, height, or scale of the viewer's own composing |
 | `hostScreenModeApplied(geometry, currentModeID)` | host → client | The mode changed. `geometry` is the new logical size and backing scale |
 | `hostScreenModeRefused(reason)` | host → client | `host-screen-mode-not-live`, `host-screen-mode-unknown`, `host-screen-mode-failed`. The session and display are untouched |
-| `hostScreenUnlockChallengeRequest` | client → host | Asks the host to mint a single-use unlock challenge. Carries nothing. Host answers only for an already-authenticated, already-streaming host-screen session |
-| `hostScreenUnlockChallenge(challenge)` | host → client | The single-use, connection-bound challenge for one unlock attempt |
-| `hostScreenUnlockArm(presence)` | client → host | A fresh presence proof over that challenge, arming exactly one subsequent `hostScreenUnlockRequest` |
 | `hostScreenUnlockRequest(password)` | client → host | The host's own login password, as raw UTF-8 bytes, to type into its locked login window |
 | `hostScreenUnlockResult(outcome)` | host → client | What the attempt did, one of `HostScreenUnlockOutcome`'s stable tokens, below |
 | `hostScreenLockState(locked)` | host → client | Whether the host's screen is locked. Sent unprompted right after `hostScreenReady` and again after every unlock attempt |
 
-`presence` is one of two shapes only, never a mixture: `signed` (`credentialID`, `credentialFormat`, a signature over `hostScreenList`'s `challenge`) or `resumeTicket` (a ticket the host minted for an earlier session). Neither shape, nor `pairRequest`'s optional presence-credential registration, carries a credential strength or display description as a field a viewer asserts. A viewer-reported strength is never trusted, only referenced back to what the host itself already recorded. `hostScreenUnlockArm`'s own `presence` is always `signed`: it is a fresh proof over the unlock challenge, never a resume ticket, since a resume ticket stands in for a fresh presence check and an unlock arm must not accept that substitute.
+A `hostScreenRequest` is admitted once the requesting machine's key is armed for host screen and the token names a display this session's `hostScreenList` actually offered. See `docs/host-screen-design.md` §6.1 for the full admission sequence.
 
 ### Lock-screen unlock outcomes
 
@@ -258,7 +255,6 @@ The host-screen path offers one of the host's own displays instead of a session 
 | `not-authorized` | The connection is not an authenticated, active host-screen session |
 | `too-many-attempts` | This machine is at its wrong-guess cap. Retrying on this connection or a fresh one cannot help; only a correct password, a host restart, or the person at the host re-arming this machine clears it |
 | `password-too-long` | The password is longer than the unlock method's credential field can hold. Type it at the login window instead |
-| `presence-required` | No fresh, single-use presence arm covers this attempt. Confirm presence again, then retry |
 | `failed` | The password was accepted but the screen is still locked, or some other step failed. Carries a `reason` string for the operator log only, never shown as more than "try again" |
 
 ## Ordering rules
@@ -268,7 +264,7 @@ The host-screen path offers one of the host's own displays instead of a session 
 - Pointer motion is latest-wins, collapsing to the newest point queued behind an in-flight send. Buttons, scrolls, and keys are never coalesced.
 - Video frames are decoded in the order they arrived. A viewer that fell behind catches up rather than skipping ahead, because each frame is a difference from the one before it. Only a decode queue that reaches its bound gives a group up, and the next key frame recovers from that.
 - The viewer draws on its screen's own refresh. Each decoded frame is held a short time past the capture time the host stamped it with, so frames that arrive together are drawn one refresh apart instead of one of them being thrown away. The hold is measured from how unevenly frames arrive and never exceeds 50 milliseconds. A frame that arrives later than that is drawn at once.
-- A `hostScreenUnlockChallenge` is single-use, with a 60-second time to live: a `hostScreenUnlockArm` presented after that window is refused, never verified. `hostScreenUnlockArm` must precede `hostScreenUnlockRequest`: an unlock request with no valid arm is refused with `presence-required`. An arm is one-shot per request: it authorizes exactly one subsequent `hostScreenUnlockRequest`, and every later attempt needs a fresh challenge and a fresh arm of its own.
+- `hostScreenUnlockRequest` is answered only for an already-authenticated, already-streaming host-screen session; see `docs/host-screen-design.md` §9.
 
 ## Version policy
 

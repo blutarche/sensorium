@@ -15,10 +15,11 @@ public struct HostScreenResumeTicket: Equatable, Sendable {
     }
 }
 
-/// The two pure decisions a held ticket needs: a transport interruption
-/// resumes with no prompt, while a genuinely new session prompts. Kept out
-/// of `ClientSessionHost` so the rule itself is tested without a live
-/// transport or a signed connect.
+/// The pure decisions a held ticket needs: which ticket a connect may
+/// present, what survives a target change or a Stop at the host, and when an
+/// attempt holding none must stop instead of dialling. Kept out of
+/// `ClientSessionHost` so the rules themselves are tested without a live
+/// transport.
 public enum HostScreenResumeTicketRetention {
     /// The ticket a connect for `target` may present -- `nil` for a
     /// session-canvas target, and `nil` whenever the held ticket belongs to
@@ -56,14 +57,14 @@ public enum HostScreenResumeTicketRetention {
         nil
     }
 
-    /// Never in a retry loop: a signed proof is sent only inside a
-    /// connection attempt the person initiated. An automatic
-    /// redial of a host-screen target holding no ticket for it must not
-    /// fall back to signing one -- it stops instead and waits for the
-    /// person, the same way a host's own refusal already stops without
-    /// retrying. A session-canvas target never signs at all, so this is
-    /// always `false` for one.
-    public static func mustStopBeforeSigning(
+    /// Never in a retry loop: without a ticket the host reads a host-screen
+    /// connect as a new session, so a host set to ask first puts its prompt
+    /// up for it. An automatic redial holding no ticket therefore stops and
+    /// waits for the person at the viewer, rather than asking the person at
+    /// the host once per backoff attempt, the same way a host's own refusal
+    /// already stops without retrying. A session-canvas target presents no
+    /// ticket at all, so this is always `false` for one.
+    public static func mustStopWithoutTicket(
         target: SessionTarget,
         ticketToPresent: Data?,
         isPersonInitiated: Bool
@@ -79,15 +80,15 @@ public enum HostScreenResumeTicketRetention {
 /// retried) can change what this attempt is allowed to do. `compute` is the
 /// composition of `HostScreenResumeTicketRetention`'s own two decisions;
 /// kept as one call so a caller cannot read `ticketToPresent` and
-/// `mustStopBeforeSigning` from two different moments of `isPersonInitiated`
-/// by accident.
+/// `mustStopWithoutTicket` from two different moments of
+/// `isPersonInitiated` by accident.
 public struct HostScreenConnectPlan: Equatable, Sendable {
     public let ticketToPresent: Data?
-    public let mustStopBeforeSigning: Bool
+    public let mustStopWithoutTicket: Bool
 
-    public init(ticketToPresent: Data?, mustStopBeforeSigning: Bool) {
+    public init(ticketToPresent: Data?, mustStopWithoutTicket: Bool) {
         self.ticketToPresent = ticketToPresent
-        self.mustStopBeforeSigning = mustStopBeforeSigning
+        self.mustStopWithoutTicket = mustStopWithoutTicket
     }
 
     public static func compute(
@@ -98,7 +99,7 @@ public struct HostScreenConnectPlan: Equatable, Sendable {
         let ticketToPresent = HostScreenResumeTicketRetention.ticketToPresent(for: target, held: heldTicket)
         return HostScreenConnectPlan(
             ticketToPresent: ticketToPresent,
-            mustStopBeforeSigning: HostScreenResumeTicketRetention.mustStopBeforeSigning(
+            mustStopWithoutTicket: HostScreenResumeTicketRetention.mustStopWithoutTicket(
                 target: target, ticketToPresent: ticketToPresent, isPersonInitiated: isPersonInitiated
             )
         )

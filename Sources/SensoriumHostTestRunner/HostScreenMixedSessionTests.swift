@@ -33,12 +33,6 @@ private func hostScreenTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
     )
 }
 
-private final class AlwaysApprovingVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?, challenge: Data) -> Bool {
-        true
-    }
-}
-
 private final class AlwaysIdleSignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
@@ -47,7 +41,7 @@ private final class AlwaysIdleSignal: HostLocalActivitySignal, @unchecked Sendab
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return Data()
     }
@@ -64,7 +58,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -77,11 +70,11 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -96,7 +89,7 @@ func runHostScreenMixedSessionTests() async {
         let token = offerAndExtractToken(controller)
         let hostScreenResponse = try! controller.handle(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         expect(
             hostScreenResponse == .hostScreenRefused(reason: "canvas-session-active"),
@@ -122,7 +115,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -135,11 +127,11 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -148,7 +140,7 @@ func runHostScreenMixedSessionTests() async {
         let token = offerAndExtractToken(controller)
         let hostScreenReady = try! controller.handle(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         guard case .hostScreenReady = hostScreenReady else {
             expect(false, "the first request, a host-screen one, is admitted normally")
@@ -198,7 +190,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -211,24 +202,24 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [firstDisplay, secondDisplay] },
-            hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
 
-        guard case let .hostScreenList(firstDisplays, _) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(firstDisplays) = try! controller.offerHostScreenList(),
               let firstEntry = firstDisplays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(firstDisplay).wireStableIdentifier }) else {
             expect(false, "the fixture's offer names the first display")
             return
         }
         let hostScreenReady = try! controller.handle(.hostScreenRequest(
             token: firstEntry.opaqueToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         guard case .hostScreenReady = hostScreenReady else {
             expect(false, "the first request, a host-screen one, is admitted normally")
@@ -239,14 +230,14 @@ func runHostScreenMixedSessionTests() async {
         // display -- proving this refuses even a well-formed request
         // naming a display the device really is armed for, not just a
         // malformed or unknown one.
-        guard case let .hostScreenList(secondDisplays, _) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(secondDisplays) = try! controller.offerHostScreenList(),
               let secondEntry = secondDisplays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(secondDisplay).wireStableIdentifier }) else {
             expect(false, "the fixture's second offer names the second display")
             return
         }
         let secondResponse = try! controller.handle(.hostScreenRequest(
             token: secondEntry.opaqueToken,
-            presence: .signed(credentialID: Data([0x03]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x04]))
+            resumeTicket: nil
         ))
         expect(
             secondResponse == .hostScreenRefused(reason: "host-screen-session-active"),
@@ -272,7 +263,6 @@ func runHostScreenMixedSessionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -284,11 +274,11 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -304,7 +294,7 @@ func runHostScreenMixedSessionTests() async {
         let token = offerAndExtractToken(controller)
         let secondReady = try! controller.handle(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         guard case .hostScreenReady = secondReady else {
             expect(false, "a fresh session after goodbye starts with no shape fixed, so the opposite kind is admitted")

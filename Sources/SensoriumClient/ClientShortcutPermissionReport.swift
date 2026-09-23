@@ -53,7 +53,7 @@ public enum ClientShortcutPermissionReport {
     }
 
     public static var escapeGestureDescription: String {
-        "Control-Option-Command-Escape. It is never forwarded, in any mode."
+        "\(ViewerKeyNames.escapeGesture). It is never forwarded, in any mode."
     }
 
     private static func describe(_ mode: SystemShortcutMode) -> String {

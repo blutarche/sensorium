@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 public enum DeviceIdentityError: Error, Equatable {
@@ -10,16 +9,19 @@ public struct DeviceIdentity: Sendable {
     public let publicKey: Data
 
     public static func generate() throws -> DeviceIdentity {
-        let key = Curve25519.Signing.PrivateKey()
-        return DeviceIdentity(privateKeyData: key.rawRepresentation, publicKey: key.publicKey.rawRepresentation)
+        let privateKeyData = SensoriumCrypto.ed25519GeneratePrivateKey()
+        return DeviceIdentity(
+            privateKeyData: privateKeyData,
+            publicKey: try SensoriumCrypto.ed25519PublicKey(privateKey: privateKeyData)
+        )
     }
 
     public init(privateKeyData: Data) throws {
-        guard let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: privateKeyData) else {
+        guard let publicKey = try? SensoriumCrypto.ed25519PublicKey(privateKey: privateKeyData) else {
             throw DeviceIdentityError.invalidPrivateKey
         }
         self.privateKeyData = privateKeyData
-        publicKey = key.publicKey.rawRepresentation
+        self.publicKey = publicKey
     }
 
     private init(privateKeyData: Data, publicKey: Data) {
@@ -28,8 +30,7 @@ public struct DeviceIdentity: Sendable {
     }
 
     public func sign(_ message: Data) throws -> Data {
-        let key = try Curve25519.Signing.PrivateKey(rawRepresentation: privateKeyData)
-        return try key.signature(for: message)
+        try SensoriumCrypto.ed25519Sign(privateKey: privateKeyData, message: message)
     }
 
     internal func privateKeyDataForStorage() -> Data {
@@ -37,9 +38,6 @@ public struct DeviceIdentity: Sendable {
     }
 
     public static func verify(signature: Data, message: Data, publicKey: Data) -> Bool {
-        guard let key = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKey) else {
-            return false
-        }
-        return key.isValidSignature(signature, for: message)
+        SensoriumCrypto.ed25519Verify(signature: signature, message: message, publicKey: publicKey)
     }
 }

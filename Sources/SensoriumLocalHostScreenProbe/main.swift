@@ -112,25 +112,14 @@ struct SensoriumLocalHostScreenProbe {
         let port = try endpointPort(rawPort)
         try createStateDirectory()
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
-        let credential = try UnattendedTestPresenceCredential(url: presenceKeyURL())
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
             port: port,
             transport: .tcpLocalVerification
         )
         try await connection.start()
-        let session = ClientSessionController(
-            transport: connection,
-            identity: identity,
-            credentialProvider: credential
-        )
+        let session = ClientSessionController(transport: connection, identity: identity)
         let approval = try await session.pair(deviceName: deviceName, code: code)
-        // Host screen refuses a device with no registered credential, so a
-        // pairing that quietly registered none would fail much later, as an
-        // opaque refusal at `enter`.
-        guard case .registered = approval.presenceCredentialRegistration else {
-            throw HostScreenProbeError.presenceCredentialNotRegistered
-        }
         try JSONEncoder().encode(SavedApproval(hostPublicKey: approval.hostPublicKey))
             .write(to: approvalURL(), options: .atomic)
         await connection.close()
@@ -139,9 +128,8 @@ struct SensoriumLocalHostScreenProbe {
 
     /// Writes the host's arming record through the host's own store, so this
     /// rig cannot drift from the format the host reads. Names this probe's own
-    /// device key and the strength that device registered at pairing; arming
-    /// is per machine, so the display `enter` will open its window on is only
-    /// printed, never armed for.
+    /// device key; arming is per machine, so the display `enter` will open its
+    /// window on is only printed, never armed for.
     private static func arm(armingFilePath: String) throws {
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
         guard let display = targetDisplay() else {
@@ -151,7 +139,6 @@ struct SensoriumLocalHostScreenProbe {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: deviceName,
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         )
@@ -199,7 +186,6 @@ struct SensoriumLocalHostScreenProbe {
         let port = try endpointPort(rawPort)
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
         let approval = try JSONDecoder().decode(SavedApproval.self, from: Data(contentsOf: approvalURL()))
-        let credential = try UnattendedTestPresenceCredential(url: presenceKeyURL())
         guard let display = targetDisplay(), let screen = screen(for: display) else {
             throw HostScreenProbeError.noTargetDisplay
         }
@@ -213,7 +199,6 @@ struct SensoriumLocalHostScreenProbe {
         let session = ClientSessionController(
             transport: connection,
             identity: identity,
-            credentialProvider: credential,
             pinnedHostPublicKey: approval.hostPublicKey
         )
         let window = try ClientCanvasWindowController(title: "Sensorium Local Host Screen", session: session)
@@ -634,10 +619,6 @@ struct SensoriumLocalHostScreenProbe {
         stateDirectory().appendingPathComponent("local-host-screen-probe-approval.json")
     }
 
-    private static func presenceKeyURL() -> URL {
-        stateDirectory().appendingPathComponent("local-host-screen-probe-presence-key.json")
-    }
-
     private static func usageAndExit() -> Never {
         print("usage: SensoriumLocalHostScreenProbe <pair|arm|wait-idle|enter> "
             + "<tailnet-host|arming-file-path|timeout-seconds> [port] [pairing-code]")
@@ -712,65 +693,6 @@ private final class TargetWindow {
     }
 }
 
-/// A presence credential for this acceptance rig and nothing else: an ordinary
-/// P-256 key this process holds in a file, signing with no prompt, no
-/// enclave, and no human. It reports `hardwareBound` so the host's own
-/// arming minimum and signature check are exercised for real -- which is
-/// exactly why no shipping code may ever use it. A real viewer registers
-/// `SecureEnclavePresenceCredential`; this one proves nothing whatever about a
-/// person being present.
-///
-/// The key outlives the process because pairing and entering are two separate
-/// runs of this probe, and the host verifies the session's signature against
-/// the public half registered at pairing. It is written only under the
-/// throwaway `HOME` the smoke script creates.
-private final class UnattendedTestPresenceCredential: PresenceCredentialProviding, @unchecked Sendable {
-    private struct StoredKey: Codable {
-        let privateKey: Data
-    }
-
-    /// The format `PresenceCredentialVerifier` supports: raw P-256 ECDSA over
-    /// the raw challenge bytes. The format names the verification routine,
-    /// which is the same for both strengths.
-    static let credentialFormat = "apple-secure-enclave-p256"
-
-    let strength = PresenceCredentialStrength.hardwareBound
-    private let key: P256.Signing.PrivateKey
-    private let credentialID: Data
-
-    init(url: URL) throws {
-        if let data = try? Data(contentsOf: url),
-           let stored = try? JSONDecoder().decode(StoredKey.self, from: data),
-           let loaded = try? P256.Signing.PrivateKey(rawRepresentation: stored.privateKey) {
-            key = loaded
-        } else {
-            let created = P256.Signing.PrivateKey()
-            try FileManager.default.createDirectory(
-                at: url.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-            try JSONEncoder().encode(StoredKey(privateKey: created.rawRepresentation))
-                .write(to: url, options: [.atomic])
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-            key = created
-        }
-        credentialID = Data(SHA256.hash(data: key.publicKey.rawRepresentation))
-    }
-
-    func register() async throws -> PresenceCredentialRegistration {
-        PresenceCredentialRegistration(
-            credentialID: credentialID,
-            publicKey: key.publicKey.rawRepresentation,
-            credentialFormat: Self.credentialFormat,
-            strength: strength.rawValue
-        )
-    }
-
-    func sign(challenge: Data) async throws -> Data {
-        try key.signature(for: challenge).rawRepresentation
-    }
-}
-
 /// The exit code `main` reports once `NSApplication.run()` has returned, since
 /// the work that decides it finishes inside the event loop rather than around
 /// it.
@@ -783,7 +705,6 @@ private enum HostScreenProbeError: Error {
     case invalidPort
     case noTargetDisplay
     case noTargetScreenAfterModeChange
-    case presenceCredentialNotRegistered
     case sessionIsNotHostScreen
     case windowNotOnArmedDisplay
     case pointerNotDelivered

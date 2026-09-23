@@ -1,9 +1,12 @@
+#if canImport(Metal)
 import AppKit
 import CoreVideo
 import Metal
 import MetalKit
 import SensoriumCore
 import simd
+
+extension MetalFramePresenter: CanvasFramePresenting {}
 
 /// Draws one surface's decoded frames onto its Metal view, on the screen's own
 /// refresh and at the pace `PresentationPacer` decides.
@@ -537,3 +540,4 @@ public enum MetalFramePresenterError: Error, Equatable {
     case frameNotTexturable(CVReturn)
     case unsupportedPixelFormat(OSType)
 }
+#endif

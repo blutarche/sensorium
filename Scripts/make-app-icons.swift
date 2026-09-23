@@ -17,6 +17,12 @@
 // being byte-reproducible, so the icons must be too.
 //
 // Usage: swift Scripts/make-app-icons.swift <output-directory>
+//        swift Scripts/make-app-icons.swift --linux <output-directory>
+//
+// The --linux mode writes the viewer mark alone, at the freedesktop icon
+// theme's sizes, in the hicolor layout a Linux package installs. Same
+// geometry, same renderer: there is one drawing of this mark, and a second
+// renderer would be a second drawing that drifts.
 
 import CoreGraphics
 import Foundation
@@ -233,6 +239,11 @@ let iconSizes: [(name: String, pixels: Int)] = [
     ("icon_512x512@2x.png", 1024),
 ]
 
+/// The freedesktop icon theme's sizes, which are not Apple's. A desktop
+/// environment picks the nearest one it has, so the small end matters most:
+/// 16 and 24 are list rows and window buttons, 22 is a KDE panel.
+let hicolorSizes = [16, 22, 24, 32, 48, 64, 128, 256, 512]
+
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data("make-app-icons: \(message)\n".utf8))
     exit(1)
@@ -270,11 +281,35 @@ func run(_ launchPath: String, _ arguments: [String]) {
     }
 }
 
-guard CommandLine.arguments.count == 2 else {
-    fail("usage: swift Scripts/make-app-icons.swift <output-directory>")
-}
-let outputDirectory = URL(fileURLWithPath: CommandLine.arguments[1])
+let arguments = Array(CommandLine.arguments.dropFirst())
 let fileManager = FileManager.default
+
+if arguments.first == "--linux" {
+    guard arguments.count == 2 else {
+        fail("usage: swift Scripts/make-app-icons.swift --linux <output-directory>")
+    }
+    // The viewer is the only mark Linux gets: there is no Linux host.
+    guard let viewer = marks.first(where: { $0.name == "Sensorium" }) else {
+        fail("no viewer mark to draw")
+    }
+    let hicolor = URL(fileURLWithPath: arguments[1]).appendingPathComponent("hicolor", isDirectory: true)
+    for pixels in hicolorSizes {
+        let directory = hicolor
+            .appendingPathComponent("\(pixels)x\(pixels)", isDirectory: true)
+            .appendingPathComponent("apps", isDirectory: true)
+        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let png = directory.appendingPathComponent("com.sensorium.viewer.png")
+        try? fileManager.removeItem(at: png)
+        renderPNG(viewer, pixels: pixels, to: png)
+        print(png.path)
+    }
+    exit(0)
+}
+
+guard arguments.count == 1 else {
+    fail("usage: swift Scripts/make-app-icons.swift [--linux] <output-directory>")
+}
+let outputDirectory = URL(fileURLWithPath: arguments[0])
 try? fileManager.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
 for mark in marks {

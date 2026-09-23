@@ -7,20 +7,6 @@ import ScreenCaptureKit
 import SensoriumCore
 import SensoriumHost
 
-/// Controllable stand-in for a presence-credential verifier, so the gating
-/// logic around one can be driven independently of the real verifier.
-private final class FakeHostScreenPresenceProofVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    var result = true
-    private(set) var calls: [(proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?)] = []
-
-    func verify(
-        proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?, challenge: Data
-    ) -> Bool {
-        calls.append((proof, devicePublicKey, minimumStrength))
-        return result
-    }
-}
-
 private final class FakeHostScreenLocalActivitySignal: HostLocalActivitySignal, @unchecked Sendable {
     var reading: HostLocalActivityReading = .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
     func currentReading() -> HostLocalActivityReading { reading }
@@ -62,15 +48,14 @@ private func hostScreenTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
 }
 
 /// One controller wired for a full, real (fake-backed) host-screen
-/// admission: armed for `deviceKey`, one eligible display live, idle well
-/// past the threshold, and a verifier that approves by default. Every test starts here and breaks exactly one
+/// admission: armed for `deviceKey`, one eligible display live, and idle
+/// well past the threshold. Every test starts here and breaks exactly one
 /// thing.
 @MainActor
 private func makeAdmissibleFixture() -> (
     controller: HostSessionController,
     deviceKey: Data,
     display: DisplaySnapshot,
-    verifier: FakeHostScreenPresenceProofVerifier,
     signal: FakeHostScreenLocalActivitySignal,
     injectorFactory: FakeInputInjectorFactory
 ) {
@@ -81,7 +66,6 @@ private func makeAdmissibleFixture() -> (
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date(),
             // This fixture exists to exercise the presence rule and gate;
             // the ask-first setting itself defaults off (HostScreenArmingTests.swift
@@ -90,7 +74,6 @@ private func makeAdmissibleFixture() -> (
             asksWhenSomeoneIsUsingThisMachine: true
         )
     ])
-    let verifier = FakeHostScreenPresenceProofVerifier()
     let signal = FakeHostScreenLocalActivitySignal()
     let adapter = FakeVirtualDisplayAdapter()
     let session = VirtualDisplaySession(adapter: adapter)
@@ -106,16 +89,16 @@ private func makeAdmissibleFixture() -> (
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: verifier,
         hostScreenLocalActivitySignal: signal
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
     ))
-    return (controller, deviceKey, display, verifier, signal, injectorFactory)
+    return (controller, deviceKey, display, signal, injectorFactory)
 }
 
 /// The same admissible setup `makeAdmissibleFixture` builds, with a
@@ -128,8 +111,7 @@ private func makeAdmissibleFixtureWithGate() -> (
     controller: HostSessionController,
     display: DisplaySnapshot,
     signal: FakeHostScreenLocalActivitySignal,
-    gate: FakeHostScreenPresenceGate,
-    verifier: FakeHostScreenPresenceProofVerifier
+    gate: FakeHostScreenPresenceGate
 ) {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
@@ -138,7 +120,6 @@ private func makeAdmissibleFixtureWithGate() -> (
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date(),
             // Same reasoning as makeAdmissibleFixture: this fixture exists
             // to exercise the gate itself, so the ask-first setting it
@@ -147,7 +128,6 @@ private func makeAdmissibleFixtureWithGate() -> (
             asksWhenSomeoneIsUsingThisMachine: true
         )
     ])
-    let verifier = FakeHostScreenPresenceProofVerifier()
     let signal = FakeHostScreenLocalActivitySignal()
     let gate = FakeHostScreenPresenceGate()
     let controller = HostSessionController(
@@ -158,17 +138,17 @@ private func makeAdmissibleFixtureWithGate() -> (
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: verifier,
         hostScreenLocalActivitySignal: signal,
         hostScreenPresenceGate: gate
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
     ))
-    return (controller, display, signal, gate, verifier)
+    return (controller, display, signal, gate)
 }
 
 /// A refusal must build no injector and hand it no work: `factory` was
@@ -182,7 +162,7 @@ private func expectNoInjectorWasBuilt(_ factory: FakeInputInjectorFactory, _ con
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the admissible fixture's offer names at least one display")
         return Data()
     }
@@ -196,7 +176,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let fixture = makeAdmissibleFixture()
         let token = offerAndExtractToken(fixture.controller)
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         guard case let .hostScreenReady(geometry, resumeTicket) = response else {
             expect(false, "every obligation held, so the request is admitted")
@@ -207,14 +187,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             "the ready reply carries the real display's own geometry, backing scale included"
         )
         expect(!resumeTicket.isEmpty, "a fresh resume ticket is minted on admission")
-        expect(
-            fixture.verifier.calls.last?.devicePublicKey == fixture.deviceKey,
-            "the verifier is asked about the authenticated device's own key, never anything the wire could name"
-        )
-        expect(
-            fixture.verifier.calls.last?.minimumStrength == .hardwareBound,
-            "the minimum strength checked comes from the arming record, not from the proof, which has no field for one"
-        )
 
         print("PASS: a request meeting every obligation is admitted, carrying the real display's geometry and a fresh resume ticket")
     }
@@ -227,8 +199,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         // directly, with a token that was never legitimately minted for it.
         let identity = try! DeviceIdentity.generate()
         let display = hostScreenTestDisplay()
-        let verifier = FakeHostScreenPresenceProofVerifier()
-        let signal = FakeHostScreenLocalActivitySignal()
+            let signal = FakeHostScreenLocalActivitySignal()
         let injectorFactory = FakeInputInjectorFactory()
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
@@ -238,11 +209,11 @@ func runHostScreenSessionControllerAdmissionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { HostScreenArming() },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -251,7 +222,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         expect(offer == .hostScreenRefused(reason: "host-screen-not-allowed"), "an unarmed device's offer is refused outright, never an empty-but-valid list")
 
         let response = try! controller.handle(.hostScreenRequest(
-            token: Data([0x01]), presence: .signed(credentialID: Data([0x02]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x03]))
+            token: Data([0x01]), resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-not-allowed"),
@@ -263,74 +234,12 @@ func runHostScreenSessionControllerAdmissionTests() async {
     }
 
     do {
-        // Refusal never degrades: unverified proof
-        let fixture = makeAdmissibleFixture()
-        let token = offerAndExtractToken(fixture.controller)
-        fixture.verifier.result = false
-        let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
-        ))
-        expect(
-            response == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "a proof the verifier rejects refuses the whole request, video included -- never a reduced or view-only session"
-        )
-        expectNoInjectorWasBuilt(fixture.injectorFactory, "unverified proof")
-
-        print("PASS: an unverified signed proof refuses with host-screen-credential-unknown, not a degraded session")
-    }
-
-    do {
-        // Refusal never degrades: no verifier configured at all
-        // The honest default: nothing is registered, so nothing can ever
-        // verify, so every proof refuses -- not an approximation of a real
-        // check, which is the state of the world until a real verifier is configured.
-        let identity = try! DeviceIdentity.generate()
-        let display = hostScreenTestDisplay()
-        let arming = HostScreenArming(devices: [
-            HostScreenDeviceArming(
-                devicePublicKey: identity.publicKey,
-                deviceName: "Probe",
-                armedAt: Date()
-            )
-        ])
-        let injectorFactory = FakeInputInjectorFactory()
-        let controller = HostSessionController(
-            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            approvedPublicKeys: [identity.publicKey],
-            requireAuthentication: true,
-            inputInjectorFactory: injectorFactory,
-            keyConfinement: .hostScreen,
-            hostScreenArmingProvider: { arming },
-            hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: FakeHostScreenLocalActivitySignal()
-            // hostScreenPresenceProofVerifier deliberately omitted.
-        )
-        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
-        )
-        _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
-        ))
-        let token = offerAndExtractToken(controller)
-        let response = try! controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
-        ))
-        expect(
-            response == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "with no verifier configured at all, an armed device with an otherwise-admissible request is still refused -- production is honest about verifying nothing until a real one exists"
-        )
-        expectNoInjectorWasBuilt(injectorFactory, "no verifier configured")
-
-        print("PASS: with no presence-proof verifier configured, every proof is refused even for an otherwise fully admissible request")
-    }
-
-    do {
         // Refusal never degrades: presence check required
         let fixture = makeAdmissibleFixture()
         let token = offerAndExtractToken(fixture.controller)
         fixture.signal.reading = .idleFor(0)
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-presence-check-required"),
@@ -348,7 +257,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let token = offerAndExtractToken(fixture.controller)
         fixture.signal.reading = .unavailable
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-presence-check-required"),
@@ -366,7 +275,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         fixture.signal.reading = .idleFor(0)
         fixture.gate.outcome = .proceed
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             { if case .hostScreenReady = response { return true } else { return false } }(),
@@ -396,7 +305,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         fixture.signal.reading = .idleFor(0)
         fixture.gate.outcome = .refused(reason: HostScreenPresenceRule.declinedReason)
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-presence-declined"),
@@ -413,7 +322,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         fixture.signal.reading = .idleFor(0)
         fixture.gate.outcome = .refused(reason: HostScreenPresenceRule.unansweredReason)
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-presence-unanswered"),
@@ -431,7 +340,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         fixture.signal.reading = .idleFor(0)
         fixture.gate.outcome = .refused(reason: HostScreenPresenceGate.alreadyAskingReason)
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-presence-check-required"),
@@ -448,7 +357,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let token = offerAndExtractToken(fixture.controller)
         // The fixture's own default reading already clears the threshold.
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             { if case .hostScreenReady = response { return true } else { return false } }(),
@@ -464,36 +373,11 @@ func runHostScreenSessionControllerAdmissionTests() async {
     }
 
     do {
-        // A failed presence-credential proof must never pop the
-        // host prompt. Design §6.1 orders the signature
-        // check (#5) before the host-presence rule (#6) -- a paired
-        // device with a valid arming record and a legitimately-
-        // minted token, but no live human at the viewer, must not
-        // interrupt the person at the host for a connection that
-        // can never succeed regardless of their answer.
-        let fixture = makeAdmissibleFixtureWithGate()
-        let token = offerAndExtractToken(fixture.controller)
-        fixture.signal.reading = .idleFor(0) // forces .mustAsk
-        fixture.verifier.result = false // the presence-credential proof itself fails
-        fixture.gate.outcome = .proceed // if the gate were ever asked, it would approve
-        let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
-        ))
-        expect(fixture.gate.calls.isEmpty, "a failed presence-credential proof must never reach the gate -- no prompt is shown to the person at the host for a connection the proof alone already dooms")
-        expect(
-            response == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "the refusal reason names the failed proof, unaffected by whether a gate was configured or what it would have answered"
-        )
-
-        print("PASS: a failed presence proof refuses before the gate is asked, whatever the idle time or the gate would say")
-    }
-
-    do {
         // Refusal never degrades: unminted token
         let fixture = makeAdmissibleFixture()
         _ = offerAndExtractToken(fixture.controller) // mints, but is never used
         let response = try! fixture.controller.handle(.hostScreenRequest(
-            token: Data([0xFF, 0xFF]), presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: Data([0xFF, 0xFF]), resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-not-allowed"),
@@ -505,54 +389,12 @@ func runHostScreenSessionControllerAdmissionTests() async {
     }
 
     do {
-        // The challenge is single-use
-        // The first attempt here is deliberately made to fail (the fixture's
-        // verifier flipped to refusing) rather than admitted: an admitted
-        // first attempt would leave this connection's own live-surface
-        // guard (`HostScreenMixedSessionTests.swift`'s own "second host-
-        // screen request refuses" case) to refuse any second request
-        // outright, masking whatever the challenge's own single-use
-        // bookkeeping would have said. A failed first attempt keeps this
-        // test isolated to that bookkeeping.
-        let fixture = makeAdmissibleFixture()
-        let token = offerAndExtractToken(fixture.controller)
-        fixture.verifier.result = false
-        let firstAttempt = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
-        ))
-        expect(
-            firstAttempt == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "a failing verifier refuses the first attempt, admitting nothing"
-        )
-
-        // The challenge this offer minted was consumed by the first
-        // attempt, whether or not it was going to succeed. The token
-        // itself survives a failed presence check -- only a fresh offer
-        // wipes it -- so this replay, with the verifier flipped back to
-        // approving, still reaches the challenge check and finds none left.
-        fixture.verifier.result = true
-        let replay = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
-        ))
-        expect(
-            replay == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "a second attempt over an already-consumed challenge still refuses, even with the verifier now approving"
-        )
-        expect(
-            fixture.verifier.calls.count == 1,
-            "the verifier is never even asked on the replay -- the missing challenge refuses first"
-        )
-
-        print("PASS: a challenge does not survive one use, successful or not, so a later attempt over it still refuses")
-    }
-
-    do {
         // Two offers, the same display: different tokens, the same
         // displayIdentity -- a token is per-connection by design,
         // but a viewer needs a stable way to say "that one again."
         let fixture = makeAdmissibleFixture()
         func nextEntry() -> HostScreenListEntry? {
-            guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(), let entry = displays.first else {
+            guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(), let entry = displays.first else {
                 expect(false, "the admissible fixture's offer names at least one display")
                 return nil
             }
@@ -576,7 +418,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let fixture = makeAdmissibleFixture()
         let token = offerAndExtractToken(fixture.controller)
         _ = try! fixture.controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         // The fixture's display is 2560x1440 logical.
         _ = try! fixture.controller.handle(.input(.pointerMoved(x: 2560, y: 1440), surfaceID: nil))
@@ -621,7 +463,8 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let identity = try! DeviceIdentity.generate()
         let fixture = makeAdmissibleFixture()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         do {
             _ = try fixture.controller.handle(.authenticatedHello(
@@ -659,12 +502,10 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
-        let verifier = FakeHostScreenPresenceProofVerifier()
-        let signal = FakeHostScreenLocalActivitySignal()
+            let signal = FakeHostScreenLocalActivitySignal()
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
             approvedPublicKeys: [deviceKey],
@@ -673,16 +514,16 @@ func runHostScreenSessionControllerAdmissionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [firstMonitor, secondMonitor] },
-            hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList() else {
             expect(false, "an armed device with two eligible displays is offered a list, not a refusal")
             return
         }
@@ -705,13 +546,11 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: false
             )
         ])
-        let verifier = FakeHostScreenPresenceProofVerifier()
-        let signal = FakeHostScreenLocalActivitySignal()
+            let signal = FakeHostScreenLocalActivitySignal()
         signal.reading = .idleFor(0) // somebody is right there
         let gate = FakeHostScreenPresenceGate()
         var loggedLines: [String] = []
@@ -723,20 +562,20 @@ func runHostScreenSessionControllerAdmissionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal,
             hostScreenPresenceGate: gate,
             log: { loggedLines.append($0) }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
         let token = offerAndExtractToken(controller)
         let response = try! controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             { if case .hostScreenReady = response { return true } else { return false } }(),
@@ -765,13 +604,11 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: true
             )
         ])
-        let verifier = FakeHostScreenPresenceProofVerifier()
-        let signal = FakeHostScreenLocalActivitySignal()
+            let signal = FakeHostScreenLocalActivitySignal()
         signal.reading = .idleFor(0)
         let gate = FakeHostScreenPresenceGate()
         gate.outcome = .proceed
@@ -783,19 +620,19 @@ func runHostScreenSessionControllerAdmissionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: verifier,
             hostScreenLocalActivitySignal: signal,
             hostScreenPresenceGate: gate
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
         let token = offerAndExtractToken(controller)
         let response = try! controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
         expect(
             { if case .hostScreenReady = response { return true } else { return false } }(),
@@ -842,7 +679,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -859,12 +695,13 @@ func runHostScreenSessionControllerAdmissionTests() async {
             log: { loggedLines.append($0) }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList() else {
             expect(false, "an armed device with one shareable display still receives hostScreenList")
             return
         }
@@ -915,7 +752,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -930,13 +766,14 @@ func runHostScreenSessionControllerAdmissionTests() async {
             log: { loggedLines.append($0) }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
         let offer = try! controller.offerHostScreenList()
-        if case .hostScreenList(let displays, _) = offer {
+        if case .hostScreenList(let displays) = offer {
             expect(displays.isEmpty, "a display asleep right now is offered to no one, whatever it was at host start -- got: \(displays.count)")
         }
         expect(
@@ -959,7 +796,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -974,7 +810,8 @@ func runHostScreenSessionControllerAdmissionTests() async {
             log: { loggedLines.append($0) }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -1006,7 +843,6 @@ func runHostScreenSessionControllerAdmissionTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -1019,12 +855,13 @@ func runHostScreenSessionControllerAdmissionTests() async {
             hostScreenCurrentDisplaysProvider: { [monitor, canvas] }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList() else {
             expect(false, "an armed machine is offered this machine's current displays, not refused")
             return
         }

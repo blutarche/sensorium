@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 import SensoriumClient
@@ -269,3 +270,4 @@ func testViewerIdentityFailureButtonsTests() async {
         print("PASS: the failure window carries a third button and reports which of the three was pressed")
     }
 }
+#endif

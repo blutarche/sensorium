@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -1660,7 +1661,7 @@ func testDualCanvasReconnectAndUITests() async {
         // A host-screen connect that never became a session is not a session
         // that ended -- nothing began, so the overlay must not claim it did.
         var neverStarted = ViewerSessionStateMachine(hostName: "Studio")
-        let refused = neverStarted.handle(.hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: false))
+        let refused = neverStarted.handle(.hostScreenConnectEnded(reasonLine: "Some reason."))
         expect(
             refused.eyebrow == "NOT STARTED",
             "a refusal before any frame ever arrived is not a session that ended, got: \(refused.eyebrow)"
@@ -1689,7 +1690,7 @@ func testDualCanvasReconnectAndUITests() async {
         var wasLive = ViewerSessionStateMachine(hostName: "Studio")
         wasLive.handle(.connectStarted)
         wasLive.handle(.canvasReady)
-        let endedAfterLive = wasLive.handle(.hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: false))
+        let endedAfterLive = wasLive.handle(.hostScreenConnectEnded(reasonLine: "Some reason."))
         expect(
             endedAfterLive.eyebrow == "SESSION ENDED",
             "a refusal after the session was live is a session that ended, got: \(endedAfterLive.eyebrow)"
@@ -1700,55 +1701,6 @@ func testDualCanvasReconnectAndUITests() async {
         )
 
         print("PASS: a host-screen connect that never became a session reads as not started, and one that went live reads as ended")
-
-        // The two reasons that mean this machine's presence credential needs
-        // re-registering cannot be fixed with a virtual display alone, so
-        // they offer a way to pair again -- primary, since it is the fix.
-        var needsRearming = ViewerSessionStateMachine(hostName: "Studio")
-        let rearm = needsRearming.handle(
-            .hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: true)
-        )
-        expect(
-            rearm.buttons.map(\.action) == [.yourMachines, .connectAsVirtualDisplay, .pairAgain],
-            "the list comes first, and the filled default sits rightmost, the way macOS itself places a "
-                + "default button in a row, got: \(rearm.buttons.map(\.action))"
-        )
-        expect(
-            rearm.buttons.map(\.title) == ["Your machines", "Connect with a virtual display", "Pair again"],
-            "got: \(rearm.buttons.map(\.title))"
-        )
-        expect(
-            rearm.buttons.map(\.isPrimary) == [false, false, true],
-            "pairing again is the fix, so it carries the accent, and sits rightmost as the row's default, got: "
-                + "\(rearm.buttons.map(\.isPrimary))"
-        )
-
-        print("PASS: a host-screen refusal offering pairing shows Your machines, Connect with a virtual display, then Pair again as primary")
-
-        // Pressing Pair again sends no event to this type: nothing is
-        // dialling while the pairing windows are up, so switching phase
-        // here would leave a spinner on screen with no button and nothing
-        // behind it. A cancelled or closed pairing attempt must find the
-        // ended panel and its buttons exactly as they were.
-        var stillOffersPairAgain = ViewerSessionStateMachine(hostName: "studio-mini")
-        let beforePairAgainPressed = stillOffersPairAgain.handle(
-            .hostScreenConnectEnded(reasonLine: "Some reason.", offersPairAgain: true)
-        )
-        expect(
-            stillOffersPairAgain.status == beforePairAgainPressed,
-            "no event means no change: pressing Pair again must not itself alter this state"
-        )
-        expect(
-            stillOffersPairAgain.status.phase == .ended,
-            "a cancelled pair-again leaves the panel in the ended phase, got: \(stillOffersPairAgain.status.phase)"
-        )
-        expect(
-            stillOffersPairAgain.status.buttons.map(\.action) == [.yourMachines, .connectAsVirtualDisplay, .pairAgain],
-            "the same three buttons are still there to press, in the same order, got: "
-                + "\(stillOffersPairAgain.status.buttons.map(\.action))"
-        )
-
-        print("PASS: a cancelled pair-again leaves the ended panel in its ended phase with the same button set")
 
         // A state that describes a dead end without offering a way out of it
         // is still a dead end. Which buttons each state carries is a copy
@@ -3047,3 +2999,4 @@ func testDualCanvasReconnectAndUITests() async {
             print("PASS: cancelling a run of attempts ends its wait instead of letting the backoff run out")
         }
 }
+#endif

@@ -24,12 +24,20 @@ public enum CanvasPresentationLayout {
     /// same "fit" behavior regardless of whether the viewport is larger or
     /// smaller than the source. It never crops: the whole source is always
     /// visible, and the destination always spans an axis of the viewport.
+    ///
+    /// `topInset` is a band across the top of the viewport the picture may
+    /// not use -- what a pinned shortcut strip claims. The picture is fitted
+    /// into what is left and then moved down past it, so the band is never
+    /// drawn over and the picture is never cropped to make room.
     public static func videoRect(
         sourceWidth: Double,
         sourceHeight: Double,
         viewportWidth: Double,
-        viewportHeight: Double
+        viewportHeight: Double,
+        topInset: Double = 0
     ) -> CanvasVideoRect {
+        let inset = max(0, min(topInset, viewportHeight))
+        let viewportHeight = viewportHeight - inset
         guard sourceWidth > 0, sourceHeight > 0, viewportWidth > 0, viewportHeight > 0 else {
             return CanvasVideoRect(x: 0, y: 0, width: 0, height: 0)
         }
@@ -47,7 +55,7 @@ public enum CanvasPresentationLayout {
         }
         return CanvasVideoRect(
             x: (viewportWidth - width) / 2,
-            y: (viewportHeight - height) / 2,
+            y: inset + (viewportHeight - height) / 2,
             width: width,
             height: height
         )

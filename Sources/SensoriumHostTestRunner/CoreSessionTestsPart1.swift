@@ -636,7 +636,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "Laptop",
-            publicKey: identity.publicKey
+            publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! authenticatedController.handle(.authenticatedHello(
             protocolVersion: 1,
@@ -1201,7 +1202,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let newDeviceTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "NewLaptop",
-            publicKey: newDevice.publicKey
+            publicKey: newDevice.publicKey,
+            hostCertificateHash: nil
         )
         let newDeviceHello = SensoriumMessage.authenticatedHello(
             protocolVersion: 1,
@@ -1215,9 +1217,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             "an unpaired device cannot open a session"
         )
 
-        let wrongCode = try! pairingController.handle(.pairRequest(
+        let wrongCode = try! pairingController.handle(signedPairRequest(
             deviceName: "NewLaptop",
-            publicKey: newDevice.publicKey,
+            identity: newDevice,
             code: "999999"
         ))
         expect(wrongCode == .pairRejected(reason: "invalid-code"), "a wrong pairing code is rejected")
@@ -1227,9 +1229,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             "a rejected pairing does not approve the device"
         )
 
-        let approval = try! pairingController.handle(.pairRequest(
+        let approval = try! pairingController.handle(signedPairRequest(
             deviceName: "NewLaptop",
-            publicKey: newDevice.publicKey,
+            identity: newDevice,
             code: "424242"
         ))
         guard case let .pairApproved(approvedHostKey, tlsCertificateHash, signature?) = approval else {
@@ -1251,9 +1253,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
         expect(try! pairingController.handle(newDeviceHello) == nil, "a paired device opens a session")
 
-        let replay = try! pairingController.handle(.pairRequest(
+        let replay = try! pairingController.handle(signedPairRequest(
             deviceName: "Attacker",
-            publicKey: try! DeviceIdentity.generate().publicKey,
+            identity: try! DeviceIdentity.generate(),
             code: "424242"
         ))
         expect(replay == .pairRejected(reason: "code-already-consumed"), "a pairing code cannot be replayed")
@@ -1278,9 +1280,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             )
         }
         for attempt in 1...PairingAuthority.maximumFailedAttempts {
-            let guess = try! budgetConnection().handle(.pairRequest(
+            let guess = try! budgetConnection().handle(signedPairRequest(
                 deviceName: "NewLaptop",
-                publicKey: budgetDevice.publicKey,
+                identity: budgetDevice,
                 code: String(format: "%06d", attempt)
             ))
             expect(
@@ -1288,9 +1290,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 "wrong guess \(attempt), each on its own connection, is rejected"
             )
         }
-        let spentBudget = try! budgetConnection().handle(.pairRequest(
+        let spentBudget = try! budgetConnection().handle(signedPairRequest(
             deviceName: "NewLaptop",
-            publicKey: budgetDevice.publicKey,
+            identity: budgetDevice,
             code: "424242"
         ))
         expect(
@@ -1320,15 +1322,15 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             keyConfinement: .unconfined
         )
         for attempt in 1..<PairingAuthority.maximumFailedAttempts {
-            _ = try! nearMissController.handle(.pairRequest(
+            _ = try! nearMissController.handle(signedPairRequest(
                 deviceName: "NewLaptop",
-                publicKey: nearMissDevice.publicKey,
+                identity: nearMissDevice,
                 code: String(format: "%06d", attempt)
             ))
         }
-        let nearMissApproval = try! nearMissController.handle(.pairRequest(
+        let nearMissApproval = try! nearMissController.handle(signedPairRequest(
             deviceName: "NewLaptop",
-            publicKey: nearMissDevice.publicKey,
+            identity: nearMissDevice,
             code: "135790"
         ))
         guard case .pairApproved = nearMissApproval else {
@@ -1357,7 +1359,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let signedTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "Laptop",
-            publicKey: signedClient.publicKey
+            publicKey: signedClient.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! signingController.handle(.authenticatedHello(
             protocolVersion: 1,

@@ -1,0 +1,5 @@
+# Viewer capabilities the Linux window layer does not reach yet, one label per
+# line, exactly as Scripts/test-linux-gui-reachable.sh names them. Nothing is
+# listed: every capability docs/ux-spec.md names is reachable from the Linux
+# window layer. A capability that has to be taken away temporarily belongs
+# here, with the reason, rather than being quietly dropped from the check.

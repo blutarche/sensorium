@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Network)
 import Network
+#endif
 import SensoriumCore
 
 /// Why a session attempt ended, in the distinctions a person can act on
@@ -63,9 +65,11 @@ public enum ViewerSessionFailure: Hashable, Sendable {
             case .certificatePinMismatch: return .unverifiedHost
             }
         }
+        #if canImport(Network)
         if error is NWError {
             return .unreachable
         }
+        #endif
         return .unknown
     }
 }

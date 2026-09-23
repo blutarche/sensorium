@@ -14,7 +14,7 @@ public enum ViewerSessionPhase: Equatable, Sendable {
     case lost
     /// A host-screen connect that never became a session, refused or
     /// failed -- distinct from `.lost`, since nothing auto-redials here:
-    /// nothing is automatic after a failed presence check. The only
+    /// a host that refused this machine's screen refuses it again. The only
     /// way out is the one button this phase's own status carries.
     case ended
 }
@@ -65,10 +65,9 @@ public enum ViewerSessionAction: Equatable, Sendable {
     /// that just ended, always switches to a session canvas, and only ever
     /// fires on the person's own press: nothing here is automatic.
     case connectAsVirtualDisplay
-    /// Offered only when the host's own refusal reason says this machine's
-    /// presence credential is missing or unrecognised -- the one `.ended`
-    /// case a virtual display alone cannot fix, since re-arming needs the
-    /// pairing ceremony.
+    /// Offered when the host did not prove it is the machine this one
+    /// paired with: re-pinning its key is the only fix, and only the pairing
+    /// ceremony can do that.
     case pairAgain
     /// Back to the launch window's list of saved machines -- offered beside Try
     /// again on every state where this machine cannot be reached, so a machine that
@@ -101,9 +100,7 @@ public enum ViewerSessionEvent: Equatable, Sendable {
     /// `ViewerSessionFailureCopy`/`HostScreenRefusalCopy` before this call:
     /// this state machine holds no wire vocabulary of its own, the same way
     /// `ClientReconnectEvent.attemptFailed`'s text lives outside this type.
-    /// `offersPairAgain` is likewise decided by the caller, from the same
-    /// raw reason, never by matching `reasonLine`'s translated text here.
-    case hostScreenConnectEnded(reasonLine: String, offersPairAgain: Bool)
+    case hostScreenConnectEnded(reasonLine: String)
     /// One dial attempt ended without a session and the reconnect policy is
     /// about to try again -- the already-translated sentence, same
     /// discipline as `hostScreenConnectEnded`: this state machine holds no
@@ -258,7 +255,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     + "is connected on both machines, then choose Try again.",
                 buttons: Self.recoveryButtons
             )
-        case let .hostScreenConnectEnded(reasonLine, offersPairAgain):
+        case let .hostScreenConnectEnded(reasonLine):
             status = ViewerSessionStatus(
                 phase: .ended,
                 tone: .bad,
@@ -267,7 +264,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     ? "The host-screen session with \(hostName) ended."
                     : "Could not show a host screen from \(hostName).",
                 detail: reasonLine,
-                buttons: offersPairAgain ? Self.endedOfferingPairAgainButtons : Self.endedButtons
+                buttons: Self.endedButtons
             )
         case let .unverifiedHostConnectEnded(reasonLine):
             lastFailureLine = nil
@@ -317,14 +314,6 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         )
     ]
 
-    private static let endedOfferingPairAgainButtons = [
-        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: false),
-        ViewerSessionButton(
-            action: .connectAsVirtualDisplay, title: "Connect with a virtual display", isPrimary: false
-        ),
-        ViewerSessionButton(action: .pairAgain, title: "Pair again", isPrimary: true)
-    ]
-
     /// A certificate pin or host key mismatch is security-relevant and
     /// terminal: re-pinning the key is the only fix, so it leads, and it is
     /// the accent -- the accent is for the action that restores the session,
@@ -344,7 +333,6 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         reconnectingButtons,
         recoveryButtons,
         endedButtons,
-        endedOfferingPairAgainButtons,
         unverifiedHostButtons
     ].map { $0.map(\.title) }
 

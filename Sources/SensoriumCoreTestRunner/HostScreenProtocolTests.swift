@@ -39,21 +39,15 @@ func testHostScreenProtocol() {
         isBuiltin: false,
         displayIdentity: "00000610-00000028"
     )
-    let challenge = Data([0xC0, 0xFF, 0xEE])
     let token = Data([0x01, 0x02])
-    let credentialID = Data([0xAA])
-    let signature = Data([0xBB])
     let resumeTicket = Data([0xCC, 0xDD])
     let geometry = SessionSurfaceGeometry(logicalWidth: 2560, logicalHeight: 1440, backingScale: 2.0)
 
     // Round-trips: encode, then decode, is the identity
     let messages: [SensoriumMessage] = [
-        .hostScreenList(displays: [entry], challenge: challenge),
-        .hostScreenRequest(
-            token: token,
-            presence: .signed(credentialID: credentialID, credentialFormat: "apple-secure-enclave-p256", signature: signature)
-        ),
-        .hostScreenRequest(token: token, presence: .resumeTicket(resumeTicket)),
+        .hostScreenList(displays: [entry]),
+        .hostScreenRequest(token: token, resumeTicket: nil),
+        .hostScreenRequest(token: token, resumeTicket: resumeTicket),
         .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket),
         .hostScreenRefused(reason: "host-screen-not-allowed")
     ]
@@ -63,7 +57,7 @@ func testHostScreenProtocol() {
         expect(decoded == message, "\(message) round-trips through encode and decode unchanged")
     }
 
-    print("PASS: hostScreenList, hostScreenRequest (both presence shapes), hostScreenReady, and hostScreenRefused round-trip through encode and decode")
+    print("PASS: hostScreenList, hostScreenRequest (fresh and resuming), hostScreenReady, and hostScreenRefused round-trip through encode and decode")
 
     // The older-peer path: an unknown type is skippable, never fatal
     let futureType = frame(fromJSON: "{\"type\":\"hostScreenSomethingNotInvented\"}")
@@ -77,24 +71,12 @@ func testHostScreenProtocol() {
     // Malformed host-screen fields refuse, never fall back
     // Missing required fields on each of the four types.
     expectMalformed(
-        "{\"type\":\"hostScreenList\",\"challenge\":\"wA==\"}",
+        "{\"type\":\"hostScreenList\"}",
         "hostScreenList missing its display list is rejected, not treated as an empty offer"
     )
     expectMalformed(
-        "{\"type\":\"hostScreenList\",\"hostScreenDisplays\":[]}",
-        "hostScreenList missing its challenge is rejected -- there is nothing for a presence proof to sign"
-    )
-    expectMalformed(
-        "{\"type\":\"hostScreenRequest\",\"hostScreenToken\":\"AQI=\"}",
-        "hostScreenRequest with neither a signed proof nor a ticket is rejected, not treated as an empty-but-valid request"
-    )
-    expectMalformed(
-        "{\"type\":\"hostScreenRequest\",\"hostScreenToken\":\"AQI=\",\"credentialID\":\"qg==\",\"signature\":\"uw==\"}",
-        "hostScreenRequest with a partial signed proof (credentialFormat missing) is rejected, not treated as unsigned"
-    )
-    expectMalformed(
-        "{\"type\":\"hostScreenRequest\",\"hostScreenToken\":\"AQI=\",\"credentialID\":\"qg==\",\"credentialFormat\":\"apple-secure-enclave-p256\",\"signature\":\"uw==\",\"resumeTicket\":\"zN0=\"}",
-        "hostScreenRequest carrying both a signed proof and a ticket at once is rejected -- exactly one shape, never a mixture the host would have to arbitrate"
+        "{\"type\":\"hostScreenRequest\"}",
+        "hostScreenRequest naming no token is rejected, not treated as an empty-but-valid request"
     )
     expectMalformed(
         "{\"type\":\"hostScreenReady\",\"logicalWidth\":2560,\"logicalHeight\":1440,\"resumeTicket\":\"zN0=\"}",
@@ -118,13 +100,13 @@ func testHostScreenProtocol() {
         isBuiltin: false,
         displayIdentity: "00000610-00000028"
     )
-    let namedMessage = SensoriumMessage.hostScreenList(displays: [namedEntry], challenge: challenge)
+    let namedMessage = SensoriumMessage.hostScreenList(displays: [namedEntry])
     let namedDecoded = try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(namedMessage))
     expect(
         namedDecoded == namedMessage,
         "hostScreenList round-trips a display entry's own displayIdentity unchanged, alongside every other field"
     )
-    guard case let .hostScreenList(decodedDisplays, _) = namedDecoded else {
+    guard case let .hostScreenList(decodedDisplays) = namedDecoded else {
         expect(false, "the round-tripped message is still a hostScreenList")
         return
     }
@@ -134,13 +116,13 @@ func testHostScreenProtocol() {
     )
 
     expectMalformed(
-        "{\"type\":\"hostScreenList\",\"challenge\":\"wA==\",\"hostScreenDisplays\":"
+        "{\"type\":\"hostScreenList\",\"hostScreenDisplays\":"
             + "[{\"opaqueToken\":\"AQI=\",\"label\":\"Studio Display\",\"logicalWidth\":2560,"
             + "\"logicalHeight\":1440,\"backingScale\":2.0,\"isBuiltin\":false}]}",
         "a hostScreenList display entry missing displayIdentity entirely is rejected, not defaulted to something invented"
     )
     expectMalformed(
-        "{\"type\":\"hostScreenList\",\"challenge\":\"wA==\",\"hostScreenDisplays\":"
+        "{\"type\":\"hostScreenList\",\"hostScreenDisplays\":"
             + "[{\"opaqueToken\":\"AQI=\",\"label\":\"Studio Display\",\"logicalWidth\":2560,"
             + "\"logicalHeight\":1440,\"backingScale\":2.0,\"isBuiltin\":false,\"displayIdentity\":\"\"}]}",
         "a hostScreenList display entry with an empty displayIdentity is rejected the same way a missing one is"
@@ -155,23 +137,20 @@ func testHostScreenProtocol() {
     // silently drops any JSON key a Codable type never declared. A hostile
     // or buggy peer that rides an arming-shaped claim along in the payload
     // gets exactly the same decoded value as one that did not.
-    let cleanRequestJSON = "{\"type\":\"hostScreenRequest\",\"hostScreenToken\":\"AQI=\",\"credentialID\":\"qg==\",\"credentialFormat\":\"apple-secure-enclave-p256\",\"signature\":\"uw==\"}"
+    let cleanRequestJSON = "{\"type\":\"hostScreenRequest\",\"hostScreenToken\":\"AQI=\"}"
     let smuggledRequestJSON = """
-    {"type":"hostScreenRequest","hostScreenToken":"AQI=","credentialID":"qg==","credentialFormat":"apple-secure-enclave-p256","signature":"uw==",\
-    "tier":"hardwareBound","minimumCredentialStrength":"hardwareBound","armedDisplays":[{"vendorNumber":1552,"modelNumber":40}],"armed":true}
+    {"type":"hostScreenRequest","hostScreenToken":"AQI=",\
+    "armedDisplays":[{"vendorNumber":1552,"modelNumber":40}],"armed":true}
     """
     let cleanDecoded = try! SensoriumFrameCodec.decode(frame(fromJSON: cleanRequestJSON))
     let smuggledDecoded = try! SensoriumFrameCodec.decode(frame(fromJSON: smuggledRequestJSON))
     expect(
         cleanDecoded == smuggledDecoded,
-        "a hostScreenRequest with an arming-shaped claim (tier, minimumCredentialStrength, armedDisplays, armed) riding along in the JSON decodes identically to one without it -- the type has no field for any of those to land in, so the claim is not merely ignored by policy, it is structurally unrepresentable"
+        "a hostScreenRequest with an arming-shaped claim (armedDisplays, armed) riding along in the JSON decodes identically to one without it -- the type has no field for either of those to land in, so the claim is not merely ignored by policy, it is structurally unrepresentable"
     )
     expect(
-        cleanDecoded == .hostScreenRequest(
-            token: token,
-            presence: .signed(credentialID: credentialID, credentialFormat: "apple-secure-enclave-p256", signature: signature)
-        ),
-        "and what it does decode to is exactly the reference the token and credentialID name -- nothing this session did not already mint or register"
+        cleanDecoded == .hostScreenRequest(token: token, resumeTicket: nil),
+        "and what it does decode to is exactly the reference the token names -- nothing this session did not already mint"
     )
 
     print("PASS: a hostScreenRequest has no field an arming assertion could occupy, so a smuggled claim changes nothing that decodes")

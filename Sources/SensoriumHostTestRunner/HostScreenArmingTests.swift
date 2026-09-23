@@ -23,8 +23,6 @@ func runHostScreenArmingTests() async {
         let device = HostScreenDeviceArming(
             devicePublicKey: key,
             deviceName: "Device 01020304",
-            credentialKind: .hardwareBound,
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
         store.arm(device)
@@ -70,7 +68,8 @@ func runHostScreenArmingTests() async {
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "Probe",
-            publicKey: identity.publicKey
+            publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         let everyMessage: [SensoriumMessage] = [
             .hello(protocolVersion: 1, deviceName: "Probe"),
@@ -85,7 +84,7 @@ func runHostScreenArmingTests() async {
             .canvasRefused(reason: "test", surfaceID: nil),
             .input(.key(keyCode: 0, isDown: true, modifiers: CanvasModifierFlags()), surfaceID: nil),
             .goodbye(reason: "test"),
-            .pairRequest(deviceName: "Probe", publicKey: identity.publicKey, code: "000000"),
+            signedPairRequest(deviceName: "Probe", identity: identity, code: "000000"),
             .pairApproved(hostPublicKey: identity.publicKey, tlsCertificateHash: nil, signature: nil),
             .pairRejected(reason: "test"),
             .timeSyncRequest(clientTimeNanoseconds: 0),
@@ -95,8 +94,8 @@ func runHostScreenArmingTests() async {
             .displayCount(1),
             .viewerFocus(surfaceID: nil, hasViewerFocus: true),
             .telemetry(surfaces: []),
-            .hostScreenList(displays: [], challenge: Data([0x01])),
-            .hostScreenRequest(token: Data([0x02]), presence: .resumeTicket(Data([0x03]))),
+            .hostScreenList(displays: []),
+            .hostScreenRequest(token: Data([0x02]), resumeTicket: Data([0x03])),
             .hostScreenReady(
                 geometry: SessionSurfaceGeometry(logicalWidth: 1920, logicalHeight: 1200, backingScale: 2.0),
                 resumeTicket: Data([0x04])
@@ -183,59 +182,26 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: Data([0xAB]),
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
+                armedAt: Date()
+            ),
+            HostScreenDeviceArming(
+                devicePublicKey: Data([0xAC]),
+                deviceName: "Kestrel Laptop Air",
                 armedAt: Date()
             )
         ])
         let lines = HostScreenArmingPresentation.lines(for: armed)
         expect(
-            lines.count == 1 && lines[0].deviceName == "Kestrel Laptop Pro"
-                && lines[0].credentialSummary == "Presence key on Kestrel Laptop Pro: reported as hardware-held.",
-            "the idle presentation names the armed device and says how its key is held in plain words, not a raw enum case"
+            lines.count == 2 && lines[0].deviceName == "Kestrel Laptop Pro"
+                && lines[1].deviceName == "Kestrel Laptop Air",
+            "the idle presentation names every armed device, in the order the record holds them"
         )
-        let armedWithSoftwareKey = HostScreenArming(devices: [
-            HostScreenDeviceArming(
-                devicePublicKey: Data([0xAC]),
-                deviceName: "Kestrel Laptop Air",
-                minimumCredentialStrength: .softwarePresence,
-                armedAt: Date()
-            )
-        ])
         expect(
-            HostScreenArmingPresentation.lines(for: armedWithSoftwareKey)[0].credentialSummary
-                == "Presence key on Kestrel Laptop Air: reported as software-held.",
-            "a key the operating system holds is told apart from one that cannot leave the device, and says what that costs"
+            lines[0].devicePublicKey == Data([0xAB]),
+            "each line carries the key its row acts on, so turning one off cannot act on another"
         )
 
-        let unregistered = HostScreenArmingPresentation.lines(for: HostScreenArming(devices: [
-            HostScreenDeviceArming(
-                devicePublicKey: Data([0xCD]),
-                deviceName: "Unregistered Device",
-                armedAt: Date()
-            )
-        ]))
-        expect(
-            unregistered[0].credentialSummary == nil,
-            // Not the device's name and not an internal-state phrase glued
-            // onto it -- `nil` is the honest report, and it is what the
-            // window and the menu bar are what makes it plain words on the
-            // caller's own line: see HostScreenArmingPresentation.noCredentialNotice.
-            "a device armed before it has ever registered a presence credential reports no credential summary at all, not a blank string or a crash"
-        )
-        let unregisteredNotice = HostScreenArmingPresentation.noCredentialNotice(deviceName: "Unregistered Device")
-        expect(
-            !unregisteredNotice.contains("credential") && unregisteredNotice.contains("Unregistered Device"),
-            "the shared notice names the device it is about, not \"This machine\" -- that word already means the host "
-                + "everywhere else a row like this one appears -- and says what is missing in plain words, never "
-                + "\"credential\" -- got: \(unregisteredNotice)"
-        )
-        expect(
-            unregisteredNotice
-                == "Pair Unregistered Device again to turn this on.",
-            "the remedy names which machine to act from -- the unregistered device, not this one -- got: \(unregisteredNotice)"
-        )
-
-        print("PASS: the idle arming presentation names every armed device and its reported credential strength honestly, including before one is ever registered")
+        print("PASS: the idle arming presentation names every armed device and carries the key each row acts on")
     }
 
     do {
@@ -304,9 +270,8 @@ func runHostScreenArmingTests() async {
     }
 
     do {
-        // Security review: a registered presence credential's own public
-        // key lives in this file (`StoredDevice.presenceCredential`) --
-        // owner-only, the same as `HostScreenArmingStore`'s own file.
+        // The paired device keys in this file decide who may connect, so it
+        // is owner-only, the same as `HostScreenArmingStore`'s own file.
         let url = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("sensorium-approved-devices-permissions-test-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -328,15 +293,14 @@ func runHostScreenArmingTests() async {
         // armed ones.
         let sharingKey = Data([0xAB])
         let unarmedKey = Data([0xCD])
-        let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] = [
-            (sharingKey, "Kestrel Laptop Pro", .hardwareBound),
-            (unarmedKey, "Kestrel Laptop Air", nil)
+        let approvedDevices: [(publicKey: Data, name: String?)] = [
+            (sharingKey, "Kestrel Laptop Pro"),
+            (unarmedKey, "Kestrel Laptop Air")
         ]
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: sharingKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -345,21 +309,16 @@ func runHostScreenArmingTests() async {
             rows.count == 2 && rows[0].deviceName == "Kestrel Laptop Pro" && rows[1].deviceName == "Kestrel Laptop Air",
             "every paired machine gets its own row, in the order it was given, whether or not it is sharing a host screen"
         )
+        expect(rows[0].isSharingRealScreen, "an armed device is shown as sharing")
         expect(
-            rows[0].isSharingRealScreen && rows[0].blockedReason == nil
-                && rows[0].credentialSummary == "Presence key on Kestrel Laptop Pro: reported as hardware-held.",
-            "a device armed with a registered credential is shown as sharing, with nothing blocking it"
-        )
-        expect(
-            !rows[1].isSharingRealScreen
-                && rows[1].blockedReason == HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel Laptop Air"),
-            "a paired device that has never registered a credential cannot be turned on yet, and the row says why, naming the paired device rather than \"This machine\""
+            !rows[1].isSharingRealScreen,
+            "a paired device nobody armed is shown as not sharing, and its row can still be turned on"
         )
 
         let neverPaired = HostScreenArmingPresentation.pairedMachineRows(approvedDevices: [], arming: HostScreenArming())
         expect(neverPaired.isEmpty, "no paired machine is no rows, not a placeholder row")
 
-        print("PASS: pairedMachineRows lists every paired machine with its own sharing state, credential summary, and why sharing is blocked when it is")
+        print("PASS: pairedMachineRows lists every paired machine with its own sharing state")
     }
 
     do {
@@ -382,8 +341,8 @@ func runHostScreenArmingTests() async {
         )
         let rows = HostScreenArmingPresentation.pairedMachineRows(
             approvedDevices: [
-                (namedKey, "kestrel-mbp", nil),
-                (unnamedKey, nil, nil)
+                (namedKey, "kestrel-mbp"),
+                (unnamedKey, nil)
             ],
             arming: HostScreenArming()
         )
@@ -397,55 +356,6 @@ func runHostScreenArmingTests() async {
         )
 
         print("PASS: a paired-machine row is titled by name with the fingerprint beneath, or by fingerprint alone when no name is known")
-    }
-
-    do {
-        // An armed row carrying a strength snapshot: its own summary
-        // reflects what was armed, never a stronger credential registered
-        // afterward -- and a row without a snapshot reports why in words
-        // that do not falsely claim no credential was ever registered.
-        let armedKey = Data([0x11])
-        let legacyKey = Data([0x22])
-        let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] = [
-            (armedKey, "Kestrel Laptop Pro", .softwarePresence),
-            (legacyKey, "Kestrel Desktop", .hardwareBound)
-        ]
-        let arming = HostScreenArming(devices: [
-            HostScreenDeviceArming(
-                devicePublicKey: armedKey,
-                deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
-                armedAt: Date()
-            ),
-            HostScreenDeviceArming(
-                devicePublicKey: legacyKey,
-                deviceName: "Kestrel Desktop",
-                armedAt: Date()
-            )
-        ])
-        let rows = HostScreenArmingPresentation.pairedMachineRows(approvedDevices: approvedDevices, arming: arming)
-        expect(
-            rows[0].isSharingRealScreen
-                && rows[0].blockedReason == nil
-                && rows[0].credentialSummary == "Presence key on Kestrel Laptop Pro: reported as hardware-held.",
-            "an armed row reports the strength it was armed at, not whatever is registered live now (here, a weaker one)"
-        )
-        expect(
-            rows[1].isSharingRealScreen
-                && rows[1].credentialSummary == nil
-                && rows[1].blockedReason == HostScreenArmingPresentation.needsRearmingNotice,
-            "a row armed before the snapshot existed reports needsRearmingNotice, not noCredentialNotice -- it did register something, this machine just never captured it"
-        )
-        expect(
-            HostScreenArmingPresentation.needsRearmingNotice
-                == "How this machine holds its presence key was not recorded when it paired. Turn Share host screen off and on again to record it.",
-            "needsRearmingNotice says what happened and what to do about it in plain words -- not "
-                + "\u{201c}This machine\u{2019}s credential was recorded before this machine tracked how it is held,\u{201d} "
-                + "which uses \u{201c}this machine\u{201d} for two different machines in the same sentence -- "
-                + "got: \(HostScreenArmingPresentation.needsRearmingNotice)"
-        )
-
-        print("PASS: an armed row summarises the strength snapshotted at arm time, and a row without one asks for re-arming")
     }
 
     do {
@@ -486,12 +396,11 @@ func runHostScreenArmingTests() async {
                 HostScreenDeviceArming(
                     devicePublicKey: key,
                     deviceName: "Kestrel Laptop Pro",
-                    minimumCredentialStrength: .hardwareBound,
                     armedAt: Date()
                 )
             ])
             let rows = HostScreenArmingPresentation.pairedMachineRows(
-                approvedDevices: [(key, "Kestrel Laptop Pro", .hardwareBound)],
+                approvedDevices: [(key, "Kestrel Laptop Pro")],
                 arming: arming,
                 activeDisplays: activeDisplays
             )
@@ -534,7 +443,7 @@ func runHostScreenArmingTests() async {
         )
 
         let unarmed = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFF]), "Kestrel Laptop Air", nil)],
+            approvedDevices: [(Data([0xFF]), "Kestrel Laptop Air")],
             arming: HostScreenArming(),
             activeDisplays: [builtin]
         )
@@ -594,12 +503,11 @@ func runHostScreenArmingTests() async {
                 HostScreenDeviceArming(
                     devicePublicKey: key,
                     deviceName: "Kestrel Laptop Pro",
-                    minimumCredentialStrength: .hardwareBound,
                     armedAt: Date()
                 )
             ])
             return HostScreenArmingPresentation.pairedMachineRows(
-                approvedDevices: [(key, "Kestrel Laptop Pro", .hardwareBound)],
+                approvedDevices: [(key, "Kestrel Laptop Pro")],
                 arming: arming,
                 activeDisplays: activeDisplays
             )[0]
@@ -650,7 +558,8 @@ func runHostScreenArmingTests() async {
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "Kestrel Laptop Pro",
-            publicKey: device.publicKey
+            publicKey: device.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1,
@@ -675,7 +584,8 @@ func runHostScreenArmingTests() async {
         let renameTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "New Name",
-            publicKey: device.publicKey
+            publicKey: device.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! renameController.handle(.authenticatedHello(
             protocolVersion: 1,
@@ -746,12 +656,11 @@ func runHostScreenArmingTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: key,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
         let rows = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(key, "Kestrel Laptop Pro", .hardwareBound)],
+            approvedDevices: [(key, "Kestrel Laptop Pro")],
             arming: arming,
             activeDisplays: [firstOfSameModel, secondOfSameModel]
         )
@@ -824,14 +733,13 @@ func runHostScreenArmingTests() async {
         // PairedMachineRow carries the flag and the shared checkbox
         // label an armed row's own sharing state reads from.
         let key = Data([0xEE, 0x01])
-        let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] = [
-            (key, "Kestrel Laptop Pro", .hardwareBound)
+        let approvedDevices: [(publicKey: Data, name: String?)] = [
+            (key, "Kestrel Laptop Pro")
         ]
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: key,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(),
                 asksWhenSomeoneIsUsingThisMachine: true
             )
@@ -853,12 +761,11 @@ func runHostScreenArmingTests() async {
         // this machine's displays, never about the machine's permission.
         func row(name: String, key: Data, activeDisplays: [DisplaySnapshot]) -> HostScreenArmingPresentation.PairedMachineRow {
             HostScreenArmingPresentation.pairedMachineRows(
-                approvedDevices: [(key, name, .hardwareBound)],
+                approvedDevices: [(key, name)],
                 arming: HostScreenArming(devices: [
                     HostScreenDeviceArming(
                         devicePublicKey: key,
                         deviceName: name,
-                        minimumCredentialStrength: .hardwareBound,
                         armedAt: Date()
                     )
                 ]),
@@ -907,7 +814,7 @@ func runHostScreenArmingTests() async {
         )
 
         let unarmedRow = HostScreenArmingPresentation.pairedMachineRows(
-            approvedDevices: [(Data([0xFE]), "Kestrel Desktop", nil)],
+            approvedDevices: [(Data([0xFE]), "Kestrel Desktop")],
             arming: HostScreenArming(),
             activeDisplays: [offline]
         )[0]
@@ -917,49 +824,32 @@ func runHostScreenArmingTests() async {
     }
 
     do {
-        // The owner's decision: pairing itself arms host screen, when the
-        // pairing device registered a presence credential, for this machine's
-        // displays as they stand whenever a session starts.
-        // `HostScreenArmingCoordinator.toggle(isOn: true)` in `sensoriumd`
-        // builds through this exact function, so the two paths cannot
-        // drift.
+        // The owner's decision: pairing itself arms host screen, for
+        // this machine's displays as they stand whenever a session
+        // starts. `HostScreenArmingCoordinator.toggle(isOn: true)` in
+        // `sensoriumd` builds through this exact function, so the two
+        // paths cannot drift.
         let key = Data([0x77])
         let approvedStore = InMemoryApprovedDeviceStore(keys: [key])
         approvedStore.setName("Kestrel Laptop Pro", for: key)
         let now = Date(timeIntervalSince1970: 1_700_000_000)
 
-        expect(
-            HostScreenDeviceArming.onPairing(
-                devicePublicKey: key, approvedStore: approvedStore, now: now
-            ) == nil,
-            "a device with no registered presence credential is not armed at pairing -- it may still pair and use a session canvas"
-        )
-
-        approvedStore.setPresenceCredential(
-            PresenceCredentialRecord(
-                credentialID: Data([0x01]),
-                publicKey: Data([0x02]),
-                credentialFormat: "test-format",
-                strength: .hardwareBound
-            ),
-            for: key
-        )
         let armed = HostScreenDeviceArming.onPairing(
             devicePublicKey: key, approvedStore: approvedStore, now: now
         )
         expect(
-            armed?.deviceName == "Kestrel Laptop Pro" && armed?.minimumCredentialStrength == .hardwareBound
-                && armed?.asksWhenSomeoneIsUsingThisMachine == false && armed?.armedAt == now,
-            "the built record names the device by the name it gave at pairing, snapshots the strength it registered, defaults asking-first off, and stamps the moment it was armed -- got \(String(describing: armed))"
+            armed.devicePublicKey == key && armed.deviceName == "Kestrel Laptop Pro"
+                && armed.asksWhenSomeoneIsUsingThisMachine == false && armed.armedAt == now,
+            "the built record names the device by the name it gave at pairing, defaults asking-first off, and stamps the moment it was armed -- got \(armed)"
         )
 
-        print("PASS: HostScreenDeviceArming.onPairing arms a machine, with no display list of its own, only when it registered a presence credential")
+        print("PASS: HostScreenDeviceArming.onPairing arms a paired machine, with no display list of its own")
     }
 
     do {
-        // Arming used to name displays. A record written then must still
-        // load, and must be written back without the list it no longer
-        // means.
+        // A record a build of another revision wrote, carrying fields
+        // this one has no property for, must still load, and must be
+        // written back without them.
         let key = Data([0x0A, 0x0B])
         let legacyJSON = """
         {"devices":[{"devicePublicKey":"\(key.base64EncodedString())",\
@@ -969,17 +859,137 @@ func runHostScreenArmingTests() async {
         """
         let decoded = try! JSONDecoder().decode(HostScreenArming.self, from: legacyJSON.data(using: .utf8)!)
         expect(
-            decoded.devices.count == 1 && decoded.devices[0].deviceName == "Kestrel Laptop Pro"
-                && decoded.devices[0].minimumCredentialStrength == .hardwareBound,
-            "a record naming displays still loads, so a machine armed before this change stays armed"
+            decoded.devices.count == 1 && decoded.devices[0].deviceName == "Kestrel Laptop Pro",
+            "a record carrying fields this build does not read still loads, so a machine armed before this change stays armed"
         )
 
         let reEncoded = String(data: try! JSONEncoder().encode(HostScreenArming(devices: decoded.devices)), encoding: .utf8)!
         expect(
-            !reEncoded.contains("armedDisplays"),
-            "writing that record back drops the display list rather than carrying a field nothing reads -- got \(reEncoded)"
+            !reEncoded.contains("armedDisplays") && !reEncoded.contains("minimumCredentialStrength"),
+            "writing that record back drops the fields nothing reads rather than carrying them forward -- got \(reEncoded)"
         )
 
-        print("PASS: an arming record written with a per-display list still loads, and is written back without it")
+        print("PASS: an arming record carrying fields this build does not read still loads, and is written back without them")
+    }
+
+    do {
+        // Pairing is what arms host screen, so every machine already paired
+        // is armed the first time this build reads the file. Once. A person
+        // who turns one off has said so, and saying it again after every
+        // restart is not something this machine asks of them.
+        let armingURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-arming-pairing-test-\(UUID().uuidString).json")
+        let approvedURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-approved-pairing-test-\(UUID().uuidString).json")
+        defer {
+            try? FileManager.default.removeItem(at: armingURL)
+            try? FileManager.default.removeItem(at: approvedURL)
+        }
+        let pairedKey = Data([0x31, 0x41])
+        let otherKey = Data([0x59, 0x26])
+        // Written the way a build of another revision left it: every
+        // per-device key that build recorded, none of which this one reads.
+        let legacyApproved = """
+        [{"publicKey":"\(pairedKey.base64EncodedString())","name":"Kestrel Laptop Pro",\
+        "presenceCredentialID":"AQI=","presenceCredentialPublicKey":"AwQ=",\
+        "presenceCredentialFormat":"apple-secure-enclave-p256",\
+        "presenceCredentialStrength":"hardwareBound","presenceCredentialSignatureCounter":7},\
+        {"publicKey":"\(otherKey.base64EncodedString())","name":"Kestrel Laptop Air"}]
+        """
+        try! Data(legacyApproved.utf8).write(to: approvedURL)
+        let approvedStore = FileApprovedDeviceStore(url: approvedURL)
+        expect(
+            approvedStore.load().count == 2 && approvedStore.name(for: pairedKey) == "Kestrel Laptop Pro",
+            "a paired-device file carrying keys this build has no property for still loads every device and its name"
+        )
+
+        let store = HostScreenArmingStore(url: armingURL)
+        expect(store.load().devices.isEmpty, "nothing is armed before the paired machines are read")
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        store.armEveryPairedMachine(approvedStore: approvedStore, now: now)
+        let armed = store.load().devices
+        expect(
+            armed.count == 2
+                && armed.contains { $0.devicePublicKey == pairedKey && $0.deviceName == "Kestrel Laptop Pro" }
+                && armed.contains { $0.devicePublicKey == otherKey },
+            "every already-paired machine is armed, named by the name it gave at pairing -- got \(armed)"
+        )
+        expect(
+            armed.allSatisfy { $0.armedAt == now && !$0.asksWhenSomeoneIsUsingThisMachine },
+            "each record is stamped with the moment it was armed and defaults asking-first off"
+        )
+
+        store.disarm(devicePublicKey: pairedKey)
+        store.armEveryPairedMachine(approvedStore: approvedStore, now: now)
+        expect(
+            store.load().devices.map(\.devicePublicKey) == [otherKey],
+            "a machine the person at this host turned off stays off -- reading the paired machines again never re-arms it"
+        )
+
+        let reopened = HostScreenArmingStore(url: armingURL)
+        reopened.armEveryPairedMachine(approvedStore: approvedStore, now: now)
+        expect(
+            reopened.load().devices.map(\.devicePublicKey) == [otherKey],
+            "and a fresh store at the same file, as the next launch builds, reads that decision rather than undoing it"
+        )
+
+        print("PASS: every already-paired machine is armed once, and a machine turned off afterwards stays off across restarts")
+    }
+}
+
+@MainActor
+func runHostScreenArmingUnreadableFileTests() async {
+    do {
+        // A file that is there but says nothing this build can read is not
+        // the same as no file at all. Reading it as an empty record would
+        // clear `everyPairedMachineArmed`, and the one-time arming below
+        // would then arm every paired machine again, undoing every machine
+        // the person at this host had turned off.
+        let armingURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-arming-unreadable-test-\(UUID().uuidString).json")
+        let approvedURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-approved-unreadable-test-\(UUID().uuidString).json")
+        defer {
+            try? FileManager.default.removeItem(at: armingURL)
+            try? FileManager.default.removeItem(at: approvedURL)
+        }
+        let approvedURLContents = """
+        [{"publicKey":"\(Data([0x31, 0x41]).base64EncodedString())","name":"Kestrel Laptop Pro"},\
+        {"publicKey":"\(Data([0x59, 0x26]).base64EncodedString())","name":"Kestrel Laptop Air"}]
+        """
+        try! Data(approvedURLContents.utf8).write(to: approvedURL)
+        let approvedStore = FileApprovedDeviceStore(url: approvedURL)
+
+        try! Data("{ this is not the arming record".utf8).write(to: armingURL)
+        var reported: [String] = []
+        let store = HostScreenArmingStore(url: armingURL, log: { reported.append($0) })
+        expect(
+            store.load() == HostScreenArming(devices: [], everyPairedMachineArmed: true),
+            "an arming file that cannot be read arms nothing and counts as already migrated, so nothing re-arms behind the person's back"
+        )
+        store.armEveryPairedMachine(approvedStore: approvedStore, now: Date(timeIntervalSince1970: 1_700_000_000))
+        expect(
+            store.load().devices.isEmpty,
+            "reading the paired machines after an unreadable arming file arms none of them -- got \(store.load().devices)"
+        )
+        expect(
+            reported.count == 1 && reported[0].contains(armingURL.path),
+            "the person at this host is told once, by name, which file could not be read -- got \(reported)"
+        )
+
+        // A missing file is the ordinary first run and still arms every
+        // paired machine once.
+        let freshURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-arming-first-run-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: freshURL) }
+        var freshReported: [String] = []
+        let freshStore = HostScreenArmingStore(url: freshURL, log: { freshReported.append($0) })
+        freshStore.armEveryPairedMachine(approvedStore: approvedStore, now: Date(timeIntervalSince1970: 1_700_000_000))
+        expect(
+            freshStore.load().devices.count == 2 && freshReported.isEmpty,
+            "a machine with no arming file yet still arms every paired machine once, and says nothing about a file that was never there"
+        )
+
+        print("PASS: an unreadable arming file arms nothing, is reported once by name, and a missing one still arms every paired machine")
     }
 }

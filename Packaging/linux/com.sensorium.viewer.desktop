@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Sensorium
+GenericName=Remote workstation
+Comment=Work on another machine over your own tailnet
+Exec=Sensorium %u
+Icon=com.sensorium.viewer
+Terminal=false
+StartupNotify=true
+Categories=Network;RemoteAccess;
+MimeType=x-scheme-handler/sensorium;
+Keywords=remote;desktop;screen;workstation;

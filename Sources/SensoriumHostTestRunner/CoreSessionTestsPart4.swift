@@ -45,7 +45,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let dualSignTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1,
                 deviceName: "Laptop",
-                publicKey: dualSignClient.publicKey
+                publicKey: dualSignClient.publicKey,
+                hostCertificateHash: nil
             )
             _ = try! dualSignController.handle(.authenticatedHello(
                 protocolVersion: 1,
@@ -435,7 +436,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let clipboardTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1,
                 deviceName: "Laptop",
-                publicKey: clipboardIdentity.publicKey
+                publicKey: clipboardIdentity.publicKey,
+                hostCertificateHash: nil
             )
             _ = try! clipboardController.handle(.authenticatedHello(
                 protocolVersion: 1,

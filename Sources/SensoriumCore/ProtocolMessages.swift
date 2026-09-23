@@ -10,7 +10,14 @@ public enum SensoriumProtocolError: Error, Equatable {
 
 public enum SensoriumMessage: Equatable, Sendable {
     case hello(protocolVersion: UInt16, deviceName: String)
-    case authenticatedHello(protocolVersion: UInt16, deviceName: String, publicKey: Data, signature: Data)
+    /// `hostCertificateHash` is the SHA-256 of the TLS certificate of the
+    /// host this hello is being sent to -- the same hash the viewer pinned
+    /// when it paired. It is inside the signed transcript, so a hello is
+    /// worth exactly one host: a host that receives one and relays it to a
+    /// second host the same viewer is armed on is refused there, because
+    /// the transcript names the first host's certificate. `nil` is a link
+    /// with no certificate to bind to, and a host that has one refuses it.
+    case authenticatedHello(protocolVersion: UInt16, deviceName: String, publicKey: Data, hostCertificateHash: Data? = nil, signature: Data)
     case canvasRequest(logicalWidth: Int, logicalHeight: Int, scale: Int, surfaceID: UInt32?)
     /// `surfaceID` names one of the (currently at most two) session-owned
     /// canvases. `hostName` is the host's own machine name, so the viewer's
@@ -56,27 +63,17 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// applied. `true` resumes without replaying anything that changed
     /// while off -- see `ClipboardSyncEngine.setEnabled(_:)`, the one place
     /// that owns what either transition actually does. A session begins
-    /// with sharing on; this message only ever changes it from there.
+    /// with sharing off; this message only ever changes it from there.
     case clipboardSharing(enabled: Bool)
-    /// `presenceCredential` is docs/host-screen-design.md §6.3's registration, riding the
-    /// pairing exchange rather than a message of its own: "whose public
-    /// half is registered with this host when the devices pair." `nil` is
-    /// the ordinary case for a device that can offer neither acceptable
-    /// strength (CLAUDE.md's own invariant: it "may pair and use a session
-    /// canvas, but may not register for host screen") or one that simply
-    /// has not tried yet -- pairing itself never requires a credential.
-    ///
     /// `signature` is this machine's own proof that it holds `publicKey`'s
     /// private half: its signature over
     /// `SensoriumFrameCodec.pairRequestTranscript(...)`, which covers every
-    /// value this request asks the host to write. Without it a valid code --
-    /// which proves only that someone read six digits off the host -- is all
-    /// that stands between a request and an already-paired machine's
-    /// registered name and credential, so the host refuses those writes for
-    /// an already-approved key that has not proven possession. `nil` is a
-    /// machine that predates this proof: it still pairs, and still cannot
-    /// change what an already-approved key has on file.
-    case pairRequest(deviceName: String, publicKey: Data, code: String, presenceCredential: PresenceCredentialRegistration? = nil, signature: Data? = nil)
+    /// value this request asks the host to write. It is required. Without it
+    /// a valid code -- which proves only that someone read six digits off
+    /// the host -- would be all that stands between a request and an
+    /// arming record, so a frame carrying no proof never becomes this
+    /// message at all: the decoder refuses it as malformed.
+    case pairRequest(deviceName: String, publicKey: Data, code: String, signature: Data)
     case pairApproved(hostPublicKey: Data, tlsCertificateHash: Data?, signature: Data?)
     case pairRejected(reason: String)
     /// Carried on the control stream so the client can read host capture
@@ -131,19 +128,17 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// already uses for exactly that surface.
     case displayCount(Int)
     /// The host's offer of its own displays, sent instead of `canvasReady`
-    /// on the host-screen path. `challenge` is single-use, minted for this
-    /// offer, and is what `hostScreenRequest`'s presence proof must sign --
-    /// see docs/host-screen-design.md §6.3.
-    case hostScreenList(displays: [HostScreenListEntry], challenge: Data)
+    /// on the host-screen path.
+    case hostScreenList(displays: [HostScreenListEntry])
     /// The viewer's choice from a `hostScreenList` offer, naming a
-    /// previously-minted `token` and proving presence for this session.
-    /// There is deliberately no field here for a credential strength, an
-    /// armed-display description, or a device key: everything this message
-    /// can name is a reference to something the host already minted or
-    /// already registered, never an assertion the host would have to trust
-    /// -- a viewer-asserted strength or description is never trusted, only
-    /// referenced.
-    case hostScreenRequest(token: Data, presence: HostScreenPresenceProof)
+    /// previously-minted `token`. `resumeTicket` is one this host minted
+    /// for an earlier session of its own, offered back so a silent
+    /// reconnect resumes what was already granted; `nil` is an ordinary
+    /// fresh request. There is deliberately no field here for an
+    /// armed-display description or a device key: everything this message
+    /// can name is a reference to something the host already minted, never
+    /// an assertion the host would have to trust.
+    case hostScreenRequest(token: Data, resumeTicket: Data?)
     /// The host-screen answer to a `hostScreenRequest` that was admitted.
     /// `geometry` is the target display's own logical size and backing
     /// scale (docs/host-screen-design.md §5.1); `resumeTicket` is minted fresh for this session
@@ -187,23 +182,6 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// to unlock -- and admitted only for an already-authenticated,
     /// already-streaming host-screen session.
     case hostScreenUnlockRequest(password: Data)
-    /// The viewer's signal that it is about to try an unlock, so the host mints
-    /// the single-use challenge a fresh presence proof must sign. Carries
-    /// nothing: it asks only that a challenge be issued, and the host issues one
-    /// only for an already-authenticated, already-streaming host-screen session
-    /// -- a request from anything else is ignored, disclosing nothing. Viewer to
-    /// host only.
-    case hostScreenUnlockChallengeRequest
-    /// The host's single-use, connection-bound challenge for one unlock. The
-    /// viewer signs exactly these bytes with its presence credential and returns
-    /// the signature in `hostScreenUnlockArm`. Host to viewer only.
-    case hostScreenUnlockChallenge(challenge: Data)
-    /// The viewer's fresh presence proof over the challenge the host just
-    /// issued, arming exactly one subsequent `hostScreenUnlockRequest`. The same
-    /// `HostScreenPresenceProof` a `hostScreenRequest` carries, so a live human
-    /// confirmed at the viewer at the moment of unlock, not merely when the
-    /// session was admitted. Viewer to host only.
-    case hostScreenUnlockArm(presence: HostScreenPresenceProof)
     /// The host's answer to a `hostScreenUnlockRequest`: what the unlock
     /// attempt did, as one of `HostScreenUnlockOutcome`'s stable cases.
     case hostScreenUnlockResult(HostScreenUnlockOutcome)
@@ -252,15 +230,6 @@ public enum HostScreenUnlockOutcome: Equatable, Sendable {
     /// outcome from `wrongPassword` because the remedy is different: a
     /// shorter password, typed at the login window itself, not another try.
     case passwordTooLong
-    /// The request arrived without a fresh, single-use presence arm for this
-    /// attempt. Every unlock requires a live human to confirm presence at the
-    /// viewer again, independent of how the session was admitted, so the viewer
-    /// must obtain a challenge and arm it before the password is accepted.
-    /// Nothing was typed and no guess was spent. Distinct from `notAuthorized`
-    /// (the session is valid) and from `wrongPassword` (the password was never
-    /// read): the remedy is to confirm presence again, not to reconnect or to
-    /// retype.
-    case presenceRequired
     /// The password was accepted but the screen is still locked afterwards,
     /// or some other step failed. `reason` names which, for the operator log.
     case failed(reason: String)
@@ -279,7 +248,6 @@ public enum HostScreenUnlockOutcome: Equatable, Sendable {
         case .notAuthorized: return "not-authorized"
         case .tooManyAttempts: return "too-many-attempts"
         case .passwordTooLong: return "password-too-long"
-        case .presenceRequired: return "presence-required"
         case .failed: return "failed"
         }
     }
@@ -302,7 +270,6 @@ public enum HostScreenUnlockOutcome: Equatable, Sendable {
         case "not-authorized": self = .notAuthorized
         case "too-many-attempts": self = .tooManyAttempts
         case "password-too-long": self = .passwordTooLong
-        case "presence-required": self = .presenceRequired
         case "failed":
             guard let reason else {
                 throw SensoriumProtocolError.malformedMessage
@@ -437,57 +404,6 @@ public struct HostScreenModeEntry: Equatable, Sendable {
     }
 }
 
-/// A device's registration of its presence-bound credential, riding
-/// `pairRequest` -- docs/host-screen-design.md §6.3: registered "with this host when the
-/// devices pair," never as a message of its own.
-///
-/// `credentialID` is what a later `hostScreenRequest`'s signed proof will
-/// reference; `publicKey` is what a signature over that later proof's
-/// challenge is actually checked against. The two are kept separate, never
-/// collapsed into one field, because docs/host-screen-design.md §6.3's portability note
-/// requires it: a FIDO2 authenticator returns an opaque credential handle,
-/// not a raw public key, so the identifier a later proof names and the key
-/// a signature verifies against cannot always be the same bytes.
-///
-/// `strength` is the device's own report of which of the two acceptable
-/// strengths this credential holds -- recorded by the host and shown to
-/// the person arming it, never trusted as proof (CLAUDE.md's own
-/// invariant paragraph). Carried as the wire's own `String`, not
-/// `SensoriumHost.HostScreenCredentialStrength`: `SensoriumCore` does not
-/// depend on `SensoriumHost`. `SensoriumFrameCodec.decode` still validates
-/// it is one of the two spellings that type's `rawValue`s use --
-/// `"hardwareBound"` or `"softwarePresence"` -- refusing anything else as
-/// malformed rather than recording a value nobody actually reported.
-public struct PresenceCredentialRegistration: Equatable, Sendable {
-    public let credentialID: Data
-    public let publicKey: Data
-    /// Selects the verification routine a later proof is checked with --
-    /// never a mechanism of consent (docs/host-screen-design.md §6.3).
-    public let credentialFormat: String
-    public let strength: String
-
-    public init(credentialID: Data, publicKey: Data, credentialFormat: String, strength: String) {
-        self.credentialID = credentialID
-        self.publicKey = publicKey
-        self.credentialFormat = credentialFormat
-        self.strength = strength
-    }
-}
-
-/// What a `hostScreenRequest` offers as proof of presence: exactly one of
-/// two shapes, never a mixture and never neither. Both are references to
-/// something the host already minted or already registered --
-/// `credentialID` names a credential registered during pairing, and the
-/// signature is over the challenge *this* offer issued; the ticket is one
-/// the host minted for an earlier session of its own choosing. Neither case
-/// carries a tier, a strength, or a display description: a viewer-reported
-/// credential strength is unenforceable, so this type has no field for one
-/// to occupy in the first place.
-public enum HostScreenPresenceProof: Equatable, Sendable {
-    case signed(credentialID: Data, credentialFormat: String, signature: Data)
-    case resumeTicket(Data)
-}
-
 public enum CanvasPointerButton: String, Equatable, Sendable, Codable {
     case left
     case right
@@ -581,15 +497,12 @@ public enum SensoriumFrameCodec {
         // field.
         var maximumScale: Double? = nil
         var hostName: String? = nil
-        /// The five fields below are `hostScreenList`/`hostScreenRequest`/
-        /// `hostScreenReady`'s own. `reason`, `logicalWidth`, `logicalHeight`,
-        /// and `signature` above are reused as-is for `hostScreenRefused`
-        /// and `hostScreenReady`/`hostScreenRequest` respectively.
+        /// The four fields below are `hostScreenList`/`hostScreenRequest`/
+        /// `hostScreenReady`'s own. `reason`, `logicalWidth` and
+        /// `logicalHeight` above are reused as-is for `hostScreenRefused`
+        /// and `hostScreenReady`.
         var hostScreenDisplays: [WireHostScreenDisplayEntry]? = nil
-        var challenge: Data? = nil
         var hostScreenToken: Data? = nil
-        var credentialID: Data? = nil
-        var credentialFormat: String? = nil
         var backingScale: Double? = nil
         var resumeTicket: Data? = nil
         /// `streamScalePreference`'s own pair: which of `StreamScalePreference`'s
@@ -602,13 +515,6 @@ public enum SensoriumFrameCodec {
         /// merely clamped, so a value outside that range cannot reach a
         /// caller at all rather than being silently brought into range.
         var displayCount: Int? = nil
-        /// `pairRequest`'s own optional presence-credential registration.
-        /// `credentialID` and `credentialFormat` above are reused as-is.
-        /// `presenceCredentialPublicKey` is its own field: `publicKey`
-        /// above already carries the device's own pairing key on this exact
-        /// message, and the two must never collide.
-        var presenceCredentialPublicKey: Data? = nil
-        var presenceCredentialStrength: String? = nil
         var clipboardSharingEnabled: Bool? = nil
         /// `input`'s own round-trip tag, and `inputApplied`'s echo of it.
         var inputSequence: UInt64? = nil
@@ -932,8 +838,8 @@ public enum SensoriumFrameCodec {
         switch message {
         case let .hello(protocolVersion, deviceName):
             wire = WireMessage(type: "hello", protocolVersion: protocolVersion, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
-        case let .authenticatedHello(protocolVersion, deviceName, publicKey, signature):
-            wire = WireMessage(type: "authenticatedHello", protocolVersion: protocolVersion, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: publicKey, signature: signature, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
+        case let .authenticatedHello(protocolVersion, deviceName, publicKey, hostCertificateHash, signature):
+            wire = WireMessage(type: "authenticatedHello", protocolVersion: protocolVersion, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: publicKey, signature: signature, tlsCertificateHash: hostCertificateHash, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .canvasRequest(logicalWidth, logicalHeight, scale, surfaceID):
             wire = WireMessage(type: "canvasRequest", protocolVersion: nil, deviceName: nil, logicalWidth: logicalWidth, logicalHeight: logicalHeight, scale: scale, surfaceID: surfaceID, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, hostName):
@@ -950,8 +856,8 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "pairIntent", protocolVersion: nil, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .clipboardSharing(enabled):
             wire = WireMessage(type: "clipboardSharing", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, clipboardSharingEnabled: enabled)
-        case let .pairRequest(deviceName, publicKey, code, presenceCredential, signature):
-            wire = WireMessage(type: "pairRequest", protocolVersion: nil, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: publicKey, signature: signature, tlsCertificateHash: nil, code: code, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, credentialID: presenceCredential?.credentialID, credentialFormat: presenceCredential?.credentialFormat, presenceCredentialPublicKey: presenceCredential?.publicKey, presenceCredentialStrength: presenceCredential?.strength)
+        case let .pairRequest(deviceName, publicKey, code, signature):
+            wire = WireMessage(type: "pairRequest", protocolVersion: nil, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: publicKey, signature: signature, tlsCertificateHash: nil, code: code, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .pairApproved(hostPublicKey, tlsCertificateHash, signature):
             wire = WireMessage(type: "pairApproved", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: hostPublicKey, signature: signature, tlsCertificateHash: tlsCertificateHash, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .pairRejected(reason):
@@ -968,22 +874,10 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "telemetry", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: surfaces.map(WireTelemetrySurface.init))
         case let .viewerTelemetry(sample):
             wire = WireMessage(type: "viewerTelemetry", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, viewerTelemetry: sample)
-        case let .hostScreenList(displays, challenge):
-            wire = WireMessage(type: "hostScreenList", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenDisplays: displays.map(WireHostScreenDisplayEntry.init), challenge: challenge)
-        case let .hostScreenRequest(token, presence):
-            var wireCredentialID: Data?
-            var wireCredentialFormat: String?
-            var wireSignature: Data?
-            var wireResumeTicket: Data?
-            switch presence {
-            case let .signed(credentialID, credentialFormat, signature):
-                wireCredentialID = credentialID
-                wireCredentialFormat = credentialFormat
-                wireSignature = signature
-            case let .resumeTicket(ticket):
-                wireResumeTicket = ticket
-            }
-            wire = WireMessage(type: "hostScreenRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: wireSignature, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenToken: token, credentialID: wireCredentialID, credentialFormat: wireCredentialFormat, resumeTicket: wireResumeTicket)
+        case let .hostScreenList(displays):
+            wire = WireMessage(type: "hostScreenList", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenDisplays: displays.map(WireHostScreenDisplayEntry.init))
+        case let .hostScreenRequest(token, resumeTicket):
+            wire = WireMessage(type: "hostScreenRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenToken: token, resumeTicket: resumeTicket)
         case let .hostScreenReady(geometry, resumeTicket):
             wire = WireMessage(type: "hostScreenReady", protocolVersion: nil, deviceName: nil, logicalWidth: geometry.logicalWidth, logicalHeight: geometry.logicalHeight, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, backingScale: geometry.backingScale, resumeTicket: resumeTicket)
         case let .hostScreenRefused(reason):
@@ -1016,27 +910,6 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "hostScreenUnlockResult", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: outcome.wireReason, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenUnlockOutcome: outcome.wireToken)
         case let .hostScreenLockState(locked):
             wire = WireMessage(type: "hostScreenLockState", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenLocked: locked)
-        case .hostScreenUnlockChallengeRequest:
-            wire = WireMessage(type: "hostScreenUnlockChallengeRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
-        case let .hostScreenUnlockChallenge(challenge):
-            wire = WireMessage(type: "hostScreenUnlockChallenge", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, challenge: challenge)
-        case let .hostScreenUnlockArm(presence):
-            // The same two presence-proof shapes `hostScreenRequest` carries,
-            // encoded into the same wire fields, so an unlock arm and a session
-            // request speak one proof format rather than two.
-            var wireCredentialID: Data? = nil
-            var wireCredentialFormat: String? = nil
-            var wireSignature: Data? = nil
-            var wireResumeTicket: Data? = nil
-            switch presence {
-            case let .signed(credentialID, credentialFormat, signature):
-                wireCredentialID = credentialID
-                wireCredentialFormat = credentialFormat
-                wireSignature = signature
-            case let .resumeTicket(ticket):
-                wireResumeTicket = ticket
-            }
-            wire = WireMessage(type: "hostScreenUnlockArm", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: wireSignature, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, credentialID: wireCredentialID, credentialFormat: wireCredentialFormat, resumeTicket: wireResumeTicket)
         case .unrecognized:
             // Decode-only sentinel: sending it would fabricate a wire type
             // nobody agreed on.
@@ -1087,7 +960,13 @@ public enum SensoriumFrameCodec {
                   let signature = wire.signature else {
                 throw SensoriumProtocolError.malformedMessage
             }
-            return .authenticatedHello(protocolVersion: protocolVersion, deviceName: deviceName, publicKey: publicKey, signature: signature)
+            return .authenticatedHello(
+                protocolVersion: protocolVersion,
+                deviceName: deviceName,
+                publicKey: publicKey,
+                hostCertificateHash: wire.tlsCertificateHash,
+                signature: signature
+            )
         case "canvasRequest":
             guard let logicalWidth = wire.logicalWidth, let logicalHeight = wire.logicalHeight, let scale = wire.scale else {
                 throw SensoriumProtocolError.malformedMessage
@@ -1127,45 +1006,20 @@ public enum SensoriumFrameCodec {
             }
             return .clipboardSharing(enabled: enabled)
         case "pairRequest":
-            guard let deviceName = wire.deviceName, let publicKey = wire.publicKey, let code = wire.code else {
-                throw SensoriumProtocolError.malformedMessage
-            }
-            let presenceCredential: PresenceCredentialRegistration?
-            switch (wire.credentialID, wire.presenceCredentialPublicKey, wire.credentialFormat, wire.presenceCredentialStrength) {
-            case (nil, nil, nil, nil):
-                presenceCredential = nil
-            case let (.some(credentialID), .some(credentialPublicKey), .some(credentialFormat), .some(strength)):
-                // Validated against the two spellings
-                // `HostScreenCredentialStrength`'s own `rawValue`s use --
-                // this codec cannot import that type (`SensoriumCore` does
-                // not depend on `SensoriumHost`), so the check is spelled
-                // out here instead of shared. A device that reported
-                // neither acceptable strength never sends this field pair
-                // at all (CLAUDE.md's own invariant); an unrecognised
-                // string here is a malformed message, not a third,
-                // silently-accepted strength.
-                guard strength == "hardwareBound" || strength == "softwarePresence" else {
-                    throw SensoriumProtocolError.malformedMessage
-                }
-                presenceCredential = PresenceCredentialRegistration(
-                    credentialID: credentialID,
-                    publicKey: credentialPublicKey,
-                    credentialFormat: credentialFormat,
-                    strength: strength
-                )
-            default:
-                // A partial registration -- some of the four fields present,
-                // not all -- is exactly as unrepresentable as a
-                // hostScreenRequest naming neither or both proof shapes:
-                // never partially trusted.
+            // The proof of possession is as required as the code itself; a
+            // request without one is refused here rather than anywhere it
+            // could be mistaken for a request that merely failed to verify.
+            guard let deviceName = wire.deviceName,
+                  let publicKey = wire.publicKey,
+                  let code = wire.code,
+                  let signature = wire.signature else {
                 throw SensoriumProtocolError.malformedMessage
             }
             return .pairRequest(
                 deviceName: deviceName,
                 publicKey: publicKey,
                 code: code,
-                presenceCredential: presenceCredential,
-                signature: wire.signature
+                signature: signature
             )
         case "pairApproved":
             guard let hostPublicKey = wire.publicKey else {
@@ -1239,29 +1093,15 @@ public enum SensoriumFrameCodec {
             }
             return .goodbye(reason: reason)
         case "hostScreenList":
-            guard let displays = wire.hostScreenDisplays, let challenge = wire.challenge else {
+            guard let displays = wire.hostScreenDisplays else {
                 throw SensoriumProtocolError.malformedMessage
             }
-            return .hostScreenList(displays: try displays.map { try $0.value }, challenge: challenge)
+            return .hostScreenList(displays: try displays.map { try $0.value })
         case "hostScreenRequest":
             guard let token = wire.hostScreenToken else {
                 throw SensoriumProtocolError.malformedMessage
             }
-            let presence: HostScreenPresenceProof
-            switch (wire.resumeTicket, wire.credentialID, wire.credentialFormat, wire.signature) {
-            case let (.some(ticket), nil, nil, nil):
-                presence = .resumeTicket(ticket)
-            case let (nil, .some(credentialID), .some(credentialFormat), .some(signature)):
-                presence = .signed(credentialID: credentialID, credentialFormat: credentialFormat, signature: signature)
-            default:
-                // Neither a complete signed proof nor a complete ticket --
-                // including a mixture of both, or a partial one -- is
-                // admitted as "whichever half looks valid". A request that
-                // cannot be read as exactly one of its two allowed shapes
-                // is malformed, never partially trusted.
-                throw SensoriumProtocolError.malformedMessage
-            }
-            return .hostScreenRequest(token: token, presence: presence)
+            return .hostScreenRequest(token: token, resumeTicket: wire.resumeTicket)
         case "hostScreenReady":
             guard let logicalWidth = wire.logicalWidth,
                   let logicalHeight = wire.logicalHeight,
@@ -1354,27 +1194,6 @@ public enum SensoriumFrameCodec {
                 throw SensoriumProtocolError.malformedMessage
             }
             return .hostScreenLockState(locked: locked)
-        case "hostScreenUnlockChallengeRequest":
-            return .hostScreenUnlockChallengeRequest
-        case "hostScreenUnlockChallenge":
-            guard let challenge = wire.challenge else {
-                throw SensoriumProtocolError.malformedMessage
-            }
-            return .hostScreenUnlockChallenge(challenge: challenge)
-        case "hostScreenUnlockArm":
-            // Exactly one of the two proof shapes `hostScreenRequest` accepts,
-            // read the same way: neither a partial one nor a mixture is
-            // admitted as "whichever half looks valid".
-            let presence: HostScreenPresenceProof
-            switch (wire.resumeTicket, wire.credentialID, wire.credentialFormat, wire.signature) {
-            case let (.some(ticket), nil, nil, nil):
-                presence = .resumeTicket(ticket)
-            case let (nil, .some(credentialID), .some(credentialFormat), .some(signature)):
-                presence = .signed(credentialID: credentialID, credentialFormat: credentialFormat, signature: signature)
-            default:
-                throw SensoriumProtocolError.malformedMessage
-            }
-            return .hostScreenUnlockArm(presence: presence)
         default:
             // A message kind this build doesn't know, from a peer running a
             // different protocol revision. The length prefix already let the
@@ -1411,17 +1230,27 @@ public enum SensoriumFrameCodec {
         return transcript
     }
 
+    /// What an `authenticatedHello`'s signature covers, including the host
+    /// it is addressed to: `hostCertificateHash` is the SHA-256 of that
+    /// host's TLS certificate, and binding it here is what stops a host
+    /// from replaying a viewer's hello to another host the same viewer is
+    /// armed on. `nil` encodes as the literal `"none"`, the same marker
+    /// `pairApprovalTranscript` uses, so a link with no certificate and one
+    /// with a certificate can never produce the same transcript bytes.
     public static func authenticatedHelloTranscript(
         protocolVersion: UInt16,
         deviceName: String,
-        publicKey: Data
+        publicKey: Data,
+        hostCertificateHash: Data?
     ) -> Data {
-        var transcript = Data("sensorium-authenticated-hello-v1|".utf8)
+        var transcript = Data("sensorium-authenticated-hello-v2|".utf8)
         transcript.append(Data(String(protocolVersion).utf8))
         transcript.append(0)
         transcript.append(Data(deviceName.utf8))
         transcript.append(0)
         transcript.append(publicKey.base64EncodedData())
+        transcript.append(0)
+        transcript.append(hostCertificateHash?.base64EncodedData() ?? Data("none".utf8))
         return transcript
     }
 
@@ -1429,33 +1258,18 @@ public enum SensoriumFrameCodec {
     /// write from that request, so a proof made for one request cannot be
     /// lifted onto another asking for something else. Built the same way
     /// `pairApprovalTranscript` is -- a versioned prefix and NUL-separated
-    /// fields -- and a credential that is absent is spelled out as a fixed
-    /// marker rather than simply omitted, so "no credential" and a
-    /// credential whose fields happen to be empty are different transcripts.
+    /// fields.
     public static func pairRequestTranscript(
         deviceName: String,
         clientPublicKey: Data,
-        code: String,
-        presenceCredential: PresenceCredentialRegistration?
+        code: String
     ) -> Data {
-        var transcript = Data("sensorium-pair-request-v1|".utf8)
+        var transcript = Data("sensorium-pair-request-v2|".utf8)
         transcript.append(Data(deviceName.utf8))
         transcript.append(0)
         transcript.append(clientPublicKey.base64EncodedData())
         transcript.append(0)
         transcript.append(Data(code.utf8))
-        transcript.append(0)
-        guard let presenceCredential else {
-            transcript.append(Data("none".utf8))
-            return transcript
-        }
-        transcript.append(presenceCredential.credentialID.base64EncodedData())
-        transcript.append(0)
-        transcript.append(presenceCredential.publicKey.base64EncodedData())
-        transcript.append(0)
-        transcript.append(Data(presenceCredential.credentialFormat.utf8))
-        transcript.append(0)
-        transcript.append(Data(presenceCredential.strength.utf8))
         return transcript
     }
 

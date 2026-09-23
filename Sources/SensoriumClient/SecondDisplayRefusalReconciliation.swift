@@ -1,9 +1,9 @@
 import Foundation
 
 /// What a `"Displays"` refusal owes the session's own windows and its
-/// Displays-menu state, computed as data so `Sources/Sensorium/main.swift`
-/// only has to carry it out. `ClientSessionHost` (the caller) is `private`
-/// to the executable target and cannot be reached by any test target, so
+/// Displays-menu state, computed as data so the caller only has to carry
+/// it out. That caller, `ClientSessionHost`, is internal and cannot be
+/// named by any test target, so
 /// this is the seam that makes the reconciliation itself verifiable -- the
 /// same reasoning `secondDisplayOutcome(for:)` and `DisplayCountMenuPlan`
 /// already follow.
@@ -26,8 +26,7 @@ public enum SecondDisplayRefusalReconciliation {
     /// `hostWindowExists` alone -- **never** from whether the live
     /// `ClientSessionRunner` that received this particular refusal happens
     /// to hold that window as its own `secondaryWindow`. A runner is
-    /// rebuilt fresh on every reconnect (`Sources/Sensorium/main.swift`'s
-    /// `runOnce()`) and starts with no secondary attached, while the
+    /// rebuilt fresh on every reconnect (`ClientSessionHost.runOnce()`) and starts with no secondary attached, while the
     /// session's own `windows[1]` can still remember one left open from
     /// before the drop; a refusal that arrives during that reconnect's own
     /// re-ask must still close it. `runnerHasSecondaryWindow` is accepted

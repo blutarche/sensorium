@@ -34,17 +34,6 @@ private func hostScreenKeyInputDisplay(id: UInt32 = 7) -> DisplaySnapshot {
     )
 }
 
-private final class AlwaysApprovingHostScreenKeyVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(
-        proof: HostScreenPresenceProof,
-        devicePublicKey: Data,
-        minimumStrength: HostScreenCredentialStrength?,
-        challenge: Data
-    ) -> Bool {
-        true
-    }
-}
-
 private final class AlwaysIdleHostScreenKeySignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
@@ -61,7 +50,6 @@ func runHostScreenKeyInputTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -82,11 +70,11 @@ func runHostScreenKeyInputTests() async {
             keyConfinement: .confined(to: workspaces, scanning: FakeFrontmostWindowScan()),
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: AlwaysApprovingHostScreenKeyVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleHostScreenKeySignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1,
@@ -94,18 +82,14 @@ func runHostScreenKeyInputTests() async {
             publicKey: identity.publicKey,
             signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the fixture's offer names at least one display")
             return
         }
         let ready = try! controller.handle(.hostScreenRequest(
             token: entry.opaqueToken,
-            presence: .signed(
-                credentialID: Data([0x01]),
-                credentialFormat: "apple-secure-enclave-p256",
-                signature: Data([0x02])
-            )
+            resumeTicket: nil
         ))
         guard case .hostScreenReady = ready else {
             expect(false, "the host-screen request is admitted normally")

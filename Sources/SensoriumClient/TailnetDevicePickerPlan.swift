@@ -50,10 +50,13 @@ public enum TailnetDevicePickerState: Equatable, Sendable {
     /// longer waiting on anything.
     public var showsActivityDot: Bool { self == .loading }
 
-    public static func from(_ result: Result<TailnetDirectorySnapshot, TailnetDevicePickerFetchError>) -> TailnetDevicePickerState {
+    public static func from(
+        _ result: Result<TailnetDirectorySnapshot, TailnetDevicePickerFetchError>,
+        installHint: String = TailnetDevicePickerFetchError.defaultInstallHint
+    ) -> TailnetDevicePickerState {
         switch result {
         case let .failure(error):
-            return .unreachable(reason: error.reason)
+            return .unreachable(reason: error.reason(installHint: installHint))
         case let .success(snapshot):
             let ordered = TailnetDirectory.presentationOrder(snapshot.peers)
             return ordered.isEmpty ? .noOtherDevices : .devices(ordered.map(TailnetDevicePickerRow.init))
@@ -77,14 +80,27 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
     /// read at all (`TailnetDirectoryError`), or the read itself failed.
     case malformedStatus
 
-    public var reason: String {
+    /// How a machine with a Tailscale application of its own says to get it.
+    public static let defaultInstallHint = "Install Tailscale and sign in, then choose Look again."
+    /// How a machine where Tailscale is a daemon and nothing else says it.
+    /// Which distribution, and how it installs things, is the person's own
+    /// business, so this names neither.
+    public static let linuxInstallHint =
+        "Install Tailscale for Linux from your distribution, sign in, then choose Look again."
+
+    public var reason: String { reason(installHint: Self.defaultInstallHint) }
+
+    /// `installHint` is the second sentence of the not-installed reason, and
+    /// is the platform's to supply: only it knows whether there is an
+    /// application to install or a daemon to bring up. The other two reasons
+    /// are the same everywhere.
+    public func reason(installHint: String) -> String {
         switch self {
         case .tailscaledUnreachable:
             return "Tailscale doesn\u{2019}t seem to be running on this machine. "
                 + "Make sure Tailscale says Connected, then choose Look again."
         case .tailscaleNotInstalled:
-            return "Tailscale doesn\u{2019}t seem to be installed on this machine. "
-                + "Install Tailscale and sign in, then choose Look again."
+            return "Tailscale doesn\u{2019}t seem to be installed on this machine. " + installHint
         case .malformedStatus:
             return "Tailscale answered with something this app could not read. "
                 + "Try again, or enter the other machine\u{2019}s address by hand."

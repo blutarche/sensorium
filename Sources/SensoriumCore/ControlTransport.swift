@@ -1,3 +1,5 @@
+import Foundation
+
 public protocol SensoriumControlTransport: Sendable {
     func send(_ message: SensoriumMessage) async throws
     /// The next packet exactly as it came off the wire, control or media, with
@@ -8,10 +10,21 @@ public protocol SensoriumControlTransport: Sendable {
     /// Non-control packets a control wait stepped over. Shared with the media
     /// loop, which is what makes stepping over them lossless.
     var deferredPackets: DeferredPacketQueue { get }
+    /// The SHA-256 of the TLS certificate this link is pinned to, which the
+    /// authenticated hello sent over it names and signs. It is the channel
+    /// this session is actually on, read from the transport rather than
+    /// passed in alongside it, so a hello can never be signed for one host
+    /// and sent to another. `nil` is a link with no certificate: the
+    /// one-time pairing dial, and a plain TCP connection.
+    var pinnedHostCertificateHash: Data? { get }
     func close() async
 }
 
 public extension SensoriumControlTransport {
+    /// Most transports -- every in-memory and scripted one -- have no
+    /// certificate to bind to.
+    var pinnedHostCertificateHash: Data? { nil }
+
     /// The next packet the media loop should process: whatever a control wait
     /// held first, then the wire. Draining the hold first is what keeps the
     /// media loop's view of the stream in the order the peer sent it.

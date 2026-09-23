@@ -8,7 +8,6 @@ private func fingerprint(armedAt: Date, asksWhenInUse: Bool = false) -> HostScre
         HostScreenDeviceArming(
             devicePublicKey: Data([0xFF]),
             deviceName: "device",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: armedAt,
             asksWhenSomeoneIsUsingThisMachine: asksWhenInUse
         )

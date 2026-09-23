@@ -1,33 +1,6 @@
 import Foundation
 import SensoriumCore
 
-/// The two credential strengths host screen accepts: a private half held
-/// in hardware that cannot be extracted and confirms every use, or one held
-/// by the OS keystore behind a presence check that an attacker who already
-/// owns that machine can defeat. There is deliberately no third, weaker
-/// case.
-///
-/// This is a report, not proof: see `HostScreenDeviceArming.minimumCredentialStrength`.
-public enum HostScreenCredentialStrength: String, Codable, Equatable, Hashable, Sendable {
-    case hardwareBound
-    case softwarePresence
-}
-
-extension HostScreenCredentialStrength: Comparable {
-    /// Weakest to strongest: `.softwarePresence` can be extracted after one
-    /// presence check; `.hardwareBound` never can.
-    public static func < (lhs: Self, rhs: Self) -> Bool {
-        rank(lhs) < rank(rhs)
-    }
-
-    private static func rank(_ strength: Self) -> Int {
-        switch strength {
-        case .softwarePresence: return 0
-        case .hardwareBound: return 1
-        }
-    }
-}
-
 /// A display's identity for arming, stable enough to survive a restart.
 /// `CGDirectDisplayID` cannot be used here: it is not stable across sleep or
 /// replug. This reuses the same EDID vendor/model pair
@@ -155,15 +128,6 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     /// What the person at this machine typed while arming, never a value
     /// read back from a live connection.
     public var deviceName: String
-    /// Only decoded so a file written by an earlier version still loads;
-    /// nothing reads it.
-    public var credentialKind: HostScreenCredentialStrength?
-    /// The registered credential's strength as it was when this device was
-    /// armed, never re-read live, so a credential registered more weakly
-    /// later cannot soften what was already approved. `nil` is a record
-    /// predating this field and is refused outright, not treated
-    /// permissively.
-    public var minimumCredentialStrength: HostScreenCredentialStrength?
     public var armedAt: Date
     /// Whether this device's own session should still ask the person at
     /// this machine when it saw recent local input. Arming a machine is
@@ -174,25 +138,21 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     public init(
         devicePublicKey: Data,
         deviceName: String,
-        credentialKind: HostScreenCredentialStrength? = nil,
-        minimumCredentialStrength: HostScreenCredentialStrength? = nil,
         armedAt: Date,
         asksWhenSomeoneIsUsingThisMachine: Bool = false
     ) {
         self.devicePublicKey = devicePublicKey
         self.deviceName = deviceName
-        self.credentialKind = credentialKind
-        self.minimumCredentialStrength = minimumCredentialStrength
         self.armedAt = armedAt
         self.asksWhenSomeoneIsUsingThisMachine = asksWhenSomeoneIsUsingThisMachine
     }
 
-    /// No key for the per-display list an earlier version wrote: arming is
-    /// per machine now, and a key nothing decodes is a key a file may still
-    /// carry. An existing record keeps working, and is written back without
-    /// it.
+    /// No key for the per-display list or the credential strengths an
+    /// earlier version wrote: arming is per machine, and a key nothing
+    /// decodes is a key a file may still carry. An existing record keeps
+    /// working, and is written back without them.
     private enum CodingKeys: String, CodingKey {
-        case devicePublicKey, deviceName, credentialKind, minimumCredentialStrength, armedAt
+        case devicePublicKey, deviceName, armedAt
         case asksWhenSomeoneIsUsingThisMachine
     }
 
@@ -200,10 +160,6 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         devicePublicKey = try container.decode(Data.self, forKey: .devicePublicKey)
         deviceName = try container.decode(String.self, forKey: .deviceName)
-        credentialKind = try container.decodeIfPresent(HostScreenCredentialStrength.self, forKey: .credentialKind)
-        minimumCredentialStrength = try container.decodeIfPresent(
-            HostScreenCredentialStrength.self, forKey: .minimumCredentialStrength
-        )
         armedAt = try container.decode(Date.self, forKey: .armedAt)
         asksWhenSomeoneIsUsingThisMachine = try container.decodeIfPresent(
             Bool.self, forKey: .asksWhenSomeoneIsUsingThisMachine
@@ -212,11 +168,8 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
 }
 
 extension HostScreenDeviceArming {
-    /// Host screen's own default: a machine that pairs and registers a
-    /// presence credential is armed at once, for this machine's displays as they
-    /// stand whenever a session starts. `nil` when the pairing device
-    /// registered no credential -- it may still pair and use a session
-    /// canvas, but this pairing does not arm host screen for it.
+    /// Host screen's own default: a machine that pairs is armed at once,
+    /// for this machine's displays as they stand whenever a session starts.
     ///
     /// `HostScreenArmingCoordinator.toggle(isOn: true)` in `sensoriumd`
     /// builds through this exact function rather than repeating the same
@@ -226,14 +179,10 @@ extension HostScreenDeviceArming {
         devicePublicKey: Data,
         approvedStore: any ApprovedDeviceStoring,
         now: Date
-    ) -> HostScreenDeviceArming? {
-        guard let strength = approvedStore.presenceCredential(for: devicePublicKey)?.strength else {
-            return nil
-        }
-        return HostScreenDeviceArming(
+    ) -> HostScreenDeviceArming {
+        HostScreenDeviceArming(
             devicePublicKey: devicePublicKey,
             deviceName: ApprovedDeviceDisplayName.resolve(for: devicePublicKey, in: approvedStore),
-            minimumCredentialStrength: strength,
             armedAt: now,
             asksWhenSomeoneIsUsingThisMachine: false
         )
@@ -245,9 +194,31 @@ extension HostScreenDeviceArming {
 /// disarmed.
 public struct HostScreenArming: Codable, Equatable, Sendable {
     public var devices: [HostScreenDeviceArming]
+    /// Whether this machine has already armed the machines that were
+    /// paired with it. Pairing arms host screen, so that is done once,
+    /// and recorded here so a later read cannot undo a person turning
+    /// one machine back off. Absent from a file written before this was
+    /// recorded, where `false` is the honest answer.
+    public var everyPairedMachineArmed: Bool
 
-    public init(devices: [HostScreenDeviceArming] = []) {
+    public init(
+        devices: [HostScreenDeviceArming] = [],
+        everyPairedMachineArmed: Bool = false
+    ) {
         self.devices = devices
+        self.everyPairedMachineArmed = everyPairedMachineArmed
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case devices, everyPairedMachineArmed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        devices = try container.decode([HostScreenDeviceArming].self, forKey: .devices)
+        everyPairedMachineArmed = try container.decodeIfPresent(
+            Bool.self, forKey: .everyPairedMachineArmed
+        ) ?? false
     }
 }
 
@@ -260,19 +231,41 @@ public struct HostScreenArming: Codable, Equatable, Sendable {
 ///
 /// Stored as `~/Library/Application Support/Sensorium/host-screen-arming.json`
 /// by `sensoriumd`: this is a policy record, not a secret, and its owner
-/// should be able to read it with `cat` and revoke it with `rm`.
+/// should be able to read it with `cat`. Deleting the file is not a
+/// revocation: pairing is what arms host screen, so a file that is not
+/// there is a machine that has not yet armed the machines paired with it,
+/// and the next launch arms them. Turning one machine off, which
+/// `disarm` records, is how a person revokes.
 public final class HostScreenArmingStore {
     private let url: URL
+    private let log: (String) -> Void
+    private var reportedUnreadableFile = false
     public private(set) var writeCount = 0
 
-    public init(url: URL) {
+    public init(url: URL, log: @escaping (String) -> Void = { print("Sensorium host: \($0)") }) {
         self.url = url
+        self.log = log
     }
 
+    /// A file that is not there is a machine that has not armed anything
+    /// yet, and reads as the empty default. A file that is there and cannot
+    /// be decoded is a different thing entirely: reading it as the empty
+    /// default would say the one-time arming below had never run, and the
+    /// next `armEveryPairedMachine` would arm every paired machine again,
+    /// including every one the person at this host had turned off. So an
+    /// unreadable file arms nothing and counts as already migrated, and the
+    /// person is told once which file it was, so re-arming is their own
+    /// deliberate act.
     public func load() -> HostScreenArming {
-        guard let data = try? Data(contentsOf: url),
-              let arming = try? JSONDecoder().decode(HostScreenArming.self, from: data) else {
+        guard let data = try? Data(contentsOf: url) else {
             return HostScreenArming()
+        }
+        guard let arming = try? JSONDecoder().decode(HostScreenArming.self, from: data) else {
+            if !reportedUnreadableFile {
+                reportedUnreadableFile = true
+                log("host screen: the arming record at \(url.path) could not be read. No machine is armed for host screen until you arm one again in the host window.")
+            }
+            return HostScreenArming(devices: [], everyPairedMachineArmed: true)
         }
         return arming
     }
@@ -311,6 +304,26 @@ public final class HostScreenArmingStore {
         disarm(devicePublicKey: devicePublicKey)
     }
 
+    /// Arms every machine paired with this one, once: pairing is what
+    /// arms host screen, so a machine that paired before this machine
+    /// recorded arming that way is armed here the first time this is
+    /// called. Later calls do nothing, so a device the person at this
+    /// machine turned off afterwards stays off across restarts.
+    public func armEveryPairedMachine(approvedStore: any ApprovedDeviceStoring, now: Date) {
+        var arming = load()
+        guard !arming.everyPairedMachineArmed else { return }
+        let alreadyKnown = Set(arming.devices.map(\.devicePublicKey))
+        for key in approvedStore.load() where !alreadyKnown.contains(key) {
+            arming.devices.append(HostScreenDeviceArming.onPairing(
+                devicePublicKey: key,
+                approvedStore: approvedStore,
+                now: now
+            ))
+        }
+        arming.everyPairedMachineArmed = true
+        save(arming)
+    }
+
     /// The person arming a device's own choice of whether their machine
     /// should still ask when it saw recent local input. Absent from
     /// `devices` is not an error -- there is nothing to flip on a device
@@ -333,33 +346,19 @@ public enum HostScreenArmingPresentation {
     public struct DeviceLine: Equatable, Sendable {
         public let devicePublicKey: Data
         public let deviceName: String
-        /// Worded as a report, never as proof -- see
-        /// `HostScreenDeviceArming.minimumCredentialStrength`'s own note.
-        /// `nil` for a device armed before that field was snapshotted; a
-        /// caller that needs to say something in that case uses
-        /// `needsRearmingNotice` on a line of its own, not appended to the
-        /// device's name.
-        public let credentialSummary: String?
 
-        public init(devicePublicKey: Data, deviceName: String, credentialSummary: String?) {
+        public init(devicePublicKey: Data, deviceName: String) {
             self.devicePublicKey = devicePublicKey
             self.deviceName = deviceName
-            self.credentialSummary = credentialSummary
         }
     }
 
     /// One line per armed device, in the order they were armed. Empty when
     /// nothing is armed, which the menu bar and the Host Setup window both
     /// read as "show nothing extra."
-    ///
-    /// `credentialSummary` reads `HostScreenDeviceArming.minimumCredentialStrength`.
     public static func lines(for arming: HostScreenArming) -> [DeviceLine] {
         arming.devices.map { device in
-            DeviceLine(
-                devicePublicKey: device.devicePublicKey,
-                deviceName: device.deviceName,
-                credentialSummary: device.minimumCredentialStrength.map { words(for: $0, deviceName: device.deviceName) }
-            )
+            DeviceLine(devicePublicKey: device.devicePublicKey, deviceName: device.deviceName)
         }
     }
 
@@ -367,7 +366,7 @@ public enum HostScreenArmingPresentation {
     /// only the ones currently sharing a real screen. `approvedDevices` is
     /// every key `ApprovedDeviceStoring` holds,
     /// paired with the name given at pairing; `arming` says which of them is
-    /// currently sharing and, for that one, what credential it registered.
+    /// currently sharing.
     public struct PairedMachineRow: Equatable, Sendable {
         public let devicePublicKey: Data
         public let deviceName: String
@@ -378,16 +377,6 @@ public enum HostScreenArmingPresentation {
         /// would only repeat the title.
         public let keyFingerprintLine: String?
         public let isSharingRealScreen: Bool
-        /// Not-yet-armed: the credential registered right now. Armed: the
-        /// snapshot taken at arm time. `nil` when there is nothing to
-        /// report.
-        public let credentialSummary: String?
-        /// Why sharing cannot be turned on for this machine right now, or why
-        /// its own snapshot needs refreshing, in plain words on its own
-        /// line -- `nil` once neither applies. `noCredentialNotice` when no
-        /// credential is registered at all; `needsRearmingNotice` for an
-        /// armed device with nothing snapshotted.
-        public let blockedReason: String?
         /// "May share Built-in Display.", the permission, not a live share.
         /// Names the displays this machine could hand this machine right now,
         /// since arming is per machine; `nil` when there are none.
@@ -407,8 +396,6 @@ public enum HostScreenArmingPresentation {
             deviceName: String,
             keyFingerprintLine: String? = nil,
             isSharingRealScreen: Bool,
-            credentialSummary: String?,
-            blockedReason: String?,
             sharedDisplaysLine: String? = nil,
             notOfferedReason: String? = nil,
             asksWhenInUse: Bool = false
@@ -417,8 +404,6 @@ public enum HostScreenArmingPresentation {
             self.deviceName = deviceName
             self.keyFingerprintLine = keyFingerprintLine
             self.isSharingRealScreen = isSharingRealScreen
-            self.credentialSummary = credentialSummary
-            self.blockedReason = blockedReason
             self.sharedDisplaysLine = sharedDisplaysLine
             self.notOfferedReason = notOfferedReason
             self.asksWhenInUse = asksWhenInUse
@@ -430,15 +415,13 @@ public enum HostScreenArmingPresentation {
     public static let asksWhenInUseLabel = "Ask me first if this machine is in use"
 
     /// One row per approved device, in `ApprovedDeviceStoring`'s own order.
-    /// A not-yet-armed row gates on the credential registered now; an
-    /// armed row on the strength snapshotted when it was armed, with
-    /// `needsRearmingNotice` when that snapshot is missing. `activeDisplays`
-    /// is this machine's own displays right now, which is what an armed row
-    /// names: arming is per machine, so what a machine may share is decided
-    /// afresh from that list. Passing none leaves an armed row silent about
-    /// displays rather than claiming this machine has none.
+    /// `activeDisplays` is this machine's own displays right now, which is
+    /// what an armed row names: arming is per machine, so what a machine
+    /// may share is decided afresh from that list. Passing none leaves an
+    /// armed row silent about displays rather than claiming this machine
+    /// has none.
     public static func pairedMachineRows(
-        approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)],
+        approvedDevices: [(publicKey: Data, name: String?)],
         arming: HostScreenArming,
         activeDisplays: [DisplaySnapshot] = []
     ) -> [PairedMachineRow] {
@@ -446,7 +429,6 @@ public enum HostScreenArmingPresentation {
             let resolvedName = device.name ?? ApprovedDeviceDisplayName.fingerprint(of: device.publicKey)
             let keyFingerprintLine = device.name != nil ? "Key \(ApprovedDeviceDisplayName.hex(of: device.publicKey))" : nil
             if let armed = arming.devices.first(where: { $0.devicePublicKey == device.publicKey }) {
-                let snapshotted = armed.minimumCredentialStrength
                 let sharedDisplaysLine = sharedDisplaysLine(activeDisplays: activeDisplays)
                 let notOfferedReason = sharedDisplaysLine == nil && !activeDisplays.isEmpty
                     ? noShareableDisplayNotice
@@ -456,21 +438,16 @@ public enum HostScreenArmingPresentation {
                     deviceName: resolvedName,
                     keyFingerprintLine: keyFingerprintLine,
                     isSharingRealScreen: true,
-                    credentialSummary: snapshotted.map { words(for: $0, deviceName: resolvedName) },
-                    blockedReason: snapshotted == nil ? needsRearmingNotice : nil,
                     sharedDisplaysLine: sharedDisplaysLine,
                     notOfferedReason: notOfferedReason,
                     asksWhenInUse: armed.asksWhenSomeoneIsUsingThisMachine
                 )
             }
-            let credentialSummary = device.credentialStrength.map { words(for: $0, deviceName: resolvedName) }
             return PairedMachineRow(
                 devicePublicKey: device.publicKey,
                 deviceName: resolvedName,
                 keyFingerprintLine: keyFingerprintLine,
-                isSharingRealScreen: false,
-                credentialSummary: credentialSummary,
-                blockedReason: credentialSummary == nil ? noCredentialNotice(deviceName: resolvedName) : nil
+                isSharingRealScreen: false
             )
         }
     }
@@ -576,29 +553,12 @@ public enum HostScreenArmingPresentation {
         }
     }
 
-    /// What a device with no registered credential cannot yet do, said in
-    /// words about the missing fact rather than the internal state that
-    /// produced it. Shared so the Host Setup window and the menu bar say
-    /// exactly the same thing. Named by `deviceName`, not "This machine" --
-    /// this row's own words are read at the host, where "this machine" already
-    /// means the host itself; the paired device needs its own name.
-    public static func noCredentialNotice(deviceName: String) -> String {
-        "Pair \(deviceName) again to turn this on."
-    }
-
-    /// An armed device whose snapshot predates this machine recording one at
-    /// arm time -- never claims no credential exists, since one plainly
-    /// does (it is armed), only that this machine never captured it. Turning
-    /// sharing off and back on re-arms it and takes a fresh snapshot.
     /// An armed machine with nothing to hand it: this machine has displays, but
     /// every one of them is offline, asleep, mirroring another, or a canvas
     /// Sensorium created. Nothing about the machine's own arming is wrong,
     /// so this never reads as a permission problem.
     public static let noShareableDisplayNotice =
         "No display on this machine can be shared right now."
-
-    public static let needsRearmingNotice =
-        "How this machine holds its presence key was not recorded when it paired. Turn Share host screen off and on again to record it."
 
     /// The words `hostScreenList`'s own `label` field already uses --
     /// shared so a caller that names the same display later (the session
@@ -612,14 +572,5 @@ public enum HostScreenArmingPresentation {
     /// against.
     public static func displayLabel(for display: DisplaySnapshot) -> String {
         display.name ?? (display.builtin ? "Built-in Display" : "External Display")
-    }
-
-    static func words(for strength: HostScreenCredentialStrength, deviceName: String) -> String {
-        switch strength {
-        case .hardwareBound:
-            return "Presence key on \(deviceName): reported as hardware-held."
-        case .softwarePresence:
-            return "Presence key on \(deviceName): reported as software-held."
-        }
     }
 }

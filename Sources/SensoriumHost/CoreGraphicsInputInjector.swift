@@ -23,8 +23,20 @@ public enum CoreGraphicsInputInjectorError: Error, Equatable {
 /// window server and Dock's own hotkeys, such as Mission Control or
 /// Spotlight -- is posted at `.cghidEventTap` instead, because those
 /// consumers act ahead of `.cgSessionEventTap` and never see an event posted
-/// there at all. Sending one from the viewer therefore counts as local input
-/// at the host for the same five minutes an ordinary key would not.
+/// there at all. Sending one from the viewer therefore touches
+/// `hidSystemState` the same way a real key at the machine would; see below
+/// for how that is kept from reading as a person at the host.
+///
+/// A second exception: while `lockStateReader` reports the screen locked,
+/// every event -- key, pointer, and scroll alike -- posts at `.cghidEventTap`
+/// instead of `.cgSessionEventTap`, the same tap the system-hotkey exception
+/// above uses.
+///
+/// Both exceptions sample `hostInjectedHIDActivity` immediately before they
+/// post, and record into it once they do, so
+/// `SelfPostDiscountingLocalActivitySignal` can tell that counted-as-local
+/// input apart from a real person later -- and so a real person's own input
+/// just before one of these posts is not lost to it.
 ///
 /// A key on the navigation cluster (arrows, Home, End, Page Up/Down, forward
 /// delete) or the F-row also carries `CoreGraphicsInputTranslation
@@ -41,6 +53,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     private let canvasDisplayID: CGDirectDisplayID
     private let source: CGEventSource
     private let postEvent: (CGEvent, CGEventTapLocation) -> Void
+    private let lockStateReader: any ScreenLockStateReading
+    private let hostInjectedHIDActivity: any HostInjectedHIDActivity
     private var modifiers: CGEventFlags = []
     private var heldButton: CanvasPointerButton?
     /// Where every relative-motion event is posted while captured. The
@@ -56,6 +70,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     /// would inject a real synthetic event system-wide.
     public init(
         canvasDisplayID: CGDirectDisplayID,
+        lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
+        hostInjectedHIDActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared,
         postEvent: @escaping (CGEvent, CGEventTapLocation) -> Void = { event, tap in event.post(tap: tap) }
     ) throws {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
@@ -63,16 +79,20 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         }
         self.canvasDisplayID = canvasDisplayID
         self.source = source
+        self.lockStateReader = lockStateReader
+        self.hostInjectedHIDActivity = hostInjectedHIDActivity
         self.postEvent = postEvent
     }
 
     public func inject(_ event: SensoriumInputEvent) throws {
         switch event {
         case let .pointerMoved(x, y):
+            let point = try globalPoint(x: x, y: y)
             try post(
                 mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
                 button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
-                at: try globalPoint(x: x, y: y)
+                at: point,
+                tap: tapLocation()
             )
         case let .pointerMovedRelative(deltaX, deltaY):
             // A race, not a protocol violation: the viewer always sends
@@ -86,7 +106,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
                 at: anchor,
                 relativeDeltaX: deltaX,
-                relativeDeltaY: deltaY
+                relativeDeltaY: deltaY,
+                tap: tapLocation()
             )
         case let .pointerButton(button, isDown, x, y):
             heldButton = isDown ? button : nil
@@ -94,7 +115,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             try post(
                 mouse: CoreGraphicsInputTranslation.buttonType(button, isDown: isDown),
                 button: CoreGraphicsInputTranslation.mouseButton(button),
-                at: point
+                at: point,
+                tap: tapLocation()
             )
         case let .scrolled(deltaX, deltaY, _, _, phase, momentumPhase):
             // A CGEvent scroll carries no location: macOS routes it to
@@ -104,12 +126,9 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // other. Posted every time rather than only on a change of
             // position: each surface has its own injector, so this one cannot
             // know whether the sibling injector has moved the cursor since.
+            var cursorPoint: CGPoint?
             if let positioning = CoreGraphicsInputTranslation.cursorPositioning(for: event) {
-                try post(
-                    mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
-                    button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
-                    at: try globalPoint(x: positioning.x, y: positioning.y)
-                )
+                cursorPoint = try globalPoint(x: positioning.x, y: positioning.y)
             }
             guard let scroll = CoreGraphicsInputTranslation.scrollEvent(
                 source: source,
@@ -121,7 +140,16 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 throw CoreGraphicsInputInjectorError.eventCreationFailed
             }
             scroll.flags = modifiers
-            postEvent(scroll, .cgSessionEventTap)
+            let tap = tapLocation()
+            if let cursorPoint {
+                try post(
+                    mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
+                    button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
+                    at: cursorPoint,
+                    tap: tap
+                )
+            }
+            postEvent(scroll, tap)
         case let .pointerCaptureChanged(isCaptured):
             if isCaptured {
                 let bounds = CGDisplayBounds(canvasDisplayID)
@@ -148,9 +176,15 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // .maskSecondaryFn just because the last key injected was an
             // arrow key.
             key.flags = modifiers.union(CoreGraphicsInputTranslation.nativeAuxiliaryFlags(forKeyCode: keyCode))
-            let tap: CGEventTapLocation = SystemHotkeyChord.isSystemHotkey(keyCode: keyCode, modifiers: eventModifiers)
-                ? .cghidEventTap
-                : .cgSessionEventTap
+            let isSystemHotkey = SystemHotkeyChord.isSystemHotkey(keyCode: keyCode, modifiers: eventModifiers)
+            let tap: CGEventTapLocation
+            if isSystemHotkey {
+                hostInjectedHIDActivity.sampleBeforePost()
+                hostInjectedHIDActivity.recordPost()
+                tap = .cghidEventTap
+            } else {
+                tap = tapLocation()
+            }
             postEvent(key, tap)
         case .releaseAllInput:
             // Not a real release: this injector only remembers the single most
@@ -162,6 +196,19 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             modifiers = []
             heldButton = nil
         }
+    }
+
+    /// `.cghidEventTap` while the screen is locked, `.cgSessionEventTap`
+    /// otherwise -- see the type's own doc comment for why. Sampling and
+    /// recording into `hostInjectedHIDActivity` live here, not at each call
+    /// site, because this is called at most once per posted event that
+    /// reaches here (the system-hotkey exception samples and records at its
+    /// own call site instead, since it never calls this at all).
+    private func tapLocation() -> CGEventTapLocation {
+        guard lockStateReader.isScreenLocked() else { return .cgSessionEventTap }
+        hostInjectedHIDActivity.sampleBeforePost()
+        hostInjectedHIDActivity.recordPost()
+        return .cghidEventTap
     }
 
     /// Canvas logical points are relative to the canvas; CGEvent wants global
@@ -184,7 +231,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         button: CGMouseButton,
         at point: CGPoint,
         relativeDeltaX: Double? = nil,
-        relativeDeltaY: Double? = nil
+        relativeDeltaY: Double? = nil,
+        tap: CGEventTapLocation
     ) throws {
         guard let event = CGEvent(
             mouseEventSource: source,
@@ -201,16 +249,29 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             event.setIntegerValueField(.mouseEventDeltaY, value: Int64(relativeDeltaY.rounded()))
         }
         event.flags = modifiers
-        postEvent(event, .cgSessionEventTap)
+        postEvent(event, tap)
     }
 }
 
 @MainActor
 public final class CoreGraphicsInputInjectorFactory: InputInjectingFactory {
-    public init() {}
+    private let lockStateReader: any ScreenLockStateReading
+    private let hostInjectedHIDActivity: any HostInjectedHIDActivity
+
+    public init(
+        lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
+        hostInjectedHIDActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared
+    ) {
+        self.lockStateReader = lockStateReader
+        self.hostInjectedHIDActivity = hostInjectedHIDActivity
+    }
 
     public func make(canvasDisplayID: UInt32) throws -> any InputInjecting {
-        try CoreGraphicsInputInjector(canvasDisplayID: canvasDisplayID)
+        try CoreGraphicsInputInjector(
+            canvasDisplayID: canvasDisplayID,
+            lockStateReader: lockStateReader,
+            hostInjectedHIDActivity: hostInjectedHIDActivity
+        )
     }
 }
 

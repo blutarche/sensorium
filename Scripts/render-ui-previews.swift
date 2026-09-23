@@ -612,9 +612,7 @@ MainActor.assumeIsolated {
         HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop",
-            isSharingRealScreen: false,
-            credentialSummary: nil,
-            blockedReason: HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel Laptop")
+            isSharingRealScreen: false
         )
     ]
     let twoPairedRows: [HostScreenArmingPresentation.PairedMachineRow] = [
@@ -622,16 +620,12 @@ MainActor.assumeIsolated {
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop",
             isSharingRealScreen: true,
-            credentialSummary: HostScreenArmingPresentation.words(for: .hardwareBound, deviceName: "Kestrel Laptop"),
-            blockedReason: nil,
             sharedDisplaysLine: "May share Built-in Display."
         ),
         HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
             deviceName: "Kestrel Notebook",
-            isSharingRealScreen: false,
-            credentialSummary: nil,
-            blockedReason: HostScreenArmingPresentation.noCredentialNotice(deviceName: "Kestrel Notebook")
+            isSharingRealScreen: false
         )
     ]
 
@@ -644,8 +638,8 @@ MainActor.assumeIsolated {
     let unnamedLegacyDeviceKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x02])
     let namedAndUnnamedRows = HostScreenArmingPresentation.pairedMachineRows(
         approvedDevices: [
-            (namedDeviceKey, "kestrel-mbp", .hardwareBound),
-            (unnamedLegacyDeviceKey, nil, nil)
+            (namedDeviceKey, "kestrel-mbp"),
+            (unnamedLegacyDeviceKey, nil)
         ],
         arming: HostScreenArming()
     )
@@ -671,29 +665,26 @@ MainActor.assumeIsolated {
         online: true, builtin: false, main: false, vendorNumber: 0x03, modelNumber: 0x03
     )
     let sameNameDisplaysRows = HostScreenArmingPresentation.pairedMachineRows(
-        approvedDevices: [(sameNameDisplaysKey, "Kestrel Laptop", .hardwareBound)],
+        approvedDevices: [(sameNameDisplaysKey, "Kestrel Laptop")],
         arming: HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: sameNameDisplaysKey,
                 deviceName: "Kestrel Laptop",
-                armedDisplays: [sameNameLeftDisplay, sameNameRightDisplay].map(HostScreenDisplayIdentity.init),
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ]),
         activeDisplays: [sameNameMainDisplay, sameNameLeftDisplay, sameNameRightDisplay]
     )
 
-    // An armed device whose credential-strength snapshot predates this machine
-    // capturing one -- `needsRearmingNotice`, checked here for wrapping.
-    let needsRearmingKey = Data([0x33])
-    let needsRearmingRows = HostScreenArmingPresentation.pairedMachineRows(
-        approvedDevices: [(needsRearmingKey, "Kestrel Laptop", .hardwareBound)],
+    // An armed machine with no display list to judge from, which leaves the
+    // row silent about displays rather than claiming this machine has none.
+    let armedWithoutDisplaysKey = Data([0x33])
+    let armedWithoutDisplaysRows = HostScreenArmingPresentation.pairedMachineRows(
+        approvedDevices: [(armedWithoutDisplaysKey, "Kestrel Laptop")],
         arming: HostScreenArming(devices: [
             HostScreenDeviceArming(
-                devicePublicKey: needsRearmingKey,
+                devicePublicKey: armedWithoutDisplaysKey,
                 deviceName: "Kestrel Laptop",
-                armedDisplays: [],
                 armedAt: Date()
             )
         ])
@@ -791,11 +782,10 @@ MainActor.assumeIsolated {
             sameNameDisplaysRows
         ),
         (
-            "host-window-19-paired-machines-needs-rearming",
-            "an armed device whose credential-strength snapshot predates this machine capturing one, saying what"
-                + " happened and what to do about it",
+            "host-window-19-paired-machines-armed-without-displays",
+            "an armed device with no display list to judge from, so the row stays silent about displays",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
-            needsRearmingRows
+            armedWithoutDisplaysRows
         ),
         (
             "host-window-20-connected-with-pairing-code",
@@ -1309,8 +1299,6 @@ MainActor.assumeIsolated {
         ("presence-check-required", "host-screen-presence-check-required"),
         ("presence-declined", "host-screen-presence-declined"),
         ("presence-unanswered", "host-screen-presence-unanswered"),
-        ("needs-rearming", "host-screen-needs-rearming"),
-        ("credential-unknown", "host-screen-credential-unknown"),
         ("display-unavailable", "host-screen-display-unavailable"),
         ("retry-needs-person", "host-screen-retry-needs-person"),
         ("resume-refused", "host-screen-resume-refused"),
@@ -1351,7 +1339,7 @@ MainActor.assumeIsolated {
     // break.
     let longHostName = "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max"
     for (slug, reason) in [
-        ("credential-unknown", "host-screen-credential-unknown"),
+        ("presence-declined", "host-screen-presence-declined"),
         ("not-allowed", "host-screen-not-allowed")
     ] {
         var endedMachine = ViewerSessionStateMachine(hostName: longHostName)

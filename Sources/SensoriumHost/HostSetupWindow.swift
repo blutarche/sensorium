@@ -15,6 +15,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let onOpenPermissionSettings: @MainActor (String) -> Void
     private let onReplaceIdentity: @MainActor () -> Void
     private let onRetryIdentityRead: @MainActor () -> Void
+    private let autoLoginStatus: @MainActor () -> HostAutoLoginStatus
+    private let onToggleAutoLogin: @MainActor (Bool) -> Void
     /// The clock this window reads, so a test can hold time still.
     private let now: @MainActor () -> Date
     /// Looked up fresh on every `refresh()`, never cached across it: whether
@@ -40,6 +42,16 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let hideCodeButton = NSButton()
     private let pairingCodeView = PairingCodeView()
     private let pairedMachines = PairedMachinesView()
+    /// Whether this app opens at login. Off by default in the control
+    /// itself -- the process that owns this window applies the "on by
+    /// default" choice once, at launch, before this window is ever shown;
+    /// this checkbox only ever reflects and changes what is already true.
+    private let autoLoginCheckbox = NSButton(checkboxWithTitle: "Open at login", target: nil, action: nil)
+    /// Extra text under the checkbox for a status that is not a plain
+    /// on/off: `.requiresApproval` needs a trip to System Settings before
+    /// it takes effect, and `.notFound` means the platform will not do this
+    /// at all -- neither reads as the checkbox simply being off.
+    private let autoLoginStatusLabel = NSTextField(labelWithString: "")
     private var status: HostOperatorStatus
     /// Tailscale's app when installed, its download page when not; `nil`
     /// only while the button is hidden.
@@ -75,6 +87,11 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         onToggleSharing: @escaping @MainActor (Data, Bool) -> Void,
         onRemovePairedDevice: @escaping @MainActor (Data) -> Void,
         onToggleAskFirst: @escaping @MainActor (Data, Bool) -> Void = { _, _ in },
+        // Read fresh on every `refresh()`, never cached across it, the same
+        // as `tailscaleAppURLLookup` above: the owner can change this in
+        // System Settings directly while the window is open.
+        autoLoginStatus: @escaping @MainActor () -> HostAutoLoginStatus = { .notRegistered },
+        onToggleAutoLogin: @escaping @MainActor (Bool) -> Void = { _ in },
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.onRevealPairingCode = onRevealPairingCode
@@ -85,6 +102,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         self.onOpenTailscaleApp = onOpenTailscaleApp
         self.onReplaceIdentity = onReplaceIdentity
         self.onRetryIdentityRead = onRetryIdentityRead
+        self.autoLoginStatus = autoLoginStatus
+        self.onToggleAutoLogin = onToggleAutoLogin
         self.now = now
         self.status = status
         pairedMachines.onToggleSharing = onToggleSharing
@@ -215,10 +234,28 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
         pairedMachines.translatesAutoresizingMaskIntoConstraints = false
 
+        autoLoginCheckbox.font = CanvasDesign.font(.primary, size: 13)
+        (autoLoginCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
+            string: "Open at login",
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 13),
+                .foregroundColor: CanvasDesign.ink.nsColor
+            ]
+        )
+        autoLoginCheckbox.target = self
+        autoLoginCheckbox.action = #selector(autoLoginToggled)
+        autoLoginCheckbox.translatesAutoresizingMaskIntoConstraints = false
+
+        autoLoginStatusLabel.font = CanvasDesign.font(.primary, size: 12)
+        autoLoginStatusLabel.textColor = CanvasDesign.muted.nsColor
+        autoLoginStatusLabel.lineBreakMode = .byWordWrapping
+        autoLoginStatusLabel.maximumNumberOfLines = 0
+        autoLoginStatusLabel.translatesAutoresizingMaskIntoConstraints = false
+
         let groups: [NSView] = [
             panel, stopButton, permissionButton, tailscaleButton,
             retryIdentityButton, replaceIdentityButton, revealButton, pairingCodeView, hideCodeButton,
-            pairedMachines
+            autoLoginCheckbox, autoLoginStatusLabel, pairedMachines
         ]
         for view in groups {
             root.addArrangedSubview(view)
@@ -232,6 +269,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.setCustomSpacing(CanvasDesign.Space.lg, after: replaceIdentityButton)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: revealButton)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: hideCodeButton)
+        root.setCustomSpacing(CanvasDesign.Space.xs, after: autoLoginCheckbox)
+        root.setCustomSpacing(CanvasDesign.Space.lg, after: autoLoginStatusLabel)
 
         let inset = CanvasDesign.Space.xl
         NSLayoutConstraint.activate([
@@ -315,6 +354,34 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         }
 
         panel.presentation = presentation
+
+        switch autoLoginStatus() {
+        case .enabled:
+            autoLoginCheckbox.state = .on
+            autoLoginCheckbox.isEnabled = true
+            autoLoginStatusLabel.stringValue = ""
+            autoLoginStatusLabel.isHidden = true
+        case .notRegistered:
+            autoLoginCheckbox.state = .off
+            autoLoginCheckbox.isEnabled = true
+            autoLoginStatusLabel.stringValue = ""
+            autoLoginStatusLabel.isHidden = true
+        case .requiresApproval:
+            // Registered, but macOS will not actually launch it until the
+            // owner approves it themselves -- shown, not silently read as on.
+            autoLoginCheckbox.state = .on
+            autoLoginCheckbox.isEnabled = true
+            autoLoginStatusLabel.stringValue = "Needs your approval in System Settings General Login Items."
+            autoLoginStatusLabel.isHidden = false
+        case .notFound:
+            // The platform reports this app as not found: nothing here can
+            // turn login items on, so the control is shown disabled rather
+            // than silently doing nothing when clicked.
+            autoLoginCheckbox.state = .off
+            autoLoginCheckbox.isEnabled = false
+            autoLoginStatusLabel.stringValue = "Not available on this Mac."
+            autoLoginStatusLabel.isHidden = false
+        }
 
         refreshPairingSection(presentation)
 
@@ -424,6 +491,11 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
     @objc private func replaceIdentityTapped() {
         onReplaceIdentity()
+    }
+
+    @objc private func autoLoginToggled() {
+        onToggleAutoLogin(autoLoginCheckbox.state == .on)
+        refresh()
     }
 
     @objc private func retryIdentityReadTapped() {

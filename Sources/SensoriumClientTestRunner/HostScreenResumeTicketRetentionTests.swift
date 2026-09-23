@@ -79,27 +79,29 @@ func testHostScreenResumeTicketRetentionTests() async {
     }
 
     do {
-        // Design §6.5 "never in a retry loop": only a signed proof
-        // sent inside a person-initiated attempt is allowed; an
-        // automatic redial holding no ticket must stop instead.
+        // An automatic redial that holds no ticket for its target stops
+        // instead of dialling. Without a ticket the host reads the connect
+        // as a new session, and a host asking first would put its prompt up
+        // once per backoff attempt; the person at the viewer asks again
+        // instead. A session canvas is never gated this way.
         expect(
-            HostScreenResumeTicketRetention.mustStopBeforeSigning(
+            HostScreenResumeTicketRetention.mustStopWithoutTicket(
                 target: .hostScreen(displayIdentity: displayIdentity),
                 ticketToPresent: nil,
                 isPersonInitiated: false
             ),
-            "an automatic redial with no ticket held must not sign"
+            "an automatic redial holding no ticket for the target stops"
         )
         expect(
-            !HostScreenResumeTicketRetention.mustStopBeforeSigning(
+            !HostScreenResumeTicketRetention.mustStopWithoutTicket(
                 target: .hostScreen(displayIdentity: displayIdentity),
                 ticketToPresent: nil,
                 isPersonInitiated: true
             ),
-            "a person-initiated attempt with no ticket held may still sign"
+            "a person's own attempt dials with no ticket, because the person is there to answer for it"
         )
         expect(
-            !HostScreenResumeTicketRetention.mustStopBeforeSigning(
+            !HostScreenResumeTicketRetention.mustStopWithoutTicket(
                 target: .hostScreen(displayIdentity: displayIdentity),
                 ticketToPresent: held.ticket,
                 isPersonInitiated: false
@@ -107,33 +109,49 @@ func testHostScreenResumeTicketRetentionTests() async {
             "an automatic redial that holds a ticket for the target presents it -- nothing to stop"
         )
         expect(
-            !HostScreenResumeTicketRetention.mustStopBeforeSigning(
+            !HostScreenResumeTicketRetention.mustStopWithoutTicket(
                 target: .sessionCanvas,
                 ticketToPresent: nil,
                 isPersonInitiated: false
             ),
-            "a session-canvas target never signs at all, so there is nothing to stop"
+            "a session-canvas target needs no ticket at all, so there is nothing to stop"
         )
-        print("PASS: only a person-initiated attempt may fall back to signing when no ticket is held")
+        print("PASS: an automatic redial stops without a ticket, and a person's own attempt does not")
     }
 
     do {
-        // `HostScreenConnectPlan` is computed once per attempt, so a
-        // second automatic attempt's own plan never inherits the first
-        // attempt's person flag -- even when that first attempt never
-        // connected at all, so nothing about the target or the held
-        // ticket changed between the two. Reading the flag after
-        // `transport.start()`, which can throw and be retried, would let
-        // a stale `true` survive into the automatic redial that followed.
+        // `HostScreenConnectPlan` is computed once per attempt, from the
+        // ticket held at that moment: a plan for a target no ticket was
+        // minted for presents nothing, and the one for the display the
+        // held ticket names presents exactly that ticket. The plan is also
+        // where the person flag is consumed, so a second automatic attempt
+        // can never inherit the first attempt's own `true`.
         let target = SessionTarget.hostScreen(displayIdentity: displayIdentity)
-        let firstAttemptPlan = HostScreenConnectPlan.compute(target: target, heldTicket: nil, isPersonInitiated: true)
-        expect(!firstAttemptPlan.mustStopBeforeSigning, "the person-initiated first attempt may still sign")
-
-        let secondAttemptPlan = HostScreenConnectPlan.compute(target: target, heldTicket: nil, isPersonInitiated: false)
         expect(
-            secondAttemptPlan.mustStopBeforeSigning,
-            "an automatic redial's own plan stops, holding no ticket and no person behind it, whether or not the first attempt ever connected"
+            HostScreenConnectPlan.compute(target: target, heldTicket: nil, isPersonInitiated: true)
+                .ticketToPresent == nil,
+            "an attempt holding no ticket presents none"
         )
-        print("PASS: a plan computed once per attempt never lets a second automatic attempt inherit the first attempt's own person flag")
+        expect(
+            HostScreenConnectPlan.compute(target: target, heldTicket: held, isPersonInitiated: false)
+                .ticketToPresent == held.ticket,
+            "and one holding this display's own ticket presents it"
+        )
+        expect(
+            HostScreenConnectPlan.compute(target: .sessionCanvas, heldTicket: held, isPersonInitiated: false)
+                .ticketToPresent == nil,
+            "a session-canvas target presents nothing, whatever is held"
+        )
+        expect(
+            !HostScreenConnectPlan.compute(target: target, heldTicket: nil, isPersonInitiated: true)
+                .mustStopWithoutTicket,
+            "the person-initiated first attempt dials"
+        )
+        expect(
+            HostScreenConnectPlan.compute(target: target, heldTicket: nil, isPersonInitiated: false)
+                .mustStopWithoutTicket,
+            "and the automatic redial that follows it stops, holding no ticket and no person behind it"
+        )
+        print("PASS: a connect plan presents exactly the ticket held for the target it names, and stops an automatic redial holding none")
     }
 }

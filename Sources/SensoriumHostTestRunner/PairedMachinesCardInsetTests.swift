@@ -55,9 +55,8 @@ func runPairedMachinesCardInsetTests() async {
         let row = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
-            isSharingRealScreen: true,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: nil
+            isSharingRealScreen: true
+
         )
         let hostController = controller(rows: [row])
         let pairedMachines: NSView = field("pairedMachines", of: hostController, as: NSView.self)

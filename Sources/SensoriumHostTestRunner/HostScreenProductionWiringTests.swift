@@ -11,8 +11,8 @@ import SensoriumHost
 /// `HostConnectionSessionFactory` is what `sensoriumd` actually constructs
 /// once per process and shares across every connection -- these two tests
 /// exercise its own host-screen pass-through, built the same way `sensoriumd`
-/// builds it (a real `HostScreenArmingStore` reading a real file, a real
-/// `HostScreenResumeTicketStore`, and no presence-proof verifier), rather
+/// builds it (a real `HostScreenArmingStore` reading a real file and a real
+/// `HostScreenResumeTicketStore`), rather
 /// than `HostSessionController`'s constructor directly, so a regression in
 /// the factory's forwarding is caught here even if `HostSessionController`'s
 /// own admission tests stay green.
@@ -46,12 +46,6 @@ private func temporaryArmingStoreURL() -> URL {
         .appendingPathComponent("sensorium-host-screen-wiring-test-\(UUID().uuidString).json")
 }
 
-@MainActor
-private func temporaryApprovedDeviceStoreURL() -> URL {
-    URL(fileURLWithPath: NSTemporaryDirectory())
-        .appendingPathComponent("sensorium-approved-devices-wiring-test-\(UUID().uuidString).json")
-}
-
 /// Stands in for `HostScreenBadgeWindowController`: records `show`/`hide`
 /// without ever opening a real `NSPanel`, so every test below can assert
 /// the badge was genuinely shown and hidden -- not just that `badgeState`
@@ -71,61 +65,6 @@ private final class FakeHostScreenBadgeDisplaying: HostScreenBadgeDisplaying {
 private func temporaryHostScreenSessionLogURL() -> URL {
     URL(fileURLWithPath: NSTemporaryDirectory())
         .appendingPathComponent("sensorium-host-screen-session-log-wiring-test-\(UUID().uuidString).json")
-}
-
-/// Registers `signingKey`'s public half for `devicePublicKey` the only way
-/// this codebase ever writes one -- through `HostPairingService`'s own
-/// pairing ceremony (design §6.3/CLAUDE.md: "a new credential ... can only
-/// ever reach this host through the pairing ceremony"), not by writing to
-/// `approvedDeviceStore` directly.
-@MainActor
-private func registerThroughPairing(
-    approvedDeviceStore: FileApprovedDeviceStore,
-    devicePublicKey: Data,
-    deviceName: String,
-    credentialID: Data,
-    signingKey: P256.Signing.PrivateKey,
-    strength: HostScreenCredentialStrength
-) {
-    let hostIdentity = try! DeviceIdentity.generate()
-    let pairing = HostPairingService(hostIdentity: hostIdentity, approvedStore: approvedDeviceStore)
-    let code = pairing.issueCode()
-    let reply = pairing.handlePairRequest(
-        deviceName: deviceName,
-        publicKey: devicePublicKey,
-        code: code,
-        presenceCredential: PresenceCredentialRegistration(
-            credentialID: credentialID,
-            publicKey: signingKey.publicKey.rawRepresentation,
-            credentialFormat: PresenceCredentialVerifier.supportedCredentialFormat,
-            strength: strength.rawValue
-        )
-    )
-    guard case .pairApproved = reply else {
-        expect(false, "pairing with a freshly issued code and a well-formed credential registration approves")
-        return
-    }
-}
-
-/// Mirrors `HostScreenArmingCoordinator.toggle(isOn: true)`'s own snapshot
-/// line exactly (`Sources/sensoriumd/main.swift`) -- that type is `private`
-/// inside an executable target and cannot be imported here, so this is the
-/// closest thing to exercising it directly: the same one-line read from
-/// `approvedStore.presenceCredential(for:)?.strength`, written into
-/// `minimumCredentialStrength` at arm time rather than left `nil`.
-@MainActor
-private func armThroughCoordinator(
-    armingStore: HostScreenArmingStore,
-    approvedStore: any ApprovedDeviceStoring,
-    devicePublicKey: Data,
-    deviceName: String
-) {
-    armingStore.arm(HostScreenDeviceArming(
-        devicePublicKey: devicePublicKey,
-        deviceName: deviceName,
-        minimumCredentialStrength: approvedStore.presenceCredential(for: devicePublicKey)?.strength,
-        armedAt: Date()
-    ))
 }
 
 @MainActor
@@ -150,20 +89,20 @@ func runHostScreenProductionWiringTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: nil,
             hostScreenResumeTicketStore: resumeTicketStore,
             hostScreenLocalActivitySignal: signal
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
         let response = try! controller.handle(.hostScreenRequest(
             token: Data([0x01]),
-            presence: .signed(credentialID: Data([0x02]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x03]))
+            resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-not-allowed"),
@@ -176,8 +115,9 @@ func runHostScreenProductionWiringTests() async {
     }
 
     do {
-        // An armed device, but no presence-proof verifier: refuses,
-        // and the refusal names the verifier, not the arming.
+        // An armed device is admitted, through the exact objects
+        // sensoriumd constructs: pairing armed it, and nothing else
+        // is asked of it.
         let armingURL = temporaryArmingStoreURL()
         defer { try? FileManager.default.removeItem(at: armingURL) }
         let armingStore = HostScreenArmingStore(url: armingURL)
@@ -200,221 +140,35 @@ func runHostScreenProductionWiringTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: nil,
             hostScreenResumeTicketStore: resumeTicketStore,
             hostScreenLocalActivitySignal: signal
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
             expect(false, "an armed device with an eligible display offers at least one entry")
             return
         }
         let response = try! controller.handle(.hostScreenRequest(
             token: entry.opaqueToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         expect(
-            response == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "an armed device with every obligation held except the verifier refuses on the verifier's own absence, not on the arming record it genuinely has"
+            { if case .hostScreenReady = response { return true } else { return false } }(),
+            "an armed device asking for a display this host offers is admitted through the factory sensoriumd itself builds"
         )
-        expect(injectorFactory.requestedDisplayIDs.isEmpty, "verifier absent: no injector is ever built")
-
-        print("PASS: an armed device with no presence-proof verifier configured is refused on the verifier, not the arming")
-    }
-
-    do {
-        // The real verifier, over the real credential a real pairing
-        // ceremony registered: a genuine signature is admitted.
-        let approvedDeviceStore = FileApprovedDeviceStore(url: temporaryApprovedDeviceStoreURL())
-        let armingStore = HostScreenArmingStore(url: temporaryArmingStoreURL())
-        let display = wiringTestDisplay(id: 23)
-        let deviceIdentity = try! DeviceIdentity.generate()
-        let credentialID = Data([0x07])
-        let signingKey = P256.Signing.PrivateKey()
-        registerThroughPairing(
-            approvedDeviceStore: approvedDeviceStore,
-            devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel Laptop Pro",
-            credentialID: credentialID,
-            signingKey: signingKey,
-            strength: .hardwareBound
-        )
-        // Armed at or below what was actually registered -- design §6.3's
-        // own minimum check, satisfied rather than sidestepped.
-        armingStore.arm(HostScreenDeviceArming(
-            devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
-            armedAt: Date()
-        ))
-
-        let factory = HostConnectionSessionFactory(
-            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            approvedPublicKeys: [deviceIdentity.publicKey],
-            requireAuthentication: true,
-            keyConfinement: .hostScreen,
-            hostScreenArmingProvider: { armingStore.load() },
-            hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore),
-            hostScreenResumeTicketStore: HostScreenResumeTicketStore(),
-            hostScreenLocalActivitySignal: FakeProductionWiringLocalActivitySignal()
-        )
-        let controller = factory.makeController()
-        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey
-        )
-        _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey,
-            signature: try! deviceIdentity.sign(transcript)
-        ))
-        guard case let .hostScreenList(displays, challenge) = try! controller.offerHostScreenList(), let entry = displays.first else {
-            expect(false, "an armed, credentialed device with an eligible display offers at least one entry")
-            return
-        }
-        let genuineSignature = try! signingKey.signature(for: challenge)
-        let admitted = try! controller.handle(.hostScreenRequest(
-            token: entry.opaqueToken,
-            presence: .signed(credentialID: credentialID, credentialFormat: PresenceCredentialVerifier.supportedCredentialFormat, signature: genuineSignature.rawRepresentation)
-        ))
         expect(
-            { if case .hostScreenReady = admitted { return true } else { return false } }(),
-            "a device paired with a credential registered the only way this codebase ever registers one -- through HostPairingService itself -- and signing the minted challenge with the matching private key, is admitted through the exact objects sensoriumd constructs"
+            injectorFactory.requestedDisplayIDs == [display.id],
+            "the admitted session builds an injector for exactly the display it was admitted on"
         )
 
-        print("PASS: a credential registered at pairing, signed over the minted challenge, is admitted end to end")
-    }
-
-    do {
-        // The same device and arming, but the challenge is signed
-        // with a different private key: refused, and the cause
-        // names the verifier, not the arming or the display.
-        let approvedDeviceStore = FileApprovedDeviceStore(url: temporaryApprovedDeviceStoreURL())
-        let armingStore = HostScreenArmingStore(url: temporaryArmingStoreURL())
-        let display = wiringTestDisplay(id: 24)
-        let deviceIdentity = try! DeviceIdentity.generate()
-        let credentialID = Data([0x08])
-        let registeredKey = P256.Signing.PrivateKey()
-        let impostorKey = P256.Signing.PrivateKey()
-        registerThroughPairing(
-            approvedDeviceStore: approvedDeviceStore,
-            devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel Laptop Pro",
-            credentialID: credentialID,
-            signingKey: registeredKey,
-            strength: .hardwareBound
-        )
-        armingStore.arm(HostScreenDeviceArming(
-            devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
-            armedAt: Date()
-        ))
-
-        let factory = HostConnectionSessionFactory(
-            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            approvedPublicKeys: [deviceIdentity.publicKey],
-            requireAuthentication: true,
-            keyConfinement: .hostScreen,
-            hostScreenArmingProvider: { armingStore.load() },
-            hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore),
-            hostScreenResumeTicketStore: HostScreenResumeTicketStore(),
-            hostScreenLocalActivitySignal: FakeProductionWiringLocalActivitySignal()
-        )
-        let controller = factory.makeController()
-        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey
-        )
-        _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey,
-            signature: try! deviceIdentity.sign(transcript)
-        ))
-        guard case let .hostScreenList(displays, challenge) = try! controller.offerHostScreenList(), let entry = displays.first else {
-            expect(false, "an armed, credentialed device with an eligible display offers at least one entry")
-            return
-        }
-        let impostorSignature = try! impostorKey.signature(for: challenge)
-        let refused = try! controller.handle(.hostScreenRequest(
-            token: entry.opaqueToken,
-            presence: .signed(credentialID: credentialID, credentialFormat: PresenceCredentialVerifier.supportedCredentialFormat, signature: impostorSignature.rawRepresentation)
-        ))
-        expect(
-            refused == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "a signature from a key other than the one this device actually registered at pairing is refused with the verifier's own cause, not the arming record or the display, both of which are genuinely fine"
-        )
-
-        print("PASS: a request signed with a key other than the one registered at pairing is refused end to end as host-screen-credential-unknown")
-    }
-
-    do {
-        // Arming snapshots the registered strength, the way the
-        // real coordinator's own toggle(isOn: true) does.
-        let approvedDeviceStore = FileApprovedDeviceStore(url: temporaryApprovedDeviceStoreURL())
-        let armingStore = HostScreenArmingStore(url: temporaryArmingStoreURL())
-        let display = wiringTestDisplay(id: 25)
-        let deviceIdentity = try! DeviceIdentity.generate()
-        let credentialID = Data([0x09])
-        let signingKey = P256.Signing.PrivateKey()
-        registerThroughPairing(
-            approvedDeviceStore: approvedDeviceStore,
-            devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel Laptop Pro",
-            credentialID: credentialID,
-            signingKey: signingKey,
-            strength: .softwarePresence
-        )
-        armThroughCoordinator(
-            armingStore: armingStore,
-            approvedStore: approvedDeviceStore,
-            devicePublicKey: deviceIdentity.publicKey,
-            deviceName: "Kestrel Laptop Pro"
-        )
-        let armedRecord = armingStore.load().devices.first { $0.devicePublicKey == deviceIdentity.publicKey }
-        expect(
-            armedRecord?.minimumCredentialStrength == .softwarePresence,
-            "arming snapshots the strength actually registered at pairing (software-presence here) into minimumCredentialStrength, rather than leaving it nil"
-        )
-
-        let factory = HostConnectionSessionFactory(
-            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            approvedPublicKeys: [deviceIdentity.publicKey],
-            requireAuthentication: true,
-            keyConfinement: .hostScreen,
-            hostScreenArmingProvider: { armingStore.load() },
-            hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore),
-            hostScreenResumeTicketStore: HostScreenResumeTicketStore(),
-            hostScreenLocalActivitySignal: FakeProductionWiringLocalActivitySignal()
-        )
-        let controller = factory.makeController()
-        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey
-        )
-        _ = try! controller.handle(.authenticatedHello(
-            protocolVersion: 1, deviceName: "Kestrel Laptop Pro", publicKey: deviceIdentity.publicKey,
-            signature: try! deviceIdentity.sign(transcript)
-        ))
-        guard case let .hostScreenList(displays, challenge) = try! controller.offerHostScreenList(), let entry = displays.first else {
-            expect(false, "a device armed through the coordinator's own snapshot logic, with an eligible display, offers at least one entry")
-            return
-        }
-        let genuineSignature = try! signingKey.signature(for: challenge)
-        let admitted = try! controller.handle(.hostScreenRequest(
-            token: entry.opaqueToken,
-            presence: .signed(credentialID: credentialID, credentialFormat: PresenceCredentialVerifier.supportedCredentialFormat, signature: genuineSignature.rawRepresentation)
-        ))
-        expect(
-            { if case .hostScreenReady = admitted { return true } else { return false } }(),
-            "a genuine signature from the key registered at pairing is admitted once arming has snapshotted that same strength as its own minimum -- the coordinator's write and the verifier's check agree"
-        )
-
-        print("PASS: arming snapshots the strength actually registered at pairing, and a genuine signed request against that snapshot is admitted")
+        print("PASS: an armed device is admitted end to end through the objects sensoriumd constructs")
     }
 
     do {

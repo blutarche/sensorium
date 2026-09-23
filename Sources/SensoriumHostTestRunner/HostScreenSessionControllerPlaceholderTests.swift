@@ -30,7 +30,7 @@ func runHostScreenSessionControllerPlaceholderTests() async {
         // reason.
         do {
             _ = try controller.handle(
-                .hostScreenRequest(token: Data([0x01]), presence: .resumeTicket(Data([0x02])))
+                .hostScreenRequest(token: Data([0x01]), resumeTicket: Data([0x02]))
             )
             expect(false, "an unauthenticated hostScreenRequest must throw")
         } catch HostSessionControllerError.authenticationRequired {
@@ -39,7 +39,8 @@ func runHostScreenSessionControllerPlaceholderTests() async {
         }
 
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -52,7 +53,7 @@ func runHostScreenSessionControllerPlaceholderTests() async {
         // the same honest refusal a real unarmed device gets from a fully
         // wired controller (`HostScreenSessionControllerAdmissionTests.swift`).
         let response = try! controller.handle(
-            .hostScreenRequest(token: Data([0x01]), presence: .resumeTicket(Data([0x02])))
+            .hostScreenRequest(token: Data([0x01]), resumeTicket: Data([0x02]))
         )
         expect(
             response == .hostScreenRefused(reason: "host-screen-not-allowed"),
@@ -62,7 +63,7 @@ func runHostScreenSessionControllerPlaceholderTests() async {
         // The three host-to-client-only host-screen messages are rejected
         // if ever received, the same as timeSyncReply/telemetry/canvasRefused.
         for message: SensoriumMessage in [
-            .hostScreenList(displays: [], challenge: Data([0x01])),
+            .hostScreenList(displays: []),
             .hostScreenReady(
                 geometry: SessionSurfaceGeometry(logicalWidth: 1920, logicalHeight: 1200, backingScale: 2.0),
                 resumeTicket: Data([0x01])

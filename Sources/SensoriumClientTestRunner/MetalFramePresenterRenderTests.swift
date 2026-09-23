@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import CoreVideo
 import Foundation
@@ -338,3 +339,4 @@ private func makeFilledBiplanarPixelBuffer(
     }
     return buffer
 }
+#endif

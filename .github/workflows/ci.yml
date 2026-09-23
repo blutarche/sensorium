@@ -26,6 +26,14 @@ jobs:
           python3 Scripts/test-check-display-active.py
           python3 Scripts/test-documentation-status.py
 
+      # The Linux icons are committed, because the renderer is CoreGraphics
+      # and only this job's machine can run it. This proves the committed
+      # PNGs are still exactly what the script draws.
+      - name: Linux icons match the generator
+        run: |
+          swift Scripts/make-app-icons.swift --linux "$RUNNER_TEMP/linux-icons"
+          diff -r "$RUNNER_TEMP/linux-icons/hicolor" Packaging/linux/icons/hicolor
+
       - name: Build (release)
         run: swift build -c release
 
@@ -36,3 +44,61 @@ jobs:
       # ./Scripts/run-unit-tests.sh before opening a pull request.
       - name: SensoriumCoreTestRunner (release)
         run: swift run -c release SensoriumCoreTestRunner
+
+  # Only SensoriumCoreTestRunner and SensoriumClientTestRunner are
+  # portable to Linux; SensoriumHostTestRunner and
+  # SensoriumIntegrationTestRunner depend on macOS-only capture and
+  # display APIs. The container image is the same Fedora release as the
+  # reference viewer machine.
+  linux-build-and-test:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - name: Install dependencies
+        # System libraries the viewer's Linux targets link against
+        run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pkgconf-pkg-config python3 wayland-devel
+
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (release)
+        run: |
+          swift build -c release --product SensoriumCoreTestRunner
+          swift build -c release --product SensoriumClientTestRunner
+          swift build -c release --product SensoriumViewerProbe
+          swift build -c release --product Sensorium
+
+      # The viewer's GUI is the only surface people use, so every capability
+      # docs/ux-spec.md names has to be reachable from the Linux window layer.
+      # Scripts/linux-gui-pending.txt lists the ones the session window's
+      # chrome has not brought over yet.
+      - name: Linux GUI reachability
+        run: sh Scripts/test-linux-gui-reachable.sh --allow-missing Scripts/linux-gui-pending.txt
+
+      - name: SensoriumCoreTestRunner (release)
+        run: swift run -c release SensoriumCoreTestRunner
+
+      - name: SensoriumClientTestRunner (release)
+        run: swift run -c release SensoriumClientTestRunner
+
+  # The package is built and installed in a container, never on a machine
+  # anybody uses: installing and removing an RPM is the only honest check
+  # that it installs and removes cleanly.
+  linux-package:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    steps:
+      - name: Install dependencies
+        # The same libraries the build job installs, plus what builds and
+        # validates a package.
+        run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pkgconf-pkg-config python3 wayland-devel rpm-build desktop-file-utils appstream
+
+      - uses: actions/checkout@v4
+
+      - name: Build the package
+        run: sh Scripts/package-linux.sh
+
+      - name: Install, check and remove the package
+        run: sh Scripts/test-package-linux.sh

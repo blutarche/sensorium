@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.sensorium.viewer</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Sensorium</name>
+  <summary>Private remote workstation for two machines</summary>
+  <developer id="com.sensorium">
+    <name>blutarche</name>
+  </developer>
+  <description>
+    <p>
+      Sensorium is a private remote workstation for two machines. You sit at
+      this one, the viewer, and work on a virtual display the other machine
+      creates for you. With permission granted at that machine, you can also
+      see and control one of its real screens.
+    </p>
+    <p>
+      The two machines talk directly over their own Tailscale tailnet. There
+      is no account, no relay, no telemetry and no command line. This package
+      is the viewer. The machine being worked on runs macOS.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.sensorium.viewer.desktop</launchable>
+  <url type="homepage">https://github.com/blutarche/sensorium</url>
+  <url type="bugtracker">https://github.com/blutarche/sensorium/issues</url>
+  <provides>
+    <binary>Sensorium</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@RELEASE_DATE@"/>
+  </releases>
+</component>

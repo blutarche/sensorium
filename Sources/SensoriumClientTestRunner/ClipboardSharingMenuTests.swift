@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 import SensoriumClient
@@ -64,3 +65,4 @@ func testClipboardSharingMenuTests() async {
         print("PASS: with no focused target, the Clipboard item reads off, matching the default every session starts at")
     }
 }
+#endif

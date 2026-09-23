@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -179,3 +180,4 @@ func testTailnetDevicePickerTests() async {
         print("PASS: the live provider refuses cleanly when none of its candidate paths exist, without ever launching a process")
     }
 }
+#endif

@@ -28,12 +28,18 @@ public final class FileHostTLSIdentityStore: HostTLSIdentityProviding, HostTLSId
             guard let data = try? Data(contentsOf: url),
                   let stored = try? JSONDecoder().decode(StoredIdentity.self, from: data),
                   let certificateDER = Data(base64Encoded: stored.certificateDER),
-                  let privateKeyData = Data(base64Encoded: stored.privateKey),
-                  SecCertificateCreateWithData(nil, certificateDER as CFData) != nil else {
+                  let privateKeyData = Data(base64Encoded: stored.privateKey) else {
                 throw FileHostTLSIdentityStoreError.invalidStoredValue
             }
+            #if canImport(Security)
+            guard SecCertificateCreateWithData(nil, certificateDER as CFData) != nil else {
+                throw FileHostTLSIdentityStoreError.invalidStoredValue
+            }
+            #endif
             let identity = HostTLSIdentity(certificateDER: certificateDER, privateKeyData: privateKeyData)
+            #if canImport(Security)
             _ = try identity.makeSecIdentity()
+            #endif
             return identity
         }
 

@@ -12,7 +12,7 @@ import MetalKit
 /// `ClientViewportController` and `CanvasSurfaceEventRouter`, which are verified
 /// without a window.
 @MainActor
-public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow, ShortcutForwardingTarget, ViewerMenuCommandTarget, @unchecked Sendable {
+public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow, SessionWindowChrome, ViewerMenuCommandTarget, @unchecked Sendable {
     private let window: NSWindow
     /// The address-derived title until `updateTitle(_:)` learns the host's
     /// own name from `canvasReady`; `attach(session:)` resets to whatever
@@ -32,7 +32,10 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// property of the session, not of one window. `nil` means this window
     /// never reports focus, which leaves the host on fair share.
     private let focusReporter: ViewerFocusReporter?
-    private var decoder: VideoToolboxDecoder?
+    private var decoder: (any VideoDecoding)?
+    /// How this window builds its decoder. Defaulted to VideoToolbox on
+    /// macOS; a platform with another decoder passes its own.
+    private let makeDecoder: VideoDecoderFactory
     /// Takes packets off the receive loop and decodes them on a queue of its
     /// own, so a slow decode on this machine never slows down reading the
     /// socket. `nil` before `startDecoding` and after `stopDecoding`.
@@ -120,10 +123,10 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     private var cachedStartTargetPreference: StartTarget = .hostScreenWhenOffered
     /// docs/ux-spec.md's "Clipboard: on or off", cached the same way
     /// `cachedDisplayCount` is and for the same reason. A session starts with
-    /// sharing on, so this window's own starting
-    /// truth matches the Clipboard item's own static default in
-    /// `ViewerMenuPlan`.
-    private var cachedClipboardSharingEnabled = true
+    /// sharing off (`ClipboardSyncEngine.sharingEnabledByDefault`), so this
+    /// window's own starting truth matches the Clipboard item's own static
+    /// default in `ViewerMenuPlan`.
+    private var cachedClipboardSharingEnabled = false
     /// The system shortcuts this machine takes for itself -- Mission Control,
     /// Spotlight, Command-Tab -- offered as buttons that send them to the
     /// machine being worked on instead. Closed but for its handle until that
@@ -146,10 +149,6 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// `statusOverlay`: that overlay means the session itself is down, this
     /// means one request was refused and the session is otherwise fine.
     private let displayCountNotice = ViewerTransientNoticeView()
-    /// The in-window prompt for unlocking the host's locked login window. Shown
-    /// only while the host reports its screen locked -- see
-    /// `applyHostScreenLockState(locked:)`.
-    private let unlockPanel = ViewerUnlockPanelView()
     /// Where this window's stream-scale choice is persisted, so it survives
     /// relaunch -- see `selectStreamScale`. `nil` for a caller with nothing to
     /// persist to (the probes, the verification runners' fakes).
@@ -181,8 +180,10 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         accessibility: any ClientAccessibilityAuthorization = SystemAccessibilityAuthorization(),
         initialStreamScalePreference: StreamScalePreference = .automatic,
         savedHostStore: (any SavedHostStoring)? = nil,
-        savedHostPublicKey: Data? = nil
+        savedHostPublicKey: Data? = nil,
+        makeDecoder: @escaping VideoDecoderFactory = VideoToolboxDecoder.factory
     ) throws {
+        self.makeDecoder = makeDecoder
         // Named for the person reading a tooltip, so it is the name they gave
         // that machine and not this window's title, which gains the address it
         // was reached at once the handshake says who answered.
@@ -328,18 +329,6 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
             displayCountNotice.centerXAnchor.constraint(equalTo: surfaceView.centerXAnchor)
         ])
 
-        // Below the refusal banner, so a refusal never hides behind the unlock
-        // prompt. Hidden until the host reports its screen locked.
-        unlockPanel.isHidden = true
-        unlockPanel.onSubmit = { [weak self] password in
-            self?.onRequestHostScreenUnlock?(password)
-        }
-        surfaceView.addSubview(unlockPanel, positioned: .above, relativeTo: displayCountNotice)
-        NSLayoutConstraint.activate([
-            unlockPanel.topAnchor.constraint(equalTo: displayCountNotice.bottomAnchor, constant: ViewerDesign.Space.sm),
-            unlockPanel.centerXAnchor.constraint(equalTo: surfaceView.centerXAnchor)
-        ])
-
         surfaceView.onReleaseToLocalMac = { [weak self] in
             self?.releaseToLocalMachine()
         }
@@ -396,7 +385,9 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         shortcutStripKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, event.window === self.window else { return event }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if modifiers == [.command, .control, .shift], event.keyCode == 49 {
+            let toggle = SystemShortcutCatalog.shortcutStripToggle
+            if CanvasModifierFlags(appKitFlags: modifiers) == toggle.modifiers,
+               event.keyCode == toggle.keyCode {
                 self.shortcutStrip.toggleRequested()
                 return nil
             }
@@ -468,8 +459,8 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// rather than a pixel count invented here. Does nothing once this window
     /// has a remembered frame: a canvas the user has already placed stays
     /// where they put it.
-    public func cascadeIfUnplaced(from other: ClientCanvasWindowController) {
-        guard placement == .cascade else { return }
+    public func cascadeIfUnplaced(from other: any SessionWindowChrome) {
+        guard placement == .cascade, let other = other as? ClientCanvasWindowController else { return }
         // Cascading `other` from `.zero` moves nothing; it hands back where
         // the next window in the cascade belongs.
         let next = other.window.cascadeTopLeft(from: .zero)
@@ -563,20 +554,18 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
                 )
             }
         }
-        let coalescer = DecodedFrameCoalescer(drops: drops) { frame in
+        let pipeline = VideoDecodePipeline(
+            receipts: videoSink.receipts,
+            drops: drops,
+            makeDecoder: makeDecoder,
+            onDecodedFrame: onDecodedFrame
+        ) { frame in
             await viewport.presentDecodedFrame(frame)
         }
-        self.coalescer = coalescer
-        let decoder = VideoToolboxDecoder(receipts: videoSink.receipts) { frame in
-            onDecodedFrame?(frame)
-            coalescer.submit(frame)
-        }
-        self.decoder = decoder
-        let decodeQueue = VideoDecodeQueue(drops: drops) { packet in
-            try decoder.decode(packet)
-        }
-        self.decodeQueue = decodeQueue
-        videoSink.attach(decodeQueue)
+        coalescer = pipeline.coalescer
+        decoder = pipeline.decoder
+        decodeQueue = pipeline.decodeQueue
+        videoSink.attach(pipeline.decodeQueue)
     }
 
     /// Nonisolated, and holding nothing of the window's own: whoever read this
@@ -773,7 +762,7 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// The Displays menu's own action. Forwarded rather than acted on here:
     /// sending the choice, and reacting to the host's reply, both need the
     /// live connection this window does not hold -- see
-    /// `ClientSessionHost.selectDisplayCount(_:)` in `Sensorium/main.swift`.
+    /// `ClientSessionHost.selectDisplayCount(_:)`.
     public func selectDisplayCount(_ count: Int) {
         onSelectDisplayCount?(count)
     }
@@ -808,7 +797,7 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
 
     /// The "Start with" submenu's own action, forwarded for the same reason
     /// `selectRealScreen(token:)` above is: writing the choice back to the
-    /// saved-machines store needs `ClientSessionHost` in `Sensorium/main.swift`,
+    /// saved-machines store needs `ClientSessionHost`,
     /// which this window does not hold.
     public func selectStartTarget(_ target: StartTarget) {
         onSelectStartTarget?(target)
@@ -828,7 +817,7 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// the same reasoning `selectDisplayCount(_:)` above follows: ending the
     /// current session and reconnecting with the chosen target both need the
     /// live connection this window does not hold -- see
-    /// `ClientSessionHost` in `Sensorium/main.swift`.
+    /// `ClientSessionHost`.
     public func selectRealScreen(token: Data?) {
         onSelectRealScreen?(token)
     }
@@ -871,7 +860,7 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
     /// here, the same reasoning `selectDisplayCount(_:)` above follows:
     /// flipping the local pasteboard engine and sending the choice on the
     /// wire both need the live connection this window does not hold -- see
-    /// `Sensorium/main.swift`. `ClipboardSharingToggle.nextValue(currentlyEnabled:)`
+    /// `ClientSessionHost`. `ClipboardSharingToggle.nextValue(currentlyEnabled:)`
     /// decides what is sent, not this method, so a test can pin that
     /// decision without constructing this class.
     public func toggleClipboardSharing() {
@@ -898,42 +887,6 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         displayCountNotice.show(line)
     }
 
-    /// The host's report of whether its screen is locked. When locked, the
-    /// unlock prompt is offered; when not, it is hidden -- the viewer never
-    /// offers to unlock a screen that is already in use. Offering a prompt
-    /// that is already up is idempotent (see `ViewerUnlockPanelView.show`), so
-    /// a lock report arriving right after an unlock result leaves that
-    /// result's notice on screen.
-    public func applyHostScreenLockState(locked: Bool) {
-        if HostScreenUnlockCopy.shouldOfferUnlockPrompt(locked: locked) {
-            unlockPanel.show()
-        } else {
-            unlockPanel.hide()
-        }
-    }
-
-    /// The host's answer to one unlock attempt, in plain words. A wrong
-    /// password leaves the prompt up to try again; the host's own lock-state
-    /// notice that follows the attempt hides the prompt on success.
-    public func showHostScreenUnlockResult(_ outcome: HostScreenUnlockOutcome) {
-        unlockPanel.showResult(HostScreenUnlockCopy.noticeLine(for: outcome))
-    }
-
-    /// A submit-time notice the host never spoke -- the presence check was
-    /// cancelled, the challenge timed out, or the request could not be sent.
-    /// Shown on the prompt in plain words so the cleared field does not read as
-    /// an ignored click. It goes through the same `showResult` an outcome notice
-    /// does, so a still-locked lock report right after leaves it standing to be
-    /// read, exactly like a wrong-password notice.
-    public func showHostScreenUnlockNotice(_ line: String) {
-        unlockPanel.showResult(line)
-    }
-
-    /// The typed-password submission, forwarded on the live connection this
-    /// window does not hold -- see `ClientSessionHost` in `Sensorium/main.swift`.
-    /// The bytes are already the field's cleared copy by the time this fires.
-    public var onRequestHostScreenUnlock: ((Data) -> Void)?
-
     /// Chooses this window's own stream scale, or hands the decision back to
     /// the viewer's own geometry with `.automatic`, and persists the choice
     /// with the saved host so it survives relaunch. Goes through
@@ -945,18 +898,8 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         let key = savedHostPublicKey
         Task {
             await viewport.setStreamScalePreference(preference)
-            guard let store, let key, let saved = store.load(hostPublicKey: key) else {
-                return
-            }
-            store.save(SavedHost(
-                displayName: saved.displayName,
-                host: saved.host,
-                port: saved.port,
-                hostPublicKey: saved.hostPublicKey,
-                tlsCertificateHash: saved.tlsCertificateHash,
-                streamScalePreference: preference,
-                lastConnectedAt: saved.lastConnectedAt
-            ))
+            guard let store, let key else { return }
+            store.setStreamScalePreference(hostPublicKey: key, to: preference)
         }
     }
 
@@ -996,12 +939,6 @@ public final class ClientCanvasWindowController: @MainActor CanvasSurfaceWindow,
         // while already down costs nothing.
         if status.isOverlayVisible {
             surfaceView.endPointerCaptureIfNeeded()
-            // A session that is no longer live can no longer unlock anything,
-            // and this window is reused across reconnects. Hiding the prompt
-            // here makes the next lock report a first-time offer, so a notice
-            // left over from the session that just ended never carries into
-            // the next one.
-            unlockPanel.hide()
         }
         surfaceView.sessionOverlayVisibilityChanged(status.isOverlayVisible)
         statusOverlay.apply(status)

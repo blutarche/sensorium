@@ -1,6 +1,8 @@
-import CryptoKit
 import Foundation
+
+#if canImport(Security)
 import Security
+#endif
 
 public enum HostTLSIdentityError: Error, Equatable {
     case keyGenerationFailed
@@ -26,6 +28,7 @@ public struct HostTLSIdentity: Sendable {
         self.privateKeyData = privateKeyData
     }
 
+    #if canImport(Security)
     public static func generate(commonName: String) throws -> HostTLSIdentity {
         var error: Unmanaged<CFError>?
         let attributes: [CFString: Any] = [
@@ -45,7 +48,7 @@ public struct HostTLSIdentity: Sendable {
             throw HostTLSIdentityError.keyGenerationFailed
         }
 
-        let tbsCertificate = try Self.tbsCertificate(
+        let tbsCertificate = Self.tbsCertificate(
             commonName: commonName,
             publicKeyData: publicKeyData
         )
@@ -70,11 +73,20 @@ public struct HostTLSIdentity: Sendable {
             privateKeyData: privateKeyData
         )
     }
+    #else
+    /// A platform whose keys and certificates this project does not know how
+    /// to mint yet. Reading a certificate pin works everywhere; making one
+    /// does not.
+    public static func generate(commonName: String) throws -> HostTLSIdentity {
+        throw HostTLSIdentityError.keyGenerationFailed
+    }
+    #endif
 
     public static func certificateHash(for certificateDER: Data) -> Data {
-        Data(SHA256.hash(data: certificateDER))
+        SensoriumCrypto.sha256(certificateDER)
     }
 
+    #if canImport(Security)
     func makePrivateKey() throws -> SecKey {
         var error: Unmanaged<CFError>?
         let attributes: [CFString: Any] = [
@@ -97,15 +109,10 @@ public struct HostTLSIdentity: Sendable {
         }
         return identity
     }
+    #endif
 
-    private static func tbsCertificate(commonName: String, publicKeyData: Data) throws -> Data {
-        var serial = Data(repeating: 0, count: 16)
-        let randomStatus = serial.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
-        }
-        guard randomStatus == errSecSuccess else {
-            throw HostTLSIdentityError.keyGenerationFailed
-        }
+    private static func tbsCertificate(commonName: String, publicKeyData: Data) -> Data {
+        let serial = SensoriumCrypto.randomBytes(16)
         let subject = DER.name(commonName)
         let validity = DER.sequence([
             DER.generalizedTime(Date().addingTimeInterval(-60)),

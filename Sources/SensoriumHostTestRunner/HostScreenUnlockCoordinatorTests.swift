@@ -3,12 +3,6 @@ import Foundation
 import SensoriumCore
 import SensoriumHost
 
-private final class UnlockTestVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?, challenge: Data) -> Bool {
-        true
-    }
-}
-
 private final class UnlockTestIdleSignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
@@ -41,19 +35,12 @@ private func unlockTestDisplay() -> DisplaySnapshot {
 /// constant so two controllers built for the same device key compute the same
 /// `HostScreenArmingFingerprint`, hence the same throttle key -- which is what
 /// lets a test prove one budget is shared across two connections.
-/// The strength defaults to `.softwarePresence`; the test that arms before every
-/// guess runs both strengths, because neither one refills the wrong-guess
-/// budget.
 @MainActor
-private func unlockTestArming(
-    deviceKey: Data,
-    strength: HostScreenCredentialStrength = .softwarePresence
-) -> HostScreenArming {
+private func unlockTestArming(deviceKey: Data) -> HostScreenArming {
     HostScreenArming(devices: [
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: strength,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
     ])
@@ -66,17 +53,15 @@ private func makeUnlockFixture(
     unlocker: any LockScreenUnlocking,
     identity: DeviceIdentity? = nil,
     throttle: (any HostScreenUnlockThrottling)? = HostScreenUnlockThrottle(),
-    strength: HostScreenCredentialStrength = .softwarePresence,
     liveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
     armingProvider: (() -> HostScreenArming)? = nil,
     inputInjectorFactory: any InputInjectingFactory = FakeInputInjectorFactory(),
-    unlockChallengeNowSeconds: @escaping () -> Double = { Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000 },
     onEvent: (@Sendable (String) -> Void)? = nil
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController) {
     let display = unlockTestDisplay()
     let identity = identity ?? (try! DeviceIdentity.generate())
     let deviceKey = identity.publicKey
-    let armingProvider = armingProvider ?? { unlockTestArming(deviceKey: deviceKey, strength: strength) }
+    let armingProvider = armingProvider ?? { unlockTestArming(deviceKey: deviceKey) }
     let controller = HostSessionController(
         sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
         approvedPublicKeys: [deviceKey],
@@ -85,17 +70,16 @@ private func makeUnlockFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: armingProvider,
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: UnlockTestVerifier(),
         hostScreenUnlockThrottle: throttle,
         hostScreenLiveSessionRegistry: liveSessionRegistry,
         hostScreenLocalActivitySignal: UnlockTestIdleSignal(),
         hostScreenPresenceGate: nil,
-        hostScreenModeController: nil,
-        unlockChallengeNowSeconds: unlockChallengeNowSeconds
+        hostScreenModeController: nil
     )
     if authenticate {
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -115,7 +99,7 @@ private func makeUnlockFixture(
 
 @MainActor
 private func admitHostScreen(_ fixture: (coordinator: HostSessionCoordinator, controller: HostSessionController)) async -> [SensoriumMessage] {
-    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
           let token = displays.first?.opaqueToken else {
         expect(false, "the fixture offers at least one display")
         return []
@@ -124,7 +108,7 @@ private func admitHostScreen(_ fixture: (coordinator: HostSessionCoordinator, co
     _ = try! await fixture.coordinator.handleWritingResponse(
         .hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ),
         onWrite: { log.append($0) }
     )
@@ -143,13 +127,6 @@ private final class RecordingUnlocker: LockScreenUnlocking, @unchecked Sendable 
     }
     var wasCalled: Bool { callCount > 0 }
     var callCount: Int { lock.lock(); defer { lock.unlock() }; return count }
-}
-
-/// A seconds source a test advances by hand, to age an unlock challenge past
-/// its lifetime without waiting on a real clock.
-private final class MutableSeconds {
-    var value: Double
-    init(_ value: Double) { self.value = value }
 }
 
 /// Collects the messages the coordinator writes. A reference type so the
@@ -256,7 +233,6 @@ func runHostScreenUnlockCoordinatorTests() async {
             unlocker: unlocker
         )
         _ = await admitHostScreen(fixture)
-        await armUnlock(fixture.coordinator)
         let log = MessageLog()
         _ = try! await fixture.coordinator.handleWritingResponse(
             .hostScreenUnlockRequest(password: Data("pw".utf8)),
@@ -279,8 +255,7 @@ func runHostScreenUnlockCoordinatorTests() async {
                 unlocker: unlocker
             )
             _ = await admitHostScreen(fixture)
-            await armUnlock(fixture.coordinator)
-            let log = MessageLog()
+                let log = MessageLog()
             _ = try! await fixture.coordinator.handleWritingResponse(
                 .hostScreenUnlockRequest(password: Data("pw".utf8)),
                 onWrite: { log.append($0) }
@@ -308,7 +283,6 @@ func runHostScreenUnlockCoordinatorTests() async {
             onEvent: { events.record($0) }
         )
         _ = await admitHostScreen(fixture)
-        await armUnlock(fixture.coordinator)
         let typedText = "correct-horse-battery-staple"
         _ = try! await fixture.coordinator.handleWritingResponse(
             .hostScreenUnlockRequest(password: Data(typedText.utf8)),
@@ -556,8 +530,7 @@ func runHostScreenUnlockCoordinatorTests() async {
                 throttle: throttle
             )
             _ = await admitHostScreen(fixture)
-            await armUnlock(fixture.coordinator)
-            coordinators.append(fixture.coordinator)
+                coordinators.append(fixture.coordinator)
         }
 
         var tasks: [Task<HostScreenUnlockOutcome?, Never>] = []
@@ -649,7 +622,6 @@ func runHostScreenUnlockCoordinatorTests() async {
                 HostScreenDeviceArming(
                     devicePublicKey: identity.publicKey,
                     deviceName: "Kestrel Laptop Pro",
-                    minimumCredentialStrength: .hardwareBound,
                     armedAt: armedAt
                 )
             ])
@@ -688,13 +660,13 @@ func runHostScreenUnlockCoordinatorTests() async {
         print("PASS: a refund after a mid-attempt re-arm decrements the captured key, never the new one")
     }
 
-    // An unlock with no fresh arm is refused as presenceRequired,
-    // spending no budget and never reaching the typer -- the resume-ticket hole
-    // where a password could be typed with nobody confirming at the viewer.
+    // The wrong-guess budget is spent once per guess and never refilled
+    // short of a correct password: a budget that reset would turn the
+    // login window into an unbounded password oracle.
     do {
+        let cap = HostScreenUnlockThrottle.maximumUnlockFailures
         let throttle = HostScreenUnlockThrottle()
         let identity = try! DeviceIdentity.generate()
-        let fingerprint = unlockTestFingerprint(deviceKey: identity.publicKey)
         let unlocker = RecordingUnlocker(outcome: .wrongPassword)
         let fixture = makeUnlockFixture(
             authenticate: true,
@@ -704,179 +676,20 @@ func runHostScreenUnlockCoordinatorTests() async {
             throttle: throttle
         )
         _ = await admitHostScreen(fixture)
-        expect(await rawUnlockOutcome(fixture.coordinator, password: "pw") == .presenceRequired, "an unlock with no fresh arm is refused as presenceRequired")
-        expect(!unlocker.wasCalled, "and never reaches the typer")
-        expect(
-            throttle.failureCount(devicePublicKey: identity.publicKey, armingFingerprint: fingerprint) == 0,
-            "and spends no guess budget"
-        )
-        print("PASS: an unlock with no fresh presence arm is refused as presenceRequired, without typing or spending the budget")
-    }
-
-    // One arm authorises exactly one attempt -- the next needs a fresh
-    // presence proof of its own.
-    do {
-        let unlocker = RecordingUnlocker(outcome: .wrongPassword)
-        let fixture = makeUnlockFixture(
-            authenticate: true,
-            lockStateReader: FakeScreenLockState(locked: true),
-            unlocker: unlocker
-        )
-        _ = await admitHostScreen(fixture)
-        await armUnlock(fixture.coordinator)
-        expect(await rawUnlockOutcome(fixture.coordinator, password: "pw") == .wrongPassword, "the armed attempt runs and reports the typer's outcome")
-        expect(await rawUnlockOutcome(fixture.coordinator, password: "pw") == .presenceRequired, "the very next attempt, unarmed again, is refused as presenceRequired")
-        expect(unlocker.callCount == 1, "only the one armed attempt reached the typer")
-        print("PASS: a single arm authorises exactly one unlock attempt; the next needs a fresh presence proof")
-    }
-
-    // An arm with no prior challenge fails, and a challenge is consumed
-    // on arm so it cannot be reused -- a captured arm is not replayable.
-    do {
-        let fixture = makeUnlockFixture(
-            authenticate: true,
-            lockStateReader: FakeScreenLockState(locked: true),
-            unlocker: RecordingUnlocker(outcome: .wrongPassword)
-        )
-        _ = await admitHostScreen(fixture)
-
-        // An arm with no challenge minted first leaves the connection unarmed.
-        expect(
-            !fixture.controller.armUnlock(presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))),
-            "an arm with no prior challenge does not arm"
-        )
-        expect(await rawUnlockOutcome(fixture.coordinator, password: "pw") == .presenceRequired, "so the unlock is still refused as presenceRequired")
-
-        // Mint one challenge, arm it (consuming it), then a second arm reusing
-        // the now-spent challenge fails: the challenge is strictly single-use.
-        let challenge = fixture.controller.mintUnlockChallenge()
-        expect(challenge != nil, "a valid session mints a challenge")
-        expect(
-            fixture.controller.armUnlock(presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))),
-            "the first arm over that challenge succeeds"
-        )
-        expect(
-            !fixture.controller.armUnlock(presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))),
-            "a second arm reusing the already-consumed challenge fails"
-        )
-        // The first arm consumed the challenge but did arm exactly one attempt.
-        expect(await rawUnlockOutcome(fixture.coordinator, password: "pw") == .wrongPassword, "the one arm the challenge authorised still runs its single attempt")
-        print("PASS: an arm needs a prior challenge, and a challenge is single-use -- a captured arm cannot be replayed")
-    }
-
-    // An unlock challenge expires. An arm over a challenge minted more
-    // than its lifetime ago is consumed and refused without verifying; one
-    // within the lifetime still arms.
-    do {
-        let clock = MutableSeconds(1000)
-        let fixture = makeUnlockFixture(
-            authenticate: true,
-            lockStateReader: FakeScreenLockState(locked: true),
-            unlocker: RecordingUnlocker(outcome: .wrongPassword),
-            unlockChallengeNowSeconds: { clock.value }
-        )
-        _ = await admitHostScreen(fixture)
-
-        _ = fixture.controller.mintUnlockChallenge()
-        clock.value += HostSessionController.unlockChallengeTimeToLiveSeconds + 1
-        expect(
-            !fixture.controller.armUnlock(presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))),
-            "an arm over a challenge older than its lifetime does not arm"
-        )
-        expect(
-            await rawUnlockOutcome(fixture.coordinator, password: "pw") == .presenceRequired,
-            "so the unlock is refused as presenceRequired, the expired challenge already consumed"
-        )
-
-        _ = fixture.controller.mintUnlockChallenge()
-        clock.value += HostSessionController.unlockChallengeTimeToLiveSeconds - 1
-        expect(
-            fixture.controller.armUnlock(presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))),
-            "an arm over a challenge still within its lifetime arms"
-        )
-        expect(
-            await rawUnlockOutcome(fixture.coordinator, password: "pw") == .wrongPassword,
-            "the armed attempt runs"
-        )
-        print("PASS: an unlock challenge older than its lifetime is consumed and refused; within it, an arm still works")
-    }
-
-    // A resume-ticket proof cannot arm an unlock -- only a fresh signed
-    // presence proof can, so the resume path never types a password unattended.
-    do {
-        let fixture = makeUnlockFixture(
-            authenticate: true,
-            lockStateReader: FakeScreenLockState(locked: true),
-            unlocker: RecordingUnlocker(outcome: .wrongPassword)
-        )
-        _ = await admitHostScreen(fixture)
-        _ = fixture.controller.mintUnlockChallenge()
-        expect(
-            !fixture.controller.armUnlock(presence: .resumeTicket(Data([0x09]))),
-            "a resume ticket cannot arm an unlock"
-        )
-        expect(await rawUnlockOutcome(fixture.coordinator, password: "pw") == .presenceRequired, "so the unlock is still refused as presenceRequired")
-        print("PASS: a resume ticket cannot arm an unlock; only a fresh signed presence proof can")
-    }
-
-    // The challenge request discloses nothing on an invalid session --
-    // no challenge, so a host emitting one cannot become a lock-state oracle.
-    do {
-        let unauthenticated = makeUnlockFixture(
-            authenticate: false,
-            lockStateReader: FakeScreenLockState(locked: true),
-            unlocker: RecordingUnlocker(outcome: .wrongPassword)
-        )
-        expect(unauthenticated.controller.mintUnlockChallenge() == nil, "an unauthenticated connection mints no unlock challenge")
-        let reply = try! await unauthenticated.coordinator.handleWritingResponse(.hostScreenUnlockChallengeRequest)
-        expect(reply == nil, "and a challenge request over the wire gets no reply at all")
-
-        let authenticatedNoHostScreen = makeUnlockFixture(
-            authenticate: true,
-            lockStateReader: FakeScreenLockState(locked: true),
-            unlocker: RecordingUnlocker(outcome: .wrongPassword)
-        )
-        expect(authenticatedNoHostScreen.controller.mintUnlockChallenge() == nil, "an authenticated connection with no live host-screen session mints none either")
-        print("PASS: an unlock challenge is minted only for a valid live host-screen session, disclosing nothing otherwise")
-    }
-
-    // A fresh presence arm never refills the wrong-guess budget, at either
-    // registered credential strength. Every guess must arm first, so an arm
-    // that reset the budget would make the cap unreachable and turn the login
-    // window into an unbounded password oracle. Only a correct password clears
-    // it.
-    do {
-        let cap = HostScreenUnlockThrottle.maximumUnlockFailures
-        for strength in [HostScreenCredentialStrength.hardwareBound, .softwarePresence] {
-            let throttle = HostScreenUnlockThrottle()
-            let identity = try! DeviceIdentity.generate()
-            let unlocker = RecordingUnlocker(outcome: .wrongPassword)
-            let fixture = makeUnlockFixture(
-                authenticate: true,
-                lockStateReader: FakeScreenLockState(locked: true),
-                unlocker: unlocker,
-                identity: identity,
-                throttle: throttle,
-                strength: strength
-            )
-            _ = await admitHostScreen(fixture)
-            // `unlockOutcome` arms before each submit, which is the production
-            // sequence: challenge, arm, guess.
-            var outcomes: [HostScreenUnlockOutcome?] = []
-            for _ in 0..<(cap + 1) {
-                outcomes.append(await unlockOutcome(fixture, password: "pw"))
-            }
-            expect(
-                outcomes.prefix(cap).allSatisfy { $0 == .wrongPassword },
-                "\(strength): the first \(cap) armed guesses each report wrongPassword"
-            )
-            expect(
-                outcomes.last == .tooManyAttempts,
-                "\(strength): the guess past the cap is refused as tooManyAttempts even though it armed first"
-            )
-            expect(unlocker.callCount == cap, "\(strength): the typer runs only for the guesses the budget allowed")
+        var outcomes: [HostScreenUnlockOutcome?] = []
+        for _ in 0..<(cap + 1) {
+            outcomes.append(await unlockOutcome(fixture, password: "pw"))
         }
-        print("PASS: arming before every guess does not refill the unlock budget, at either registered credential strength")
+        expect(
+            outcomes.prefix(cap).allSatisfy { $0 == .wrongPassword },
+            "the first \(cap) guesses each report wrongPassword"
+        )
+        expect(
+            outcomes.last == .tooManyAttempts,
+            "the guess past the cap is refused as tooManyAttempts"
+        )
+        expect(unlocker.callCount == cap, "the typer runs only for the guesses the budget allowed")
+        print("PASS: the wrong-guess budget is spent once per guess and never refills on its own")
     }
 }
 
@@ -915,7 +728,7 @@ private enum HostScreenAdmissionResult: Equatable {
 private func admitHostScreenResult(
     _ fixture: (coordinator: HostSessionCoordinator, controller: HostSessionController)
 ) async -> HostScreenAdmissionResult {
-    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
           let token = displays.first?.opaqueToken else {
         expect(false, "the fixture offers at least one display")
         return .refused(reason: "no-display")
@@ -924,7 +737,7 @@ private func admitHostScreenResult(
     let reply = try! await fixture.coordinator.handleWritingResponse(
         .hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ),
         onWrite: { log.append($0) }
     )
@@ -1130,7 +943,7 @@ func runHostScreenLiveSessionTests() async {
             liveSessionRegistry: registry,
             inputInjectorFactory: ThrowingInputInjectorFactory()
         )
-        guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
               let token = displays.first?.opaqueToken else {
             expect(false, "the fixture offers at least one display")
             return
@@ -1140,7 +953,7 @@ func runHostScreenLiveSessionTests() async {
             _ = try await fixture.coordinator.handleWritingResponse(
                 .hostScreenRequest(
                     token: token,
-                    presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+                    resumeTicket: nil
                 ),
                 onWrite: { _ in }
             )
@@ -1178,28 +991,7 @@ private final class ReleaseCountingRegistry: HostScreenLiveSessionRegistering {
     }
 }
 
-/// Arms one unlock attempt through the production path: asks for a challenge
-/// and returns a signed presence proof for it. The fixture's verifier accepts
-/// any signature, so the exact bytes do not matter here -- what is exercised is
-/// the challenge/arm handshake and its single-use consumption, not the
-/// signature check, which is the presence verifier's own test.
-@MainActor
-private func armUnlock(_ coordinator: HostSessionCoordinator) async {
-    let reply = try! await coordinator.handleWritingResponse(.hostScreenUnlockChallengeRequest)
-    guard case .hostScreenUnlockChallenge = reply else {
-        expect(false, "a valid host-screen session mints an unlock challenge on request")
-        return
-    }
-    _ = try! await coordinator.handleWritingResponse(
-        .hostScreenUnlockArm(
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
-        )
-    )
-}
-
-/// One unlock request as the wire delivers it, with no arm of its own -- for the
-/// tests that arm deliberately (or deliberately do not) and drive the request
-/// themselves.
+/// One unlock request as the wire delivers it.
 @MainActor
 private func rawUnlockOutcome(
     _ coordinator: HostSessionCoordinator,
@@ -1216,15 +1008,12 @@ private func rawUnlockOutcome(
     }.first
 }
 
-/// A freshly armed unlock attempt: every unlock now needs a single-use presence
-/// arm, so the common helper arms and then submits, one arm per attempt.
 @MainActor
 private func unlockOutcome(
     _ coordinator: HostSessionCoordinator,
     password: String
 ) async -> HostScreenUnlockOutcome? {
-    await armUnlock(coordinator)
-    return await rawUnlockOutcome(coordinator, password: password)
+    await rawUnlockOutcome(coordinator, password: password)
 }
 
 /// An unlocker whose next outcome a test can flip between calls -- to run a

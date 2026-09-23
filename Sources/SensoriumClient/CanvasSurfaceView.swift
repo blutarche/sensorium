@@ -42,6 +42,13 @@ public final class CanvasSurfaceView: NSView {
     /// during that controller's own initialisation.
     public var onReleaseToLocalMac: (() -> Void)?
 
+    /// Where this view's key focus and fullscreen state come from. The
+    /// window it is in answers both, and a view with no window answers
+    /// neither, which is why the verification runners set this: the routing
+    /// below is the same either way, and the window is the only part of it
+    /// that needs a window server.
+    public var windowStateProvider: (() -> ViewerWindowState)?
+
     /// Asked, in this view's own coordinates, before any pointer motion is
     /// forwarded: true while a control of the viewer's own -- the shortcut
     /// strip -- is under the pointer. This view's tracking area covers its
@@ -325,7 +332,8 @@ public final class CanvasSurfaceView: NSView {
     }
 
     private func viewerWindowState() -> ViewerWindowState {
-        ViewerWindowState(
+        if let windowStateProvider { return windowStateProvider() }
+        return ViewerWindowState(
             surfaceID: surfaceID,
             hasKeyFocus: window?.isKeyWindow ?? false,
             isFullscreen: window?.styleMask.contains(.fullScreen) ?? false

@@ -115,7 +115,16 @@ func testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime() {
 func testPairingMessagesRoundTripThroughVersionedFrame() {
     let identity = try! DeviceIdentity.generate()
     let messages: [SensoriumMessage] = [
-        .pairRequest(deviceName: "Laptop", publicKey: identity.publicKey, code: "123456"),
+        .pairRequest(
+            deviceName: "Laptop",
+            publicKey: identity.publicKey,
+            code: "123456",
+            signature: try! identity.sign(SensoriumFrameCodec.pairRequestTranscript(
+                deviceName: "Laptop",
+                clientPublicKey: identity.publicKey,
+                code: "123456"
+            ))
+        ),
         .pairApproved(
             hostPublicKey: identity.publicKey,
             tlsCertificateHash: Data(repeating: 0xA5, count: 32),
@@ -165,110 +174,34 @@ func testPairIntentRoundTripsAndRefusesMalformed() {
     }
 }
 
-func testPairRequestPresenceCredentialRegistration() {
-    let identity = try! DeviceIdentity.generate()
-    let credential = PresenceCredentialRegistration(
-        credentialID: Data(repeating: 0x11, count: 16),
-        publicKey: Data(repeating: 0x22, count: 32),
-        credentialFormat: "apple-secure-enclave-p256",
-        strength: "hardwareBound"
-    )
-    let withCredential = SensoriumMessage.pairRequest(
-        deviceName: "Laptop", publicKey: identity.publicKey, code: "123456", presenceCredential: credential
-    )
-    expect(
-        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withCredential)) == withCredential,
-        "a pairRequest carrying a presence-credential registration round-trips it unchanged"
-    )
-
-    // CLAUDE.md: a device that can offer neither acceptable strength "may
-    // pair and use a session canvas" -- no credential is not a malformed
-    // request, it is the ordinary case.
-    let withoutCredential = SensoriumMessage.pairRequest(
-        deviceName: "Laptop", publicKey: identity.publicKey, code: "123456"
-    )
-    expect(
-        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withoutCredential)) == withoutCredential,
-        "a pairRequest registering no credential still round-trips and still pairs"
-    )
-    expect(
-        !String(decoding: try! SensoriumFrameCodec.encode(withoutCredential), as: UTF8.self).contains("presenceCredential"),
-        "a pairRequest registering no credential omits the presence-credential keys entirely"
-    )
-
-    func frame(fromObject object: [String: Any]) -> Data {
-        let payload = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
-        var frame = Data()
-        var length = UInt32(payload.count).bigEndian
-        withUnsafeBytes(of: &length) { frame.append(contentsOf: $0) }
-        frame.append(payload)
-        return frame
-    }
-
-    let baseObject: [String: Any] = [
-        "type": "pairRequest",
-        "deviceName": "Laptop",
-        "publicKey": identity.publicKey.base64EncodedString(),
-        "code": "123456"
-    ]
-
-    // An unrecognised strength string is malformed, never a third, silently
-    // accepted tier -- CLAUDE.md's own invariant: strength is recorded, not
-    // trusted, and this codec is the one place that can refuse an
-    // unrecognised report before it is ever recorded.
-    var unknownStrengthObject = baseObject
-    unknownStrengthObject["credentialID"] = credential.credentialID.base64EncodedString()
-    unknownStrengthObject["credentialFormat"] = credential.credentialFormat
-    unknownStrengthObject["presenceCredentialPublicKey"] = credential.publicKey.base64EncodedString()
-    unknownStrengthObject["presenceCredentialStrength"] = "quantumEntangled"
-    do {
-        _ = try SensoriumFrameCodec.decode(frame(fromObject: unknownStrengthObject))
-        expect(false, "an unrecognised presence-credential strength string is refused as malformed")
-    } catch SensoriumProtocolError.malformedMessage {
-    } catch {
-        expect(false, "an unrecognised presence-credential strength reports malformedMessage, not some other error")
-    }
-
-    // A partial registration -- some of the four fields present, not all --
-    // is exactly as unrepresentable as a hostScreenRequest naming neither or
-    // both proof shapes: never partially trusted.
-    var partialObject = baseObject
-    partialObject["credentialID"] = credential.credentialID.base64EncodedString()
-    do {
-        _ = try SensoriumFrameCodec.decode(frame(fromObject: partialObject))
-        expect(false, "a pairRequest carrying only some of the four presence-credential fields is refused as malformed")
-    } catch SensoriumProtocolError.malformedMessage {
-    } catch {
-        expect(false, "a partial presence-credential registration reports malformedMessage, not some other error")
-    }
-}
-
-
 /// The pairing ceremony is the one path that may replace an already-paired
-/// machine's registered presence credential, so the request that carries a
-/// new one must prove the machine sending it holds the identity key it
-/// names. `signature` is that proof: the machine's own signature over a
-/// transcript of everything the request asks the host to write.
+/// machine's registered name, so the request that carries a new one must
+/// prove the machine sending it holds the identity key it names.
+/// `signature` is that proof: the machine's own signature over a transcript
+/// of everything the request asks the host to write.
 func testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers() {
     let identity = try! DeviceIdentity.generate()
-    let credential = PresenceCredentialRegistration(
-        credentialID: Data(repeating: 0x11, count: 16),
-        publicKey: Data(repeating: 0x22, count: 32),
-        credentialFormat: "apple-secure-enclave-p256",
-        strength: "hardwareBound"
-    )
     let transcript = SensoriumFrameCodec.pairRequestTranscript(
         deviceName: "Laptop",
         clientPublicKey: identity.publicKey,
-        code: "123456",
-        presenceCredential: credential
+        code: "123456"
     )
+    // Exact bytes, and the version that names them: this transcript's field
+    // list changed after v1 shipped, so the prefix moved with it and a
+    // signature made over either can never be read as the other.
+    var expected = Data("sensorium-pair-request-v2|".utf8)
+    expected.append(Data("Laptop".utf8))
+    expected.append(0)
+    expected.append(identity.publicKey.base64EncodedData())
+    expected.append(0)
+    expected.append(Data("123456".utf8))
+    expect(transcript == expected, "the pairing-request transcript is the v2 prefix and three NUL-separated fields")
+
     let signature = try! identity.sign(transcript)
     let signed = SensoriumMessage.pairRequest(
         deviceName: "Laptop",
         publicKey: identity.publicKey,
         code: "123456",
-        presenceCredential: credential,
         signature: signature
     )
     expect(
@@ -277,33 +210,21 @@ func testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers() {
     )
     expect(
         DeviceIdentity.verify(signature: signature, message: transcript, publicKey: identity.publicKey),
-        "the transcript the sender signs is the one a host rebuilds from the same four values"
+        "the transcript the sender signs is the one a host rebuilds from the same three values"
     )
 
     // Every value the host would write from this request is inside the
     // transcript, so a proof made for one request cannot be lifted onto
     // another that asks for something different.
-    let otherCredential = PresenceCredentialRegistration(
-        credentialID: Data(repeating: 0x33, count: 16),
-        publicKey: Data(repeating: 0x44, count: 32),
-        credentialFormat: "apple-secure-enclave-p256",
-        strength: "softwarePresence"
-    )
     for (label, other) in [
         ("a different machine name", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "Another Laptop", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: credential
+            deviceName: "Another Laptop", clientPublicKey: identity.publicKey, code: "123456"
         )),
         ("a different identity key", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "Laptop", clientPublicKey: Data(repeating: 0x55, count: 32), code: "123456", presenceCredential: credential
+            deviceName: "Laptop", clientPublicKey: Data(repeating: 0x55, count: 32), code: "123456"
         )),
         ("a different pairing code", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "654321", presenceCredential: credential
-        )),
-        ("a different credential", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: otherCredential
-        )),
-        ("no credential at all", SensoriumFrameCodec.pairRequestTranscript(
-            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "123456", presenceCredential: nil
+            deviceName: "Laptop", clientPublicKey: identity.publicKey, code: "654321"
         ))
     ] {
         expect(other != transcript, "\(label) produces a different transcript, so the proof does not carry over to it")
@@ -313,18 +234,27 @@ func testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers() {
         )
     }
 
-    // A machine that predates this proof sends no signature at all, and
-    // that request still decodes and still pairs -- the same
-    // forward-compatibility the presence-credential fields already have.
-    let unsigned = SensoriumMessage.pairRequest(
-        deviceName: "Laptop", publicKey: identity.publicKey, code: "123456"
+    // A request carrying no proof at all never becomes a message: the
+    // proof is what the whole ceremony rests on, so a frame without one is
+    // refused where every other unreadable frame is, in the decoder.
+    let payload = try! JSONSerialization.data(
+        withJSONObject: [
+            "type": "pairRequest",
+            "deviceName": "Laptop",
+            "publicKey": identity.publicKey.base64EncodedString(),
+            "code": "123456"
+        ],
+        options: [.sortedKeys]
     )
-    expect(
-        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(unsigned)) == unsigned,
-        "a pairRequest with no proof of possession round-trips unchanged"
-    )
-    expect(
-        !String(decoding: try! SensoriumFrameCodec.encode(unsigned), as: UTF8.self).contains("signature"),
-        "a pairRequest with no proof omits the signature key entirely"
-    )
+    var unsignedFrame = Data()
+    var length = UInt32(payload.count).bigEndian
+    withUnsafeBytes(of: &length) { unsignedFrame.append(contentsOf: $0) }
+    unsignedFrame.append(payload)
+    do {
+        _ = try SensoriumFrameCodec.decode(unsignedFrame)
+        expect(false, "a pairRequest carrying no proof of possession is refused as malformed")
+    } catch SensoriumProtocolError.malformedMessage {
+    } catch {
+        expect(false, "a pairRequest with no proof reports malformedMessage, not \(error)")
+    }
 }

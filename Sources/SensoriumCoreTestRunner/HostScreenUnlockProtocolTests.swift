@@ -39,16 +39,9 @@ func testHostScreenUnlockProtocol() {
         .hostScreenUnlockResult(.notAuthorized),
         .hostScreenUnlockResult(.tooManyAttempts),
         .hostScreenUnlockResult(.passwordTooLong),
-        .hostScreenUnlockResult(.presenceRequired),
         .hostScreenUnlockResult(.failed(reason: "still locked after typing")),
         .hostScreenLockState(locked: true),
-        .hostScreenLockState(locked: false),
-        .hostScreenUnlockChallengeRequest,
-        .hostScreenUnlockChallenge(challenge: Data([0x11, 0x00, 0x22, 0xFE])),
-        .hostScreenUnlockArm(presence: .signed(
-            credentialID: Data([0x01, 0x02]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x03, 0x00, 0x04])
-        )),
-        .hostScreenUnlockArm(presence: .resumeTicket(Data([0xAB, 0xCD])))
+        .hostScreenLockState(locked: false)
     ]
     for message in messages {
         let encoded = try! SensoriumFrameCodec.encode(message)
@@ -66,7 +59,7 @@ func testHostScreenUnlockProtocol() {
     }
     expect(decodedPassword == password, "the exact password bytes survive the round trip, NUL and all")
 
-    print("PASS: hostScreenUnlockRequest, every hostScreenUnlockResult outcome, hostScreenLockState, and the challenge/arm handshake round-trip, and the password bytes survive intact")
+    print("PASS: hostScreenUnlockRequest, every hostScreenUnlockResult outcome and hostScreenLockState round-trip, and the password bytes survive intact")
 
     expectUnlockMalformed(
         "{\"type\":\"hostScreenUnlockRequest\"}",
@@ -88,20 +81,24 @@ func testHostScreenUnlockProtocol() {
         "{\"type\":\"hostScreenLockState\"}",
         "a hostScreenLockState that does not say whether the screen is locked is rejected"
     )
-    expectUnlockMalformed(
-        "{\"type\":\"hostScreenUnlockChallenge\"}",
-        "a hostScreenUnlockChallenge carrying no challenge bytes is rejected"
-    )
-    expectUnlockMalformed(
-        "{\"type\":\"hostScreenUnlockArm\"}",
-        "a hostScreenUnlockArm carrying neither a signed proof nor a ticket is rejected"
-    )
-    expectUnlockMalformed(
-        "{\"type\":\"hostScreenUnlockArm\",\"resumeTicket\":\"qg==\",\"credentialID\":\"AQ==\"}",
-        "a hostScreenUnlockArm mixing a ticket and a signed proof is rejected, never partially trusted"
-    )
 
     print("PASS: a malformed unlock message refuses to decode rather than falling back to an accepted outcome")
+
+    // An unlock that asks this host to prove a person is at the viewer is a
+    // shape this protocol revision does not have. A peer that still sends
+    // one must be skipped, not crashed on.
+    for (json, type) in [
+        ("{\"type\":\"hostScreenUnlockChallengeRequest\"}", "hostScreenUnlockChallengeRequest"),
+        ("{\"type\":\"hostScreenUnlockChallenge\",\"challenge\":\"EQAi/g==\"}", "hostScreenUnlockChallenge"),
+        ("{\"type\":\"hostScreenUnlockArm\",\"resumeTicket\":\"q80=\"}", "hostScreenUnlockArm")
+    ] {
+        expect(
+            try! SensoriumFrameCodec.decode(unlockFrame(fromJSON: json)) == .unrecognized(type: type),
+            "a \(type) from a peer of another revision decodes as .unrecognized rather than throwing"
+        )
+    }
+
+    print("PASS: an unlock message from a peer of another protocol revision decodes as .unrecognized")
 
     let futureType = unlockFrame(fromJSON: "{\"type\":\"hostScreenUnlockSomethingNotInvented\"}")
     expect(

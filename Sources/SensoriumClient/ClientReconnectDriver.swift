@@ -70,10 +70,10 @@ public actor ClientReconnectDriver {
                 let failure = ViewerSessionFailure.classify(error)
                 onEvent?(.attemptFailed(failure))
                 // A refused or failed host-screen connect never auto-redials:
-                // a failed presence check is
-                // exactly when it is least clear who is at the viewer, so the
-                // retry policy below (backoff, give-up) never applies to it.
-                // The caller reads this the same way it reads `.stopped`.
+                // a host that refused this machine's screen refuses the same
+                // dial again, so the retry policy below (backoff, give-up)
+                // never applies to it. The caller reads this the same way it
+                // reads `.stopped`.
                 if case .hostScreenRefused = failure {
                     return .stopped
                 }

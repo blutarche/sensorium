@@ -1,51 +1,8 @@
+#if canImport(Network)
 import Foundation
 import Network
 import SensoriumCore
 import Security
-
-/// Which transport the viewer dials. `tcpLocalVerification` matches the host's
-/// mode of the same name: a single machine cannot hairpin QUIC through the
-/// tailnet interface, so the live verification session runs over TCP. The
-/// Ed25519 handshake and signed canvas are unchanged; only TLS is absent, which
-/// is why the mode is explicit and never a fallback.
-public enum ClientTransportKind: String, Equatable, Sendable {
-    case quic
-    case tcpLocalVerification
-}
-
-public enum NetworkControlConnectionError: Error, Equatable {
-    case notReady
-    case closed
-    case peerFailed
-    case timedOut
-    /// The host answered but presented a certificate other than the one
-    /// pinned at pairing. TLS tears the connection down without saying why it
-    /// rejected the certificate, so this is reported only when the verify
-    /// block itself observed the mismatch.
-    case certificatePinMismatch
-}
-
-/// Records whether the TLS verify block rejected the host's certificate
-/// against the pin, so `start(timeout:)` can tell that failure apart from
-/// every other way a dial ends. The block runs on TLS's own queue, which may
-/// outlive the dial that started it, so recording is locked rather than
-/// assumed single-threaded.
-private final class PinMismatchFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var mismatchObserved = false
-
-    func recordMismatch() {
-        lock.lock()
-        mismatchObserved = true
-        lock.unlock()
-    }
-
-    var observed: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return mismatchObserved
-    }
-}
 
 /// NWConnection can report several terminal states; a continuation may only be
 /// resumed once.
@@ -69,19 +26,19 @@ private final class ResumeOnce: @unchecked Sendable {
     }
 }
 
-public final class NetworkControlConnection: SensoriumControlTransport, @unchecked Sendable {
+public final class NetworkControlConnection: ClientControlConnection, @unchecked Sendable {
     private let connection: NWConnection
     private let queue = DispatchQueue(label: "com.sensorium.control-connection")
     private let pinMismatchFlag = PinMismatchFlag()
     private let silenceWatchdog: SilenceWatchdog
     public let deferredPackets = DeferredPacketQueue()
+    /// The certificate this link was pinned to, carried so the hello sent
+    /// over it can name and sign the host it is actually talking to.
+    public let pinnedHostCertificateHash: Data?
 
-    /// The viewer sends a clock-sync message roughly every ten seconds while
-    /// a session is live, so this much true silence means the link is dead,
-    /// not merely quiet. Not the transport's own idle timeout: that fires
-    /// only once the OS itself gives up on the socket, which in the field
-    /// can run far longer than this.
-    public static let defaultHostSilenceTimeout: Duration = .seconds(30)
+    public static let defaultHostSilenceTimeout = ClientControlDialing.defaultHostSilenceTimeout
+
+    public typealias DialTermination = SensoriumClient.DialTermination
 
     /// `nil` is allowed only during the one-time pairing ceremony; the signed
     /// pairing approval binds the returned certificate hash to the host key.
@@ -103,13 +60,17 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
             )
         )
         connection = nwConnection
+        pinnedHostCertificateHash = tlsCertificateHash
         silenceWatchdog = SilenceWatchdog(timeout: Self.defaultHostSilenceTimeout) {
             nwConnection.cancel()
         }
     }
 
     public static func certificatePinMatches(certificateDER: Data, expectedHash: Data) -> Bool {
-        HostTLSIdentity.certificateHash(for: certificateDER) == expectedHash
+        ClientControlDialing.certificatePinMatches(
+            certificateDER: certificateDER,
+            expectedHash: expectedHash
+        )
     }
 
     public static func parameters(
@@ -193,33 +154,11 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
         }
     }
 
-    /// One dial attempt ends in exactly one of these ways: the machine or route
-    /// produced its own error (which also covers a local `.cancelled` state,
-    /// already turned into `NetworkControlConnectionError.peerFailed` before
-    /// it reaches here), or the deadline in `start(timeout:)` ran out first.
-    public enum DialTermination {
-        case failed(any Error)
-        case timedOut
-    }
-
-    /// Given how a dial ended and whether the TLS verify block saw the
-    /// host's certificate fail to match the pin, decides which error the
-    /// caller reports. A pin mismatch always wins: Network.framework tears the
-    /// connection down without saying why it rejected the certificate, so a
-    /// mismatch the verify block itself observed is the only place that
-    /// reason survives. Absent a mismatch, the dial's own error passes
-    /// through unchanged.
     public static func resolveDialError(
         _ termination: DialTermination,
         pinMismatchObserved: Bool
     ) -> any Error {
-        guard !pinMismatchObserved else {
-            return NetworkControlConnectionError.certificatePinMismatch
-        }
-        switch termination {
-        case let .failed(error): return error
-        case .timedOut: return NetworkControlConnectionError.timedOut
-        }
+        ClientControlDialing.resolveDialError(termination, pinMismatchObserved: pinMismatchObserved)
     }
 
     private func openConnection() async throws {
@@ -315,3 +254,4 @@ public final class NetworkControlConnection: SensoriumControlTransport, @uncheck
         }
     }
 }
+#endif

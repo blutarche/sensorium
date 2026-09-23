@@ -1,11 +1,19 @@
 import Foundation
 
 public enum MonotonicClock {
-    /// `CLOCK_UPTIME_RAW` is the same timebase ScreenCaptureKit and
+    /// On Darwin, `CLOCK_UPTIME_RAW` is the same timebase ScreenCaptureKit and
     /// VideoToolbox stamp their sample buffers with, so a capture timestamp and
     /// a present timestamp taken on the same machine are directly comparable.
+    /// On Linux, this is `CLOCK_MONOTONIC`, the timebase the viewer uses for
+    /// its own presentation timing.
     public static func nowNanoseconds() -> Int64 {
-        Int64(bitPattern: clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
+        #if canImport(Darwin)
+        return Int64(bitPattern: clock_gettime_nsec_np(CLOCK_UPTIME_RAW))
+        #else
+        var ts = timespec()
+        clock_gettime(CLOCK_MONOTONIC, &ts)
+        return Int64(ts.tv_sec) * 1_000_000_000 + Int64(ts.tv_nsec)
+        #endif
     }
 }
 

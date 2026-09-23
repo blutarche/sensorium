@@ -1,3 +1,4 @@
+#if canImport(VideoToolbox)
 import SensoriumCore
 import CoreMedia
 import CoreVideo
@@ -17,51 +18,6 @@ public enum VideoToolboxDecoderError: Error, Equatable {
     case frameSubmissionFailed(OSStatus)
 }
 
-/// Whether a created decompression session ended up using a hardware
-/// accelerated decoder. VideoToolbox picks the decoder silently, so this is
-/// what makes the choice observable instead of assumed.
-///
-/// The viewer only ever *enables* hardware decode, never *requires* it: the
-/// viewer may be the weaker of the two machines and can least afford to
-/// refuse a connection it could otherwise show: slower software decode
-/// beats no picture. `RequireHardwareAcceleratedVideoDecoder`
-/// would turn a missing hardware decoder into a hard session-creation
-/// failure, which is right for the host's encoder but wrong here.
-@available(macOS 13.0, *)
-public enum DecoderHardwareAccelerationStatus: Equatable, Sendable {
-    case hardwareAccelerated
-    case softwareFallback
-    /// The property could not be read back at all -- VideoToolbox did not
-    /// say which decoder it selected. This is distinct from `softwareFallback`
-    /// on purpose: collapsing an unreadable result into "software" would
-    /// assert something the code never established.
-    case unknown
-
-    /// `reportedHardwareAccelerated` is the read-back result: `true`/`false`
-    /// if the property was read successfully, `nil` if it could not be read
-    /// (a failed `VTSessionCopyProperty` call, or a value of the wrong type).
-    public init(reportedHardwareAccelerated: Bool?) {
-        switch reportedHardwareAccelerated {
-        case true: self = .hardwareAccelerated
-        case false: self = .softwareFallback
-        case nil: self = .unknown
-        }
-    }
-
-    /// Logged once per session creation, using the module's existing
-    /// "Sensorium: ..." idiom (see `Sources/Sensorium/main.swift`).
-    var logLine: String {
-        switch self {
-        case .hardwareAccelerated:
-            return "Sensorium: video decoder using hardware acceleration"
-        case .softwareFallback:
-            return "Sensorium: video decoder falling back to software decode -- no hardware decoder available"
-        case .unknown:
-            return "Sensorium: video decoder hardware acceleration status unknown -- VideoToolbox did not report which decoder it selected"
-        }
-    }
-}
-
 @available(macOS 13.0, *)
 public enum DecoderSpecification {
     /// The `decoderSpecification` passed to `VTDecompressionSessionCreate`.
@@ -77,7 +33,7 @@ public enum DecoderSpecification {
 /// output callback on its own thread, and a main-actor class traps the moment a
 /// frame arrives. Mutable state is guarded by `lock` instead.
 @available(macOS 13.0, *)
-public final class VideoToolboxDecoder: @unchecked Sendable {
+public final class VideoToolboxDecoder: VideoDecoding, @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private final class OutputBox: @unchecked Sendable {
         let handler: @Sendable (DecodedFrame) -> Void
@@ -298,3 +254,12 @@ public final class VideoToolboxDecoder: @unchecked Sendable {
         return description
     }
 }
+
+@available(macOS 13.0, *)
+extension VideoToolboxDecoder {
+    /// The decoder a viewer running on macOS builds for every window.
+    public static let factory: VideoDecoderFactory = { receipts, outputHandler in
+        VideoToolboxDecoder(receipts: receipts, outputHandler: outputHandler)
+    }
+}
+#endif

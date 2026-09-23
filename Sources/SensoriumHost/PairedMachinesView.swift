@@ -289,13 +289,9 @@ private final class PairedMachineRowView: NSView {
         ])
 
         nameLabel.stringValue = row.deviceName
-        let sharingAllowed = row.isSharingRealScreen || row.blockedReason == nil
-        toggle.isEnabled = sharingAllowed
-        // `NSSwitch` dims a disabled control to 0.4 alpha; this custom
-        // control and its label match, so a blocked row never reads as an
-        // enabled off switch.
-        toggle.alphaValue = sharingAllowed ? 1 : 0.4
-        toggleLabel.alphaValue = sharingAllowed ? 1 : 0.4
+        toggle.isEnabled = true
+        toggle.alphaValue = 1
+        toggleLabel.alphaValue = 1
         askFirstCheckbox.state = row.asksWhenInUse ? .on : .off
         askFirstCheckbox.isHidden = !row.isSharingRealScreen
         let meta = Self.metaLine(for: row)
@@ -308,11 +304,10 @@ private final class PairedMachineRowView: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    /// The key fingerprint, which display may be shared (or why not), and
-    /// why sharing is or is not available, joined into the one secondary
-    /// line this row has room for -- each piece already reads as a plain
-    /// sentence fragment on its own, so " \u{00B7} " between them is the
-    /// only punctuation this needs.
+    /// The key fingerprint and which display may be shared (or why not),
+    /// joined into the one secondary line this row has room for -- each
+    /// piece already reads as a plain sentence fragment on its own, so
+    /// " \u{00B7} " between them is the only punctuation this needs.
     private static func metaLine(for row: HostScreenArmingPresentation.PairedMachineRow) -> String? {
         var parts: [String] = []
         if let keyFingerprintLine = row.keyFingerprintLine {
@@ -322,11 +317,6 @@ private final class PairedMachineRowView: NSView {
             parts.append(bareDisplayList(from: sharedDisplaysLine))
         } else if let notOfferedReason = row.notOfferedReason {
             parts.append(notOfferedReason)
-        }
-        // Blocked reason outranks the credential summary; the two never
-        // both apply.
-        if let reason = row.blockedReason ?? row.credentialSummary {
-            parts.append(reason)
         }
         return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
     }

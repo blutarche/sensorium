@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import SensoriumClient
 import SensoriumCore
@@ -50,3 +51,4 @@ func testViewerMainMenuUnregisterTests() async {
         print("PASS: unregister removes a target from dispatch")
     }
 }
+#endif

@@ -436,6 +436,7 @@ public struct RFBLockScreenUnlocker: LockScreenUnlocking {
     private let verifyDelaySeconds: Double
     private let verifyAttempts: Int
     private let randomBytes: @Sendable (Int) throws -> [UInt8]
+    private let hostInjectedHIDActivity: any HostInjectedHIDActivity
 
     public init(lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState()) {
         self.init(
@@ -453,7 +454,8 @@ public struct RFBLockScreenUnlocker: LockScreenUnlocking {
         keyPressGapSeconds: Double = 0.090,
         verifyDelaySeconds: Double = 1.5,
         verifyAttempts: Int = 3,
-        randomBytes: @escaping @Sendable (Int) throws -> [UInt8] = RFBType30Client.systemRandomBytes
+        randomBytes: @escaping @Sendable (Int) throws -> [UInt8] = RFBType30Client.systemRandomBytes,
+        hostInjectedHIDActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared
     ) {
         self.lockStateReader = lockStateReader
         self.makeChannel = makeChannel
@@ -463,6 +465,7 @@ public struct RFBLockScreenUnlocker: LockScreenUnlocking {
         self.verifyDelaySeconds = verifyDelaySeconds
         self.verifyAttempts = verifyAttempts
         self.randomBytes = randomBytes
+        self.hostInjectedHIDActivity = hostInjectedHIDActivity
     }
 
     /// The type-30 credential block's password field is 64 bytes with a
@@ -562,7 +565,14 @@ public struct RFBLockScreenUnlocker: LockScreenUnlocking {
         try await press(RFBType30Client.returnKeysym, through: client)
     }
 
+    /// Whether typing through screensharingd also touches `hidSystemState`
+    /// the way `.cghidEventTap` does is unconfirmed pending a real-host
+    /// test. Sampling and recording here costs nothing if it does not, and
+    /// is exactly what closes the same masking gap the CGEvent paths close
+    /// if it does.
     private func press(_ keysym: UInt32, through client: RFBType30Client) async throws {
+        hostInjectedHIDActivity.sampleBeforePost()
+        hostInjectedHIDActivity.recordPost()
         try client.sendKeyEvent(keysym: keysym, down: true)
         if keyPressDownSeconds > 0 {
             try? await Task.sleep(nanoseconds: UInt64(keyPressDownSeconds * 1_000_000_000))

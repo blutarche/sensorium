@@ -8,6 +8,80 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- A Linux viewer for Fedora 44 with Wayland, delivered as an RPM. It
+  pairs, lists the machines it is paired with, and runs a session on a
+  virtual display. There is no Linux host.
+- Host screen for every paired device, once armed, with no security key
+  or Touch ID needed at session start.
+- A notice at first launch on a machine with no hardware video decoder
+  Sensorium can use, saying it will decode in software and use more
+  power.
+- Open at login, on by default, so an unattended host comes back
+  reachable after a restart. A switch in the host window turns it off.
+- Lock at start: if the host launches with its screen unlocked and no
+  one has touched this machine since before the process started, it
+  locks the screen again before doing anything else.
+
+### Removed
+
+- The presence-bound credential a device registered at pairing and the
+  per-session proof it signed before host screen or lock-screen unlock.
+  Pairing itself now arms a device for host screen; the host can disarm
+  and re-arm any paired device at any time.
+
+### Changed
+
+- The wire messages for registering and proving a host-screen credential
+  are gone. An app built before this change that still sends one of them
+  is not disconnected for it; the other side now treats that message as
+  unrecognized, the same tolerance any future message gets.
+- On first launch after this update, every machine paired with a host is
+  armed for host screen, including machines the person at the host had
+  turned off and machines that were never armed. Turn any of them off
+  again in the host window.
+- An authenticated hello now names and signs the SHA-256 of the host's
+  TLS certificate, the one the viewer pinned when it paired, and a host
+  refuses a hello naming any other certificate. This stops a host a
+  viewer once paired with from replaying that viewer's hello to another
+  host. Its signed transcript is now `sensorium-authenticated-hello-v2`,
+  and the pairing request's is `sensorium-pair-request-v2`, so no
+  signature made over either earlier version can be read as the newer
+  one. The host and the viewer must be updated together.
+- A pairing request must carry the signature that proves the machine
+  sending it holds the key it names. A request without one is refused as
+  malformed, and one whose signature does not verify ends the
+  connection. Every viewer this project has shipped already signs.
+- A host-screen request that the person at the host declined, or left
+  unanswered, is now refused for the rest of that connection with the
+  same reason, and asks nobody again. Reconnecting still asks, as it
+  always did.
+- An arming record that exists but cannot be read is now treated as
+  arming nothing at all, and is named once in the host's log. Before,
+  such a file read as an empty record, and the next launch re-armed
+  every paired machine, undoing every machine the person at the host had
+  turned off.
+- Lock-screen unlock has no panel or button: while the host reports its
+  screen locked, the person at the viewer types the login password
+  directly into the session window and presses Return. The host also
+  reports its lock state whenever it changes during a host-screen
+  session, not only right after an unlock attempt.
+
+### Fixed
+
+- Typing reaches a locked host's lock screen again.
+- A host-screen session that unlocked the machine, or found it unlocked
+  by the person at the host, now locks it again when the session ends or
+  the host quits, unless someone is using the machine itself. A session
+  that never saw the screen locked, or that leaves it locked, never does.
+- A viewer's forwarded keystrokes no longer read as a person at the host
+  machine: the local-activity check the presence prompt and relock both
+  rely on now discounts idle time this host's own forwarded input could
+  explain, sampled immediately before each forwarded post so a real
+  person's input right before it is never masked by the post that
+  follows.
+
 ## [0.1.3] - 2026-09-19
 
 ### Changed

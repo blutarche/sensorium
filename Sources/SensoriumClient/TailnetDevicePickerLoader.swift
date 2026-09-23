@@ -16,22 +16,29 @@ import SensoriumCore
 @MainActor
 public final class TailnetDevicePickerLoader {
     private let provider: any TailnetStatusProviding
+    private let installHint: String
 
-    public init(provider: any TailnetStatusProviding) {
+    /// `installHint` is the sentence the not-installed state ends on, which
+    /// only the platform can write -- see `TailnetDevicePickerFetchError`.
+    public init(
+        provider: any TailnetStatusProviding,
+        installHint: String = TailnetDevicePickerFetchError.defaultInstallHint
+    ) {
         self.provider = provider
+        self.installHint = installHint
     }
 
     public func load() async -> TailnetDevicePickerState {
         do {
             let json = try await provider.statusJSON()
             let snapshot = try TailnetDirectory.parse(statusJSON: json)
-            return .from(.success(snapshot))
+            return .from(.success(snapshot), installHint: installHint)
         } catch is TailnetDirectoryError {
-            return .from(.failure(.malformedStatus))
+            return .from(.failure(.malformedStatus), installHint: installHint)
         } catch LocalTailscaleStatusProviderError.tailscaleNotFound {
-            return .from(.failure(.tailscaleNotInstalled))
+            return .from(.failure(.tailscaleNotInstalled), installHint: installHint)
         } catch {
-            return .from(.failure(.tailscaledUnreachable))
+            return .from(.failure(.tailscaledUnreachable), installHint: installHint)
         }
     }
 }

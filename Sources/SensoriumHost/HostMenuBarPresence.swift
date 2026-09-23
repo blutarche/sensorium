@@ -153,14 +153,6 @@ public final class HostMenuBarPresence: NSObject {
                 )
                 stateItem.isEnabled = false
                 menu.addItem(stateItem)
-                let credentialItem = NSMenuItem(
-                    title: line.credentialSummary
-                        ?? HostScreenArmingPresentation.noCredentialNotice(deviceName: line.deviceName),
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                credentialItem.isEnabled = false
-                menu.addItem(credentialItem)
                 // Revokes the Share host screen permission; the Stop item
                 // above ends only the live session.
                 let turnOffItem = NSMenuItem(
