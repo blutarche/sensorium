@@ -175,4 +175,82 @@ func testSavedMachinesStoreTests() {
 
         print("PASS: recording a connection reads the stored machine first, so nothing written during the session is lost")
     }
+
+    do {
+        // A saved machine names the host this viewer trusts and the
+        // certificate hash it pins. Another account able to read or rewrite
+        // that file could point a later session at a machine of its own, so
+        // it is written exactly as owner-only as the device key beside it.
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sensorium-saved-host-\(UUID().uuidString)", isDirectory: true)
+        let url = directory.appendingPathComponent("saved-host.json")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        FileSavedHostStore(url: url).save(savedMachine("Studio", key: 1))
+
+        let fileMode = (try? FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions] as? NSNumber)??.intValue
+        expect(
+            fileMode == 0o600,
+            "the saved machines file is readable by its owner alone, got \(String(describing: fileMode))"
+        )
+        let directoryMode = (try? FileManager.default.attributesOfItem(
+            atPath: directory.path
+        )[.posixPermissions] as? NSNumber)??.intValue
+        expect(
+            directoryMode == 0o700,
+            "and sits in a directory no other account can list, got \(String(describing: directoryMode))"
+        )
+        expect(
+            FileSavedHostStore(url: url).loadAll().count == 1,
+            "and reads back through the same store"
+        )
+        print("PASS: the saved machines file is written owner-only, like the device key beside it")
+    }
+
+    do {
+        // Picking a resolution from the Display menu says nothing about where
+        // this machine should start, what it last streamed, or which host
+        // screens it was offered, so none of the three may be dropped on the
+        // way through.
+        let store = InMemorySavedHostStore()
+        store.save(SavedHost(
+            displayName: "Studio",
+            host: "studio.tail1234.ts.net",
+            port: 7777,
+            hostPublicKey: Data([4]),
+            tlsCertificateHash: Data([4, 4]),
+            streamScalePreference: .automatic,
+            lastConnectedAt: Date(timeIntervalSince1970: 1_000),
+            startTargetPreference: .virtualDisplay,
+            lastLiveTarget: .hostScreen(displayIdentity: "screen-a", label: "Studio Display"),
+            rememberedHostScreenOffer: [
+                RememberedHostScreen(displayIdentity: "screen-a", label: "Studio Display")
+            ]
+        ))
+
+        store.setStreamScalePreference(hostPublicKey: Data([4]), to: .fixed(1.5))
+
+        guard let stored = store.load(hostPublicKey: Data([4])) else {
+            expect(false, "the machine survives a stream-scale change")
+            return
+        }
+        expect(stored.streamScalePreference == .fixed(1.5), "the chosen scale is what the store now holds")
+        expect(stored.startTargetPreference == .virtualDisplay, "and the saved Start with preference is untouched")
+        expect(
+            stored.lastLiveTarget == .hostScreen(displayIdentity: "screen-a", label: "Studio Display"),
+            "and the last live target is untouched"
+        )
+        expect(
+            stored.rememberedHostScreenOffer == [
+                RememberedHostScreen(displayIdentity: "screen-a", label: "Studio Display")
+            ],
+            "and the remembered host-screen offer is untouched"
+        )
+        expect(stored.lastConnectedAt == Date(timeIntervalSince1970: 1_000), "and so is when it last connected")
+
+        store.setStreamScalePreference(hostPublicKey: Data([44]), to: .fixed(2))
+        expect(store.loadAll().count == 1, "a machine this one no longer holds saves nothing")
+
+        print("PASS: choosing a stream scale keeps the Start with preference, the last live target and the remembered offer")
+    }
 }

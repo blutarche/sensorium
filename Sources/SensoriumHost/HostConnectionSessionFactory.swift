@@ -30,7 +30,6 @@ public final class HostConnectionSessionFactory {
     /// and `pairing`, because these stores outlive any one connection.
     private let hostScreenArmingProvider: (() -> HostScreenArming)?
     private let hostScreenCurrentDisplaysProvider: () -> [DisplaySnapshot]
-    private let hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)?
     private let hostScreenResumeTicketStore: (any HostScreenResumeTicketStoring)?
     /// One budget for the whole host process, shared into every controller so a
     /// device's wrong-guess count is spent across all its connections, not
@@ -43,6 +42,7 @@ public final class HostConnectionSessionFactory {
     /// throttle and resume-ticket store are: the "already live" fact must outlive
     /// any one connection.
     private let hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)?
+    private let deviceConnectionRegistry: HostDeviceConnectionRegistry?
     private let hostScreenLocalActivitySignal: (any HostLocalActivitySignal)?
     private let hostScreenPresenceGate: (any HostScreenPresenceGating)?
     /// Shared rather than per-connection for a reason of its own: this is
@@ -54,6 +54,10 @@ public final class HostConnectionSessionFactory {
     /// one power state, so the hold that keeps its displays awake belongs to
     /// the process rather than to whichever connection happened to take it.
     private let displayWake: DisplayWakeController?
+    /// The SHA-256 of this host's own TLS certificate, forwarded to every
+    /// controller: an `authenticatedHello` is bound to the host it was sent
+    /// to, and this is what each connection checks that binding against.
+    private let hostCertificateHash: Data?
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -64,12 +68,13 @@ public final class HostConnectionSessionFactory {
         onPairingRequested: ((String) -> Void)? = nil,
         keyConfinement: HostKeyConfinement,
         maxSurfaceCount: Int = CanvasSurfaceID.capacity,
+        hostCertificateHash: Data? = nil,
         hostScreenArmingProvider: (() -> HostScreenArming)? = nil,
         hostScreenCurrentDisplaysProvider: @escaping () -> [DisplaySnapshot] = DisplayInventory.online,
-        hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)? = nil,
         hostScreenResumeTicketStore: (any HostScreenResumeTicketStoring)? = nil,
         hostScreenUnlockThrottle: (any HostScreenUnlockThrottling)? = nil,
         hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
+        deviceConnectionRegistry: HostDeviceConnectionRegistry? = nil,
         hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
@@ -83,12 +88,13 @@ public final class HostConnectionSessionFactory {
         self.onPairingRequested = onPairingRequested
         self.keyConfinement = keyConfinement
         self.maxSurfaceCount = maxSurfaceCount
+        self.hostCertificateHash = hostCertificateHash
         self.hostScreenArmingProvider = hostScreenArmingProvider
         self.hostScreenCurrentDisplaysProvider = hostScreenCurrentDisplaysProvider
-        self.hostScreenPresenceProofVerifier = hostScreenPresenceProofVerifier
         self.hostScreenResumeTicketStore = hostScreenResumeTicketStore
         self.hostScreenUnlockThrottle = hostScreenUnlockThrottle
         self.hostScreenLiveSessionRegistry = hostScreenLiveSessionRegistry
+        self.deviceConnectionRegistry = deviceConnectionRegistry
         self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
         self.hostScreenPresenceGate = hostScreenPresenceGate
         self.hostScreenModeController = hostScreenModeController
@@ -110,12 +116,13 @@ public final class HostConnectionSessionFactory {
             onClipboardSharingChanged: onClipboardSharingChanged,
             keyConfinement: keyConfinement,
             maxSurfaceCount: maxSurfaceCount,
+            hostCertificateHash: hostCertificateHash,
             hostScreenArmingProvider: hostScreenArmingProvider,
             hostScreenCurrentDisplaysProvider: hostScreenCurrentDisplaysProvider,
-            hostScreenPresenceProofVerifier: hostScreenPresenceProofVerifier,
             hostScreenResumeTicketStore: hostScreenResumeTicketStore,
             hostScreenUnlockThrottle: hostScreenUnlockThrottle,
             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
+            deviceConnectionRegistry: deviceConnectionRegistry,
             hostScreenLocalActivitySignal: hostScreenLocalActivitySignal,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,

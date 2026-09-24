@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import SensoriumCore
 
@@ -15,3 +16,4 @@ func testAboutPanelCreditTests() {
     )
     print("PASS: the About panel's options carry the copyright line even without an Info.plist")
 }
+#endif

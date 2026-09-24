@@ -16,8 +16,8 @@ No account, no relay, no telemetry, no command line.
 ## Requirements
 
 - One viewer machine and one host machine.
-- macOS 13 or later on both machines. Built and tested only on macOS 26.
-  Linux support is planned.
+- The host runs macOS 13 or later. Built and tested only on macOS 26.
+- The viewer runs macOS 13 or later, or Fedora 44 with Wayland.
 - Both on the same Tailscale tailnet. Nothing else can reach the host.
 
 ## Getting started
@@ -29,6 +29,7 @@ No account, no relay, no telemetry, no command line.
 Docs:
 
 - [Install](docs/install.md)
+- [Install on Linux](docs/install.md#linux-fedora-44-kde-plasma-on-wayland)
 - [Permissions](docs/macos-permissions.md)
 - [Privacy](docs/privacy.md)
 - [Threat model](docs/threat-model.md)
@@ -55,7 +56,8 @@ If you added the optional PF firewall rule, see [Uninstall](docs/uninstall.md).
 
 Works between the two machines it was built for. Pairing, virtual display,
 pinned-identity QUIC transport, H.264 video, input, clipboard and reconnect
-all run. Host screen mode and its opt-in lock-screen unlock run too. Not
+all run. Host screen mode runs too, and a locked host screen unlocks by typing
+at it from the viewer. Not
 signed, not notarized, not yet tested on other hardware.
 
 ## Development

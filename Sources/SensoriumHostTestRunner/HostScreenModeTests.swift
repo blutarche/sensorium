@@ -31,14 +31,6 @@ private func hostScreenModeTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
     )
 }
 
-private final class ApprovingProofVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(
-        proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?, challenge: Data
-    ) -> Bool {
-        true
-    }
-}
-
 private final class LongIdleSignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
@@ -81,7 +73,6 @@ private func makeModeFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
     ])
@@ -97,14 +88,14 @@ private func makeModeFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: ApprovingProofVerifier(),
         hostScreenLocalActivitySignal: LongIdleSignal(),
         hostScreenModeController: modes,
         hostScreenModeRestorePolicy: restorePolicy,
         log: { log.record($0) }
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -116,14 +107,14 @@ private func makeModeFixture(
 /// session, which is the state every mode operation requires.
 @MainActor
 private func admitHostScreenSession(_ controller: HostSessionController) {
-    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the mode fixture's own offer names the armed display")
         return
     }
     let response = try! controller.handle(.hostScreenRequest(
         token: entry.opaqueToken,
-        presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+        resumeTicket: nil
     ))
     guard case .hostScreenReady = response else {
         expect(false, "the mode fixture's own request is admitted -- got: \(String(describing: response))")

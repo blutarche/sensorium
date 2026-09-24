@@ -36,7 +36,7 @@ private func hostScreenTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return Data()
     }
@@ -54,7 +54,6 @@ private func makeReconnectableController(
     display: DisplaySnapshot,
     arming: HostScreenArming,
     resumeTicketStore: (any HostScreenResumeTicketStoring)?,
-    presenceProofVerifier: (any HostScreenPresenceProofVerifying)? = nil,
     presenceGate: (any HostScreenPresenceGating)? = nil,
     presenceSignal: any HostLocalActivitySignal = AlwaysIdleSignal(),
     liveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil
@@ -67,14 +66,14 @@ private func makeReconnectableController(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: presenceProofVerifier,
         hostScreenResumeTicketStore: resumeTicketStore,
         hostScreenLiveSessionRegistry: liveSessionRegistry,
         hostScreenLocalActivitySignal: presenceSignal,
         hostScreenPresenceGate: presenceGate
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -91,12 +90,6 @@ private final class AlwaysIdleSignal: HostLocalActivitySignal, @unchecked Sendab
 private final class RecentlyActiveSignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(0)
-    }
-}
-
-private final class AlwaysApprovingVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?, challenge: Data) -> Bool {
-        true
     }
 }
 
@@ -128,20 +121,18 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
         let store = HostScreenResumeTicketStore()
 
         let firstConnection = makeReconnectableController(
-            identity: identity, display: display, arming: arming, resumeTicketStore: store,
-            presenceProofVerifier: AlwaysApprovingVerifier()
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
         guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) else {
             expect(false, "the first connection's own admission, with a verifier that approves, must succeed")
             return
@@ -165,7 +156,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let secondToken = offerAndExtractToken(secondConnection)
         let resumed = try! secondConnection.handle(.hostScreenRequest(
-            token: secondToken, presence: .resumeTicket(mintedTicket)
+            token: secondToken, resumeTicket: mintedTicket
         ))
         guard case let .hostScreenReady(geometry, _) = resumed else {
             expect(false, "a valid resume ticket admits the reconnected session with no signed proof and no verifier configured")
@@ -191,7 +182,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -201,7 +191,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let token = offerAndExtractToken(controller)
         let response = try! controller.handle(.hostScreenRequest(
-            token: token, presence: .resumeTicket(Data([0xDE, 0xAD, 0xBE, 0xEF]))
+            token: token, resumeTicket: Data([0xDE, 0xAD, 0xBE, 0xEF])
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-resume-refused"),
@@ -221,7 +211,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -230,7 +219,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let token = offerAndExtractToken(controller)
         let response = try! controller.handle(.hostScreenRequest(
-            token: token, presence: .resumeTicket(Data([0x01]))
+            token: token, resumeTicket: Data([0x01])
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-resume-refused"),
@@ -249,7 +238,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
@@ -257,13 +245,12 @@ func runHostScreenResumeTicketControllerTests() async {
         let store = HostScreenResumeTicketStore(now: clock.now)
 
         let firstConnection = makeReconnectableController(
-            identity: identity, display: display, arming: arming, resumeTicketStore: store,
-            presenceProofVerifier: AlwaysApprovingVerifier()
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
         guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) else {
             expect(false, "the first connection's own admission, with a verifier that approves, must succeed")
             return
@@ -279,7 +266,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let secondToken = offerAndExtractToken(secondConnection)
         let response = try! secondConnection.handle(.hostScreenRequest(
-            token: secondToken, presence: .resumeTicket(mintedTicket)
+            token: secondToken, resumeTicket: mintedTicket
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-resume-refused"),
@@ -318,7 +305,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
@@ -334,12 +320,12 @@ func runHostScreenResumeTicketControllerTests() async {
                 keyConfinement: .hostScreen,
                 hostScreenArmingProvider: { arming },
                 hostScreenCurrentDisplaysProvider: { [mintedDisplay, otherDisplay] },
-                hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
                 hostScreenResumeTicketStore: store,
                 hostScreenLocalActivitySignal: AlwaysIdleSignal()
             )
             let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-                protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+                protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+                hostCertificateHash: nil
             )
             _ = try! controller.handle(.authenticatedHello(
                 protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -348,27 +334,27 @@ func runHostScreenResumeTicketControllerTests() async {
         }
 
         let firstConnection = makeControllerForBothDisplays()
-        guard case let .hostScreenList(displays, _) = try! firstConnection.offerHostScreenList(),
+        guard case let .hostScreenList(displays) = try! firstConnection.offerHostScreenList(),
               let mintedEntry = displays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(mintedDisplay).wireStableIdentifier }) else {
             expect(false, "the fixture offers the minted display among its entries")
             return
         }
         guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
             token: mintedEntry.opaqueToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) else {
             expect(false, "admission against the minted display, with a verifier that approves, must succeed")
             return
         }
 
         let secondConnection = makeControllerForBothDisplays()
-        guard case let .hostScreenList(secondDisplays, _) = try! secondConnection.offerHostScreenList(),
+        guard case let .hostScreenList(secondDisplays) = try! secondConnection.offerHostScreenList(),
               let otherEntry = secondDisplays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(otherDisplay).wireStableIdentifier }) else {
             expect(false, "the second connection's own offer names the other display too")
             return
         }
         let response = try! secondConnection.handle(.hostScreenRequest(
-            token: otherEntry.opaqueToken, presence: .resumeTicket(mintedTicket)
+            token: otherEntry.opaqueToken, resumeTicket: mintedTicket
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-resume-refused"),
@@ -379,16 +365,15 @@ func runHostScreenResumeTicketControllerTests() async {
     }
 
     do {
-        // The .signed path is unchanged: an unrecognized credential
-        // still refuses as host-screen-credential-unknown, never
-        // the resume ticket's own reason.
+        // A request carrying no ticket at all is an ordinary first
+        // request: an armed device is admitted, and the resume path's
+        // own refusal reason never appears.
         let identity = try! DeviceIdentity.generate()
         let display = hostScreenTestDisplay()
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -397,14 +382,14 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let token = offerAndExtractToken(controller)
         let response = try! controller.handle(.hostScreenRequest(
-            token: token, presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            token: token, resumeTicket: nil
         ))
-        expect(
-            response == .hostScreenRefused(reason: "host-screen-credential-unknown"),
-            "a .signed proof with no verifier configured still refuses as host-screen-credential-unknown, unaffected by the resume ticket's own new reason"
-        )
+        guard case .hostScreenReady = response else {
+            expect(false, "an armed device's first request, carrying no ticket, is admitted -- got \(response)")
+            return
+        }
 
-        print("PASS: a .signed proof is still refused as host-screen-credential-unknown, unaffected by the resume ticket's own reason")
+        print("PASS: a request carrying no resume ticket is an ordinary admitted first request")
     }
 
     do {
@@ -418,20 +403,18 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
         let store = HostScreenResumeTicketStore()
 
         let stoppedConnection = makeReconnectableController(
-            identity: identity, display: display, arming: arming, resumeTicketStore: store,
-            presenceProofVerifier: AlwaysApprovingVerifier()
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let stoppedToken = offerAndExtractToken(stoppedConnection)
         guard case let .hostScreenReady(_, mintedTicket) = try! stoppedConnection.handle(.hostScreenRequest(
             token: stoppedToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) else {
             expect(false, "the stopped session's own admission, with a verifier that approves, must succeed")
             return
@@ -445,7 +428,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let redialToken = offerAndExtractToken(redial)
         let refused = try! redial.handle(.hostScreenRequest(
-            token: redialToken, presence: .resumeTicket(mintedTicket)
+            token: redialToken, resumeTicket: mintedTicket
         ))
         expect(
             refused == .hostScreenRefused(reason: "host-screen-resume-refused"),
@@ -464,19 +447,17 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
         let store = HostScreenResumeTicketStore()
         let liveController = makeReconnectableController(
-            identity: identity, display: display, arming: arming, resumeTicketStore: store,
-            presenceProofVerifier: AlwaysApprovingVerifier()
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let liveToken = offerAndExtractToken(liveController)
         guard case let .hostScreenReady(_, liveTicket) = try! liveController.handle(.hostScreenRequest(
             token: liveToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) else {
             expect(false, "the live session's own admission, with a verifier that approves, must succeed")
             return
@@ -500,7 +481,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let afterStopToken = offerAndExtractToken(afterStop)
         let refusedAfterStop = try! afterStop.handle(.hostScreenRequest(
-            token: afterStopToken, presence: .resumeTicket(liveTicket)
+            token: afterStopToken, resumeTicket: liveTicket
         ))
         expect(
             refusedAfterStop == .hostScreenRefused(reason: "host-screen-resume-refused"),
@@ -522,7 +503,6 @@ func runHostScreenResumeTicketControllerTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
@@ -531,12 +511,12 @@ func runHostScreenResumeTicketControllerTests() async {
 
         var firstConnection: HostSessionController? = makeReconnectableController(
             identity: identity, display: display, arming: arming, resumeTicketStore: store,
-            presenceProofVerifier: AlwaysApprovingVerifier(), liveSessionRegistry: registry
+            liveSessionRegistry: registry
         )
         let firstToken = offerAndExtractToken(firstConnection!)
         guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection!.handle(.hostScreenRequest(
             token: firstToken,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) else {
             expect(false, "the first connection's own admission must succeed")
             return
@@ -551,7 +531,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let whileLiveToken = offerAndExtractToken(whileLive)
         expect(
-            try! whileLive.handle(.hostScreenRequest(token: whileLiveToken, presence: .resumeTicket(mintedTicket)))
+            try! whileLive.handle(.hostScreenRequest(token: whileLiveToken, resumeTicket: mintedTicket))
                 == .hostScreenRefused(reason: "host-screen-already-live"),
             "a resume that would run alongside a first session still live is refused as a second concurrent session"
         )
@@ -567,7 +547,7 @@ func runHostScreenResumeTicketControllerTests() async {
         )
         let reconnectToken = offerAndExtractToken(reconnect)
         guard case .hostScreenReady = try! reconnect.handle(.hostScreenRequest(
-            token: reconnectToken, presence: .resumeTicket(mintedTicket)
+            token: reconnectToken, resumeTicket: mintedTicket
         )) else {
             expect(false, "a reconnect replacing a dead session resumes tap-free through the shared registry")
             return

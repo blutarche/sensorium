@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -98,59 +99,6 @@ func testViewerUXFixTests() async {
             )
 
             print("PASS: the session status overlay always keeps the local cursor visible over its own buttons, even in captured-pointer mode")
-        }
-
-        // The stuck-cursor regression: CGAssociateMouseAndMouseCursorPosition
-        // is a machine-wide connection, not a per-session flag, so an
-        // unbalanced disassociate is worse than an unbalanced NSCursor.hide()
-        // -- it leaves the user's physical mouse dead with nothing on screen
-        // to click and fix it. Proven the same way as the cursor-visibility
-        // balance: exact transitions on every path, then a long fuzzed run.
-        do {
-            var policy = CanvasPointerAssociationPolicy()
-            expect(!policy.isCapturing && !policy.isDisassociated, "a fresh policy starts connected")
-
-            expect(policy.capturingPointerChanged(true) == .disassociate, "entering capture disconnects the physical mouse")
-            expect(policy.isDisassociated, "the policy now believes the mouse is disconnected")
-            expect(policy.capturingPointerChanged(true) == .none, "reporting the same capture state twice must not disassociate twice")
-            expect(policy.capturingPointerChanged(false) == .associate, "leaving capture reconnects it")
-            expect(!policy.isDisassociated, "reconnected after the only reason to be disconnected ended")
-            expect(policy.capturingPointerChanged(false) == .none, "reporting the same release twice must not reconnect twice")
-
-            // The abrupt-teardown case named explicitly: a session that ends
-            // mid-capture, with no `capturingPointerChanged(false)` ever
-            // reported, must still reconnect in exactly one call.
-            var teardown = CanvasPointerAssociationPolicy()
-            _ = teardown.capturingPointerChanged(true)
-            expect(teardown.isDisassociated, "disconnected mid-capture, before any teardown")
-            expect(teardown.reset() == .associate, "an abrupt teardown mid-capture still reconnects exactly once")
-            expect(teardown.reset() == .none, "a second teardown call must not reconnect twice")
-            expect(!teardown.isCapturing, "reset also clears capture itself, so a stray togglePointerCapture() after teardown cannot re-disassociate on a false premise")
-
-            // The same 200-step fuzz as the cursor-visibility balance, over
-            // the one signal this policy actually has: capture toggling and
-            // teardown, interleaved, checked after every step.
-            var fuzzed = CanvasPointerAssociationPolicy()
-            var outstanding = 0
-            for i in 0..<200 {
-                let transition: CanvasPointerAssociationPolicy.Transition
-                if i % 7 == 0 {
-                    transition = fuzzed.reset()
-                } else {
-                    transition = fuzzed.capturingPointerChanged(i % 3 != 0)
-                }
-                switch transition {
-                case .disassociate: outstanding += 1
-                case .associate: outstanding -= 1
-                case .none: break
-                }
-                expect(outstanding == 0 || outstanding == 1, "the mouse is disconnected by at most one outstanding call at step \(i)")
-                expect((outstanding == 1) == fuzzed.isDisassociated, "the outstanding count and the policy's own isDisassociated agree at step \(i)")
-            }
-            _ = fuzzed.reset()
-            expect(!fuzzed.isDisassociated, "the fuzzed run ends reconnected after a final teardown")
-
-            print("PASS: the physical mouse is disconnected at most once, and every exit, abrupt teardown included, reconnects it exactly once")
         }
 
         // The window title docs/ux-spec.md names: "<machine name> @ <tailnet
@@ -445,12 +393,8 @@ func testViewerUXFixTests() async {
             statuses.append(machine.handle(.stopRequested))
             statuses.append(machine.handle(.retryRequested))
             statuses.append(machine.handle(.gaveUp))
-            for offersPairAgain in [false, true] {
-                var ended = ViewerSessionStateMachine(hostName: "studio-mini")
-                statuses.append(ended.handle(
-                    .hostScreenConnectEnded(reasonLine: "reason", offersPairAgain: offersPairAgain)
-                ))
-            }
+            var ended = ViewerSessionStateMachine(hostName: "studio-mini")
+            statuses.append(ended.handle(.hostScreenConnectEnded(reasonLine: "reason")))
 
             let sessionWidth = StatusPanelLayout.sessionPanelWidth
             for status in statuses {
@@ -468,12 +412,16 @@ func testViewerUXFixTests() async {
                 )
             }
             expect(
-                sessionWidth == StatusPanelLayout.width(
-                    forButtonTitles: ["Your machines", "Connect with a virtual display", "Pair again"]
-                ),
-                "the session panel is exactly as wide as its widest row, the refusal row that offers pairing "
-                    + "again, got \(sessionWidth)"
+                sessionWidth >= StatusPanelLayout.defaultWidth,
+                "the session panel is never narrower than the default a panel with no wide row gets, got \(sessionWidth)"
             )
+            for row in ViewerSessionStateMachine.buttonRows {
+                expect(
+                    StatusPanelLayout.width(forButtonTitles: row) <= sessionWidth,
+                    "row \(row) needs \(StatusPanelLayout.width(forButtonTitles: row))pt, more than the "
+                        + "session panel's \(sessionWidth)pt"
+                )
+            }
 
             print("PASS: the session status panel keeps one width across every state, sized to the widest button row")
         }
@@ -653,12 +601,8 @@ func testViewerUXFixTests() async {
             statuses.append(machine.handle(.stopRequested))
             statuses.append(machine.handle(.retryRequested))
             statuses.append(machine.handle(.gaveUp))
-            for offersPairAgain in [false, true] {
-                var ended = ViewerSessionStateMachine(hostName: "studio-mini")
-                statuses.append(ended.handle(
-                    .hostScreenConnectEnded(reasonLine: "reason", offersPairAgain: offersPairAgain)
-                ))
-            }
+            var ended = ViewerSessionStateMachine(hostName: "studio-mini")
+            statuses.append(ended.handle(.hostScreenConnectEnded(reasonLine: "reason")))
             for status in statuses {
                 let entries = status.buttons.map { (action: $0.action, isPrimary: $0.isPrimary) }
                 if let index = ViewerFocusPolicy.chosenIndex(among: entries) {
@@ -757,3 +701,4 @@ func testViewerUXFixTests() async {
             print("PASS: the canvas overlay offers Your machines rather than a Connect of its own")
         }
 }
+#endif

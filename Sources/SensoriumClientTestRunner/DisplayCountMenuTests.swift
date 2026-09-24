@@ -122,8 +122,8 @@ func testDisplayCountMenuTests() async {
 }
 
 /// The reconciliation a "Displays" refusal owes the session's own windows
-/// -- `ClientSessionHost` is `private` to the executable target and cannot
-/// be reached from here, so `SecondDisplayRefusalReconciliation` is the
+/// -- `ClientSessionHost` is internal to `SensoriumClient` and cannot
+/// be named from here, so `SecondDisplayRefusalReconciliation` is the
 /// pure seam that carries the decision where a test can reach it.
 @MainActor
 func testSecondDisplayRefusalReconciliationTests() async {
@@ -161,7 +161,7 @@ func testSecondDisplayRefusalReconciliationTests() async {
 
     do {
         // A reconnect rebuilds `ClientSessionRunner` fresh
-        // (`Sources/Sensorium/main.swift`'s `runOnce()`), so it starts with
+        // (`ClientSessionHost.runOnce()`), so it starts with
         // no secondary attached even when `windows[1]` still holds one
         // leftover from before the drop. A refusal that arrives during
         // that reconnect's own re-ask must still close the leftover

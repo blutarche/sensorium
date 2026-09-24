@@ -47,8 +47,8 @@ public struct RememberedHostScreen: Equatable, Sendable, Codable {
 }
 
 /// Resolves a saved preference into what the next connect actually names,
-/// pure so `ClientSessionHost` (which cannot be exercised by these runners at
-/// all -- it opens a socket) reads it from something that can be.
+/// pure so `ClientSessionHost` (which these runners cannot name -- it is
+/// internal) reads it from something that can be.
 public enum StartTargetResolution {
     /// `preference` is the machine's own saved choice; `lastTarget` is
     /// whatever `.hostScreenWhenOffered` falls back to when it has no

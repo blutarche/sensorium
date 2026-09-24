@@ -45,6 +45,17 @@ struct FakeScreenLockState: ScreenLockStateReading {
     func isScreenLocked() -> Bool { locked }
 }
 
+/// Stands in for `MutableHostInjectedHIDActivity.shared` so an unlocker under
+/// test, when its typing actually reaches `press(_:through:)`, never writes
+/// into the process-wide singleton, which would otherwise carry that state
+/// into whatever test group reads it next.
+private final class NoOpHostInjectedHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {
+    func recordPost() {}
+    func secondsSinceLastPost() -> TimeInterval? { nil }
+    func sampleBeforePost() {}
+    func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
+}
+
 /// A lock reader that starts locked and reports unlocked once flipped, so a
 /// success path that types and then re-checks can be driven deterministically.
 final class FlippableLockState: ScreenLockStateReading, @unchecked Sendable {
@@ -186,7 +197,8 @@ func testLockScreenUnlockerOutcomes() async {
         lockStateReader: FakeScreenLockState(locked: true),
         makeChannel: { ScriptedRFBChannel(serverBytes: unlockHandshake(securityResult: [0, 0, 0, 1], includeServerInit: false)) },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     expect(await wrong.unlock(password: loginPassword) == .wrongPassword, "a non-zero SecurityResult reads as a wrong password")
 
@@ -195,7 +207,8 @@ func testLockScreenUnlockerOutcomes() async {
         lockStateReader: FakeScreenLockState(locked: true),
         makeChannel: { ScriptedRFBChannel(serverBytes: unlockHandshake(securityResult: [0, 0, 0, 0], offerType30: false, includeServerInit: false)) },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     expect(await noType.unlock(password: loginPassword) == .screenSharingUnavailable, "a service that does not offer type 30 reads as unavailable")
 
@@ -204,7 +217,8 @@ func testLockScreenUnlockerOutcomes() async {
         lockStateReader: FakeScreenLockState(locked: true),
         makeChannel: { nil },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     expect(await noChannel.unlock(password: loginPassword) == .screenSharingUnavailable, "a service that cannot be reached reads as unavailable")
 
@@ -214,7 +228,8 @@ func testLockScreenUnlockerOutcomes() async {
         lockStateReader: unlockedReader,
         makeChannel: { ScriptedRFBChannel(serverBytes: unlockHandshake(securityResult: [0, 0, 0, 0], includeServerInit: true)) },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     expect(await success.unlock(password: loginPassword) == .unlocked, "a successful auth followed by an unlocked screen reads as unlocked")
 
@@ -223,7 +238,8 @@ func testLockScreenUnlockerOutcomes() async {
         lockStateReader: FakeScreenLockState(locked: true),
         makeChannel: { ScriptedRFBChannel(serverBytes: unlockHandshake(securityResult: [0, 0, 0, 0], includeServerInit: true)) },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     if case .failed = await stillLocked.unlock(password: loginPassword) {
         print("PASS: the unlocker maps every handshake outcome and reports still-locked when typing did not take")
@@ -247,7 +263,8 @@ func testFailedRandomnessNeverProducesAZeroKeyHandshake() async {
         makeChannel: { channel },
         usernameProvider: { "tester" },
         keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
-        randomBytes: { _ in throw InjectedRandomFailure() }
+        randomBytes: { _ in throw InjectedRandomFailure() },
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     let outcome = await unlocker.unlock(password: loginPassword)
     expect(outcome == .screenSharingUnavailable, "a CSPRNG that fails outright surfaces as screenSharingUnavailable, not a completed handshake")
@@ -267,7 +284,8 @@ func testFailedRandomnessNeverProducesAZeroKeyHandshake() async {
                 throw InjectedRandomFailure()
             }
             return [UInt8](repeating: 0x07, count: count)
-        }
+        },
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     let partialOutcome = await partialUnlocker.unlock(password: loginPassword)
     expect(partialOutcome == .screenSharingUnavailable, "a CSPRNG that fails only on the credential-block draw still surfaces as screenSharingUnavailable")
@@ -327,7 +345,8 @@ func testPasswordExceeding63BytesReportsPasswordTooLongWithoutOpeningAConnection
             return nil
         },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     let outcome = await unlocker.unlock(password: longPassword)
     expect(outcome == .passwordTooLong, "a password over 63 bytes reports passwordTooLong rather than being silently truncated and typed")
@@ -339,7 +358,8 @@ func testPasswordExceeding63BytesReportsPasswordTooLongWithoutOpeningAConnection
         lockStateReader: FlippableLockState(locked: false),
         makeChannel: { ScriptedRFBChannel(serverBytes: unlockHandshake(securityResult: [0, 0, 0, 0], includeServerInit: true)) },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     let boundaryOutcome = await boundaryUnlocker.unlock(password: boundaryPassword)
     expect(boundaryOutcome == .unlocked, "a password of exactly 63 bytes is not refused as too long")
@@ -356,7 +376,8 @@ func testNonUTF8PasswordBytesAbortTypingWithoutSendingReturn() async {
         lockStateReader: FakeScreenLockState(locked: true),
         makeChannel: { channel },
         usernameProvider: { "tester" },
-        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: NoOpHostInjectedHIDActivity()
     )
     // 'A', then a byte that is never a valid UTF-8 lead or continuation byte,
     // then a 'B' that must never be reached.
@@ -373,6 +394,39 @@ func testNonUTF8PasswordBytesAbortTypingWithoutSendingReturn() async {
     )
 
     print("PASS: non-UTF-8 password bytes abort typing and never send the trailing Return")
+}
+
+/// Whether typing through screensharingd touches `hidSystemState` the way
+/// `.cghidEventTap` does is unconfirmed on a real host, but `press(_:through:)`
+/// samples and records defensively regardless -- see `RFBLockScreenUnlocker`'s
+/// own doc comment on it. Once per character typed, plus once more for the
+/// trailing Return.
+func testUnlockerSamplesAndRecordsOncePerPressedKeyPlusReturn() async {
+    let channel = ScriptedRFBChannel(serverBytes: unlockHandshake(securityResult: [0, 0, 0, 0], includeServerInit: true))
+    let activity = SpyRFBHIDActivity()
+    let unlocker = RFBLockScreenUnlocker(
+        lockStateReader: FakeScreenLockState(locked: true),
+        makeChannel: { channel },
+        usernameProvider: { "tester" },
+        keyPressDownSeconds: 0, keyPressGapSeconds: 0, verifyDelaySeconds: 0, verifyAttempts: 1,
+        hostInjectedHIDActivity: activity
+    )
+    _ = await unlocker.unlock(password: Data("ab".utf8))
+    expect(activity.recordCount == 3, "two characters plus the trailing Return records three times")
+    expect(
+        activity.sampleCount == 3,
+        "each of those three presses samples before it records, so an earlier real person is not lost"
+    )
+    print("PASS: the unlocker samples and records once per pressed key, plus once more for the trailing Return")
+}
+
+private final class SpyRFBHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {
+    private(set) var recordCount = 0
+    private(set) var sampleCount = 0
+    func recordPost() { recordCount += 1 }
+    func secondsSinceLastPost() -> TimeInterval? { nil }
+    func sampleBeforePost() { sampleCount += 1 }
+    func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
 }
 
 private func bytes(fromHex hex: String) -> [UInt8] {
@@ -530,5 +584,6 @@ func runLockScreenUnlockTests() async {
     testServerInitNameLengthIsBounded()
     await testPasswordExceeding63BytesReportsPasswordTooLongWithoutOpeningAConnection()
     await testNonUTF8PasswordBytesAbortTypingWithoutSendingReturn()
+    await testUnlockerSamplesAndRecordsOncePerPressedKeyPlusReturn()
     testABlockingLoopbackChannelStopsAtItsTimeout()
 }

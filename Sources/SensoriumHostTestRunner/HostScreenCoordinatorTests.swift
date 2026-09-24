@@ -40,12 +40,6 @@ private func hostScreenTestDisplay(
     )
 }
 
-private final class AlwaysApprovingVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(proof: HostScreenPresenceProof, devicePublicKey: Data, minimumStrength: HostScreenCredentialStrength?, challenge: Data) -> Bool {
-        true
-    }
-}
-
 private final class AlwaysIdleSignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
@@ -90,7 +84,6 @@ private func makeHostScreenFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000),
             // This fixture is broken by exactly one thing per test, including
             // by the localActivitySignal/presenceGate pair above; the
@@ -109,13 +102,13 @@ private func makeHostScreenFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
         hostScreenLocalActivitySignal: localActivitySignal ?? AlwaysIdleSignal(),
         hostScreenPresenceGate: presenceGate,
         hostScreenModeController: modeController
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -137,7 +130,7 @@ private func makeHostScreenFixture(
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return Data()
     }
@@ -163,7 +156,7 @@ func runHostScreenCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         guard case .hostScreenReady = response else {
             expect(false, "an admissible host-screen request is answered with hostScreenReady")
@@ -216,7 +209,7 @@ func runHostScreenCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         expect(
             capturedConfiguration.map { max($0.encodeWidth, $0.encodeHeight) <= VideoEncoderConfiguration.hardwareH264MaxDimension } == true,
@@ -247,7 +240,7 @@ func runHostScreenCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         // A button held down on the real display when the session ends must
         // not stay stuck on the operator's own machine.
@@ -281,7 +274,6 @@ func runHostScreenCoordinatorTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Probe",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             )
         ])
@@ -293,11 +285,11 @@ func runHostScreenCoordinatorTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: AlwaysApprovingVerifier(),
             hostScreenLocalActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
@@ -313,7 +305,7 @@ func runHostScreenCoordinatorTests() async {
         do {
             _ = try await coordinator.handleWritingResponse(.hostScreenRequest(
                 token: token,
-                presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+                resumeTicket: nil
             ))
             expect(false, "a coordinator with no host-screen media factory must throw rather than silently answer hostScreenReady with no video to follow")
         } catch HostScreenBringUpError.noMediaFactoryConfigured {
@@ -342,7 +334,7 @@ func runHostScreenCoordinatorTests() async {
         // name is ever resolved for this request.
         let response = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: Data([0xFF]),
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         guard case let .hostScreenRefused(reason) = response else {
             expect(false, "an unminted token is refused, not answered hostScreenReady -- got: \(String(describing: response))")
@@ -371,7 +363,7 @@ func runHostScreenCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         guard case .hostScreenReady = response else {
             expect(false, "an admissible host-screen request is answered with hostScreenReady -- got: \(String(describing: response))")
@@ -404,7 +396,7 @@ func runHostScreenCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         expect(
             response == .hostScreenRefused(reason: "host-screen-presence-declined"),
@@ -441,7 +433,7 @@ func runHostScreenCoordinatorTests() async {
         do {
             _ = try await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
                 token: token,
-                presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+                resumeTicket: nil
             ))
             expect(false, "a host-screen capture stream that refuses to start must throw, not answer as if it were streaming")
         } catch {
@@ -574,7 +566,7 @@ func runHostScreenModeCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handle(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         )) { message in
             writtenMessages.append(message)
             written.record("\(message)")
@@ -621,7 +613,7 @@ func runHostScreenModeCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         var writtenMessages: [SensoriumMessage] = []
         _ = try! await fixture.coordinator.handle(.hostScreenModeRequest(modeID: fixtureReadableMode.modeID)) { message in
@@ -683,7 +675,7 @@ func runHostScreenModeCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         var writtenMessages: [SensoriumMessage] = []
         _ = try! await fixture.coordinator.handle(.hostScreenModeRequest(modeID: fixtureReadableMode.modeID)) { message in
@@ -737,7 +729,7 @@ func runHostScreenModeCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         _ = try! await fixture.coordinator.handle(.hostScreenModeRequest(modeID: fixtureMiddleMode.modeID)) { _ in }
         var writtenMessages: [SensoriumMessage] = []
@@ -778,7 +770,7 @@ func runHostScreenModeCoordinatorTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         let coordinator = fixture.coordinator
         let modeChange = Task { @MainActor in
@@ -866,7 +858,7 @@ func runHostScreenModeAccountabilityTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         _ = try! await fixture.coordinator.handle(.hostScreenModeRequest(modeID: fixtureReadableMode.modeID)) { _ in }
 
@@ -930,7 +922,7 @@ func runHostScreenModeAccountabilityTests() async {
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
             token: token,
-            presence: .signed(credentialID: Data([0x01]), credentialFormat: "apple-secure-enclave-p256", signature: Data([0x02]))
+            resumeTicket: nil
         ))
         var writtenMessages: [SensoriumMessage] = []
         _ = try! await fixture.coordinator.handle(.hostScreenModeRequest(modeID: fixtureReadableMode.modeID)) { message in

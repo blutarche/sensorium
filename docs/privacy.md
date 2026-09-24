@@ -16,7 +16,7 @@ Pointer, button, scroll, and key events, in canvas coordinates. If clipboard sha
 
 Once a second, the viewer sends one reading per open display. It covers how long each stage of the picture took, how many frames decoded and reached the screen, and how much video arrived. Stage timings and rates only, no addresses, no screen contents.
 
-If the person at the viewer chooses to unlock a locked host screen, the host's login password too, once, over the same authenticated, presence-verified connection. The host copies the buffers it derives from the password and zeroes each one once it has served its purpose. The one copy it does not control the lifetime of is the wire-decoded message itself, held until that message is released, since `Data`'s copy-on-write storage cannot be wiped any earlier. It is never written to disk and never logged.
+Keys typed at a locked host screen, a login password included, travel as ordinary key events over the same encrypted session as any other typing. Sensorium does not treat them as a password and does not store them.
 
 ## Where it goes
 
@@ -31,9 +31,12 @@ Straight to the paired host over the existing tailnet. There is no cloud service
 | Host | Paired machine public keys | Host process |
 | Host | Which machines may reach the host screen | `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-only |
 | Host | One line per host-screen session: the device, the display, and when it ran | `~/Library/Application Support/Sensorium/host-screen-sessions.log` |
-| Host | One outcome token per lock-screen unlock attempt (never the password or its length) | The host's own stdout operator log only. Nothing about an unlock attempt is written to `host-screen-sessions.log` |
 | Viewer | Saved host name, port, and pinned public key | `~/Library/Application Support/Sensorium/saved-host.json` |
-| Viewer | Which presence credential this machine registered, and at what strength | `~/Library/Application Support/Sensorium/presence-credential.json`, owner-only |
+
+On Linux the viewer keeps the same files, under the same names, in
+`$XDG_DATA_HOME/sensorium`, or in `~/.local/share/sensorium` where that
+variable is unset. The host rows above do not apply there: there is no Linux
+host.
 
 No screen contents, keystrokes, or input history reach disk. Opt-in local latency traces hold stage timings only, no addresses, no screen contents, no input.
 

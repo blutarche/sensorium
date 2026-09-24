@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -70,34 +71,6 @@ func testDecodeIngressAndLatencyTests() async {
         expect(
             ClientSessionRunner.secondDisplayOutcome(for: .goodbye(reason: "done")) == nil,
             "a control message of a different kind entirely is simply not an outcome"
-        )
-
-        let clientPasteboard = FakeClipboardPasteboard()
-        let clientClipboardLog = ClientDiagnosticsRecorder()
-        let clientClipboard = ClipboardSyncSession(
-            engine: ClipboardSyncEngine(pasteboard: clientPasteboard, isEnabled: true),
-            log: { clientClipboardLog.record($0) }
-        )
-        let fromHost = ClipboardContent.text("copied on the Mini")
-        clientClipboard.receive(fromHost)
-        expect(
-            clientPasteboard.writtenContents == [fromHost],
-            "a clipboard the host sent is applied to this machine's pasteboard"
-        )
-        for _ in 0..<5 {
-            expect(clientClipboard.poll() == nil, "and applying it never sends it straight back")
-        }
-        let localCopy = ClipboardContent.image(format: .tiff, data: Data(repeating: 5, count: 64))
-        clientPasteboard.stageLocalCopy(ClipboardReadout(content: localCopy, isExcludedByType: false))
-        expect(clientClipboard.poll() == .clipboard(localCopy), "a copy made on this machine is offered to the host")
-        expect(clientClipboard.poll() == nil, "exactly once")
-        expect(
-            clientClipboardLog.messages.allSatisfy { !$0.contains("copied on the Mini") },
-            "no clipboard log line carries any of the content, at any level"
-        )
-        expect(
-            clientClipboardLog.messages.contains { $0.contains("clipboard applied: text, 18 bytes") },
-            "outcomes are logged by kind and size instead"
         )
 
         // The per-surface cap is two slots; an out-of-range surfaceID is
@@ -541,3 +514,4 @@ func testDecodeIngressAndLatencyTests() async {
             Foundation.exit(1)
         }
 }
+#endif

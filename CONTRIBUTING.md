@@ -1,7 +1,8 @@
 # Contributing
 
-Sensorium is a two-app macOS system: no CLI surface for end users, no
-Xcode requirement, no dependencies.
+Sensorium is a two-app system: a host for macOS, and a viewer for macOS
+and for Linux. No CLI surface for end users, no Xcode requirement, no
+dependencies.
 
 ## Build
 
@@ -19,6 +20,19 @@ SENSORIUM_ALLOW_ADHOC=1 ./Scripts/package-apps.sh
 
 See [docs/install.md](docs/install.md) for what that produces and how to
 keep permissions across rebuilds.
+
+On Fedora 44, install what the viewer's Linux targets link against, then
+build the viewer alone:
+
+```sh
+sudo dnf install swift-lang cairo-devel ffmpeg-free-devel glib2-devel \
+  gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel \
+  openssl-devel pango-devel pkgconf-pkg-config wayland-devel
+swift build -c release --product Sensorium
+```
+
+There is no Linux host. See [docs/install.md](docs/install.md) for the
+Fedora package and what it installs.
 
 ## Test
 
@@ -38,7 +52,8 @@ confirm it fails for the intended reason, write the minimum code to pass
 it, rerun that test, then run the full suite before moving on. A change
 without a failing-then-passing test behind it will not be accepted.
 
-Keep code macOS-native and dependency-free. Do not add a package
+Keep code native to the platform it runs on, and dependency-free: the
+system's own libraries, nothing vendored. Do not add a package
 dependency, telemetry, analytics, crash reporting, a webview, an account
 system, or a cloud API.
 
@@ -58,7 +73,7 @@ submitting it.
 - Every pull request must state that `./Scripts/run-unit-tests.sh` passes
   and that no other project's source was copied or inspected.
 - Changes touching the host/viewer safety boundary (display handling,
-  pairing, presence, arming) need extra care: read
+  pairing, arming) need extra care: read
   [docs/threat-model.md](docs/threat-model.md) and
   [docs/host-screen-design.md](docs/host-screen-design.md) first.
 

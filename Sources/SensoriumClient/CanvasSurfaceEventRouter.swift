@@ -36,10 +36,21 @@ public enum CanvasSurfaceEvent: Equatable, Sendable {
     case focusLost
 }
 
-/// Translates AppKit surface events into owned-canvas pointer motion. Holds no
-/// AppKit object, so the translation is verifiable without a window.
+/// Where a surface's own coordinate origin sits, so the router knows whether
+/// an incoming point needs flipping onto the canvas's top-left space.
+public enum CanvasSourceOrigin: Sendable {
+    /// AppKit's own convention: the origin is the bottom-left corner.
+    case bottomLeft
+    /// Wayland's convention: the origin is already the top-left corner, the
+    /// same as the canvas, so no flip is needed.
+    case topLeft
+}
+
+/// Translates surface events into owned-canvas pointer motion. Holds no
+/// windowing-system object, so the translation is verifiable without a window.
 public actor CanvasSurfaceEventRouter {
     private let viewport: ClientViewportController
+    private let sourceOrigin: CanvasSourceOrigin
     private var surfaceHeight: Double = 0
     /// Which physical modifier keyCodes are currently believed held.
     /// `CanvasModifierFlags` has no left/right distinction, so releasing
@@ -57,8 +68,9 @@ public actor CanvasSurfaceEventRouter {
     /// justifies and overwrite whatever scale is actually in force.
     private var lastDrawablePixelSize: (width: Double, height: Double)?
 
-    public init(viewport: ClientViewportController) {
+    public init(viewport: ClientViewportController, sourceOrigin: CanvasSourceOrigin = .bottomLeft) {
         self.viewport = viewport
+        self.sourceOrigin = sourceOrigin
     }
 
     @discardableResult
@@ -83,7 +95,7 @@ public actor CanvasSurfaceEventRouter {
             guard x.isFinite, y.isFinite else {
                 return .droppedInvalidLocation
             }
-            return await viewport.movePointer(x: x, y: surfaceHeight - y)
+            return await viewport.movePointer(x: x, y: flippedY(y))
         case let .pointerMovedRelative(deltaX, deltaY):
             return await viewport.sendRelativeMotion(deltaX: deltaX, deltaY: deltaY)
         case let .pointerButton(button, isDown, x, y):
@@ -121,6 +133,10 @@ public actor CanvasSurfaceEventRouter {
             }
             return await viewport.sendKey(keyCode: keyCode, isDown: isDown, modifiers: modifiers)
         case .focusLost:
+            // Otherwise a modifier still held at focus loss would be derived
+            // as an up on the next transition for that keyCode, and the one
+            // after that as a down that never gets released.
+            heldModifierKeyCodes.removeAll()
             return await viewport.releaseAllInput()
         }
     }
@@ -129,6 +145,16 @@ public actor CanvasSurfaceEventRouter {
         guard surfaceHeight > 0, x.isFinite, y.isFinite else {
             return nil
         }
-        return (x, surfaceHeight - y)
+        return (x, flippedY(y))
+    }
+
+    /// `y` translated from this router's own source origin onto the
+    /// canvas's top-left origin: unchanged where the source is already
+    /// top-left, flipped against the surface height where it is bottom-left.
+    private func flippedY(_ y: Double) -> Double {
+        switch sourceOrigin {
+        case .bottomLeft: surfaceHeight - y
+        case .topLeft: y
+        }
     }
 }

@@ -83,6 +83,7 @@ public enum SystemShortcutCatalog {
     private static let letterQ: UInt16 = 12
     private static let letterW: UInt16 = 13
     private static let letterH: UInt16 = 4
+    private static let letterK: UInt16 = 40
     private static let letterM: UInt16 = 46
     private static let arrowLeft: UInt16 = 123
     private static let arrowRight: UInt16 = 124
@@ -98,6 +99,27 @@ public enum SystemShortcutCatalog {
     public static let escapeGesture = KeyChord(
         keyCode: escape,
         modifiers: [.control, .option, .command]
+    )
+
+    /// Summons the viewer's own shortcut strip without the pointer, and
+    /// closes one the pointer is not in -- docs/ux-spec.md's own chord for
+    /// it. Named here for the same reason `escapeGesture` is: it belongs to
+    /// the machine the person is sitting at, never to the one being worked
+    /// on, so it is not a member of `all` and no mode can forward it.
+    public static let shortcutStripToggle = KeyChord(
+        keyCode: space,
+        modifiers: [.command, .control, .shift]
+    )
+
+    /// Opens the session controls -- screen, resolution, start target,
+    /// display count, scale and clipboard sharing. On macOS those are menu
+    /// bar menus; a desktop with no menu bar reaches them through this chord
+    /// instead. Named here for the same reason the two chords above are: it
+    /// belongs to the machine the person is sitting at, so it is not a
+    /// member of `all` and no mode can forward it.
+    public static let sessionControlsToggle = KeyChord(
+        keyCode: letterK,
+        modifiers: [.command, .control, .shift]
     )
 
     /// Split by interception, because that is what decides which half of the

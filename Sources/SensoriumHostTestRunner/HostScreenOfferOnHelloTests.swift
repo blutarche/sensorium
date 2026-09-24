@@ -36,7 +36,8 @@ private func offerOnHelloTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
 @MainActor
 private func helloScript(for identity: DeviceIdentity, deviceName: String = "Probe") -> SensoriumMessage {
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: deviceName, publicKey: identity.publicKey
+        protocolVersion: 1, deviceName: deviceName, publicKey: identity.publicKey,
+        hostCertificateHash: nil
     )
     return .authenticatedHello(
         protocolVersion: 1, deviceName: deviceName, publicKey: identity.publicKey,
@@ -61,7 +62,6 @@ func runHostScreenOfferOnHelloTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: identity.publicKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date()
             ),
         ])
@@ -79,7 +79,7 @@ func runHostScreenOfferOnHelloTests() async {
         try! await Task.sleep(for: .milliseconds(200))
         let sent = sentControlMessages(channel)
         expect(sent.count == 1, "the offer is the only thing the host sends an armed device after its hello")
-        guard case let .hostScreenList(displays, _) = sent.first else {
+        guard case let .hostScreenList(displays) = sent.first else {
             expect(false, "an armed device's hello is answered with hostScreenList, unprompted")
             break armedDeviceCheck
         }

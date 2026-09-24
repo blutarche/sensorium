@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import SensoriumClient
 import SensoriumCore
@@ -533,28 +534,6 @@ func testShortcutStripSendsWholeChordsTests() async {
         "a two-modifier chord releases the main key first and the modifiers in reverse"
     )
 
-    // Two chords never interleave: the second waits for the first to finish, so
-    // a modifier that belongs to one press cannot be released by the other's
-    // key-up.
-    let order = RecordedOrder()
-    let queue = ShortcutChordQueue()
-    await queue.enqueue {
-        await order.append("first-start")
-        for _ in 0..<8 {
-            await Task.yield()
-        }
-        await order.append("first-end")
-    }
-    await queue.enqueue {
-        await order.append("second-start")
-        await order.append("second-end")
-    }
-    await queue.drain()
-    expect(
-        await order.entries == ["first-start", "first-end", "second-start", "second-end"],
-        "a chord queued behind another starts only once that one has finished"
-    )
-
     print("PASS: a shortcut strip press sends its whole chord in one call, or none of it")
 }
 
@@ -579,15 +558,6 @@ actor FailingAfterInputSink: CanvasInputSending {
     func sendViewerDrawableSize(pixelWidth: Double, pixelHeight: Double, maximumScale: Double?) async throws {}
 
     func sendStreamScalePreference(_ preference: StreamScalePreference) async throws {}
-}
-
-/// Records the order two queued pieces of work actually ran in.
-actor RecordedOrder {
-    private(set) var entries: [String] = []
-
-    func append(_ entry: String) {
-        entries.append(entry)
-    }
 }
 
 /// Where the handle actually lands in a laid-out view, and what it does to the
@@ -990,3 +960,4 @@ func testCanvasSurfaceChromeClickTests() async {
 
     print("PASS: the canvas view sends neither half of a click aimed at the viewer's own chrome")
 }
+#endif

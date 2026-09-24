@@ -1,6 +1,5 @@
 import SensoriumClient
 import SensoriumCore
-import CoreVideo
 import Foundation
 
 /// A presenter that holds the frame it was handed until it is released, so
@@ -57,8 +56,7 @@ actor GatedFramePresenter {
 /// Identifies a decoded frame by its host capture time, which is the one field
 /// a test can set and read back through `DecodedFrame`.
 private func makeIdentifiedFrame(_ id: Int64) -> DecodedFrame {
-    DecodedFrame(
-        pixelBuffer: makeTestPixelBuffer(),
+    makeTestDecodedFrame(
         timing: FrameTiming(
             hostCapturedAtNanoseconds: id,
             receivedAtNanoseconds: id + 1,
@@ -423,6 +421,11 @@ private func checkDecodingHappensOffTheReadPath() {
     // A decode failure can no longer be thrown at whoever handed the packet
     // over, so it is held for the next receive to throw -- the same path that
     // ended the session before decoding moved off the read path.
+    //
+    // `VideoToolboxDecoderError` only exists where VideoToolbox does; the
+    // behavior under test is `VideoDecodeQueue`'s own, so any thrown error
+    // proves it.
+    #if canImport(VideoToolbox)
     let failingQueue = DispatchQueue(label: "sensorium.test.failing-decode")
     let failing = VideoDecodeQueue(queue: failingQueue) { _ in
         throw VideoToolboxDecoderError.missingCodecConfiguration
@@ -437,6 +440,23 @@ private func checkDecodingHappensOffTheReadPath() {
         failing.takeFailure() == nil,
         "and it is reported once, not on every packet that follows it"
     )
+    #else
+    struct DecodeFailure: Error, Equatable {}
+    let failingQueue = DispatchQueue(label: "sensorium.test.failing-decode")
+    let failing = VideoDecodeQueue(queue: failingQueue) { _ in
+        throw DecodeFailure()
+    }
+    failing.submit(makeKeyFrame(sequence: 30))
+    failingQueue.sync {}
+    expect(
+        failing.takeFailure() as? DecodeFailure == DecodeFailure(),
+        "a decode that failed off the read path is held for the next receive to throw"
+    )
+    expect(
+        failing.takeFailure() == nil,
+        "and it is reported once, not on every packet that follows it"
+    )
+    #endif
 }
 
 /// A viewer draws, lays out its chrome and handles input on the main actor. A

@@ -15,11 +15,10 @@ Sensorium Host needs three permissions, and can use a fourth macOS service for o
 | Screen Recording | Capturing the session canvas it streams | Yes |
 | Accessibility | Injecting mouse and keyboard input | Yes |
 | Remote Desktop | Apple's gate on unattended remote access | No. macOS has no API for it. |
-| Screen Sharing (Remote Management, System Settings) | macOS's own built-in service, spoken over loopback to type the login password during an opt-in lock-screen unlock | No. Not checked or required unless lock-screen unlock is used. |
 
 Without Accessibility the host still streams video. It only refuses input.
 
-Screen Sharing is off by default and is entirely the host operator's own choice to turn on, for [lock-screen unlock](host-screen-design.md). Turning it on makes it listen on every interface, not loopback alone; Sensorium only ever connects out to it, on `127.0.0.1`, and opens no listener of its own for it. See [the threat model](threat-model.md).
+Screen Sharing is not needed. A locked host screen unlocks through the same Accessibility input as any other typing.
 
 ### Waking the screen
 

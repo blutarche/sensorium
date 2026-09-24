@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 import SensoriumClient
@@ -768,3 +769,4 @@ func testViewerPairingFieldCellCenteringTests() {
 
     print("PASS: the pairing field cell centres its title box, tall enough not to clip a mono digit")
 }
+#endif

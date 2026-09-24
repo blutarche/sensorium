@@ -39,13 +39,13 @@ public protocol ViewerMenuCommandTarget: AnyObject {
     func selectStreamScale(_ preference: StreamScalePreference)
     /// The Displays menu's own action. What sending the choice and reacting
     /// to the host's reply mean is owned by whoever built this session
-    /// (`Sensorium/main.swift`'s `ClientSessionHost`, not this window) --
+    /// (`ClientSessionHost`, not this window) --
     /// see that type's `selectDisplayCount(_:)`.
     func selectDisplayCount(_ count: Int)
     /// The Screen menu's own action -- `nil` selects Virtual display, a
     /// non-nil value names one row of `screenMenuState` by its
     /// `HostScreenListEntry.opaqueToken`. Owned the same way
-    /// `selectDisplayCount(_:)` is; see `Sensorium/main.swift`'s
+    /// `selectDisplayCount(_:)` is; see
     /// `ClientSessionHost.selectRealScreen(token:)`, which reconnects at the
     /// new target rather than switching a live session mid-flight.
     /// Defaulted below to a no-op for the same reason `screenMenuState` is.
@@ -59,8 +59,8 @@ public protocol ViewerMenuCommandTarget: AnyObject {
     /// The Screen menu's "Start with" submenu: which target this machine
     /// should try first next time it is entered from *Your machines*. Owned
     /// the same way `selectRealScreen(token:)` is -- writing the choice back
-    /// to the saved-machines store needs `Sensorium/main.swift`'s
-    /// `ClientSessionHost`, not this window -- and defaulted below for the
+    /// to the saved-machines store needs `ClientSessionHost`,
+    /// not this window -- and defaulted below for the
     /// same reason.
     func selectStartTarget(_ target: StartTarget)
 }

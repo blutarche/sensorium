@@ -7,10 +7,11 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-VIEWER="$ROOT/Sources/Sensorium/main.swift"
+VIEWER_MAIN="$ROOT/Sources/Sensorium/main.swift"
+VIEWER="$ROOT/Sources/SensoriumClient/App/ClientSessionHost.swift"
 HOST="$ROOT/Sources/sensoriumd/main.swift"
 
-for file in "$VIEWER" "$HOST"; do
+for file in "$VIEWER_MAIN" "$VIEWER" "$HOST"; do
   if grep -qF 'clipboard-sync' "$file"; then
     printf '%s still gates clipboard sync behind a --clipboard-sync flag\n' "$file" >&2
     exit 1

@@ -1,7 +1,7 @@
 @main
 struct SensoriumCoreTestRunner {
     static func main() {
-        let tests: [(String, () -> Void)] = [
+        var tests: [(String, () -> Void)] = [
             ("hello message round-trips through versioned frame", testHelloMessageRoundTripsThroughVersionedFrame),
             ("canvas control messages round-trip through versioned frame", testCanvasControlMessagesRoundTripThroughVersionedFrame),
             ("canvas request and ready surfaceID round-trips when present or absent", testCanvasRequestAndReadySurfaceIDRoundTripWhenPresentOrAbsent),
@@ -23,6 +23,11 @@ struct SensoriumCoreTestRunner {
             ("pairing code expires and cannot be reused", testPairingCodeExpiresAndCannotBeReused),
             ("a pairing code's failure budget bounds guessing and the comparison is constant time", testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime),
             ("device identity signs and verifies handshake transcript", testDeviceIdentitySignsAndVerifiesHandshakeTranscript),
+            ("Ed25519 reproduces RFC 8032 test vector 1", testEd25519ReproducesRFC8032TestVector),
+            ("Ed25519 refuses a private key that is not 32 bytes", testEd25519RefusesAKeyThatIsNotThirtyTwoBytes),
+            ("Ed25519 signs, verifies, and rejects a tampered signature", testEd25519SignsVerifiesAndRejectsATamperedSignature),
+            ("SHA-256 reproduces the known digest of \"abc\"", testSHA256ReproducesTheKnownDigestOfABC),
+            ("random bytes fill the requested length and differ between draws", testRandomBytesFillsTheRequestedLengthAndDiffers),
             ("input events round-trip through versioned frame", testInputEventsRoundTripThroughVersionedFrame),
             ("input sequence and inputApplied round-trip and an unrecognized message decodes safely", testInputSequenceAndInputAppliedRoundTripAndUnrecognizedDecodesSafely),
             ("input and viewerDrawableSize surfaceID round-trips when present or absent", testInputAndViewerDrawableSizeSurfaceIDRoundTripWhenPresentOrAbsent),
@@ -36,18 +41,14 @@ struct SensoriumCoreTestRunner {
             ("pairing messages round-trip through versioned frame", testPairingMessagesRoundTripThroughVersionedFrame),
             ("file identity store persists and is owner-only", testFileIdentityStorePersistsAndIsOwnerOnly),
             ("a corrupt device identity file is refused, not replaced", testFileDeviceIdentityStoreRefusesACorruptFileRatherThanReplacingIt),
-            ("identity stores tighten their directory and leave no temporary file", testFileIdentityStoresTightenTheirDirectoryAndLeaveNoTemporaryFile),
-            ("identity stores replace a key with a fresh one", testFileIdentityStoresReplaceWithAFreshKey),
             ("media flow monitor reports rates and silence", testMediaFlowMonitorReportsRatesAndSilence),
-            ("host TLS identity generates a parseable certificate and pin", testHostTLSIdentityGeneratesParseableCertificateAndPin),
-            ("file TLS identity persists certificate pin and private key", testFileHostTLSIdentityStorePersistsCertificatePinAndPrivateKey),
-            ("an invalid stored TLS value is refused", testFileHostTLSIdentityStoreRefusesAnInvalidStoredValue),
             ("clock offset estimator prefers the lowest round trip sample", testClockOffsetEstimatorPrefersTheLowestRoundTripSample),
             ("time sync messages round-trip through versioned frame", testTimeSyncMessagesRoundTripThroughVersionedFrame),
             ("session latency recorder needs clock sync before reporting end-to-end", testSessionLatencyRecorderNeedsClockSyncBeforeReportingEndToEnd),
             ("latency trace writer appends one JSON line for each stage", testLatencyTraceWriterAppendsOneJSONLineForEachStage),
             ("session latency recorder records input round trip and it appears in the trace", testSessionLatencyRecorderRecordsInputRoundTripAndItAppearsInTheTrace),
             ("monotonic clock only moves forward", testMonotonicClockOnlyMovesForward),
+            ("monotonic clock successive reads are close and non-decreasing", testMonotonicClockSuccessiveReadsAreCloseAndNonDecreasing),
             ("clock synchronizer accepts only replies to requests it sent", testClockSynchronizerAcceptsOnlyRepliesToRequestsItSent),
             ("Sensorium entry URL accepts only the canonical enter form", testSensoriumEntryURLAcceptsOnlyCanonicalEnterURL),
             ("test pattern phase bounces inside the canvas and never leaves it", testTestPatternPhaseBouncesInsideTheCanvasAndNeverLeavesIt),
@@ -74,7 +75,6 @@ struct SensoriumCoreTestRunner {
             ("malformed clipboard payloads are rejected", testMalformedClipboardPayloadsAreRejected),
             ("the clipboard limit is the largest payload one transport packet carries", testClipboardLimitIsTheLargestPayloadOneTransportPacketCarries),
             ("clipboard prefers the copying app's order and falls back when too large", testClipboardPrefersTheCopyingAppsOrderAndFallsBackWhenTooLarge),
-            ("a TIFF image is converted to PNG before it is sized", testATIFFImageIsConvertedToPNGBeforeItIsSized),
             ("an emptied pasteboard is not reported as unsupported", testAnEmptiedPasteboardIsNotReportedAsUnsupported),
             ("the image form is produced only when it is chosen", testTheImageFormIsProducedOnlyWhenItIsChosen),
             ("transport frames decode from a slice that does not start at zero", testTransportFramesDecodeFromASliceThatDoesNotStartAtZero),
@@ -94,8 +94,8 @@ struct SensoriumCoreTestRunner {
             ("displayCount round-trips 1 and 2", testDisplayCountRoundTripsOneAndTwo),
             ("displayCount refuses anything outside 1 or 2", testDisplayCountRefusesAnythingOutsideOneOrTwo),
             ("displayCount drops unknown extra fields", testDisplayCountDropsUnknownExtraFields),
-            ("pairRequest presence-credential registration round-trips, tolerates absence, and refuses malformed strength or partial fields", testPairRequestPresenceCredentialRegistration),
             ("pairRequest proof of possession round-trips and binds every field it covers", testPairRequestSignatureRoundTripsAndBindsEveryFieldItCovers),
+            ("authenticatedHello binds the host certificate it was signed for", testAuthenticatedHelloTranscriptBindsTheHostCertificate),
             ("pairIntent round-trips its device name and refuses a missing or empty one as malformed", testPairIntentRoundTripsAndRefusesMalformed),
             ("scale range is general, and the session canvas range reproduces today's constants", testScaleRangeIsGeneralAndTheSessionCanvasRangeReproducesTodaysConstants),
             ("clipboardSharing round-trips both values and refuses malformed shapes", testClipboardSharingRoundTripsAndRefusesMalformed),
@@ -128,6 +128,26 @@ struct SensoriumCoreTestRunner {
             ("fidelity lets a quiet screen back to the scale its bits fit", testStreamFidelityLetsAQuietScreenBackToTheScaleItsBitsFit),
             ("fidelity holds off a resolution the rebuild refused", testStreamFidelityHoldsOffAResolutionTheRebuildRefused)
         ]
+
+        // The TIFF-to-PNG conversion is the system pasteboard's, which only
+        // exists where AppKit does.
+        #if canImport(AppKit)
+        tests += [
+            ("a TIFF image is converted to PNG before it is sized", testATIFFImageIsConvertedToPNGBeforeItIsSized)
+        ]
+        #endif
+
+        // These need Apple's Security framework to mint and read back a
+        // certificate and key.
+        #if canImport(Security)
+        tests += [
+            ("identity stores tighten their directory and leave no temporary file", testFileIdentityStoresTightenTheirDirectoryAndLeaveNoTemporaryFile),
+            ("identity stores replace a key with a fresh one", testFileIdentityStoresReplaceWithAFreshKey),
+            ("host TLS identity generates a parseable certificate and pin", testHostTLSIdentityGeneratesParseableCertificateAndPin),
+            ("file TLS identity persists certificate pin and private key", testFileHostTLSIdentityStorePersistsCertificatePinAndPrivateKey),
+            ("an invalid stored TLS value is refused", testFileHostTLSIdentityStoreRefusesAnInvalidStoredValue)
+        ]
+        #endif
 
         for (name, test) in tests {
             test()

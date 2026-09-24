@@ -1,12 +1,9 @@
 import SensoriumCore
-import CoreVideo
 
 /// Destination for decoded frames of the owned session canvas.
 public protocol CanvasFramePresenting: Sendable {
     func present(_ frame: DecodedFrame) async
 }
-
-extension MetalFramePresenter: CanvasFramePresenting {}
 
 /// Destination for input already expressed in owned-canvas logical coordinates.
 /// No physical-display coordinate crosses this boundary.
@@ -184,8 +181,8 @@ public actor ClientViewportController: CanvasLifecycleObserving {
     }
 
     public func presentDecodedFrame(_ frame: DecodedFrame) async {
-        let width = Double(CVPixelBufferGetWidth(frame.pixelBuffer))
-        let height = Double(CVPixelBufferGetHeight(frame.pixelBuffer))
+        let width = Double(frame.width)
+        let height = Double(frame.height)
         if width > 0, height > 0 {
             sourceWidth = width
             sourceHeight = height

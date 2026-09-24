@@ -44,17 +44,6 @@ private func fidelityTestDisplay(
     )
 }
 
-private final class FidelityApprovingVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(
-        proof: HostScreenPresenceProof,
-        devicePublicKey: Data,
-        minimumStrength: HostScreenCredentialStrength?,
-        challenge: Data
-    ) -> Bool {
-        true
-    }
-}
-
 private final class FidelityIdleSignal: HostLocalActivitySignal, @unchecked Sendable {
     func currentReading() -> HostLocalActivityReading {
         .idleFor(HostScreenPresenceRule.recommendedPresenceThreshold + 1)
@@ -125,7 +114,6 @@ private func makeFidelityFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
     ])
@@ -137,12 +125,12 @@ private func makeFidelityFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: FidelityApprovingVerifier(),
         hostScreenLocalActivitySignal: FidelityIdleSignal(),
         hostScreenModeController: modeController
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -171,7 +159,7 @@ private func startFidelitySession(_ fixture: (
     controller: HostSessionController,
     canvasMedia: FakeScalableCanvasMedia
 )) async {
-    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return
@@ -182,11 +170,7 @@ private func startFidelitySession(_ fixture: (
     var written: [SensoriumMessage] = []
     _ = try! await fixture.coordinator.handle(.hostScreenRequest(
         token: entry.opaqueToken,
-        presence: .signed(
-            credentialID: Data([0x01]),
-            credentialFormat: "apple-secure-enclave-p256",
-            signature: Data([0x02])
-        )
+        resumeTicket: nil
     )) { message in
         written.append(message)
     }
@@ -423,7 +407,6 @@ func runHostScreenFidelityTests() async {
             HostScreenDeviceArming(
                 devicePublicKey: deviceKey,
                 deviceName: "Kestrel Laptop Pro",
-                minimumCredentialStrength: .hardwareBound,
                 armedAt: Date(timeIntervalSince1970: 1_700_000_000)
             )
         ])
@@ -435,16 +418,16 @@ func runHostScreenFidelityTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceProofVerifier: FidelityApprovingVerifier(),
             hostScreenLocalActivitySignal: FidelityIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(offered, _) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(offered) = try! controller.offerHostScreenList(),
               let entry = offered.first else {
             expect(false, "the fixture's offer names at least one display")
             return
@@ -459,11 +442,7 @@ func runHostScreenFidelityTests() async {
         let channel = FakeHostByteChannel(scriptedPackets: [
             .control(.hostScreenRequest(
                 token: entry.opaqueToken,
-                presence: .signed(
-                    credentialID: Data([0x01]),
-                    credentialFormat: "apple-secure-enclave-p256",
-                    signature: Data([0x02])
-                )
+                resumeTicket: nil
             ))
         ])
         let session = HostNetworkSession(

@@ -1,9 +1,8 @@
 import Foundation
 
-/// What `HostSessionController` calls once it has already decided a
-/// person's own answer, not the device's presence-credential, a wholly
-/// separate check, is the one thing standing between `.mustAsk` and an
-/// outright refusal.
+/// What `HostSessionController` calls once the presence rule has answered
+/// `.mustAsk`: from there, the answer of the person at this machine is the
+/// one thing standing between the request and an outright refusal.
 ///
 /// A protocol, not `HostScreenPresenceGate` directly, so a test can inject a
 /// double that skips the real one's exclusivity bookkeeping entirely.

@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 import SensoriumClient
@@ -112,3 +113,4 @@ func testClipboardSharingMenuTests() async {
         print("PASS: a clipboard refusal from either machine becomes one plain sentence, and sharing being off never does")
     }
 }
+#endif

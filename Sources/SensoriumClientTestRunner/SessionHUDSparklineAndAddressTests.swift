@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 import SensoriumClient
@@ -207,3 +208,4 @@ private func sparklinesShareOneTrailingColumn() {
         "the address is not truncated behind an ellipsis, got expansion frame \(expansion) over bounds \(addressField.bounds)"
     )
 }
+#endif

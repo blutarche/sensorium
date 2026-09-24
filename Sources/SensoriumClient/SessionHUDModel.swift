@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 import SensoriumCore
 
@@ -512,7 +511,7 @@ public enum SessionHUDPanel {
             value: isPointerCaptured ? "captured" : "free",
             tone: isPointerCaptured ? .warn : nil,
             note: isPointerCaptured
-                ? "Control-Option-Command-Escape releases it back to this machine."
+                ? "\(ViewerKeyNames.escapeGesture) releases it back to this machine."
                 : nil
         )
         return SessionHUDSection(title: "SESSION", rows: [state, addressRow, telemetryRow, pointerRow])

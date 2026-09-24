@@ -39,8 +39,8 @@ func runHostMenuBarTitleCaseTests() async {
         presence.updateArming([
             HostScreenArmingPresentation.DeviceLine(
                 devicePublicKey: Data([0xAB]),
-                deviceName: "Kestrel Laptop Pro",
-                credentialSummary: "hardware-bound credential"
+                deviceName: "Kestrel Laptop Pro"
+
             )
         ])
         guard let menu = statusItem(in: presence).menu else {

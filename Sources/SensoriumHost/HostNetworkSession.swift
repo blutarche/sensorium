@@ -84,6 +84,13 @@ public final class NWByteChannel: HostByteChannel, @unchecked Sendable {
     }
 }
 
+/// How often a live connection rereads this machine's lock state while a
+/// host-screen session may be running. `HostSessionCoordinator.tickHostScreenLockState()`
+/// itself decides whether that reading is worth telling the viewer.
+private enum HostScreenLockWatchPolicy {
+    static let pollIntervalSeconds: Double = 2
+}
+
 private final class LockedSurfaceVideoSendQueues: @unchecked Sendable {
     private let lock = NSLock()
     private var queues = SurfaceVideoSendQueues()
@@ -243,6 +250,11 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// Started whenever there is a `latencyRecorder`, which is every
     /// production session.
     private let telemetryPollTask = CancellableTaskBox()
+    /// Rereads this machine's lock state on `HostScreenLockWatchPolicy.pollIntervalSeconds`
+    /// for as long as the connection lives, unconditionally -- like the polls
+    /// above, the coordinator's own tick decides per call whether there is a
+    /// live host-screen session and whether its lock state actually moved.
+    private let hostScreenLockWatchPollTask = CancellableTaskBox()
     /// Silence tracked from this connection's own construction, in
     /// nanoseconds -- see `startViewerSilenceWatchdog()`.
     private let viewerSilenceState = ViewerSilenceState(nowNanoseconds: MonotonicClock.nowNanoseconds())
@@ -411,6 +423,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         startClipboardPolling()
         startTelemetryPolling()
         startViewerSilenceWatchdog()
+        startHostScreenLockWatchPolling()
     }
 
     /// Watches for the viewer having gone silent, independently of the
@@ -564,6 +577,32 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         })
     }
 
+    /// Rereads this machine's lock state every `HostScreenLockWatchPolicy.pollIntervalSeconds`
+    /// and sends `hostScreenLockState` only when the coordinator's tick
+    /// reports a real change. Runs for the whole connection, unconditionally,
+    /// the same as `startTelemetryPolling`: it is the tick, not this loop,
+    /// that decides whether a live host-screen session exists to report on.
+    private func startHostScreenLockWatchPolling() {
+        hostScreenLockWatchPollTask.replace(with: Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(HostScreenLockWatchPolicy.pollIntervalSeconds))
+                } catch {
+                    return
+                }
+                guard let self else {
+                    return
+                }
+                guard let message = await MainActor.run(body: { [coordinator = self.coordinator] in
+                    coordinator?.tickHostScreenLockState()
+                }) else {
+                    continue
+                }
+                try? await self.send(message)
+            }
+        })
+    }
+
     /// A person at this machine ended the session, so `stopped-by-host` is
     /// the reason everywhere: on the wire, so the viewer does not redial into
     /// what was just stopped, and through the teardown, which ends a
@@ -574,6 +613,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         clipboardPollTask.cancel()
         telemetryPollTask.cancel()
         viewerSilenceWatchdogTask.cancel()
+        hostScreenLockWatchPollTask.cancel()
         onPeerPresence?(.closed(reason: nil))
         Task { @MainActor [controller, coordinator, clipboard] in
             // Set before the teardown below, which can stall (a slow capture
@@ -692,7 +732,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 // After the handling above, never before it: a hello that
                 // failed verification or came from a device this host has not
                 // paired with throws, and must not put a name on the menu bar.
-                if case let .authenticatedHello(_, deviceName, _, _) = message {
+                if case let .authenticatedHello(_, deviceName, _, _, _) = message {
                     onPeerPresence?(.identified(deviceName: deviceName))
                 }
                 if let response {
@@ -722,6 +762,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             clipboardPollTask.cancel()
             telemetryPollTask.cancel()
             viewerSilenceWatchdogTask.cancel()
+            hostScreenLockWatchPollTask.cancel()
             // A watchdog-triggered cancel reaches here as an ordinary
             // channel error; naming it explicitly is what lets the close
             // reason say why the link ended instead of just that it did.

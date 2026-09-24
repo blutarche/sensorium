@@ -123,9 +123,8 @@ public final class InMemoryHostScreenModeMemoryStore: HostScreenModeMemoryStorin
 }
 
 /// Writes one JSON file at an explicitly supplied URL, owner-only -- the
-/// same posture `PresenceCredentialRecordStore` and
-/// `FileDeviceIdentityStore` already take for a file under this viewer's own
-/// Application Support directory, even though a remembered resolution is not
+/// same posture `FileDeviceIdentityStore` already takes for a file under
+/// this viewer's own Application Support directory, even though a remembered resolution is not
 /// a secret: it is still this person's own record of a machine they use, and
 /// nothing about it should be readable by another account on the same machine.
 /// No test executes this: it would write outside the repository. What an

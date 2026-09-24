@@ -122,7 +122,6 @@ func armedHostScreenController(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
     ])
@@ -137,7 +136,8 @@ func armedHostScreenController(
         log: log
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -161,17 +161,6 @@ func makeAwakeCanvasCoordinator(wake: DisplayWakeController) -> HostSessionCoord
     )
 }
 
-private final class WakeTestApprovingVerifier: HostScreenPresenceProofVerifying, @unchecked Sendable {
-    func verify(
-        proof: HostScreenPresenceProof,
-        devicePublicKey: Data,
-        minimumStrength: HostScreenCredentialStrength?,
-        challenge: Data
-    ) -> Bool {
-        true
-    }
-}
-
 /// A coordinator already offered `display` for host screen, with the token
 /// that names it, so a test can admit a host-screen session in one step.
 @MainActor
@@ -188,7 +177,6 @@ func makeWakeHostScreenFixture(
         HostScreenDeviceArming(
             devicePublicKey: deviceKey,
             deviceName: "Kestrel Laptop Pro",
-            minimumCredentialStrength: .hardwareBound,
             armedAt: Date()
         )
     ])
@@ -199,12 +187,12 @@ func makeWakeHostScreenFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceProofVerifier: WakeTestApprovingVerifier(),
         displayWake: wake,
         log: { _ in }
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
-        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
@@ -219,7 +207,7 @@ func makeWakeHostScreenFixture(
         hostScreenMediaFactory: hostScreenMediaFactory,
         captureAvailability: availability
     )
-    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's own offer names the display it was armed for")
         return (coordinator, Data())
@@ -343,7 +331,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { loggedLines.append($0) }
         )
-        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed display that was merely asleep is offered once it has been woken")
             return
         }
@@ -377,7 +365,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { loggedLines.append($0) }
         )
-        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "a display that would not wake still produces an offer, with nothing in it")
             return
         }
@@ -410,7 +398,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { _ in }
         )
-        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "the awake display is still offered with a canvas asleep beside it")
             return
         }
@@ -447,7 +435,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { _ in }
         )
-        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "the woken physical display is offered")
             return
         }
@@ -482,7 +470,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { _ in }
         )
-        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "the display being mirrored is still offered")
             return
         }
@@ -785,11 +773,7 @@ func runDisplayWakeTests() async {
         )
         guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token,
-            presence: .signed(
-                credentialID: Data([0x01]),
-                credentialFormat: "apple-secure-enclave-p256",
-                signature: Data([0x02])
-            )
+            resumeTicket: nil
         )) else {
             expect(false, "the fixture admits its own host-screen request")
             return

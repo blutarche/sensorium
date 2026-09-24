@@ -47,9 +47,8 @@ func runPairedMachinesSharingToggleTests() async {
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
-            isSharingRealScreen: true,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: nil
+            isSharingRealScreen: true
+
         )
         let rows = rowViews(in: controller(rows: [sharingRow]))
         expect(rows.count == 1, "one row for one paired machine")
@@ -81,9 +80,7 @@ func runPairedMachinesSharingToggleTests() async {
         let idleRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
             deviceName: "Kestrel Laptop Air",
-            isSharingRealScreen: false,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: nil
+            isSharingRealScreen: false
         )
         let rows = rowViews(in: controller(rows: [idleRow]))
         let toggle: NSControl = field("toggle", of: rows[0], as: NSControl.self)
@@ -108,31 +105,6 @@ func runPairedMachinesSharingToggleTests() async {
         print("PASS: an idle row's toggle track is not accent-tinted, and its label stays muted")
     }
 
-    do {
-        // Blocked: the toggle is disabled, but a disabled control
-        // drawn at full opacity reads as an enabled off switch.
-        // `NSSwitch` dims a disabled control to 0.4 alpha; this
-        // custom control and its label must match.
-        let blockedRow = HostScreenArmingPresentation.PairedMachineRow(
-            devicePublicKey: Data([0xEF]),
-            deviceName: "Kestrel Laptop Air",
-            isSharingRealScreen: false,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: "Pair Kestrel Laptop Air again to turn this on."
-        )
-        let rows = rowViews(in: controller(rows: [blockedRow]))
-        let toggle: NSControl = field("toggle", of: rows[0], as: NSControl.self)
-        let toggleLabel: NSTextField = field("toggleLabel", of: rows[0], as: NSTextField.self)
-
-        expect(!toggle.isEnabled, "a blocked row's toggle cannot be turned on")
-        expect(
-            toggle.alphaValue == 0.4 && toggleLabel.alphaValue == 0.4,
-            "a disabled toggle and its label are dimmed to 0.4 alpha, the same as NSSwitch dims a disabled switch -- "
-                + "got toggle alpha \(toggle.alphaValue), label alpha \(toggleLabel.alphaValue)"
-        )
-
-        print("PASS: a blocked row's toggle and label are dimmed to 0.4 alpha, not drawn like an enabled off switch")
-    }
 
     do {
         // "Last Screen Session" is a section header outside its card,
@@ -186,16 +158,12 @@ func runPairedMachinesSharingToggleTests() async {
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
             isSharingRealScreen: true,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: nil,
             asksWhenInUse: true
         )
         let idleRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
             deviceName: "Kestrel Laptop Air",
-            isSharingRealScreen: false,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: nil
+            isSharingRealScreen: false
         )
         let sharingRows = rowViews(in: controller(rows: [sharingRow]))
         let askFirstCheckbox: NSButton = field("askFirstCheckbox", of: sharingRows[0], as: NSButton.self)
@@ -220,8 +188,6 @@ func runPairedMachinesSharingToggleTests() async {
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
             isSharingRealScreen: true,
-            credentialSummary: "hardware-bound credential",
-            blockedReason: nil,
             asksWhenInUse: false
         )
         var reported: (Data, Bool)?

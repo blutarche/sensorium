@@ -25,13 +25,24 @@ public protocol HostScreenLiveSessionRegistering: AnyObject {
     /// depending on a teardown ever firing: a recorded entry whose `isLive` now
     /// answers `false` (a connection dropped without releasing) is evicted and
     /// the new session admitted, so a headless host is never left permanently
-    /// busy for a device by a leaked entry.
-    func admit(devicePublicKey: Data, isLive: @escaping @MainActor () -> Bool) -> HostScreenLiveSessionClaim?
+    /// busy for a device by a leaked entry. `stop` ends that session the way
+    /// the host's own Stop control does; see `stopSession(for:)`.
+    func admit(
+        devicePublicKey: Data,
+        isLive: @escaping @MainActor () -> Bool,
+        stop: @escaping @MainActor () -> Void
+    ) -> HostScreenLiveSessionClaim?
     /// Releases the entry `claim` recorded, and only that one. A release whose
     /// token no longer matches the current entry -- the device re-admitted after
     /// this teardown began -- removes nothing, so a mid-flight teardown never
     /// evicts a newer session.
     func release(_ claim: HostScreenLiveSessionClaim)
+    /// Ends `devicePublicKey`'s live host-screen session, if it has one,
+    /// through the `stop` it was admitted with. Called when the person at
+    /// this machine turns that device off or removes it: arming is checked
+    /// only when a session is requested, so a session already live would
+    /// otherwise outlast the decision.
+    func stopSession(for devicePublicKey: Data)
 }
 
 /// The real, in-process implementation. Main-actor isolated, like the
@@ -42,6 +53,7 @@ public final class HostScreenLiveSessionRegistry: HostScreenLiveSessionRegisteri
     private struct Entry {
         let token: UInt64
         let isLive: @MainActor () -> Bool
+        let stop: @MainActor () -> Void
     }
 
     private var entries: [Data: Entry] = [:]
@@ -49,14 +61,18 @@ public final class HostScreenLiveSessionRegistry: HostScreenLiveSessionRegisteri
 
     public init() {}
 
-    public func admit(devicePublicKey: Data, isLive: @escaping @MainActor () -> Bool) -> HostScreenLiveSessionClaim? {
+    public func admit(
+        devicePublicKey: Data,
+        isLive: @escaping @MainActor () -> Bool,
+        stop: @escaping @MainActor () -> Void
+    ) -> HostScreenLiveSessionClaim? {
         if let existing = entries[devicePublicKey], existing.isLive() {
             return nil
         }
         // No entry, or a stale one whose session is no longer live: (re)record.
         nextToken += 1
         let issued = nextToken
-        entries[devicePublicKey] = Entry(token: issued, isLive: isLive)
+        entries[devicePublicKey] = Entry(token: issued, isLive: isLive, stop: stop)
         return HostScreenLiveSessionClaim(devicePublicKey: devicePublicKey, token: issued)
     }
 
@@ -65,5 +81,56 @@ public final class HostScreenLiveSessionRegistry: HostScreenLiveSessionRegisteri
             return
         }
         entries[claim.devicePublicKey] = nil
+    }
+
+    public func stopSession(for devicePublicKey: Data) {
+        guard let existing = entries[devicePublicKey], existing.isLive() else {
+            return
+        }
+        existing.stop()
+    }
+}
+
+/// A claim on one authenticated connection's entry in
+/// `HostDeviceConnectionRegistry`, returned when that connection ends. The
+/// token makes a release name exactly the connection it was minted for.
+public struct HostDeviceConnectionClaim: Equatable, Sendable {
+    fileprivate let devicePublicKey: Data
+    fileprivate let token: UInt64
+}
+
+/// Every authenticated connection this host process is serving, by device,
+/// with the stop that ends it the way the host's own Stop control does.
+/// Removing a paired device uses it to end all of that device's connections
+/// at once, canvas and host screen alike. A connection is recorded only once
+/// its authenticated hello is accepted, so unauthenticated and pairing
+/// connections are never in it.
+@MainActor
+public final class HostDeviceConnectionRegistry {
+    private var entries: [Data: [UInt64: @MainActor () -> Void]] = [:]
+    private var nextToken: UInt64 = 0
+
+    public init() {}
+
+    public func admit(devicePublicKey: Data, stop: @escaping @MainActor () -> Void) -> HostDeviceConnectionClaim {
+        nextToken += 1
+        entries[devicePublicKey, default: [:]][nextToken] = stop
+        return HostDeviceConnectionClaim(devicePublicKey: devicePublicKey, token: nextToken)
+    }
+
+    /// Removes the entry `claim` recorded and no other, so a late release
+    /// from an ended connection never evicts a newer one of the same device.
+    public func release(_ claim: HostDeviceConnectionClaim) {
+        entries[claim.devicePublicKey]?[claim.token] = nil
+        if entries[claim.devicePublicKey]?.isEmpty == true {
+            entries[claim.devicePublicKey] = nil
+        }
+    }
+
+    public func stopConnections(for devicePublicKey: Data) {
+        guard let stops = entries.removeValue(forKey: devicePublicKey) else { return }
+        for stop in stops.values {
+            stop()
+        }
     }
 }

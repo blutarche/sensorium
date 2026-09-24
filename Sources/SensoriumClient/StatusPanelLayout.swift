@@ -12,36 +12,31 @@ import AppKit
 @MainActor
 public enum StatusPanelLayout {
     /// The panel's width when its widest button row already fits it.
-    public static let defaultWidth: CGFloat = 400
-    private static let panelInset = ViewerDesign.Space.lg
-    private static let buttonSpacing = ViewerDesign.Space.xs
+    public static let defaultWidth = CGFloat(ViewerStatusPanelMetrics.defaultWidth)
 
     /// One width for the whole session: wide enough for the widest button row
     /// any `ViewerSessionStatus` can carry, so the panel does not change size
     /// as a session goes from lost to reconnecting to given up.
-    public static let sessionPanelWidth: CGFloat = ViewerSessionStateMachine.buttonRows
-        .map { width(forButtonTitles: $0) }
-        .max() ?? defaultWidth
+    public static let sessionPanelWidth = CGFloat(
+        ViewerStatusPanelMetrics.sessionPanelWidth { measureTitle($0) }
+    )
 
     /// Never narrower than `defaultWidth`, and wide enough that every title
     /// in `titles` measures at its own intrinsic `ViewerActionButton` width
     /// with equal insets on every button.
     public static func width(forButtonTitles titles: [String]) -> CGFloat {
-        guard !titles.isEmpty else { return defaultWidth }
-        let rowWidth = titles.map(buttonWidth).reduce(0, +)
-            + CGFloat(titles.count - 1) * buttonSpacing
-        return max(defaultWidth, rowWidth + panelInset * 2)
+        CGFloat(ViewerStatusPanelMetrics.width(forButtonTitles: titles) { measureTitle($0) })
     }
 
     /// The same measurement `ViewerActionButton.intrinsicContentSize` makes
     /// from the title it actually has on screen, made before any button
-    /// exists to ask.
-    private static func buttonWidth(_ title: String) -> CGFloat {
-        let measured = NSAttributedString(
+    /// exists to ask. The rule the measurement feeds is
+    /// `ViewerStatusPanelMetrics`', shared with the Wayland panel.
+    private static func measureTitle(_ title: String) -> Double {
+        Double(NSAttributedString(
             string: title,
             attributes: [.font: ViewerActionButton.titleFont]
-        ).size().width
-        return max(ViewerActionButton.minimumWidth, ceil(measured) + ViewerActionButton.horizontalInset * 2)
+        ).size().width)
     }
 }
 #endif

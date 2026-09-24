@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import Foundation
 import SensoriumCore
 
@@ -427,6 +429,21 @@ func testClipboardPrefersTheCopyingAppsOrderAndFallsBackWhenTooLarge() {
             == .send(.image(format: .png, data: png.data)),
         "with no type order to go by, the image is sent"
     )
+    expect(
+        decision(text: "A1", image: png, types: ["text/plain;charset=utf-8", "image/png"])
+            == .send(.text("A1")),
+        "a Wayland offer that lists a text mime first is sent as text"
+    )
+    expect(
+        decision(text: "A1", image: png, types: ["image/png", "UTF8_STRING"])
+            == .send(.image(format: .png, data: png.data)),
+        "a Wayland offer that lists image/png first is sent as the image"
+    )
+    expect(
+        decision(text: "A1", image: png, types: ["text/html", "image/png", "text/plain"])
+            == .send(.text("A1")),
+        "rich text listed ahead of the image on a Wayland offer counts as text first"
+    )
 
     let big = ClipboardImage(format: .png, data: Data(repeating: 5, count: 100))
     expect(
@@ -454,6 +471,7 @@ func testClipboardPrefersTheCopyingAppsOrderAndFallsBackWhenTooLarge() {
     )
 }
 
+#if canImport(AppKit)
 /// TIFF is what many apps put on the pasteboard for an image, and it is
 /// usually uncompressed. It is converted to PNG before the size check.
 func testATIFFImageIsConvertedToPNGBeforeItIsSized() {
@@ -472,6 +490,7 @@ func testATIFFImageIsConvertedToPNGBeforeItIsSized() {
     expect(png.count < tiff.count, "and smaller than the uncompressed TIFF it came from")
     expect(SystemPasteboard.pngData(fromTIFF: Data([0x00, 0x01])) == nil, "data that is not an image does not convert")
 }
+#endif
 
 /// The host's own refusal, told to the viewer so a person there can see why a
 /// copy did not arrive. Carries the reason and sizes only, never content.

@@ -13,7 +13,7 @@ import SensoriumCore
 /// what each failure says are `ViewerPairingForm`'s and
 /// `ViewerPairingFailureCopy`'s. This holds views, and asks.
 @MainActor
-public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NSTextFieldDelegate {
+public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, NSWindowDelegate, NSTextFieldDelegate {
     /// Which of the three screens this one window is showing. Adding a machine is
     /// two steps inside this window rather than windows of its own: a person
     /// who has just clicked "Add a machine" is still in the same place they
@@ -55,10 +55,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
     /// The code step was left without pairing. Whatever was opened to announce
     /// this machine has nobody left to announce it to.
     public var onCodeStepAbandoned: (() -> Void)?
-    /// Answers, in one sentence, whether this machine can be allowed to see a
-    /// host screen -- `docs/host-screen-design.md` §6.3 -- before anyone has typed a thing. `nil`
-    /// leaves the line out rather than guessing.
-    private let credentialProvider: (any PresenceCredentialProviding)?
     /// Looked up fresh whenever the tailscaled-unreachable state is drawn,
     /// never cached: whether Tailscale is installed can change while this
     /// window is open.
@@ -102,10 +98,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
         "", font: ViewerDesign.font(mono: false, size: 12),
         color: ViewerDesign.muted, width: YourMachinesWindowController.contentWidth
     )
-    private let credentialLine = ViewerFormControls.label(
-        "", font: ViewerDesign.font(mono: false, size: 12),
-        color: ViewerDesign.muted, width: YourMachinesWindowController.contentWidth
-    )
     /// The saved machine a "Pair again" is for, or `nil` when this is a machine being
     /// added. A machine that answers with a new key is the same machine to the person
     /// who started this, so its old record is replaced rather than left
@@ -123,7 +115,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
     private var codeErrorsRevealed = false
     /// Asked once per launch, not once per visit: the answer is about this
     /// machine, and nothing between two visits to the code step can change it.
-    private var credentialLineRequested = false
 
     private static let windowWidth: CGFloat = 460
     private static let contentWidth = windowWidth - ViewerDesign.Space.xl * 2
@@ -134,7 +125,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
 
     public init(
         store: any SavedHostStoring,
-        credentialProvider: (any PresenceCredentialProviding)? = nil,
         // Tailscale's own bundle identifiers, macsys (the system-extension
         // build) checked first: whichever one is actually installed is the one
         // this machine has. The same pair the host's own setup window uses.
@@ -147,7 +137,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
         }
     ) {
         self.store = store
-        self.credentialProvider = credentialProvider
         self.tailscaleAppURLLookup = tailscaleAppURLLookup
         self.onOpenTailscaleApp = onOpenTailscaleApp
         window = NSWindow(
@@ -735,7 +724,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
         setFieldsEditable(true)
         renderStep()
         window.makeFirstResponder(device == nil ? addressField : codeField)
-        requestCredentialLine()
         announceThisMachine(to: device)
     }
 
@@ -762,9 +750,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
         ]
         if isPairingAgain {
             views.append(sentence("Pairing again replaces the saved key."))
-        }
-        if !credentialLine.stringValue.isEmpty {
-            views.append(credentialLine)
         }
         if device == nil {
             views.append(fieldGroup(
@@ -829,24 +814,6 @@ public final class YourMachinesWindowController: NSObject, NSWindowDelegate, NST
     @objc private func backFromCode() {
         onCodeStepAbandoned?()
         showList()
-    }
-
-    private func requestCredentialLine() {
-        guard let credentialProvider, !credentialLineRequested else { return }
-        credentialLineRequested = true
-        Task { @MainActor in
-            let line: String
-            do {
-                _ = try await credentialProvider.register()
-                line = PresenceCredentialRegistrationCopy.successLine
-            } catch {
-                line = PresenceCredentialRegistrationCopy.line(for: error)
-            }
-            self.credentialLine.stringValue = line
-            if case .typeCode = self.step {
-                self.renderStep()
-            }
-        }
     }
 
     /// Only a machine picked from the list, or one being paired again, has an

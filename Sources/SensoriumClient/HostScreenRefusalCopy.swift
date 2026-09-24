@@ -29,18 +29,14 @@ public enum HostScreenRefusalCopy {
         case "host-screen-presence-check-required":
             return "That machine needed to ask and could not. Connect with a virtual "
                 + "display, then choose a host screen from the Screen menu to try again."
-        case "host-screen-needs-rearming":
-            return "That machine needs \u{201C}Share host screen\u{201D} for this machine turned off and back on. "
-                + "Do that in Sensorium Host there."
-        case "host-screen-credential-unknown":
-            return "That machine does not have this machine's current presence key. Pair with that machine again "
-                + "to register it, then try the host screen again."
         case "host-screen-display-unavailable":
             return "The screen you chose is no longer available there. Connect with a virtual display, "
                 + "then choose another host screen from the Screen menu."
         case "host-screen-retry-needs-person":
-            return "The connection dropped. Showing a host screen again needs a fresh confirmation on "
-                + "this machine. Connect with a virtual display, then choose a host screen from the Screen menu."
+            // Minted here rather than sent by the host: an automatic redial
+            // holding no resume ticket never reaches that machine at all.
+            return "The connection dropped, and showing a host screen again needs someone at this machine "
+                + "to ask for it. Connect with a virtual display, then choose a host screen from the Screen menu."
         case "host-screen-resume-refused":
             return "The connection was interrupted and could not resume. Connect with a virtual display, "
                 + "then choose a host screen from the Screen menu."
@@ -84,15 +80,5 @@ public enum HostScreenRefusalCopy {
     /// closing quote mark onto the line after it.
     private static func nonBreaking(_ token: String) -> String {
         token.replacingOccurrences(of: "-", with: "\u{2011}")
-    }
-
-    /// True only for the one reason a virtual display cannot fix on its
-    /// own: this machine's presence credential is no longer recognised, and
-    /// only the pairing ceremony can register a new one. A machine that has
-    /// registered a credential the host simply has not snapshotted the
-    /// strength of yet (`host-screen-needs-rearming`) is fixed on the
-    /// host's own side, never by pairing again.
-    public static func offersPairAgain(reason: String) -> Bool {
-        reason == "host-screen-credential-unknown"
     }
 }

@@ -235,11 +235,42 @@ public final class HostSessionCoordinator {
     /// Reads whether this machine's screen is locked, so the viewer is told whether
     /// to offer the unlock prompt and so an unlock is confirmed after it types.
     private let lockStateReader: any ScreenLockStateReading
+    /// The lock state this session last told the viewer, from bring-up, an
+    /// unlock attempt, or an earlier `tickHostScreenLockState()` -- what a new
+    /// tick compares its own reading against so it reports only a real
+    /// change, never a value the viewer has already been told. `nil` until
+    /// bring-up seeds it, which never leaves a real reading unreported: the
+    /// first tick after bring-up can only find no change against what
+    /// bring-up itself just announced.
+    private var lastAnnouncedHostScreenLockState: Bool?
+    /// Set for the whole span of one `hostScreenUnlockRequest` -- from before
+    /// its `await unlock(password:)` to after its own lock-state announcement
+    /// -- so `tickHostScreenLockState()` never interleaves inside that await
+    /// and races the attempt's own announcement onto the wire first. See the
+    /// comment where this is set.
+    private var isHostScreenUnlockAttemptInFlight = false
     /// Types the login password into the locked login window over loopback RFB.
     /// Neither the password nor that IO lives in the controller; both are here,
     /// where the `.goodbye` short-circuit already keeps IO out of the
     /// controller's dispatch.
     private let lockScreenUnlocker: any LockScreenUnlocking
+    /// Decides, from every lock-state reading this session has fed it,
+    /// whether the machine should be relocked when this session ends -- see
+    /// the type's own doc comment.
+    private var hostScreenRelockTracker = HostScreenRelockTracker()
+    /// Posts the Lock Screen shortcut when `hostScreenRelockTracker` says to,
+    /// once `tearDownSurfaces` has released this session's own hold on the
+    /// displays.
+    private let hostScreenRelockPoster: any HostScreenRelocking
+    /// This machine's own local-input-idle signal, read to keep a relock
+    /// from firing on a machine someone is actually using -- see
+    /// `hardwareActivityNearby()`. Expected to already be a
+    /// `SelfPostDiscountingLocalActivitySignal`, the same instance fed to
+    /// this connection's `HostSessionController` for its own presence gate,
+    /// so both read one consistent, self-post-corrected signal. `nil` where
+    /// a caller never wired one in, which reads as `.unavailable`, the same
+    /// fail-safe reading `HostScreenPresenceRule` gives an absent sensor.
+    private let hostScreenLocalActivitySignal: (any HostLocalActivitySignal)?
     /// Host-screen frames are tagged surface 0 inside the telemetry,
     /// admission-priority and send machinery shared with the canvas path.
     /// Safe because a connection is one shape for its whole life: a
@@ -381,10 +412,14 @@ public final class HostSessionCoordinator {
         hostScreenMediaFactory: ((VideoEncoderConfiguration) -> any CanvasMediaStreaming)? = nil,
         captureAvailability: HostCaptureAvailability = .shared,
         lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
-        lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker()
+        lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker(),
+        hostScreenRelockPoster: any HostScreenRelocking = CoreGraphicsHostScreenRelockPoster(),
+        hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil
     ) {
         self.lockStateReader = lockStateReader
         self.lockScreenUnlocker = lockScreenUnlocker
+        self.hostScreenRelockPoster = hostScreenRelockPoster
+        self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
         self.captureAvailability = captureAvailability
         self.controller = controller
         self.media = media
@@ -438,10 +473,26 @@ public final class HostSessionCoordinator {
             // the one place every outcome, refused ones included, reaches the
             // operator log line.
             let mayObserveLockState = controller.canObserveHostScreenLockState()
+            // Set before the `await` below and cleared only once this
+            // attempt's own lock-state announcement (if any) has been
+            // written: the change watcher's tick runs on this same actor and
+            // can otherwise interleave inside that `await`, read the screen
+            // already unlocked, and send its own `hostScreenLockState`
+            // ahead of `hostScreenUnlockResult` -- which the viewer would
+            // read as the answer to an unlock it never got a result for.
+            // `defer` clears it on every exit from here, a throw included.
+            isHostScreenUnlockAttemptInFlight = true
+            defer { isHostScreenUnlockAttemptInFlight = false }
             let outcome = await unlock(password: password)
             try await writeResponse(.hostScreenUnlockResult(outcome))
             if mayObserveLockState {
-                try await writeResponse(.hostScreenLockState(locked: lockStateReader.isScreenLocked()))
+                let isLocked = lockStateReader.isScreenLocked()
+                hostScreenRelockTracker.observe(isLocked: isLocked, hardwareActivityNearby: hardwareActivityNearby())
+                // Recorded so the change watcher's next tick compares against
+                // what was just announced here, rather than an older reading,
+                // and so does not repeat this same value as a spurious change.
+                lastAnnouncedHostScreenLockState = isLocked
+                try await writeResponse(.hostScreenLockState(locked: isLocked))
             }
             return nil
         }
@@ -628,7 +679,12 @@ public final class HostSessionCoordinator {
                 // Whether this machine is locked, so the viewer knows to offer the
                 // unlock prompt. Last, like the mode list: it describes a
                 // session that has now actually started streaming.
-                try await writeResponse(.hostScreenLockState(locked: lockStateReader.isScreenLocked()))
+                let isLocked = lockStateReader.isScreenLocked()
+                hostScreenRelockTracker.observe(isLocked: isLocked, hardwareActivityNearby: hardwareActivityNearby())
+                // Seeds the change watcher's baseline, so a first tick against
+                // an unchanged lock state reports nothing.
+                lastAnnouncedHostScreenLockState = isLocked
+                try await writeResponse(.hostScreenLockState(locked: isLocked))
             } catch {
                 // Never leave a session the viewer believes is receiving
                 // video that never actually starts -- the same "one broken
@@ -706,6 +762,36 @@ public final class HostSessionCoordinator {
         return didWriteResponse ? nil : response
     }
 
+    /// Rereads this machine's lock state and reports it only if it has moved
+    /// since it was last announced to this viewer -- from bring-up, from an
+    /// unlock attempt, or from an earlier call here. `nil` when nothing
+    /// changed, which is what lets a caller poll this on a timer and write
+    /// only what it gets back.
+    ///
+    /// Re-checks `canObserveHostScreenLockState()` on every call rather than
+    /// once when polling starts: the lock state is itself a disclosure (see
+    /// `resolveUnlock`), so a tick racing this session's own teardown must
+    /// answer `nil`, the same way an unlock request from an unearned
+    /// connection learns nothing.
+    public func tickHostScreenLockState() -> SensoriumMessage? {
+        // An in-flight unlock attempt owns its own announcement; a tick
+        // racing it must never write its own first, ahead of the attempt's
+        // result.
+        guard !isHostScreenUnlockAttemptInFlight else {
+            return nil
+        }
+        guard controller.canObserveHostScreenLockState() else {
+            return nil
+        }
+        let isLocked = lockStateReader.isScreenLocked()
+        hostScreenRelockTracker.observe(isLocked: isLocked, hardwareActivityNearby: hardwareActivityNearby())
+        guard isLocked != lastAnnouncedHostScreenLockState else {
+            return nil
+        }
+        lastAnnouncedHostScreenLockState = isLocked
+        return .hostScreenLockState(locked: isLocked)
+    }
+
     /// Runs one unlock request and leaves the operator one line naming its
     /// outcome. The password never touches the controller and is never logged:
     /// the record carries the outcome token alone, not the password or its
@@ -725,17 +811,6 @@ public final class HostSessionCoordinator {
         // earned otherwise.
         guard controller.canObserveHostScreenLockState() else {
             return .notAuthorized
-        }
-        // A fresh, single-use presence arm for this exact attempt, consumed
-        // here whether or not the attempt goes on to type: every unlock proves
-        // a live human at the viewer again, independent of how the session was
-        // admitted -- a resume-ticket session that skipped the fresh presence
-        // check must not be able to type a password with nobody confirming.
-        // Consumed before the reserve below, so a `.presenceRequired` refusal
-        // spends no guess budget. Distinct from `.notAuthorized`: the session
-        // is valid, only the per-attempt presence proof is missing.
-        guard controller.consumeUnlockArmed() else {
-            return .presenceRequired
         }
         // An empty submit is not a guess: it never reaches the login window and
         // leaks nothing, so it is refused here without reserving a slot, before
@@ -785,7 +860,7 @@ public final class HostSessionCoordinator {
             // exactly confirmed wrong guesses.
             settled = true
         case .failed, .notLocked, .screenSharingUnavailable, .passwordTooLong, .notAuthorized,
-             .tooManyAttempts, .presenceRequired:
+             .tooManyAttempts:
             // None of these carries wrong-guess information, so none consumes a
             // guess: the `defer` refunds the reserved slot. `.failed` is
             // reachable only after authenticate already accepted the real
@@ -793,8 +868,7 @@ public final class HostSessionCoordinator {
             // who reaches it retries into `.unlocked`, which resets the budget.
             // Listed explicitly, with no `default`, so a new
             // `HostScreenUnlockOutcome` case is a compile error here rather than
-            // a silent refund. `.presenceRequired` never reaches this switch --
-            // it is returned before the attempt -- but is named for exhaustiveness.
+            // a silent refund.
             break
         }
         return outcome
@@ -906,6 +980,21 @@ public final class HostSessionCoordinator {
         _ = try? controller.handle(.goodbye(reason: reason))
     }
 
+    /// One fresh reading for `hostScreenRelockTracker`, using the same
+    /// `HostScreenPresenceRule.assess` window a session's own admission
+    /// check uses. `hostScreenLocalActivitySignal` is expected to already
+    /// discount this session's own forwarded input -- see
+    /// `SelfPostDiscountingLocalActivitySignal`. Read fresh at every call
+    /// rather than cached: it is asked for at each lock-state observation
+    /// and once more at the relock decision itself, and each of those
+    /// moments needs its own answer.
+    private func hardwareActivityNearby() -> Bool {
+        HostScreenPresenceRule.assess(
+            reading: hostScreenLocalActivitySignal?.currentReading() ?? .unavailable,
+            presenceThreshold: HostScreenPresenceRule.recommendedPresenceThreshold
+        ) == .mustAsk
+    }
+
     /// Stops every surface's stream, then every surface's workspace window.
     ///
     /// The workspace windows must all be gone before any canvas display is
@@ -936,6 +1025,25 @@ public final class HostSessionCoordinator {
         // included, so this machine is never left holding its displays awake
         // for a session that is over.
         releaseDisplaysAwakeForSession()
+        // Only a host-screen session ever locks or unlocks a real machine;
+        // a session canvas's input is dropped while the machine is locked
+        // (see `InputSessionKind`), and it feeds the tracker nothing. Checked after releasing the display hold above, so the
+        // relock keystroke is never raced by this session's own display
+        // wake assertion.
+        if stoppedHostScreen {
+            // A last, fresh reading, not only whatever the two-second poll
+            // or an unlock attempt last fed the tracker: either could be up
+            // to two seconds stale, and a person who unlocked or relocked
+            // the machine themselves in that window must still be caught
+            // before the decision below is made. One hardware-activity
+            // reading, not two: `observe` and `consumeShouldRelock` below
+            // must agree on the same moment.
+            let activityNearby = hardwareActivityNearby()
+            hostScreenRelockTracker.observe(isLocked: lockStateReader.isScreenLocked(), hardwareActivityNearby: activityNearby)
+            if hostScreenRelockTracker.consumeShouldRelock(hardwareActivityNearby: activityNearby) {
+                hostScreenRelockPoster.relock()
+            }
+        }
         guard stoppedCanvas || stoppedHostScreen, !hasSignalledSessionEnd else {
             return
         }

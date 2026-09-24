@@ -1,4 +1,3 @@
-import CoreVideo
 import Foundation
 import SensoriumClient
 import SensoriumCore
@@ -6,8 +5,7 @@ import SensoriumCore
 /// Identifies a frame by its host capture time, the one field that travels
 /// through the pacer unchanged.
 private func makePacedFrame(capturedAtNanoseconds: Int64) -> DecodedFrame {
-    DecodedFrame(
-        pixelBuffer: makeTestPixelBuffer(),
+    makeTestDecodedFrame(
         timing: FrameTiming(
             hostCapturedAtNanoseconds: capturedAtNanoseconds,
             receivedAtNanoseconds: capturedAtNanoseconds,
@@ -122,7 +120,7 @@ func testViewerPresentationPacingTests() {
     // drawn at the next refresh exactly as it was before there was a pacer at
     // all.
     var untimed = PresentationPacer()
-    untimed.admit(DecodedFrame(pixelBuffer: makeTestPixelBuffer()), nowNanoseconds: start)
+    untimed.admit(makeTestDecodedFrame(), nowNanoseconds: start)
     expect(
         untimed.frameToPresent(nowNanoseconds: start) != nil,
         "a frame the viewer could not tie to a capture time waits for nothing"

@@ -1,0 +1,8 @@
+module CAVCodec [system] {
+    header "shim.h"
+    link "avcodec"
+    link "avutil"
+    link "va"
+    link "va-drm"
+    export *
+}

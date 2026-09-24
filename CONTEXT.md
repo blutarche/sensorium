@@ -67,19 +67,12 @@ end. On screen it is called "resolution".
 _Avoid_: display mode, screen resolution change, scaling profile
 
 **Lock-screen unlock**:
-An opt-in action inside a live, authenticated, presence-verified host-screen
-session: the person at the viewer types the host machine's login password, and
-the host types it into its own locked login window. What locks is the
-machine's login session, not any one display, so this has nothing to do with
-which screen is being streamed. On screen it is offered as "Unlock the host
-screen".
+Unlocking a locked host from a live host-screen session the way a person
+would at the machine: the viewer's keystrokes, clicks and scrolls reach the
+host's login window as ordinary forwarded input. What locks is the machine's
+login session, not any one display, so this has nothing to do with which
+screen is being streamed. The viewer shows no prompt for it.
 _Avoid_: remote unlock, screen unlock, password injection
-
-**Login password**:
-The password that unlocks the host machine's own login window, typed once at
-the viewer's request during lock-screen unlock and never stored, logged, or
-written to disk.
-_Avoid_: passcode, PIN
 
 **Waking the screen**:
 What the host does to a sleeping display when a session starts, and keeps doing
@@ -96,14 +89,6 @@ the consent the feature needs; this is an extra a person may switch on for
 one machine alone. With it off, the badge and Stop are what protect a person
 working at the host.
 _Avoid_: presence prompt, consent prompt
-
-**Presence-bound credential**:
-A keypair a viewer's operating system or authenticator will not use without a
-live human confirming at that moment, registered with the host when the two
-machines pair, and signed over a challenge the host issues for each
-host-screen session. Proves a person was present; names no specific
-platform mechanism.
-_Avoid_: biometric, passkey, security key
 
 **Surface**:
 One of the at most two slots a session streams, each owning its own canvas,

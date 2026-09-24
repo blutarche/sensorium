@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -164,3 +165,4 @@ private func makePacedDecodedFrame(capturedAtNanoseconds: Int64) -> DecodedFrame
         )
     )
 }
+#endif

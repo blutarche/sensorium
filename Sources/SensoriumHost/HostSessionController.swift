@@ -31,7 +31,7 @@ public enum HostSessionControllerError: Error, Equatable {
     /// already authenticated. A connection is one shape for its whole life,
     /// and the viewer always opens a fresh connection to change target --
     /// a repeat hello is a protocol violation, not a way to refresh this
-    /// connection's own tokens and presence challenge.
+    /// connection's own minted tokens.
     case helloAlreadyAccepted
 }
 
@@ -189,8 +189,24 @@ public final class HostSessionController {
     /// Where this connection's key events may land. Stated by every caller.
     private let keyConfinement: HostKeyConfinement
     private var isAuthenticated = false
+    /// Set the moment this host stops the connection, before the teardown
+    /// that follows gets to run, so nothing the viewer already sent is
+    /// acted on in between. See `stopByHost()`.
+    private var isStoppedByHost = false
     private var authenticatedClientKey: Data?
     private var surfaces: CanvasSurfaceSlots<SurfaceState>
+    /// The wire reason a person at this host's own answer already gave this
+    /// connection: a decline, or a prompt that ran out unanswered. Set once
+    /// and never cleared, so every later `hostScreenRequest` on this
+    /// connection is refused with it and nobody is asked again. An answer
+    /// is an answer; a viewer that could re-ask by resending would turn one
+    /// into a question repeated until it was given the one it wanted.
+    private var hostScreenAnsweredRefusal: String?
+    /// The SHA-256 of this host's own TLS certificate, which an
+    /// `authenticatedHello` must name and sign over. `nil` is a link with
+    /// no certificate -- a plain TCP connection -- and then a hello that
+    /// names any certificate at all is refused.
+    private let hostCertificateHash: Data?
     /// This connection's read-only view of arming: no mutating API to the
     /// session controller. `nil` means host screen is simply unavailable
     /// through this controller -- every test that does not care about it
@@ -204,13 +220,8 @@ public final class HostSessionController {
     /// must still be seen and named, not silently treated as gone the way
     /// `CGGetActiveDisplayList` itself would.
     private let hostScreenCurrentDisplaysProvider: () -> [DisplaySnapshot]
-    /// `nil` refuses every proof rather than approximating one.
-    private let hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)?
-    /// Where a `.resumeTicket` proof is minted and validated -- a wholly
-    /// separate mechanism from `hostScreenPresenceProofVerifier`, which is
-    /// the presence-*credential* seam and never sees a resume ticket. `nil`
-    /// reads the same way the verifier's own absence does: every resume
-    /// attempt refuses honestly rather than being approximated. Held by
+    /// Where a resume ticket is minted and validated. `nil` refuses every
+    /// resume attempt honestly rather than approximating one. Held by
     /// reference, not a provider closure like arming: this store *is* the
     /// mutable state a resume must outlive one connection to reach, so the
     /// same instance has to be handed to every controller
@@ -231,6 +242,8 @@ public final class HostSessionController {
     /// all -- an absent registry is no cap, the same way an absent throttle is
     /// no budget -- so a caller that wants the rule must supply one.
     private let hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)?
+    private let deviceConnectionRegistry: HostDeviceConnectionRegistry?
+    private var deviceConnectionClaim: HostDeviceConnectionClaim?
     /// This connection's claim on its device's one live host-screen session,
     /// held from admission until `goodbye` releases it. `nil` until a
     /// host-screen session is admitted and again after it ends.
@@ -269,28 +282,9 @@ public final class HostSessionController {
     /// one host screen. Held so a later restore cannot end up racing an
     /// earlier one for the same display.
     private var hostScreenModeRestoreRetry: Task<Void, Never>?
-    /// This session's own offer: which token names which display, and the
-    /// single-use challenge a signed proof must have signed. Both are
-    /// replaced, never accumulated, by each call to `offerHostScreenList()`,
-    /// and the challenge is cleared the moment a signed proof consumes it,
-    /// whether or not that proof goes on to verify.
+    /// This session's own offer: which token names which display. Replaced,
+    /// never accumulated, by each call to `offerHostScreenList()`.
     private var hostScreenMintedTokens: [Data: HostScreenDisplayIdentity] = [:]
-    private var hostScreenChallenge: Data?
-    /// This connection's single-use unlock challenge, minted on a
-    /// `hostScreenUnlockChallengeRequest` and consumed by the matching arm.
-    /// Wholly separate from `hostScreenChallenge` above, which is the session
-    /// offer's challenge: an offer re-mint must not void a pending unlock arm,
-    /// nor a pending unlock void the offer.
-    private var hostScreenPendingUnlockChallenge: Data?
-    /// When `hostScreenPendingUnlockChallenge` was minted, read from this
-    /// connection's own seconds source, so `armUnlock` can refuse one that has
-    /// aged past its short lifetime rather than verify it.
-    private var hostScreenPendingUnlockChallengeMintedAt: Double?
-    /// Whether a fresh presence arm has authorised exactly one subsequent
-    /// `hostScreenUnlockRequest` on this connection. Set only by a verified
-    /// `armUnlock`, cleared by the one unlock attempt that consumes it and by
-    /// `goodbye`.
-    private var unlockArmed = false
     private var hostScreenSurface: HostScreenSurfaceState?
     /// Set by `HostNetworkSession` the instant its transport ends or its own
     /// Stop path begins, ahead of the async `goodbye` teardown that follows
@@ -436,17 +430,6 @@ public final class HostSessionController {
     /// happened -- see `releaseHeldInput`, whose lines are the only ones here
     /// that touch held input at all.
     private let log: @MainActor (String) -> Void
-    /// The seconds source used to age the pending unlock challenge. Monotonic,
-    /// so a wall-clock jump cannot lengthen or shorten a challenge's life;
-    /// injected only so a test can age a challenge without waiting.
-    private let unlockChallengeNowSeconds: () -> Double
-    /// How long a minted unlock challenge stays armable. Sized to comfortably
-    /// exceed the human interaction between challenge delivery and arm arrival
-    /// -- the challenge, the person's confirmation, then the arm -- while still
-    /// bounded.
-    /// Not a security-critical bound (the challenge is single-use,
-    /// per-connection and presence-gated); it is the human-interaction window.
-    public static let unlockChallengeTimeToLiveSeconds: Double = 60
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -463,12 +446,13 @@ public final class HostSessionController {
             capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity,
             machineGate: .machineWide
         ),
+        hostCertificateHash: Data? = nil,
         hostScreenArmingProvider: (() -> HostScreenArming)? = nil,
         hostScreenCurrentDisplaysProvider: @escaping () -> [DisplaySnapshot] = DisplayInventory.online,
-        hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)? = nil,
         hostScreenResumeTicketStore: (any HostScreenResumeTicketStoring)? = nil,
         hostScreenUnlockThrottle: (any HostScreenUnlockThrottling)? = nil,
         hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
+        deviceConnectionRegistry: HostDeviceConnectionRegistry? = nil,
         hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceThreshold: TimeInterval = HostScreenPresenceRule.recommendedPresenceThreshold,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
@@ -476,8 +460,7 @@ public final class HostSessionController {
         hostScreenModeRestorePolicy: HostScreenModeRestorePolicy = .standard,
         displayWake: DisplayWakeController? = nil,
         captureAvailability: HostCaptureAvailability = .shared,
-        log: @escaping @MainActor (String) -> Void = { print($0) },
-        unlockChallengeNowSeconds: @escaping () -> Double = { Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000 }
+        log: @escaping @MainActor (String) -> Void = { print($0) }
     ) {
         self.captureAvailability = captureAvailability
         self.encodeAdmission = encodeAdmission
@@ -490,12 +473,13 @@ public final class HostSessionController {
         self.onPairingRequested = onPairingRequested
         self.onClipboardSharingChanged = onClipboardSharingChanged
         self.maxSurfaceCount = min(max(maxSurfaceCount, 1), CanvasSurfaceID.capacity)
+        self.hostCertificateHash = hostCertificateHash
         self.hostScreenArmingProvider = hostScreenArmingProvider
         self.hostScreenCurrentDisplaysProvider = hostScreenCurrentDisplaysProvider
-        self.hostScreenPresenceProofVerifier = hostScreenPresenceProofVerifier
         self.hostScreenResumeTicketStore = hostScreenResumeTicketStore
         self.hostScreenUnlockThrottle = hostScreenUnlockThrottle
         self.hostScreenLiveSessionRegistry = hostScreenLiveSessionRegistry
+        self.deviceConnectionRegistry = deviceConnectionRegistry
         self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
         self.hostScreenPresenceThreshold = hostScreenPresenceThreshold
         self.hostScreenPresenceGate = hostScreenPresenceGate
@@ -503,7 +487,6 @@ public final class HostSessionController {
         self.hostScreenModeRestorePolicy = hostScreenModeRestorePolicy
         self.displayWake = displayWake
         self.log = log
-        self.unlockChallengeNowSeconds = unlockChallengeNowSeconds
         surfaces = CanvasSurfaceSlots { _ in SurfaceState(inputInjector: inputInjector) }
     }
 
@@ -588,9 +571,9 @@ public final class HostSessionController {
     /// per machine however many surfaces the session has. Either target
     /// qualifies. A session canvas qualifies once it is live. A host screen
     /// qualifies once its request has been fully granted, which is the only
-    /// point `hostScreenSurface` is ever set: authenticated, the presence
-    /// proof verified against the arming record, and, when asking first is
-    /// on, the person at this machine agreed. A pairing-only or
+    /// point `hostScreenSurface` is ever set: authenticated, armed for this
+    /// device, and, when asking first is on, the person at this machine
+    /// agreed. A pairing-only or
     /// still-handshaking connection has neither. Admission closes as soon as
     /// the session starts ending (`noteSessionEnding()`), not only once its
     /// `goodbye` teardown has finished.
@@ -638,6 +621,11 @@ public final class HostSessionController {
         return hostScreenSurface != nil
     }
 
+    /// Ends this connection the way the host's own Stop control does. Set by
+    /// whoever owns the connection's `HostNetworkSession`; called when this
+    /// connection's device is turned off or removed.
+    public var onStopRequested: (@MainActor () -> Void)?
+
     /// Whether this connection is currently streaming a host screen, which is
     /// what the live-session registry reads back to tell a live entry from a
     /// stale one. A session that has ended (`goodbye`) has cleared its surface,
@@ -658,6 +646,18 @@ public final class HostSessionController {
     /// follows either one has run -- see `hasLiveHostScreenSession`.
     public func noteSessionEnding() {
         transportClosed = true
+    }
+
+    /// Ends this connection because its device was turned off or removed.
+    /// `onStopRequested` tears the connection down asynchronously, so this
+    /// first withdraws its authentication synchronously: every gate that
+    /// requires it refuses from here on, and `handle` accepts nothing but
+    /// the `goodbye` that ends the connection.
+    private func stopByHost() {
+        isStoppedByHost = true
+        isAuthenticated = false
+        hostScreenMintedTokens = [:]
+        onStopRequested?()
     }
 
     /// Atomically claims one unlock guess against this device's shared budget:
@@ -708,70 +708,6 @@ public final class HostSessionController {
         )
     }
 
-    /// Mints this connection's single-use unlock challenge and stores it,
-    /// replacing any earlier pending one. Only for a valid, live host-screen
-    /// session: for anything else it mints nothing and returns `nil`, so a peer
-    /// that is not entitled to unlock learns nothing -- a host that emitted a
-    /// challenge on a locked screen would itself be a lock-state oracle.
-    public func mintUnlockChallenge() -> Data? {
-        guard canObserveHostScreenLockState() else {
-            return nil
-        }
-        let challenge = Self.secureRandomToken()
-        hostScreenPendingUnlockChallenge = challenge
-        hostScreenPendingUnlockChallengeMintedAt = unlockChallengeNowSeconds()
-        return challenge
-    }
-
-    /// Verifies a fresh presence proof over this connection's pending unlock
-    /// challenge and, on success, arms exactly one subsequent unlock request.
-    ///
-    /// The pending challenge is consumed whether or not the proof verifies, so a
-    /// captured arm cannot be replayed and a challenge is strictly single-use.
-    /// Only a `.signed` proof can arm an unlock -- a resume ticket is a
-    /// substitute for a fresh presence check, which is exactly what an unlock
-    /// arm must not accept. The proof is checked against the device's registered
-    /// public key at its registered minimum strength, the same verifier and the
-    /// same strength admission uses; a device names neither.
-    ///
-    /// An arm never touches the wrong-guess budget, at either registered
-    /// strength. Every unlock attempt has to arm first, so an arm that cleared
-    /// the budget would put the cap out of reach and leave the login window an
-    /// unbounded password oracle. Only a correct password clears it, through
-    /// `recordUnlockSuccess`; someone at this machine re-arming the machine starts a
-    /// fresh budget, because that changes the arming record the budget is keyed
-    /// by.
-    @discardableResult
-    public func armUnlock(presence: HostScreenPresenceProof) -> Bool {
-        guard let challenge = hostScreenPendingUnlockChallenge else {
-            return false
-        }
-        hostScreenPendingUnlockChallenge = nil
-        let mintedAt = hostScreenPendingUnlockChallengeMintedAt
-        hostScreenPendingUnlockChallengeMintedAt = nil
-        // Consumed above, then refused here before any verification: an expired
-        // challenge is never verified, only cleared so it cannot be reused.
-        if let mintedAt, unlockChallengeNowSeconds() - mintedAt > Self.unlockChallengeTimeToLiveSeconds {
-            return false
-        }
-        guard case .signed = presence, let surface = hostScreenSurface else {
-            return false
-        }
-        let minimumStrength = hostScreenArmingProvider?()
-            .devices.first { $0.devicePublicKey == surface.devicePublicKey }?
-            .minimumCredentialStrength
-        guard hostScreenPresenceProofVerifier?.verify(
-            proof: presence,
-            devicePublicKey: surface.devicePublicKey,
-            minimumStrength: minimumStrength,
-            challenge: challenge
-        ) ?? false else {
-            return false
-        }
-        unlockArmed = true
-        return true
-    }
-
     /// Gives this connection's live-session claim back to the registry, and only
     /// that one. Released against the captured claim, so a teardown landing after
     /// the same device already opened a new session evicts nothing of that new
@@ -783,18 +719,6 @@ public final class HostSessionController {
         }
     }
 
-    /// Consumes this connection's one-shot unlock arm: `true` exactly once after
-    /// a successful `armUnlock`, `false` otherwise. The unlock gate calls this
-    /// so a single arm authorises exactly one attempt and every later attempt
-    /// needs a fresh presence proof of its own.
-    public func consumeUnlockArmed() -> Bool {
-        guard unlockArmed else {
-            return false
-        }
-        unlockArmed = false
-        return true
-    }
-
     /// This connection's host-side offer of the displays an armed machine
     /// may be handed -- never a consequence of anything on the wire. A
     /// caller outside this file decides when to call this: once
@@ -802,7 +726,7 @@ public final class HostSessionController {
     /// `SensoriumMessage`.
     ///
     /// Replaces whatever an earlier call minted rather than adding to it --
-    /// every token and the challenge are one-shot and scoped to this one
+    /// every token is one-shot and scoped to this one
     /// offer, not an ever-growing set of things this session has ever
     /// promised were valid.
     /// The same offer, with this machine's displays woken first.
@@ -862,7 +786,6 @@ public final class HostSessionController {
             throw HostSessionControllerError.authenticationRequired
         }
         hostScreenMintedTokens = [:]
-        hostScreenChallenge = nil
 
         guard let clientKey = authenticatedClientKey,
               let arming = hostScreenArmingProvider?(),
@@ -905,9 +828,7 @@ public final class HostSessionController {
             log("Sensorium host: offered \(entries.count) host screens to \(device.deviceName): \(labels.joined(separator: ", "))")
         }
         hostScreenMintedTokens = minted
-        let challenge = Self.secureRandomToken()
-        hostScreenChallenge = challenge
-        return .hostScreenList(displays: entries, challenge: challenge)
+        return .hostScreenList(displays: entries)
     }
 
     /// The viewer's own pick of a display mode for the host screen this
@@ -1064,51 +985,38 @@ public final class HostSessionController {
         return bytes
     }
 
-    /// A `.signed` proof consumes this session's single-use challenge
-    /// whether or not it goes on to verify -- a challenge that survives an
-    /// unsuccessful attempt is a second attempt waiting to happen -- and is
-    /// checked against `hostScreenPresenceProofVerifier`, the
-    /// presence-*credential* seam. A `.resumeTicket` proof never touches the
-    /// challenge (it is a separate proof shape with nothing here to
-    /// consume) and never reaches that verifier at all: a resume ticket is
-    /// its own, self-contained substitute for a fresh
-    /// presence check, validated entirely by `hostScreenResumeTicketStore`
-    /// against the device, display, and arming record this request actually
-    /// names. `displayIdentity`/`armingFingerprint` are `nil` only when
-    /// admission has already failed for an unrelated reason (an unarmed
-    /// device or an unminted token), in which case a resume ticket has
-    /// nothing to be validated against and refuses -- the request refuses
-    /// on the failed obligation either way.
-    private func verifyHostScreenPresenceProof(
-        _ presence: HostScreenPresenceProof,
+    /// Whether a resume ticket this request offered really does resume a
+    /// session this host already granted, validated entirely by
+    /// `hostScreenResumeTicketStore` against the device, display, and
+    /// arming record this request actually names.
+    /// `displayIdentity`/`armingFingerprint` are `nil` only when admission
+    /// has already failed for an unrelated reason (an unarmed device or an
+    /// unminted token), in which case a ticket has nothing to be validated
+    /// against and refuses -- the request refuses on the failed obligation
+    /// either way.
+    private func validateHostScreenResumeTicket(
+        _ token: Data,
         devicePublicKey: Data,
-        minimumStrength: HostScreenCredentialStrength?,
         displayIdentity: HostScreenDisplayIdentity?,
         armingFingerprint: HostScreenArmingFingerprint?
     ) -> Bool {
-        switch presence {
-        case .signed:
-            guard let challenge = hostScreenChallenge else {
-                return false
-            }
-            hostScreenChallenge = nil
-            return hostScreenPresenceProofVerifier?.verify(
-                proof: presence, devicePublicKey: devicePublicKey, minimumStrength: minimumStrength, challenge: challenge
-            ) ?? false
-        case let .resumeTicket(token):
-            guard let hostScreenResumeTicketStore, let displayIdentity, let armingFingerprint else {
-                return false
-            }
-            return hostScreenResumeTicketStore.validate(
-                token: token,
-                devicePublicKey: devicePublicKey,
-                displayIdentity: displayIdentity,
-                armingFingerprint: armingFingerprint
-            )
+        guard let hostScreenResumeTicketStore, let displayIdentity, let armingFingerprint else {
+            return false
         }
+        return hostScreenResumeTicketStore.validate(
+            token: token,
+            devicePublicKey: devicePublicKey,
+            displayIdentity: displayIdentity,
+            armingFingerprint: armingFingerprint
+        )
     }
 
     public func handle(_ message: SensoriumMessage) throws -> SensoriumMessage? {
+        if isStoppedByHost {
+            guard case .goodbye = message else {
+                throw HostSessionControllerError.authenticationRequired
+            }
+        }
         switch message {
         case .hello:
             guard !isAuthenticated else {
@@ -1140,18 +1048,27 @@ public final class HostSessionController {
             }
             onClipboardSharingChanged?(enabled)
             return nil
-        case let .authenticatedHello(protocolVersion, deviceName, publicKey, signature):
+        case let .authenticatedHello(protocolVersion, deviceName, publicKey, helloCertificateHash, signature):
             guard !isAuthenticated else {
                 throw HostSessionControllerError.helloAlreadyAccepted
             }
+            // The hello must name this host's own certificate, and the
+            // signature must cover that name. A hello addressed to some
+            // other host -- one this viewer also paired with, replaying
+            // what it received -- names that host's certificate instead
+            // and is refused here, before anything about the device is
+            // looked up. A host with no certificate to bind to expects a
+            // hello that says so, and nothing else.
             guard protocolVersion == 1,
                   !deviceName.isEmpty,
+                  helloCertificateHash == hostCertificateHash,
                   DeviceIdentity.verify(
                     signature: signature,
                     message: SensoriumFrameCodec.authenticatedHelloTranscript(
                         protocolVersion: protocolVersion,
                         deviceName: deviceName,
-                        publicKey: publicKey
+                        publicKey: publicKey,
+                        hostCertificateHash: helloCertificateHash
                     ),
                     publicKey: publicKey
                   ) else {
@@ -1162,9 +1079,13 @@ public final class HostSessionController {
             }
             isAuthenticated = true
             authenticatedClientKey = publicKey
+            deviceConnectionClaim = deviceConnectionRegistry?.admit(
+                devicePublicKey: publicKey,
+                stop: { [weak self] in self?.stopByHost() }
+            )
             pairing?.recordDeviceName(deviceName, for: publicKey)
             return nil
-        case let .pairRequest(deviceName, publicKey, code, presenceCredential, signature):
+        case let .pairRequest(deviceName, publicKey, code, signature):
             guard let pairing else {
                 throw HostSessionControllerError.unexpectedMessage
             }
@@ -1176,30 +1097,24 @@ public final class HostSessionController {
             // A pairing connection carries no `authenticatedHello` -- the
             // machine is asking to pair, not opening a session -- so the
             // request's own signature is the only proof of possession this
-            // connection can offer. A request that carries one and cannot
-            // back it up is refused outright, exactly as an
-            // `authenticatedHello` with an unverifiable signature is; one
-            // that carries none proves nothing and writes nothing an
-            // already-approved key has on file.
-            var provenPublicKey = authenticatedClientKey
-            if let signature {
-                guard DeviceIdentity.verify(
-                    signature: signature,
-                    message: SensoriumFrameCodec.pairRequestTranscript(
-                        deviceName: deviceName,
-                        clientPublicKey: publicKey,
-                        code: code,
-                        presenceCredential: presenceCredential
-                    ),
-                    publicKey: publicKey
-                ) else {
-                    throw HostSessionControllerError.invalidAuthentication
-                }
-                provenPublicKey = publicKey
+            // connection can offer, and it is required. A request that
+            // cannot back it up is refused outright, exactly as an
+            // `authenticatedHello` with an unverifiable signature is, before
+            // the code it carries is looked at.
+            guard DeviceIdentity.verify(
+                signature: signature,
+                message: SensoriumFrameCodec.pairRequestTranscript(
+                    deviceName: deviceName,
+                    clientPublicKey: publicKey,
+                    code: code
+                ),
+                publicKey: publicKey
+            ) else {
+                throw HostSessionControllerError.invalidAuthentication
             }
             let response = pairing.handlePairRequest(
-                deviceName: deviceName, publicKey: publicKey, code: code, presenceCredential: presenceCredential,
-                connectionProvenPublicKey: provenPublicKey
+                deviceName: deviceName, publicKey: publicKey, code: code,
+                signature: signature
             )
             // Only an actual wrong guess counts against this connection's
             // cap. A code already spent, expired, or retired is not this
@@ -1357,7 +1272,11 @@ public final class HostSessionController {
                    !mayPost(key: keyCode, isDown: isDown, on: surface) {
                     return nil
                 }
-                try inputInjector.inject(event)
+                do {
+                    try inputInjector.inject(event)
+                } catch is InputInjectionSuppressed {
+                    return nil
+                }
                 track(event, on: surface)
                 injected = true
             }
@@ -1482,8 +1401,7 @@ public final class HostSessionController {
                 atSeconds: Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
             )
             return nil
-        case .timeSyncReply, .telemetry, .canvasRefused, .hostScreenUnlockResult, .hostScreenLockState,
-             .hostScreenUnlockChallenge:
+        case .timeSyncReply, .telemetry, .canvasRefused, .hostScreenUnlockResult, .hostScreenLockState:
             // All host-to-viewer only; the host itself never expects to receive
             // any of them.
             throw HostSessionControllerError.unexpectedMessage
@@ -1493,26 +1411,7 @@ public final class HostSessionController {
             // out of this controller. Reaching this line means it was not
             // short-circuited, which is a wiring bug, not a message to act on.
             throw HostSessionControllerError.unexpectedMessage
-        case .hostScreenUnlockChallengeRequest:
-            // Carries no password or loopback IO, so it is handled here rather
-            // than short-circuited in the coordinator: the challenge is minted
-            // where the offer challenge already is. `mintUnlockChallenge` mints
-            // only for a valid, live host-screen session and returns `nil`
-            // otherwise, so an unentitled request gets no reply and learns no
-            // lock state.
-            guard let challenge = mintUnlockChallenge() else {
-                return nil
-            }
-            return .hostScreenUnlockChallenge(challenge: challenge)
-        case let .hostScreenUnlockArm(presence):
-            // Verified here, where the presence verifier and the arming record
-            // already live. The client sends the unlock request next without
-            // waiting for an acknowledgement, so a failed arm simply leaves the
-            // connection unarmed and the later unlock refuses as
-            // `.presenceRequired`; there is nothing to reply.
-            _ = armUnlock(presence: presence)
-            return nil
-        case let .hostScreenRequest(token, presence):
+        case let .hostScreenRequest(token, resumeTicket):
             guard !requireAuthentication || isAuthenticated else {
                 throw HostSessionControllerError.authenticationRequired
             }
@@ -1525,6 +1424,12 @@ public final class HostSessionController {
             // request refuses from then on.
             guard connectionShape != .canvas else {
                 return .hostScreenRefused(reason: "canvas-session-active")
+            }
+            // A person at this machine already answered for this
+            // connection. Refused with the reason they gave, before any
+            // gate is reached, so resending prompts nobody.
+            if let hostScreenAnsweredRefusal {
+                return .hostScreenRefused(reason: hostScreenAnsweredRefusal)
             }
             // A second host-screen request would overwrite `hostScreenSurface`
             // underneath whatever already has it.
@@ -1559,26 +1464,25 @@ public final class HostSessionController {
             let armingFingerprint = arming.devices
                 .first { $0.devicePublicKey == clientKey }
                 .map(HostScreenArmingFingerprint.init)
-            let minimumStrength = arming.devices.first { $0.devicePublicKey == clientKey }?.minimumCredentialStrength
-            let proofVerified = verifyHostScreenPresenceProof(
-                presence,
-                devicePublicKey: clientKey,
-                minimumStrength: minimumStrength,
-                displayIdentity: resolvedDisplay.map(HostScreenDisplayIdentity.init),
-                armingFingerprint: armingFingerprint
-            )
-            // A person is asked only once admission and the
-            // presence-credential proof have both held: a paired device can
-            // reach a valid arming record and a minted token with no human
-            // at the viewer, and the proof is what stands for that. No path
-            // through this closure reaches `.mustAsk` while `proofVerified`
-            // is false.
+            // A ticket this request did not offer is neither valid nor
+            // refused: the request is an ordinary fresh one and is admitted
+            // on its own terms.
+            let resumeAccepted: Bool? = resumeTicket.map {
+                validateHostScreenResumeTicket(
+                    $0,
+                    devicePublicKey: clientKey,
+                    displayIdentity: resolvedDisplay.map(HostScreenDisplayIdentity.init),
+                    armingFingerprint: armingFingerprint
+                )
+            }
             let presenceOutcome: HostScreenPresenceOutcome? = {
-                guard case .success = admission, proofVerified, let display = resolvedDisplay else { return nil }
+                guard case .success = admission, resumeAccepted != false, let display = resolvedDisplay else {
+                    return nil
+                }
                 // A validated resume ticket is the prior session's grant;
                 // it resumes silently and never re-runs the fresh-presence
                 // rule or its gate.
-                if case .resumeTicket = presence {
+                if resumeAccepted == true {
                     return .proceed
                 }
                 let armedDevice = arming.devices.first { $0.devicePublicKey == clientKey }
@@ -1607,31 +1511,15 @@ public final class HostSessionController {
             }()
 
             guard case let .success(displayID) = admission,
-                  proofVerified,
+                  resumeAccepted != false,
                   case .proceed = presenceOutcome,
                   let display = resolvedDisplay else {
-                if case .success = admission, !proofVerified {
-                    // The presence-credential proof is checked, and its
-                    // own refusal reported, before presence is ever
-                    // considered -- a resume ticket is its own,
-                    // self-contained substitute for a fresh presence
-                    // check, expired or minted for another device or
-                    // display, refused on its own terms, never folded
-                    // into the `.signed` path's credential-strength
-                    // reasons below, which describe a wholly different
-                    // proof this ticket never touches at all.
-                    if case .resumeTicket = presence {
-                        return .hostScreenRefused(reason: "host-screen-resume-refused")
-                    }
-                    // A `nil` minimum with a verifier configured means this
-                    // device was armed before strengths were recorded;
-                    // re-arming, not another presence check, fixes it. With
-                    // no verifier at all every request refuses anyway, so
-                    // `nil` there gets the ordinary reason.
-                    if minimumStrength == nil, hostScreenPresenceProofVerifier != nil {
-                        return .hostScreenRefused(reason: "host-screen-needs-rearming")
-                    }
-                    return .hostScreenRefused(reason: "host-screen-credential-unknown")
+                // A ticket that is expired, or minted for another device or
+                // display, is refused on its own terms rather than quietly
+                // demoted to a fresh request: a viewer that believed it was
+                // resuming should be told it was not.
+                if case .success = admission, resumeAccepted == false {
+                    return .hostScreenRefused(reason: "host-screen-resume-refused")
                 }
                 // A person's own decline and the window's own timeout carry
                 // their own wire reasons; every other cause a gate can
@@ -1642,13 +1530,43 @@ public final class HostSessionController {
                 if case .success = admission, case let .refused(gateReason) = presenceOutcome {
                     switch gateReason {
                     case HostScreenPresenceRule.declinedReason:
+                        // Remembered for this connection: only the two
+                        // reasons below are somebody's own answer. A
+                        // refusal for want of a gate, or for one already
+                        // showing to another connection, is nobody's answer
+                        // and stays retryable.
+                        hostScreenAnsweredRefusal = "host-screen-presence-declined"
                         return .hostScreenRefused(reason: "host-screen-presence-declined")
                     case HostScreenPresenceRule.unansweredReason:
+                        hostScreenAnsweredRefusal = "host-screen-presence-unanswered"
                         return .hostScreenRefused(reason: "host-screen-presence-unanswered")
                     default:
                         return .hostScreenRefused(reason: "host-screen-presence-check-required")
                     }
                 }
+                return .hostScreenRefused(reason: "host-screen-not-allowed")
+            }
+
+            // The ask-first prompt keeps the run loop live for up to thirty
+            // seconds, long enough for the person here to turn this device
+            // off or remove it. Turning it off stops nothing yet, since no
+            // host-screen session is registered as live. Removing it stops
+            // this connection, which is registered from its authenticated
+            // hello. Either way admission is decided again on what is
+            // recorded now, and a connection stopped meanwhile is refused.
+            guard !isStoppedByHost,
+                  isKeyAllowed(clientKey),
+                  let currentArming = hostScreenArmingProvider?(),
+                  currentArming.devices
+                      .first(where: { $0.devicePublicKey == clientKey })
+                      .map(HostScreenArmingFingerprint.init) == armingFingerprint,
+                  case .success(displayID) = HostScreenSelectionGuard.admit(
+                      deviceKey: clientKey,
+                      token: token,
+                      mintedTokens: hostScreenMintedTokens,
+                      arming: currentArming,
+                      currentDisplays: currentDisplays
+                  ) else {
                 return .hostScreenRefused(reason: "host-screen-not-allowed")
             }
 
@@ -1665,7 +1583,8 @@ public final class HostSessionController {
             if let registry = hostScreenLiveSessionRegistry {
                 guard let claim = registry.admit(
                     devicePublicKey: clientKey,
-                    isLive: { [weak self] in self?.hasLiveHostScreenSession ?? false }
+                    isLive: { [weak self] in self?.hasLiveHostScreenSession ?? false },
+                    stop: { [weak self] in self?.stopByHost() }
                 ) else {
                     return .hostScreenRefused(reason: "host-screen-already-live")
                 }
@@ -1685,7 +1604,7 @@ public final class HostSessionController {
             // leaving the device to self-heal on its next admission.
             let injector: (any InputInjecting)?
             do {
-                injector = try inputInjectorFactory?.make(canvasDisplayID: displayID)
+                injector = try inputInjectorFactory?.make(canvasDisplayID: displayID, sessionKind: .hostScreen)
             } catch {
                 releaseHostScreenSessionClaim()
                 throw error
@@ -1761,11 +1680,11 @@ public final class HostSessionController {
             restoreHostScreenMode()
             hostScreenSurface = nil
             releaseHostScreenSessionClaim()
+            if let claim = deviceConnectionClaim {
+                deviceConnectionRegistry?.release(claim)
+                deviceConnectionClaim = nil
+            }
             hostScreenMintedTokens = [:]
-            hostScreenChallenge = nil
-            hostScreenPendingUnlockChallenge = nil
-            hostScreenPendingUnlockChallengeMintedAt = nil
-            unlockArmed = false
             connectionShape = nil
             return nil
         case .unrecognized:
@@ -1939,7 +1858,8 @@ public final class HostSessionController {
         if surfaces[surface].inputInjector == nil, let inputInjectorFactory {
             do {
                 surfaces[surface].inputInjector = try inputInjectorFactory.make(
-                    canvasDisplayID: handle.rawValue
+                    canvasDisplayID: handle.rawValue,
+                    sessionKind: .sessionCanvas
                 )
             } catch {
                 sessions[surface].stop(owner: canvasOwner)
@@ -2011,7 +1931,7 @@ public final class HostSessionController {
     /// configured"; with one it means "nothing paired yet", which must deny.
     private func isKeyAllowed(_ publicKey: Data) -> Bool {
         if let pairing {
-            return pairing.isApproved(publicKey) || approvedPublicKeys.contains(publicKey)
+            return pairing.isApproved(publicKey)
         }
         return approvedPublicKeys.isEmpty || approvedPublicKeys.contains(publicKey)
     }
@@ -2055,6 +1975,9 @@ public final class HostSessionController {
     /// had succeeded: the physical input is still down, and clearing the
     /// bookkeeping here would delete the only record of that and make a
     /// later retry (the next `releaseAllInput`, or `goodbye`) skip it too.
+    /// A release the injector suppressed, as a session canvas does while this
+    /// machine is locked, stays held the same way without counting as a
+    /// failure.
     private func releaseHeldInput(on surface: CanvasSurfaceID) {
         guard let inputInjector = surfaces[surface].inputInjector else {
             surfaces[surface].heldButtons = [:]
@@ -2070,6 +1993,7 @@ public final class HostSessionController {
                     .pointerButton(button: button, isDown: false, x: location.x, y: location.y)
                 )
                 surfaces[surface].heldButtons[button] = nil
+            } catch is InputInjectionSuppressed {
             } catch {
                 heldInputReleaseFailureCount += 1
                 failedButtonCount += 1
@@ -2079,6 +2003,7 @@ public final class HostSessionController {
             do {
                 try inputInjector.inject(.key(keyCode: keyCode, isDown: false, modifiers: []))
                 surfaces[surface].heldKeys.remove(keyCode)
+            } catch is InputInjectionSuppressed {
             } catch {
                 heldInputReleaseFailureCount += 1
                 failedKeyCount += 1
@@ -2126,7 +2051,11 @@ public final class HostSessionController {
         if case let .key(keyCode, isDown, _) = event, !mayPostHostScreen(key: keyCode, isDown: isDown) {
             return false
         }
-        try inputInjector.inject(event)
+        do {
+            try inputInjector.inject(event)
+        } catch is InputInjectionSuppressed {
+            return false
+        }
         trackHostScreen(event)
         return true
     }
@@ -2184,6 +2113,7 @@ public final class HostSessionController {
             do {
                 try inputInjector.inject(.pointerButton(button: button, isDown: false, x: location.x, y: location.y))
                 surface.heldButtons[button] = nil
+            } catch is InputInjectionSuppressed {
             } catch {
                 heldInputReleaseFailureCount += 1
                 failedButtonCount += 1
@@ -2193,6 +2123,7 @@ public final class HostSessionController {
             do {
                 try inputInjector.inject(.key(keyCode: keyCode, isDown: false, modifiers: []))
                 surface.heldKeys.remove(keyCode)
+            } catch is InputInjectionSuppressed {
             } catch {
                 heldInputReleaseFailureCount += 1
                 failedKeyCount += 1

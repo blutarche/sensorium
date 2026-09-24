@@ -299,7 +299,8 @@ func testAuthenticatedHelloRoundTripsAndVerifies() {
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1,
         deviceName: "Laptop",
-        publicKey: identity.publicKey
+        publicKey: identity.publicKey,
+        hostCertificateHash: nil
     )
     let message = SensoriumMessage.authenticatedHello(
         protocolVersion: 1,
@@ -309,11 +310,12 @@ func testAuthenticatedHelloRoundTripsAndVerifies() {
     )
     let decoded = try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(message))
     expect(decoded == message, "authenticated hello round-trips through versioned frame")
-    if case let .authenticatedHello(version, name, publicKey, signature) = decoded {
+    if case let .authenticatedHello(version, name, publicKey, certificateHash, signature) = decoded {
         let decodedTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: version,
             deviceName: name,
-            publicKey: publicKey
+            publicKey: publicKey,
+            hostCertificateHash: certificateHash
         )
         expect(DeviceIdentity.verify(signature: signature, message: decodedTranscript, publicKey: publicKey), "authenticated hello signature verifies")
     } else {
@@ -404,3 +406,70 @@ func testInputSequenceAndInputAppliedRoundTripAndUnrecognizedDecodesSafely() {
     )
 }
 
+
+/// The hello is bound to the channel it is sent on. Without that binding a
+/// host a viewer once paired with could take the hello it receives and open
+/// a session as that viewer on any other host the viewer is armed on: the
+/// signature verifies wherever it is presented, because nothing in it names
+/// where it was going. Naming the host's own TLS certificate inside the
+/// transcript is what makes a hello worth exactly one host.
+func testAuthenticatedHelloTranscriptBindsTheHostCertificate() {
+    let identity = try! DeviceIdentity.generate()
+    let hostCertificateHash = Data(repeating: 0xA5, count: 32)
+    let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+        protocolVersion: 1,
+        deviceName: "Laptop",
+        publicKey: identity.publicKey,
+        hostCertificateHash: hostCertificateHash
+    )
+
+    var expected = Data("sensorium-authenticated-hello-v2|".utf8)
+    expected.append(Data("1".utf8))
+    expected.append(0)
+    expected.append(Data("Laptop".utf8))
+    expected.append(0)
+    expected.append(identity.publicKey.base64EncodedData())
+    expected.append(0)
+    expected.append(hostCertificateHash.base64EncodedData())
+    expect(transcript == expected, "the hello transcript is the versioned prefix and four NUL-separated fields, the last of them the host's certificate")
+
+    var expectedWithoutCertificate = Data("sensorium-authenticated-hello-v2|".utf8)
+    expectedWithoutCertificate.append(Data("1".utf8))
+    expectedWithoutCertificate.append(0)
+    expectedWithoutCertificate.append(Data("Laptop".utf8))
+    expectedWithoutCertificate.append(0)
+    expectedWithoutCertificate.append(identity.publicKey.base64EncodedData())
+    expectedWithoutCertificate.append(0)
+    expectedWithoutCertificate.append(Data("none".utf8))
+    expect(
+        SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1,
+            deviceName: "Laptop",
+            publicKey: identity.publicKey,
+            hostCertificateHash: nil
+        ) == expectedWithoutCertificate,
+        "a link with no certificate to bind to says so with the same 'none' marker every other transcript uses, never an empty field"
+    )
+
+    let otherHost = SensoriumFrameCodec.authenticatedHelloTranscript(
+        protocolVersion: 1,
+        deviceName: "Laptop",
+        publicKey: identity.publicKey,
+        hostCertificateHash: Data(repeating: 0x5A, count: 32)
+    )
+    let signature = try! identity.sign(transcript)
+    expect(
+        !DeviceIdentity.verify(signature: signature, message: otherHost, publicKey: identity.publicKey),
+        "a hello signed for one host's certificate does not verify as a hello to another host"
+    )
+
+    let message = SensoriumMessage.authenticatedHello(
+        protocolVersion: 1,
+        deviceName: "Laptop",
+        publicKey: identity.publicKey,
+        hostCertificateHash: hostCertificateHash,
+        signature: signature
+    )
+    let decoded = try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(message))
+    expect(decoded == message, "the certificate the hello names survives the wire unchanged")
+}

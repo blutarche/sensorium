@@ -1,6 +1,4 @@
-#if canImport(AppKit)
 import SensoriumCore
-import CoreVideo
 import Foundation
 
 /// What one control message says about the live "Displays" control's second
@@ -15,7 +13,7 @@ public enum SecondDisplayOutcome: Equatable, Sendable {
 /// own unprompted offer (`docs/host-screen-design.md` §2.3): `.offered` its list, `.refused` its
 /// answer when this machine is not armed for host screen at all.
 public enum HostScreenOutcome: Equatable, Sendable {
-    case offered(displays: [HostScreenListEntry], challenge: Data)
+    case offered(displays: [HostScreenListEntry])
     case refused(reason: String)
 }
 
@@ -29,17 +27,6 @@ public enum HostScreenModeOutcome: Equatable, Sendable {
     case refused(reason: String)
 }
 
-/// The host screen's own lock and unlock traffic, host to viewer: whether the
-/// screen is locked, and what one unlock attempt did.
-public enum HostScreenUnlockInbound: Equatable, Sendable {
-    case lockState(locked: Bool)
-    case result(HostScreenUnlockOutcome)
-    /// The host's single-use challenge, minted in reply to a submit's
-    /// `hostScreenUnlockChallengeRequest`, to be signed by a live presence
-    /// check before the arm.
-    case challenge(challenge: Data)
-}
-
 /// Pulls packets off a live connection and feeds each kind to the right place:
 /// video to the decoder behind the canvas gate, control to the session.
 ///
@@ -49,23 +36,18 @@ public enum HostScreenUnlockInbound: Equatable, Sendable {
 /// I/O.
 @MainActor
 public final class ClientSessionRunner {
-    private let connection: NetworkControlConnection
+    private let connection: any ClientControlConnection
     /// Verifies a live "Displays" reply's signature -- see
     /// `ClientSessionController.verifyLiveCanvasReady(...)`. This runner
     /// does not hold the identity or pinned host key that check needs; the
     /// actor that paired with this host already does.
     private let session: ClientSessionController
-    private let primaryWindow: ClientCanvasWindowController
+    private let primaryWindow: any SessionCanvasWindow
     /// `var`, unlike `primaryWindow`: docs/ux-spec.md's "Displays" control
     /// can attach or detach this live, at any point after `start()`, not
     /// only at construction -- see `attachSecondDisplay`/`detachSecondDisplay`.
-    private var secondaryWindow: ClientCanvasWindowController?
+    private var secondaryWindow: (any SessionCanvasWindow)?
     private let router = SurfaceFrameRouter()
-    /// The submit-time presence-arm sequence and its one pending-challenge
-    /// awaiter. Owned here because the challenge reply lands in this runner's
-    /// receive loop; the flow correlates that reply back to the submission
-    /// waiting for it.
-    private let unlockArmFlow = HostScreenUnlockArmFlow()
     public let latency = SessionLatencyMonitor()
     private var receiveTask: Task<Void, Never>?
     private var clockTask: Task<Void, Never>?
@@ -129,10 +111,10 @@ public final class ClientSessionRunner {
     /// primary canvas — the hard cap is two, and `SurfaceFrameRouter` never
     /// grows past the slot a caller registers here.
     public init(
-        connection: NetworkControlConnection,
+        connection: any ClientControlConnection,
         session: ClientSessionController,
-        window: ClientCanvasWindowController,
-        secondaryWindow: ClientCanvasWindowController? = nil,
+        window: any SessionCanvasWindow,
+        secondaryWindow: (any SessionCanvasWindow)? = nil,
         clipboard: ClipboardSyncSession? = nil,
         hostName: String? = nil,
         hostAddress: String? = nil
@@ -198,13 +180,6 @@ public final class ClientSessionRunner {
     /// untouched: only this one request was refused.
     public var onHostScreenModeRefused: ((_ reason: String) -> Void)?
 
-    /// The host's report of whether its screen is locked, sent unprompted on
-    /// host-screen bring-up and again after every unlock attempt. Drives
-    /// whether the viewer offers the unlock prompt.
-    public var onHostScreenLockState: ((_ locked: Bool) -> Void)?
-    /// The host's answer to an unlock request: what the attempt did. Drives the
-    /// brief success or failure notice the viewer shows.
-    public var onHostScreenUnlockResult: ((_ outcome: HostScreenUnlockOutcome) -> Void)?
     /// The host did not share a clipboard, its own copy or this machine's,
     /// and says why. Never ends the session.
     public var onClipboardRefused: ((ClipboardRefusal) -> Void)?
@@ -215,42 +190,6 @@ public final class ClientSessionRunner {
     /// never returned here.
     public func requestHostScreenMode(_ modeID: String) async {
         try? await connection.send(.control(.hostScreenModeRequest(modeID: modeID)))
-    }
-
-    /// Runs the submit-time unlock sequence -- request a single-use challenge,
-    /// sign that exact challenge with a live presence check, arm, then send the
-    /// unlock request -- and reports what it did. Triggered only when a person
-    /// confirms the unlock with a password, never when the prompt appears, so an
-    /// always-on headless host hitting its lock timer never provokes a presence
-    /// prompt on its own. The host's spoken answer (unlocked, wrong password,
-    /// still `.presenceRequired`) still arrives through the receive loop.
-    ///
-    /// The password is raw UTF-8 bytes so nothing here holds a `String` copy of
-    /// it; the returned result is what the submit did, not that host answer, so
-    /// the caller can say why a fail-closed abort sent nothing rather than leave
-    /// the cleared field looking ignored.
-    public func requestHostScreenUnlock(password: Data) async -> HostScreenUnlockSubmitResult {
-        await unlockArmFlow.run(
-            password: password,
-            send: { message in try await self.connection.send(.control(message)) },
-            sign: { challenge in try await self.session.signUnlockChallenge(challenge) }
-        )
-    }
-
-    /// The host screen's own lock and unlock traffic, classified for the same
-    /// reason `hostScreenModeOutcome(for:)` is: verifiable without the live
-    /// connection and windows the receive loop needs.
-    public nonisolated static func hostScreenUnlockInbound(for message: SensoriumMessage) -> HostScreenUnlockInbound? {
-        switch message {
-        case let .hostScreenLockState(locked):
-            return .lockState(locked: locked)
-        case let .hostScreenUnlockResult(outcome):
-            return .result(outcome)
-        case let .hostScreenUnlockChallenge(challenge):
-            return .challenge(challenge: challenge)
-        default:
-            return nil
-        }
     }
 
     /// The host's own unprompted offer, on the canvas connection -- design
@@ -276,9 +215,9 @@ public final class ClientSessionRunner {
     /// display -- the "Displays" menu's own increase, live, mid-session.
     /// Window construction needs AppKit-level dependencies (the menu, the
     /// shortcut forwarder, the saved-host store) this runner does not hold;
-    /// building it is `ClientSessionHost`'s job in `Sensorium/main.swift`,
+    /// building it is `ClientSessionHost`'s job,
     /// the same as it already is for the primary window.
-    public func attachSecondDisplay(_ window: ClientCanvasWindowController) async throws {
+    public func attachSecondDisplay(_ window: any SessionCanvasWindow) async throws {
         secondaryWindow = window
         router.setWindow(window, atSurfaceID: 1)
         router.setVideoSink(window.videoSink, atSurfaceID: 1)
@@ -288,8 +227,8 @@ public final class ClientSessionRunner {
         try window.startDecoding(latency: latency) { [streamStatistics] frame in
             streamStatistics.recordDecodedFrame(
                 surfaceID: 1,
-                pixelWidth: CVPixelBufferGetWidth(frame.pixelBuffer),
-                pixelHeight: CVPixelBufferGetHeight(frame.pixelBuffer)
+                pixelWidth: frame.width,
+                pixelHeight: frame.height
             )
         }
     }
@@ -302,7 +241,7 @@ public final class ClientSessionRunner {
     /// it) can act -- this runner decides nothing about that, the same
     /// boundary `videoRouting(for:)`'s own documentation already states.
     @discardableResult
-    public func detachSecondDisplay() -> ClientCanvasWindowController? {
+    public func detachSecondDisplay() -> (any SessionCanvasWindow)? {
         guard let window = secondaryWindow else { return nil }
         window.stopDecoding()
         window.onDidBecomeKey = nil
@@ -335,16 +274,16 @@ public final class ClientSessionRunner {
         try primaryWindow.startDecoding(latency: latency) { frame in
             statistics.recordDecodedFrame(
                 surfaceID: 0,
-                pixelWidth: CVPixelBufferGetWidth(frame.pixelBuffer),
-                pixelHeight: CVPixelBufferGetHeight(frame.pixelBuffer)
+                pixelWidth: frame.width,
+                pixelHeight: frame.height
             )
             onDecodedFrame?(frame)
         }
         try secondaryWindow?.startDecoding(latency: latency) { frame in
             statistics.recordDecodedFrame(
                 surfaceID: 1,
-                pixelWidth: CVPixelBufferGetWidth(frame.pixelBuffer),
-                pixelHeight: CVPixelBufferGetHeight(frame.pixelBuffer)
+                pixelWidth: frame.width,
+                pixelHeight: frame.height
             )
         }
         // Detached, not a child of whatever started this session: reading the
@@ -638,8 +577,8 @@ public final class ClientSessionRunner {
     /// without the live connection and windows the receive loop needs.
     public nonisolated static func hostScreenOutcome(for message: SensoriumMessage) -> HostScreenOutcome? {
         switch message {
-        case let .hostScreenList(displays, challenge):
-            return .offered(displays: displays, challenge: challenge)
+        case let .hostScreenList(displays):
+            return .offered(displays: displays)
         case let .hostScreenRefused(reason):
             return .refused(reason: reason)
         default:
@@ -823,7 +762,7 @@ public final class ClientSessionRunner {
         // person actually sees goes through
         // `ViewerSessionFailureCopy`.
         switch Self.hostScreenOutcome(for: message) {
-        case let .offered(displays, _):
+        case let .offered(displays):
             hostScreenDisplays = displays
             onHostScreenOffered?(displays)
         case let .refused(reason):
@@ -854,22 +793,6 @@ public final class ClientSessionRunner {
         if let refusal = Self.clipboardRefusal(for: message) {
             onClipboardRefused?(refusal)
         }
-        // The host screen's lock state and unlock answers. None ends a
-        // session: an unlock is a control on a live host-screen session, not a
-        // reason to drop one.
-        switch Self.hostScreenUnlockInbound(for: message) {
-        case let .lockState(locked):
-            onHostScreenLockState?(locked)
-        case let .result(outcome):
-            onHostScreenUnlockResult?(outcome)
-        case let .challenge(challenge):
-            // Correlated back to the one unlock submission waiting for it; a
-            // challenge with none waiting (late, duplicate, or unsolicited) is
-            // ignored inside the flow.
-            unlockArmFlow.deliverChallenge(challenge)
-        case nil:
-            break
-        }
         return false
     }
 
@@ -883,11 +806,6 @@ public final class ClientSessionRunner {
     /// Reports the session's ending from the receive loop, which no longer runs
     /// on the actor the callback belongs to.
     private func reportEnded(_ reason: String) {
-        // A submission still waiting for a challenge on a connection that just
-        // dropped is resolved as a failure now, rather than left to wait out
-        // the full challenge timeout.
-        unlockArmFlow.abandonPendingUnlock()
         onEnded?(reason)
     }
 }
-#endif

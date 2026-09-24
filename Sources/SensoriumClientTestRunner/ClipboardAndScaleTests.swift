@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Network
 import SensoriumClient
@@ -145,3 +146,4 @@ func testClipboardAndScaleTests() async {
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
         ], "a single-canvas connect sends exactly the sequence it always has")
 }
+#endif

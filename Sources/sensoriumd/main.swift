@@ -146,32 +146,43 @@ private enum HostStartupError: Error {
 private final class HostScreenArmingCoordinator {
     private let armingStore: HostScreenArmingStore
     private let approvedStore: any ApprovedDeviceStoring
+    private let revocation: HostScreenDeviceRevocation
     private weak var hostWindow: HostSetupWindowController?
     private weak var presence: HostMenuBarPresence?
 
-    init(armingStore: HostScreenArmingStore, approvedStore: any ApprovedDeviceStoring) {
+    init(
+        armingStore: HostScreenArmingStore,
+        approvedStore: any ApprovedDeviceStoring,
+        pairing: PairingServiceBox,
+        liveSessions: any HostScreenLiveSessionRegistering,
+        connections: HostDeviceConnectionRegistry
+    ) {
         self.armingStore = armingStore
         self.approvedStore = approvedStore
+        self.revocation = HostScreenDeviceRevocation(
+            armingStore: armingStore,
+            pairedDevices: RunningPairingOrStore(pairing: pairing, store: approvedStore),
+            liveSessions: liveSessions,
+            connections: connections
+        )
     }
 
     func attach(hostWindow: HostSetupWindowController, presence: HostMenuBarPresence) {
         self.hostWindow = hostWindow
         self.presence = presence
+        // The same one-time arming `beginHosting` does, so the rows this
+        // window draws before hosting starts already say what a session
+        // started a moment later would find.
+        armingStore.armEveryPairedMachine(approvedStore: approvedStore, now: Date())
         refresh()
     }
 
     func refresh() {
         let arming = armingStore.load()
-        let approvedDevices: [(publicKey: Data, name: String?, credentialStrength: HostScreenCredentialStrength?)] =
+        let approvedDevices: [(publicKey: Data, name: String?)] =
             approvedStore.load()
                 .sorted { $0.base64EncodedString() < $1.base64EncodedString() }
-                .map { key in
-                    (
-                        key,
-                        approvedStore.name(for: key),
-                        approvedStore.presenceCredential(for: key)?.strength
-                    )
-                }
+                .map { key in (key, approvedStore.name(for: key)) }
         hostWindow?.updatePairedMachines(
             HostScreenArmingPresentation.pairedMachineRows(
                 approvedDevices: approvedDevices,
@@ -188,49 +199,36 @@ private final class HostScreenArmingCoordinator {
     /// One row's own Share host screen toggle. Arms or disarms exactly the
     /// device named, through the same `HostScreenDeviceArming.onPairing`
     /// builder `armOnPairing` below uses, so a person's own click and a
-    /// fresh pairing record the credential strength the same way and cannot
-    /// drift apart.
-    ///
-    /// `onPairing` returns `nil`, and this writes nothing, only when no
-    /// credential is registered for this device at all -- unreachable in
-    /// practice, since `PairedMachinesView`'s own toggle is already
-    /// disabled until one exists (`HostScreenArmingPresentation.pairedMachineRows`'
-    /// `blockedReason`).
+    /// fresh pairing write the same record and cannot drift apart.
     func toggle(devicePublicKey: Data, isOn: Bool) {
         if isOn {
-            if let record = HostScreenDeviceArming.onPairing(
+            armingStore.arm(HostScreenDeviceArming.onPairing(
                 devicePublicKey: devicePublicKey,
                 approvedStore: approvedStore,
                 now: Date()
-            ) {
-                armingStore.arm(record)
-            }
+            ))
         } else {
-            armingStore.disarm(devicePublicKey: devicePublicKey)
+            revocation.turnOff(devicePublicKey: devicePublicKey)
         }
         refresh()
     }
 
-    /// Arms a device the moment it pairs, when it registered a presence
-    /// credential -- the owner's decision that pairing itself grants host
-    /// screen, not a separate switch a person must find and flip. Called
-    /// only for a key pairing for the first time
+    /// Arms a device the moment it pairs -- the owner's decision that
+    /// pairing itself grants host screen, not a separate switch a person
+    /// must find and flip. Called only for a key pairing for the first time
     /// (`PairingApproval.isNewDevice`); a device pairing again is never
     /// re-armed here, so re-pairing cannot undo the person at this machine
     /// having turned it off.
     func armOnPairing(devicePublicKey: Data) {
-        guard let record = HostScreenDeviceArming.onPairing(
+        armingStore.arm(HostScreenDeviceArming.onPairing(
             devicePublicKey: devicePublicKey,
             approvedStore: approvedStore,
             now: Date()
-        ) else {
-            return
-        }
-        armingStore.arm(record)
+        ))
     }
 
     func turnOff(devicePublicKey: Data) {
-        armingStore.disarm(devicePublicKey: devicePublicKey)
+        revocation.turnOff(devicePublicKey: devicePublicKey)
         refresh()
     }
 
@@ -245,8 +243,7 @@ private final class HostScreenArmingCoordinator {
     /// Removing a paired machine removes its host-screen arming with it.
     /// One call, not two left for a caller to remember to pair.
     func removePairedDevice(devicePublicKey: Data) {
-        approvedStore.remove(devicePublicKey)
-        armingStore.revoke(devicePublicKey: devicePublicKey)
+        revocation.removePairedDevice(devicePublicKey: devicePublicKey)
         refresh()
     }
 }
@@ -257,6 +254,24 @@ private final class HostScreenArmingCoordinator {
 /// value frozen at capture time.
 private final class PairingServiceBox: @unchecked Sendable {
     var service: HostPairingService?
+}
+
+/// Un-pairs through the running pairing service, which also writes the
+/// store, so the running host stops admitting the key at once. Before
+/// hosting has started there is no running service, and the store alone is
+/// what the next one loads.
+@MainActor
+private struct RunningPairingOrStore: PairedDeviceRemoving {
+    let pairing: PairingServiceBox
+    let store: any ApprovedDeviceStoring
+
+    func removeApprovedDevice(_ publicKey: Data) {
+        if let service = pairing.service {
+            service.removeApprovedDevice(publicKey)
+        } else {
+            store.remove(publicKey)
+        }
+    }
 }
 
 @main
@@ -309,6 +324,13 @@ struct sensoriumd {
             .appendingPathComponent("host-screen-sessions.log")
     }
 
+    private static func autoLoginDefaultAppliedFileURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base
+            .appendingPathComponent("Sensorium", isDirectory: true)
+            .appendingPathComponent("auto-login-default-applied.json")
+    }
+
     /// Read from its own file exactly as `resolveIdentity` is. Both failures
     /// reach the window as the one identity problem, whose "Try again" and
     /// "Make a new key" buttons cover this identity too.
@@ -345,8 +367,8 @@ struct sensoriumd {
         tracePath: String?,
         operatorBox: HostOperatorBox,
         // Fires once a pairing is genuinely approved, after the approved
-        // store already carries the new key, name, and presence
-        // credential -- a safe point for a caller to reload anything it
+        // store already carries the new key and name -- a safe point for a
+        // caller to reload anything it
         // shows of the paired-machines list, and to arm host screen at
         // once for a device pairing for the first time. The GUI path also
         // refreshes that list here; the CLI path only records the status
@@ -361,7 +383,15 @@ struct sensoriumd {
         // nothing else to share it with: `beginHosting` builds and
         // reconciles one of its own instead, still exactly once, still
         // before any connection can be accepted.
-        hostScreenSessionLog: HostScreenSessionLogStore? = nil
+        hostScreenSessionLog: HostScreenSessionLogStore? = nil,
+        // The GUI's own, shared with its arming coordinator so turning a
+        // device off ends that device's live session. `nil` for the CLI
+        // verbs, which build one here.
+        hostScreenLiveSessionRegistry sharedLiveSessionRegistry: HostScreenLiveSessionRegistry? = nil,
+        // The GUI's own, shared with its arming coordinator so removing a
+        // paired device ends every connection it has. `nil` for the CLI
+        // verbs, which build one here.
+        deviceConnectionRegistry sharedDeviceConnectionRegistry: HostDeviceConnectionRegistry? = nil
     ) throws -> HostPairingService {
         // Never asks macOS to present its approval UI. Approval is the
         // user's to give in System Settings; a host without it still serves
@@ -487,6 +517,10 @@ struct sensoriumd {
         // persisted: it must not survive a restart), and this machine's own
         // local-input-idle signal.
         let hostScreenArmingStore = HostScreenArmingStore(url: hostScreenArmingFileURL())
+        // Pairing arms host screen, so every machine already paired with
+        // this one is armed, once, before a connection can be accepted.
+        // A machine turned off afterwards stays off.
+        hostScreenArmingStore.armEveryPairedMachine(approvedStore: approvedDeviceStore, now: Date())
         let hostScreenResumeTicketStore = HostScreenResumeTicketStore()
         // One wrong-guess budget for lock-screen unlock, shared across every
         // connection for the life of this process, so a reconnecting attacker
@@ -497,8 +531,16 @@ struct sensoriumd {
         // second concurrent one is refused rather than silently replacing the
         // first. In memory only, like the throttle -- a host restart starts it
         // empty, which is exactly right.
-        let hostScreenLiveSessionRegistry = HostScreenLiveSessionRegistry()
-        let hostScreenLocalActivitySignal = CoreGraphicsLocalActivitySignal()
+        let hostScreenLiveSessionRegistry = sharedLiveSessionRegistry ?? HostScreenLiveSessionRegistry()
+        let deviceConnectionRegistry = sharedDeviceConnectionRegistry ?? HostDeviceConnectionRegistry()
+        // Discounted against this process's own posts at `.cghidEventTap`
+        // -- locked-screen input, a system hotkey, and the relock shortcut
+        // -- against `MutableHostInjectedHIDActivity.shared`, the default
+        // every post site also records into. Wrapped once, here, so the
+        // presence gate below and every session's relock decision read one
+        // consistent, self-post-corrected signal rather than two that could
+        // disagree.
+        let hostScreenLocalActivitySignal = SelfPostDiscountingLocalActivitySignal(raw: CoreGraphicsLocalActivitySignal())
         // The accountability record: who drove this machine's screen, which
         // display, and when. Reused from the caller when one was already
         // built and reconciled (the GUI); built and reconciled here,
@@ -510,10 +552,6 @@ struct sensoriumd {
             sessionLog = HostScreenSessionLogStore(url: hostScreenSessionLogFileURL())
             sessionLog.reconcileAbandonedSessionsAtLaunch()
         }
-        // Checks a `.signed` proof against the credential registered for
-        // this device at pairing, over the challenge this offer minted.
-        let hostScreenPresenceProofVerifier: (any HostScreenPresenceProofVerifying)? =
-            PresenceCredentialVerifier(approvedDeviceStore: approvedDeviceStore)
         // The ask-the-person-here gate, shared across every connection this
         // process serves -- there is one machine and one person at it to
         // ask, so the gate's own "never more than one at a time" has to
@@ -574,11 +612,16 @@ struct sensoriumd {
             // The display count is a viewer-side choice; until it is
             // wired, this host serves every canvas it can address.
             maxSurfaceCount: CanvasSurfaceID.capacity,
+            // What every connection checks an authenticated hello's own
+            // channel binding against: a hello signed for another host's
+            // certificate is refused here rather than admitted as this
+            // viewer.
+            hostCertificateHash: tlsIdentity.certificateHash,
             hostScreenArmingProvider: { hostScreenArmingStore.load() },
-            hostScreenPresenceProofVerifier: hostScreenPresenceProofVerifier,
             hostScreenResumeTicketStore: hostScreenResumeTicketStore,
             hostScreenUnlockThrottle: hostScreenUnlockThrottle,
             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
+            deviceConnectionRegistry: deviceConnectionRegistry,
             hostScreenLocalActivitySignal: hostScreenLocalActivitySignal,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
@@ -695,6 +738,7 @@ struct sensoriumd {
                 )
                 thisConnection.session = session
                 currentSession?.session = session
+                controller.onStopRequested = { [weak session] in session?.stop() }
                 // Structural invariant: this is the only way
                 // `HostSessionCoordinator` below can ever obtain a working
                 // host-screen media object, and `makeMedia` cannot return
@@ -768,7 +812,8 @@ struct sensoriumd {
                         print("Sensorium host: ending session: \(reason)")
                         session?.stop()
                     },
-                    hostScreenMediaFactory: hostScreenAccountableMedia.makeMedia
+                    hostScreenMediaFactory: hostScreenAccountableMedia.makeMedia,
+                    hostScreenLocalActivitySignal: hostScreenLocalActivitySignal
                 )
                 session.attach(coordinator: coordinator)
                 // Quitting from the menu bar ends a live session the same
@@ -880,6 +925,41 @@ struct sensoriumd {
     /// guess, and `HostSetupWindowController` for the one window this is.
     @MainActor
     private static func runGUI() {
+        // Auto-login can bring this machine up unlocked with nobody there.
+        // Checked once, here, before anything else this launch does: if the
+        // screen is unlocked with no local input reaching back to boot, or
+        // none at all for the last minute, this locks it again the way a
+        // person at the keyboard would. Never on the CLI verb path below --
+        // starting `pair` or `serve` by hand is itself a person at this
+        // machine.
+        switch HostAutoLoginLockAtStart.applyIfNeeded(
+            lockStateReader: CGSessionScreenLockState(),
+            activitySignal: SelfPostDiscountingLocalActivitySignal(raw: CoreGraphicsLocalActivitySignal()),
+            systemUptime: ProcessInfo.processInfo.systemUptime,
+            relockPoster: CoreGraphicsHostScreenRelockPoster()
+        ) {
+        case .notNeeded:
+            break
+        case .locked:
+            print("Sensorium host: locked the screen at launch -- no local input since before this process started")
+        case .lockFailed:
+            print("Sensorium host: no local input since before this process started, but the relock post failed")
+        }
+
+        // Open at login, on by default: applied exactly once, the first
+        // launch that has not yet applied it. `HostSetupWindowController`'s
+        // own switch is what the owner uses afterward -- this never
+        // registers again on a later launch, whatever they have since
+        // chosen, in this app or directly in System Settings.
+        let autoLoginRegistering = SMAppServiceAutoLoginRegistration()
+        let autoLoginDefaultAppliedStore = HostAutoLoginDefaultAppliedStore(url: autoLoginDefaultAppliedFileURL())
+        if let error = HostAutoLoginDefaultRegistration.applyIfNeeded(
+            registering: autoLoginRegistering,
+            store: autoLoginDefaultAppliedStore
+        ) {
+            print("Sensorium host: could not register to open at login: \(HostOperatorLog.describe(error))")
+        }
+
         let operatorBox = HostOperatorBox(
             status: HostOperatorStatusStore(
                 permissions: HostPermissionRequestResult(
@@ -905,9 +985,17 @@ struct sensoriumd {
         // the host window still activates the app for itself when shown.
         application.setActivationPolicy(.accessory)
 
+        // Both outlive any one hosting run, so the arming coordinator below
+        // can end the live session of a device the person here turns off,
+        // and every connection of one they remove.
+        let hostScreenLiveSessionRegistry = HostScreenLiveSessionRegistry()
+        let deviceConnectionRegistry = HostDeviceConnectionRegistry()
         let armingCoordinator = HostScreenArmingCoordinator(
             armingStore: HostScreenArmingStore(url: hostScreenArmingFileURL()),
-            approvedStore: FileApprovedDeviceStore(url: approvedDevicesURL())
+            approvedStore: FileApprovedDeviceStore(url: approvedDevicesURL()),
+            pairing: pairing,
+            liveSessions: hostScreenLiveSessionRegistry,
+            connections: deviceConnectionRegistry
         )
         // A confirmation before either destructive action -- un-pairing and
         // revoking host-screen sharing are both hard to walk back from a
@@ -916,8 +1004,8 @@ struct sensoriumd {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Remove this paired machine?"
-            alert.informativeText = "It will need to pair again to reconnect. Any host-screen sharing armed for it "
-                + "is removed immediately."
+            alert.informativeText = "It is disconnected now and will need to pair again to reconnect. Any "
+                + "host-screen sharing armed for it is removed immediately."
             alert.addButton(withTitle: "Remove")
             alert.addButton(withTitle: "Cancel")
             if alert.runModal() == .alertFirstButtonReturn {
@@ -952,10 +1040,9 @@ struct sensoriumd {
                             tracePath: nil,
                             operatorBox: operatorBox,
                             // A device pairing for the first time is armed
-                            // for host screen at once, if it registered a
-                            // presence credential; a device pairing again is
-                            // not -- that would undo an earlier "turn off"
-                            // for it.
+                            // for host screen at once; a device pairing
+                            // again is not -- that would undo an earlier
+                            // "turn off" for it.
                             onDeviceApproved: { approval in
                                 operatorBox.status.recordPairingApproved(deviceName: approval.deviceName)
                                 if approval.isNewDevice {
@@ -969,7 +1056,9 @@ struct sensoriumd {
                             // never to disappear the moment something goes wrong.
                             onBindFailure: {},
                             currentSession: currentSession,
-                            hostScreenSessionLog: sessionLog
+                            hostScreenSessionLog: sessionLog,
+                            hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
+                            deviceConnectionRegistry: deviceConnectionRegistry
                         )
                     } catch is HostStartupError {
                         print("Sensorium host failed to start: the file holding this machine\u{2019}s own key could not be read.")
@@ -1045,7 +1134,24 @@ struct sensoriumd {
             },
             onToggleSharing: { key, isOn in armingCoordinator.toggle(devicePublicKey: key, isOn: isOn) },
             onRemovePairedDevice: { key in confirmAndRemovePairedDevice(devicePublicKey: key) },
-            onToggleAskFirst: { key, isOn in armingCoordinator.setAsksWhenInUse(devicePublicKey: key, isOn) }
+            onToggleAskFirst: { key, isOn in armingCoordinator.setAsksWhenInUse(devicePublicKey: key, isOn) },
+            autoLoginStatus: { autoLoginRegistering.status() },
+            onToggleAutoLogin: { isOn in
+                do {
+                    if isOn {
+                        try autoLoginRegistering.register()
+                    } else {
+                        try autoLoginRegistering.unregister()
+                    }
+                } catch {
+                    let alert = NSAlert()
+                    alert.alertStyle = .warning
+                    alert.messageText = isOn ? "Could not turn on Open at Login" : "Could not turn off Open at Login"
+                    alert.informativeText = HostOperatorLog.describe(error)
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            }
         )
         // Every way of quitting goes through the one delegate below, so none
         // of them can end the process with a canvas still online.

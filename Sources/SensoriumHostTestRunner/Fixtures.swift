@@ -137,10 +137,12 @@ final class FakeInputInjector: InputInjecting {
 @MainActor
 final class FakeInputInjectorFactory: InputInjectingFactory {
     private(set) var requestedDisplayIDs: [UInt32] = []
+    private(set) var requestedSessionKinds: [InputSessionKind] = []
     let injector = FakeInputInjector()
 
-    func make(canvasDisplayID: UInt32) throws -> any InputInjecting {
+    func make(canvasDisplayID: UInt32, sessionKind: InputSessionKind) throws -> any InputInjecting {
         requestedDisplayIDs.append(canvasDisplayID)
+        requestedSessionKinds.append(sessionKind)
         return injector
     }
 }
@@ -415,6 +417,22 @@ final class LaunchOutcomeRecorder: @unchecked Sendable {
         defer { lock.unlock() }
         return outcomes
     }
+}
+
+/// A `pairRequest` carrying the proof of possession the protocol requires:
+/// `identity`'s own signature over the transcript of every value the request
+/// asks the host to write.
+func signedPairRequest(deviceName: String, identity: DeviceIdentity, code: String) -> SensoriumMessage {
+    .pairRequest(
+        deviceName: deviceName,
+        publicKey: identity.publicKey,
+        code: code,
+        signature: try! identity.sign(SensoriumFrameCodec.pairRequestTranscript(
+            deviceName: deviceName,
+            clientPublicKey: identity.publicKey,
+            code: code
+        ))
+    )
 }
 
 func expect(_ condition: Bool, _ message: String) {

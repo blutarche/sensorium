@@ -63,39 +63,13 @@ public enum ConnectOutcome: Equatable, Sendable {
     case hostScreen(geometry: SessionSurfaceGeometry, resumeTicket: Data)
 }
 
-/// What this pairing attempt did about registering a presence credential.
-/// Never affects whether pairing itself succeeded: registering a credential
-/// is never required for pairing to succeed.
-public enum PresenceCredentialRegistrationOutcome: Equatable, Sendable {
-    /// No `PresenceCredentialProviding` was given to register with.
-    case notOffered
-    case registered(PresenceCredentialRegistration)
-    /// `line` is `PresenceCredentialRegistrationCopy.line(for:)`, already
-    /// turned into a sentence -- computed once, here, since nothing later
-    /// still has the thrown error to translate.
-    case failed(line: String)
-
-    var registration: PresenceCredentialRegistration? {
-        if case let .registered(registration) = self {
-            return registration
-        }
-        return nil
-    }
-}
-
 public struct PairingApproval: Equatable, Sendable {
     public let hostPublicKey: Data
     public let tlsCertificateHash: Data?
-    public let presenceCredentialRegistration: PresenceCredentialRegistrationOutcome
 
-    public init(
-        hostPublicKey: Data,
-        tlsCertificateHash: Data?,
-        presenceCredentialRegistration: PresenceCredentialRegistrationOutcome = .notOffered
-    ) {
+    public init(hostPublicKey: Data, tlsCertificateHash: Data?) {
         self.hostPublicKey = hostPublicKey
         self.tlsCertificateHash = tlsCertificateHash
-        self.presenceCredentialRegistration = presenceCredentialRegistration
     }
 }
 
@@ -118,11 +92,6 @@ public protocol CanvasLifecycleObserving: Sendable {
 public actor ClientSessionController {
     private let transport: any SensoriumControlTransport
     private let identity: DeviceIdentity?
-    /// `nil` for every caller that does not offer one -- pairing then sends
-    /// no `presenceCredential` at all, exactly today's wire shape. Only
-    /// `pair()` ever calls this; a session already past pairing has nothing
-    /// left to register.
-    private let credentialProvider: (any PresenceCredentialProviding)?
     /// Set once pairing has approved a host; every later session must prove it.
     private let pinnedHostPublicKey: Data?
     private var canvasDisplayID: UInt32?
@@ -183,13 +152,11 @@ public actor ClientSessionController {
     public init(
         transport: any SensoriumControlTransport,
         identity: DeviceIdentity? = nil,
-        credentialProvider: (any PresenceCredentialProviding)? = nil,
         pinnedHostPublicKey: Data? = nil,
         requestSecondCanvas: Bool = false
     ) {
         self.transport = transport
         self.identity = identity
-        self.credentialProvider = credentialProvider
         self.pinnedHostPublicKey = pinnedHostPublicKey
         self.requestSecondCanvas = requestSecondCanvas
     }
@@ -204,23 +171,20 @@ public actor ClientSessionController {
         guard let identity else {
             throw ClientSessionError.identityRequired
         }
-        let credentialOutcome = await Self.attemptCredentialRegistration(credentialProvider)
         // The host will not replace what an already-paired machine has on
-        // file -- its recorded name, its registered presence credential --
-        // for a request that has not proven it holds the identity key it
-        // names, and a pairing connection sends no authenticated hello
-        // ahead of this message. This signature is that proof.
+        // file -- its recorded name -- for a request that has not proven it
+        // holds the identity key it names, and a pairing connection sends no
+        // authenticated hello ahead of this message. This signature is that
+        // proof.
         let signature = try identity.sign(SensoriumFrameCodec.pairRequestTranscript(
             deviceName: deviceName,
             clientPublicKey: identity.publicKey,
-            code: code,
-            presenceCredential: credentialOutcome.registration
+            code: code
         ))
         try await transport.send(.pairRequest(
             deviceName: deviceName,
             publicKey: identity.publicKey,
             code: code,
-            presenceCredential: credentialOutcome.registration,
             signature: signature
         ))
         switch try await transport.receive() {
@@ -237,11 +201,7 @@ public actor ClientSessionController {
                   ) else {
                 throw ClientSessionError.hostKeyMismatch
             }
-            return PairingApproval(
-                hostPublicKey: hostPublicKey,
-                tlsCertificateHash: tlsCertificateHash,
-                presenceCredentialRegistration: credentialOutcome
-            )
+            return PairingApproval(hostPublicKey: hostPublicKey, tlsCertificateHash: tlsCertificateHash)
         case let .pairRejected(reason):
             throw ClientSessionError.pairingRejected(reason)
         default:
@@ -256,22 +216,6 @@ public actor ClientSessionController {
     /// acts on it with no reply, so this never waits on `transport.receive()`.
     public func sendPairIntent(deviceName: String) async throws {
         try await transport.send(.pairIntent(deviceName: deviceName))
-    }
-
-    /// Never a pairing failure: a credential is never required for pairing
-    /// to succeed. A machine with nothing to offer, or whose attempt fails,
-    /// still pairs and uses the session canvas.
-    private static func attemptCredentialRegistration(
-        _ provider: (any PresenceCredentialProviding)?
-    ) async -> PresenceCredentialRegistrationOutcome {
-        guard let provider else {
-            return .notOffered
-        }
-        do {
-            return .registered(try await provider.register())
-        } catch {
-            return .failed(line: PresenceCredentialRegistrationCopy.line(for: error))
-        }
     }
 
     /// Races the handshake against a deadline so a host that never answers
@@ -328,16 +272,23 @@ public actor ClientSessionController {
 
     private func performConnect(deviceName: String, target: SessionTarget, resumeTicket: Data?) async throws -> ConnectOutcome {
         if let identity {
+            // Read off the transport rather than passed in beside it: the
+            // certificate this hello binds itself to is the one the link it
+            // is about to travel actually pinned, so a hello can never be
+            // signed for one host and sent to another.
+            let hostCertificateHash = transport.pinnedHostCertificateHash
             let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1,
                 deviceName: deviceName,
-                publicKey: identity.publicKey
+                publicKey: identity.publicKey,
+                hostCertificateHash: hostCertificateHash
             )
             let signature = try identity.sign(transcript)
             try await transport.send(.authenticatedHello(
                 protocolVersion: 1,
                 deviceName: deviceName,
                 publicKey: identity.publicKey,
+                hostCertificateHash: hostCertificateHash,
                 signature: signature
             ))
         } else {
@@ -361,7 +312,7 @@ public actor ClientSessionController {
         if case let .hostScreenRefused(reason) = offer {
             throw ClientSessionError.hostScreenRefused(reason)
         }
-        guard case let .hostScreenList(displays, challenge) = offer else {
+        guard case let .hostScreenList(displays) = offer else {
             throw ClientSessionError.unexpectedMessage
         }
         // The list is per connection, minted fresh by this connect's own
@@ -375,23 +326,11 @@ public actor ClientSessionController {
         guard matchingEntries.count == 1, let entry = matchingEntries.first else {
             throw ClientSessionError.hostScreenRefused("host-screen-display-unavailable")
         }
-        let proof: HostScreenPresenceProof
-        if let presentedTicket {
-            // A held ticket is a self-contained substitute for a fresh
-            // presence check, never a supplement to one -- this
-            // branch never touches `credentialProvider` or signs the
-            // challenge this offer just minted. A ticket the host refuses
-            // is never retried as `.signed` on this same connection; the
-            // caller's own retry policy (it either presents a valid
-            // ticket or stops) decides what happens next, not this method.
-            proof = .resumeTicket(presentedTicket)
-        } else {
-            guard let credentialProvider else {
-                throw ClientSessionError.hostScreenRefused("host-screen-credential-unknown")
-            }
-            proof = try await Self.hostScreenPresenceProof(challenge: challenge, credentialProvider: credentialProvider)
-        }
-        try await transport.send(.hostScreenRequest(token: entry.opaqueToken, presence: proof))
+        // A held ticket says this is the same host-screen session resuming
+        // after a transport interruption, so the host neither ends it nor
+        // asks again. Without one this is a new session, and the host
+        // decides it from its own arming record for this machine.
+        try await transport.send(.hostScreenRequest(token: entry.opaqueToken, resumeTicket: presentedTicket))
         let reply = try await transport.receive()
         if case let .hostScreenRefused(reason) = reply {
             throw ClientSessionError.hostScreenRefused(reason)
@@ -403,8 +342,8 @@ public actor ClientSessionController {
         // without it the window's `isCanvasReady` gate never opens, so a
         // decoded frame arriving over this connection would never be shown.
         // `hostScreenReady` carries no host signature to verify first, unlike
-        // `canvasReady` -- the presence-signed `hostScreenRequest` this reply
-        // answers is this connection's own proof. `updateMapper` is awaited
+        // `canvasReady` -- the authenticated hello this connection opened with
+        // is what the host admitted it on. `updateMapper` is awaited
         // to completion first: a real display is whatever size it already
         // is, never the session-canvas preset, and the mapper must already
         // reflect that before the gate below can open.
@@ -412,35 +351,6 @@ public actor ClientSessionController {
         await canvasObserver?.updateMapper(geometry: geometry)
         await canvasObserver?.canvasDidBecomeReady()
         return .hostScreen(geometry: geometry, resumeTicket: resumeTicket)
-    }
-
-    /// Signs the exact bytes a `hostScreenList` offer challenged, for the
-    /// connect-time host-screen flow this actor drives.
-    public nonisolated static func hostScreenPresenceProof(
-        challenge: Data,
-        credentialProvider: any PresenceCredentialProviding
-    ) async throws -> HostScreenPresenceProof {
-        let registration = try await credentialProvider.register()
-        let signature = try await credentialProvider.sign(challenge: challenge)
-        return .signed(
-            credentialID: registration.credentialID,
-            credentialFormat: registration.credentialFormat,
-            signature: signature
-        )
-    }
-
-    /// Signs a supplied unlock challenge with this session's registered
-    /// presence credential, for the opt-in lock-screen unlock's submit-time
-    /// arm. Reuses the connect-time signer so there is exactly one signing
-    /// path, and keeps `credentialProvider` private to this actor. A live
-    /// presence check is required to produce the signature; a
-    /// machine with no registered credential fails closed here rather than
-    /// arming with nothing.
-    public func signUnlockChallenge(_ challenge: Data) async throws -> HostScreenPresenceProof {
-        guard let credentialProvider else {
-            throw ClientSessionError.hostScreenRefused("host-screen-credential-unknown")
-        }
-        return try await Self.hostScreenPresenceProof(challenge: challenge, credentialProvider: credentialProvider)
     }
 
     /// The host pushes its host-screen offer unprompted, right after
@@ -457,7 +367,7 @@ public actor ClientSessionController {
         if identity != nil {
             let offer = try await transport.receive()
             switch offer {
-            case let .hostScreenList(displays, _):
+            case let .hostScreenList(displays):
                 hostScreenOffer = displays
             case .hostScreenRefused:
                 hostScreenOffer = []

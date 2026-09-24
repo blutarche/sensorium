@@ -1,0 +1,94 @@
+# The Fedora package for the Sensorium viewer. There is no Linux host, so
+# this builds one binary and installs it with its desktop entry, its metainfo
+# and its icons.
+#
+# @VERSION@ is replaced by Scripts/package-linux.sh, which reads the VERSION
+# file at the repository root. Nothing else generates this file.
+
+Name:           sensorium
+Version:        @VERSION@
+Release:        1%{?dist}
+Summary:        Private remote workstation for two machines
+
+License:        GPL-3.0-only
+URL:            https://github.com/blutarche/sensorium
+Source0:        %{name}-%{version}.tar.gz
+
+# The system libraries the viewer's Linux targets compile and link against.
+# Every one of them corresponds to a system-library target in Package.swift.
+BuildRequires:  swift-lang
+BuildRequires:  pkgconf-pkg-config
+BuildRequires:  cairo-devel
+BuildRequires:  ffmpeg-free-devel
+BuildRequires:  glib2-devel
+BuildRequires:  gtk4-devel
+BuildRequires:  libglvnd-devel
+BuildRequires:  libva-devel
+BuildRequires:  libxkbcommon-devel
+BuildRequires:  openssl-devel
+BuildRequires:  pango-devel
+BuildRequires:  wayland-devel
+# The two validators %%check runs.
+BuildRequires:  desktop-file-utils
+BuildRequires:  appstream
+
+# The VA-API driver Fedora leaves out, which lives in RPM Fusion. dnf skips a
+# weak dependency it cannot find, so a machine without that repository still
+# installs this package and decodes video in software.
+Recommends:     mesa-va-drivers-freeworld
+
+%description
+Sensorium is a private remote workstation for two machines. You sit at this
+one, the viewer, and work on a virtual display the other machine creates for
+you. With permission granted at that machine, you can also see and control
+one of its real screens.
+
+The two machines talk directly over their own Tailscale tailnet. There is no
+account, no relay, no telemetry and no command line. This package is the
+viewer; the machine being worked on runs macOS.
+
+%prep
+%autosetup -n %{name}-%{version}
+
+%build
+# Dynamically linked against the Swift runtime, because Fedora's swift-lang
+# package ships no static standard library. The runtime is a Fedora package
+# of its own, swift-lang-runtime, which the automatic dependency generator
+# picks up from the sonames in the binary.
+swift build -c release --product Sensorium
+
+%install
+install -D -p -m 0755 .build/release/Sensorium %{buildroot}%{_bindir}/Sensorium
+install -D -p -m 0644 Packaging/linux/com.sensorium.viewer.desktop \
+    %{buildroot}%{_datadir}/applications/com.sensorium.viewer.desktop
+
+# The metainfo in the tree is a template: the version it announces is this
+# build's, and the date is the build's own, or the one a reproducible build
+# was told to use.
+release_date=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%%s)}" +%%F)
+mkdir -p %{buildroot}%{_metainfodir}
+sed -e "s/@VERSION@/%{version}/" -e "s/@RELEASE_DATE@/${release_date}/" \
+    Packaging/linux/com.sensorium.viewer.metainfo.xml \
+    > %{buildroot}%{_metainfodir}/com.sensorium.viewer.metainfo.xml
+chmod 0644 %{buildroot}%{_metainfodir}/com.sensorium.viewer.metainfo.xml
+
+for size in 16 22 24 32 48 64 128 256 512; do
+    install -D -p -m 0644 \
+        Packaging/linux/icons/hicolor/${size}x${size}/apps/com.sensorium.viewer.png \
+        %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/com.sensorium.viewer.png
+done
+
+%check
+desktop-file-validate %{buildroot}%{_datadir}/applications/com.sensorium.viewer.desktop
+appstreamcli validate --no-net %{buildroot}%{_metainfodir}/com.sensorium.viewer.metainfo.xml
+
+# No scriptlets. The desktop database (including the scheme-handler cache)
+# and the icon cache are refreshed by the file triggers desktop-file-utils
+# and gtk4 already own.
+%files
+%license LICENSE
+%doc README.md CHANGELOG.md
+%{_bindir}/Sensorium
+%{_datadir}/applications/com.sensorium.viewer.desktop
+%{_metainfodir}/com.sensorium.viewer.metainfo.xml
+%{_datadir}/icons/hicolor/*/apps/com.sensorium.viewer.png

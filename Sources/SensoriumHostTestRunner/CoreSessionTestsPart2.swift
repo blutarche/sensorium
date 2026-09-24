@@ -115,7 +115,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             log: { capUnderLog.record($0) }
         )
         let capUnderChannel = FakeHostByteChannel(scriptedMessages: (0..<(HostSessionController.maximumPairingFailuresPerConnection - 1)).map { _ in
-            SensoriumMessage.pairRequest(deviceName: "Attacker", publicKey: capUnderDevice.publicKey, code: "111111")
+            signedPairRequest(deviceName: "Attacker", identity: capUnderDevice, code: "111111")
         })
         let capUnderSession = HostNetworkSession(connection: capUnderChannel, controller: capUnderController)
         capUnderSession.start()
@@ -141,7 +141,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             log: { capAtLog.record($0) }
         )
         let capAtChannel = FakeHostByteChannel(scriptedMessages: (0..<HostSessionController.maximumPairingFailuresPerConnection).map { _ in
-            SensoriumMessage.pairRequest(deviceName: "Attacker", publicKey: capAtDevice.publicKey, code: "111111")
+            signedPairRequest(deviceName: "Attacker", identity: capAtDevice, code: "111111")
         })
         let capAtSession = HostNetworkSession(connection: capAtChannel, controller: capAtController)
         capAtSession.start()
@@ -171,9 +171,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             keyConfinement: .unconfined
         )
         var capOkMessages = (0..<(HostSessionController.maximumPairingFailuresPerConnection - 1)).map { _ in
-            SensoriumMessage.pairRequest(deviceName: "NewLaptop", publicKey: capOkDevice.publicKey, code: "111111")
+            signedPairRequest(deviceName: "NewLaptop", identity: capOkDevice, code: "111111")
         }
-        capOkMessages.append(.pairRequest(deviceName: "NewLaptop", publicKey: capOkDevice.publicKey, code: "555555"))
+        capOkMessages.append(signedPairRequest(deviceName: "NewLaptop", identity: capOkDevice, code: "555555"))
         let capOkChannel = FakeHostByteChannel(scriptedMessages: capOkMessages)
         let capOkSession = HostNetworkSession(connection: capOkChannel, controller: capOkController)
         capOkSession.start()
@@ -239,7 +239,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
                 log: { composeLog.record($0) }
             )
             let messages = (0..<guessesThisConnection).map { _ in
-                SensoriumMessage.pairRequest(deviceName: "Attacker", publicKey: composeDevice.publicKey, code: "111111")
+                signedPairRequest(deviceName: "Attacker", identity: composeDevice, code: "111111")
             }
             let channel = FakeHostByteChannel(scriptedMessages: messages)
             let session = HostNetworkSession(connection: channel, controller: controller)
@@ -272,9 +272,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             pairing: composePairing,
             keyConfinement: .unconfined
         )
-        let composeExhausted = try! composeFreshController.handle(.pairRequest(
+        let composeExhausted = try! composeFreshController.handle(signedPairRequest(
             deviceName: "NewLaptop",
-            publicKey: composeDevice.publicKey,
+            identity: composeDevice,
             code: "864213"
         ))
         expect(
@@ -795,7 +795,12 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         let restartApproval = firstRun.handlePairRequest(
             deviceName: "Laptop",
             publicKey: pairedDevice.publicKey,
-            code: "314159"
+            code: "314159",
+            signature: try! pairedDevice.sign(SensoriumFrameCodec.pairRequestTranscript(
+                deviceName: "Laptop",
+                clientPublicKey: pairedDevice.publicKey,
+                code: "314159"
+            ))
         )
         guard case let .pairApproved(restartHostKey, restartTLSHash, restartSignature?) = restartApproval else {
             expect(false, "the restart ceremony returns a signed approval")
@@ -850,7 +855,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         let timeSyncTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
             deviceName: "Laptop",
-            publicKey: timeSyncIdentity.publicKey
+            publicKey: timeSyncIdentity.publicKey,
+            hostCertificateHash: nil
         )
         _ = try! timeSyncController.handle(.authenticatedHello(
             protocolVersion: 1,
@@ -895,7 +901,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
                 SensoriumFrameCodec.authenticatedHelloTranscript(
                     protocolVersion: 1,
                     deviceName: "Laptop",
-                    publicKey: pairedIdentity.publicKey
+                    publicKey: pairedIdentity.publicKey,
+                    hostCertificateHash: nil
                 )
             )
         )

@@ -1,3 +1,4 @@
+#if canImport(CryptoKit)
 import Foundation
 import SensoriumClient
 import SensoriumCore
@@ -23,12 +24,12 @@ func testHostScreenViewerInputTests() async {
             displayIdentity: displayIdentity
         )
         let transport = ScriptedClientTransport(responses: [
-            .hostScreenList(displays: [entry], challenge: Data("challenge".utf8)),
+            .hostScreenList(displays: [entry]),
             .hostScreenReady(geometry: geometry, resumeTicket: Data([0x01]))
         ])
         let controller = ClientSessionController(
             transport: transport,
-            credentialProvider: SoftwarePresenceCredential()
+            pinnedHostPublicKey: Data(repeating: 0x7A, count: 32)
         )
         _ = try! await controller.connect(
             deviceName: "Laptop",
@@ -176,3 +177,4 @@ func testHostScreenViewerInputTests() async {
         print("PASS: a host-screen session that has ended sends no further input")
     }
 }
+#endif

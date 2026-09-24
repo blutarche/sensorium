@@ -149,7 +149,7 @@ public enum ViewerMenuPlan {
         ]),
         ViewerMenu(title: "Help", items: [
             ViewerMenuItem(
-                title: "Escape back to this machine: Control-Option-Command-Escape",
+                title: "Escape back to this machine: \(ViewerKeyNames.escapeGesture)",
                 command: .escapeGestureHint,
                 isEnabled: false
             )
@@ -174,7 +174,7 @@ public enum ViewerMenuPlan {
 public enum ClipboardSharingToggle {
     /// Always the opposite of what this window currently caches -- the
     /// window's own choice is forwarded, sent by whoever owns the live
-    /// session (`Sensorium/main.swift`), never decided a second time there.
+    /// session (`ClientSessionHost`), never decided a second time there.
     public static func nextValue(currentlyEnabled: Bool) -> Bool {
         !currentlyEnabled
     }

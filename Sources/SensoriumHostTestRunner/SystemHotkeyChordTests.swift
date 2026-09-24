@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import SensoriumCore
 import SensoriumHost
 
@@ -79,8 +80,15 @@ func runSystemHotkeyChordTests() async {
     do {
         // The injector posts a recognised key at the hid tap, and everything else at the session tap
         let recorder = RecordedPosts()
+        // An explicit no-op, not the default `MutableHostInjectedHIDActivity.shared`:
+        // Control-Up below really does post at `.cghidEventTap`, and the shared
+        // singleton must never carry state one test group leaves behind into
+        // another that reads real `hidSystemState` through it.
         let injector = try! CoreGraphicsInputInjector(
             canvasDisplayID: 0,
+            sessionKind: .sessionCanvas,
+            lockStateReader: FakeScreenLockState(locked: false),
+            hostInjectedHIDActivity: NoOpHostInjectedHIDActivity(),
             postEvent: { event, tap in recorder.record(event.type, tap) }
         )
 
@@ -127,6 +135,9 @@ func runSystemHotkeyChordTests() async {
         let recorder = RecordedPosts()
         let injector = try! CoreGraphicsInputInjector(
             canvasDisplayID: 0,
+            sessionKind: .sessionCanvas,
+            lockStateReader: FakeScreenLockState(locked: false),
+            hostInjectedHIDActivity: NoOpHostInjectedHIDActivity(),
             postEvent: { event, tap in recorder.record(event.type, tap, event.flags) }
         )
 
@@ -180,4 +191,14 @@ private final class RecordedPosts {
     func reset() {
         posts.removeAll()
     }
+}
+
+/// Stands in for `MutableHostInjectedHIDActivity.shared` so a test that posts
+/// at the hid tap never writes into the process-wide singleton, which would
+/// otherwise carry that state into whatever test group reads it next.
+private final class NoOpHostInjectedHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {
+    func recordPost() {}
+    func secondsSinceLastPost() -> TimeInterval? { nil }
+    func sampleBeforePost() {}
+    func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
 }

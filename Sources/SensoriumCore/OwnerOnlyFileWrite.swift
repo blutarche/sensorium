@@ -1,5 +1,11 @@
 import Foundation
 
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
+
 public enum OwnerOnlyFileWriteError: Error, LocalizedError {
     case couldNotCreateTemporaryFile(String, errno: Int32)
     case couldNotWrite(String, errno: Int32)
@@ -97,7 +103,12 @@ public enum OwnerOnlyFileWrite {
         var offset = 0
         while offset < data.count {
             let written = data.withUnsafeBytes { buffer -> Int in
+                // Qualified: this type has a `write` of its own.
+                #if canImport(Darwin)
                 Darwin.write(descriptor, buffer.baseAddress! + offset, data.count - offset)
+                #else
+                Glibc.write(descriptor, buffer.baseAddress! + offset, data.count - offset)
+                #endif
             }
             if written < 0 {
                 if errno == EINTR { continue }

@@ -358,7 +358,8 @@ struct SensoriumIntegrationTestRunner {
                 SensoriumFrameCodec.authenticatedHelloTranscript(
                     protocolVersion: 1,
                     deviceName: "Laptop",
-                    publicKey: latencyIdentity.publicKey
+                    publicKey: latencyIdentity.publicKey,
+                    hostCertificateHash: nil
                 )
             )
         ))

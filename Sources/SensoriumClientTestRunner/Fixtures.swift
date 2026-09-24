@@ -1,10 +1,23 @@
-import AppKit
-import Network
+import Foundation
 import SensoriumClient
 import SensoriumCore
+#if canImport(CoreVideo)
 import CoreVideo
-import Foundation
-import VideoToolbox
+#else
+/// Stands in for a decoded frame's platform image where none exists to
+/// decode: pacing and coalescing tests only need identity and timing.
+private final class TestFramePayload {}
+#endif
+
+/// Builds a `DecodedFrame` cheap enough for tests that only care about a
+/// frame's timing and identity, not its real pixel data.
+func makeTestDecodedFrame(width: Int = 64, height: Int = 64, timing: FrameTiming? = nil) -> DecodedFrame {
+    #if canImport(CoreVideo)
+    DecodedFrame(pixelBuffer: makeTestPixelBuffer(), timing: timing)
+    #else
+    DecodedFrame(payload: TestFramePayload(), width: width, height: height, timing: timing)
+    #endif
+}
 
 actor FakeClientTransport: SensoriumControlTransport {
     private(set) var sent: [SensoriumMessage] = []
@@ -128,6 +141,11 @@ actor RecordingInputSink: CanvasInputSending {
         streamScalePreferences.append(preference)
     }
 
+    /// Every key event that reached the wire, in order.
+    var keys: [SensoriumInputEvent] {
+        events.filter { if case .key = $0 { return true } else { return false } }
+    }
+
     var points: [CanvasInputPoint] {
         events.compactMap { event in
             guard case let .pointerMoved(x, y) = event else { return nil }
@@ -151,19 +169,47 @@ actor RecordingFramePresenter: CanvasFramePresenting {
     }
 }
 
-/// A `CanvasSurfaceWindow` that records what it was handed instead of
+/// A `SessionCanvasWindow` that records what it was handed instead of
 /// decoding it — `ClientCanvasWindowController` is the only production
 /// conformer, and it cannot be built here (no window server connection), so
-/// `SurfaceFrameRouter`'s dispatch is proven against this instead.
-final class RecordingSurfaceWindow: CanvasSurfaceWindow, @unchecked Sendable {
+/// `SurfaceFrameRouter`'s dispatch and `ClientSessionRunner`'s own portable
+/// routing are both proven against this instead.
+final class RecordingSurfaceWindow: SessionCanvasWindow, @unchecked Sendable {
     let surfaceID: UInt32
+    let videoSink = SurfaceVideoSink()
     private let lock = NSLock()
     private var receivedPayloads: [Data] = []
     private var stopDecodingCount = 0
     private var telemetryUpdates: [SessionHUDSnapshot] = []
+    private var startDecodingCallCount = 0
+    private let viewport: ClientViewportController
+    var onDidBecomeKey: (() -> Void)?
 
     init(surfaceID: UInt32) {
         self.surfaceID = surfaceID
+        viewport = ClientViewportController(
+            mapper: VirtualCanvasInputMapper(logicalWidth: 1920, logicalHeight: 1200),
+            pointerSink: RecordingInputSink()
+        )
+    }
+
+    func startDecoding(
+        latency: SessionLatencyMonitor? = nil,
+        onDecodedFrame: (@Sendable (DecodedFrame) -> Void)? = nil
+    ) throws {
+        lock.lock()
+        startDecodingCallCount += 1
+        lock.unlock()
+    }
+
+    func canvasObserver() -> ClientViewportController {
+        viewport
+    }
+
+    var startDecodingCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return startDecodingCallCount
     }
 
     func receive(_ packet: EncodedVideoFramePacket, receivedAtNanoseconds: Int64) throws {
@@ -207,26 +253,6 @@ final class RecordingSurfaceWindow: CanvasSurfaceWindow, @unchecked Sendable {
         defer { lock.unlock() }
         return telemetryUpdates.count
     }
-}
-
-func makeTestPixelBuffer() -> CVPixelBuffer {
-    var buffer: CVPixelBuffer?
-    // Backed by an IOSurface, as every decoded frame is: that is what lets the
-    // GPU read a frame where it already lies instead of taking a copy of it.
-    let attributes: [CFString: Any] = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
-    let status = CVPixelBufferCreate(
-        kCFAllocatorDefault,
-        16,
-        10,
-        kCVPixelFormatType_32BGRA,
-        attributes as CFDictionary,
-        &buffer
-    )
-    guard status == kCVReturnSuccess, let buffer else {
-        print("FAIL: could not allocate a test pixel buffer")
-        Foundation.exit(1)
-    }
-    return buffer
 }
 
 actor GatedPointerSink: CanvasInputSending {
@@ -333,13 +359,18 @@ actor ScriptedClientTransport: SensoriumControlTransport {
     private(set) var closeCount = 0
     private var responses: [SensoriumTransportPacket]
     let deferredPackets = DeferredPacketQueue()
+    /// What a real dial would have pinned for this link, so a test can see
+    /// what the hello binds itself to. `nil` is the unpinned pairing dial.
+    nonisolated let pinnedHostCertificateHash: Data?
 
-    init(responses: [SensoriumMessage]) {
+    init(responses: [SensoriumMessage], pinnedHostCertificateHash: Data? = nil) {
         self.responses = responses.map { .control($0) }
+        self.pinnedHostCertificateHash = pinnedHostCertificateHash
     }
 
     init(packets: [SensoriumTransportPacket]) {
         responses = packets
+        pinnedHostCertificateHash = nil
     }
 
     func send(_ message: SensoriumMessage) async throws {
@@ -388,6 +419,44 @@ actor DelayedClientTransport: SensoriumControlTransport {
     func close() async {
         closeCount += 1
     }
+}
+
+/// A minimal `ClientControlConnection` fake for `ClientSessionRunner`'s own
+/// portable routing test: scripts the wire exactly as `ScriptedClientTransport`
+/// does, and no-ops the dial and silence-watch calls the runner needs a
+/// `ClientControlConnection` (rather than a bare `SensoriumControlTransport`)
+/// for.
+actor ScriptedControlConnection: ClientControlConnection {
+    let deferredPackets = DeferredPacketQueue()
+    private var responses: [SensoriumTransportPacket]
+    private(set) var sentMessages: [SensoriumMessage] = []
+    private(set) var sentPackets: [SensoriumTransportPacket] = []
+
+    init(responses: [SensoriumTransportPacket]) {
+        self.responses = responses
+    }
+
+    func start(timeout: TimeInterval) async throws {}
+    nonisolated func beginHostSilenceWatch() {}
+    nonisolated func endHostSilenceWatch() {}
+    nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
+
+    func send(_ message: SensoriumMessage) async throws {
+        sentMessages.append(message)
+    }
+
+    func send(_ packet: SensoriumTransportPacket) async throws {
+        sentPackets.append(packet)
+    }
+
+    func receiveWirePacket() async throws -> SensoriumTransportPacket {
+        guard !responses.isEmpty else {
+            throw ControlChannelError.closed
+        }
+        return responses.removeFirst()
+    }
+
+    func close() async {}
 }
 
 final class UncheckedFlag: @unchecked Sendable {
@@ -552,3 +621,54 @@ func expect(_ condition: Bool, _ message: String) {
     }
 }
 
+/// Records the order two queued pieces of work actually ran in.
+actor RecordedOrder {
+    private(set) var entries: [String] = []
+
+    func append(_ entry: String) {
+        entries.append(entry)
+    }
+}
+
+
+/// A runner that reads the host's report that its screen is locked, then an
+/// unlock answer, then the link closing. Returns everything the runner put on
+/// the wire and the reason it gave for ending.
+@MainActor
+func runnerAfterLockedHostReport() async -> (sent: [SensoriumMessage], endedReason: String?) {
+    final class Reason: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: String?
+        var value: String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+        func set(_ reason: String) {
+            lock.lock()
+            stored = reason
+            lock.unlock()
+        }
+    }
+
+    let connection = ScriptedControlConnection(responses: [
+        .control(.hostScreenLockState(locked: true)),
+        .control(.hostScreenUnlockResult(.wrongPassword)),
+    ])
+    let runner = ClientSessionRunner(
+        connection: connection,
+        session: ClientSessionController(transport: FakeClientTransport()),
+        window: RecordingSurfaceWindow(surfaceID: 0)
+    )
+    let reason = Reason()
+    try! runner.start(onEnded: { reason.set($0) })
+    for _ in 0..<200 where reason.value == nil {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    runner.stop()
+    let packets = await connection.sentPackets.compactMap { packet -> SensoriumMessage? in
+        guard case let .control(message) = packet else { return nil }
+        return message
+    }
+    return (await connection.sentMessages + packets, reason.value)
+}

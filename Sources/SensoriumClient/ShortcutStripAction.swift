@@ -67,6 +67,26 @@ public enum ShortcutStripAction: CaseIterable, Equatable, Sendable {
         }
     }
 
+    /// The same button drawn from an icon theme rather than from SF Symbols,
+    /// named from the freedesktop icon naming specification so any theme that
+    /// follows it has the glyph. Kept beside `symbolName` rather than in the
+    /// window layer, so a button can never reach one platform without a name
+    /// for the other.
+    public var freedesktopIconName: String {
+        switch self {
+        case .missionControl: "view-grid"
+        case .applicationWindows: "view-list"
+        case .desktopLeft: "go-previous"
+        case .desktopRight: "go-next"
+        case .showDesktop: "user-desktop"
+        case .spotlight: "system-search"
+        case .launchpad: "applications-other"
+        case .switchApp: "go-jump"
+        case .lockScreen: "system-lock-screen"
+        case .quitApp: "application-exit"
+        }
+    }
+
     /// What is sent, in the spelling macOS itself uses for a chord.
     public var chordDescription: String {
         switch self {
