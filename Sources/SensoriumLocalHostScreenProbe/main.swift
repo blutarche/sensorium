@@ -207,7 +207,7 @@ struct SensoriumLocalHostScreenProbe {
             deviceName: deviceName,
             target: .hostScreen(displayIdentity: HostScreenDisplayIdentity(display).wireStableIdentifier)
         )
-        guard case let .hostScreen(geometry, _) = outcome else {
+        guard case let .hostScreen(geometry, _, _) = outcome else {
             throw HostScreenProbeError.sessionIsNotHostScreen
         }
         print("host_screen_geometry=\(geometry.logicalWidth)x\(geometry.logicalHeight)@\(geometry.backingScale)")

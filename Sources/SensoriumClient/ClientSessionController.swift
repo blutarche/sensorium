@@ -60,7 +60,12 @@ public enum ConnectOutcome: Equatable, Sendable {
     /// a second, later message -- this connect's own offer is the only one
     /// it will ever receive.
     case canvas(displayID: UInt32, hostScreenOffer: [HostScreenListEntry])
-    case hostScreen(geometry: SessionSurfaceGeometry, resumeTicket: Data)
+    /// `hostScreenOffer` is this same connect's own `hostScreenList`, the
+    /// one it read `displayIdentity`'s token from -- carried out unchanged
+    /// so a caller that started directly on host screen, with no earlier
+    /// `.canvas` outcome to have read it from, still learns every screen
+    /// the host offered, not only the one it is streaming.
+    case hostScreen(geometry: SessionSurfaceGeometry, resumeTicket: Data, hostScreenOffer: [HostScreenListEntry])
 }
 
 public struct PairingApproval: Equatable, Sendable {
@@ -350,7 +355,7 @@ public actor ClientSessionController {
         hostScreenGeometry = geometry
         await canvasObserver?.updateMapper(geometry: geometry)
         await canvasObserver?.canvasDidBecomeReady()
-        return .hostScreen(geometry: geometry, resumeTicket: resumeTicket)
+        return .hostScreen(geometry: geometry, resumeTicket: resumeTicket, hostScreenOffer: displays)
     }
 
     /// The host pushes its host-screen offer unprompted, right after

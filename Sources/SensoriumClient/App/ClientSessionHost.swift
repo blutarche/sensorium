@@ -407,9 +407,15 @@ final class ClientSessionHost {
                 await controller.disconnect(reason: "start-target-auto-switch")
                 return try await runOnce()
             }
-        case let .hostScreen(_, resumeTicket):
+        case let .hostScreen(_, resumeTicket, hostScreenOffer):
             displayID = nil
             isHostScreenSession = true
+            // Pushed unprompted with this same connect, the same as the
+            // `.canvas` case above: a direct host-screen connect, with no
+            // earlier `.canvas` outcome to have read the offer from, would
+            // otherwise leave `lastHostScreenOffer` empty and the Screen
+            // menu showing only Virtual Display.
+            hostScreenOffered(displays: hostScreenOffer)
             // `ClientSessionController` itself has already reconfigured the
             // mapper with this reply's own geometry, awaited to completion
             // before `canvasDidBecomeReady()` opened the gate any pointer
@@ -921,9 +927,9 @@ final class ClientSessionHost {
     }
 
     /// The Screen menu's own reading of `currentTarget`, round-tripped
-    /// through the same stale offer list `selectRealScreen(token:)` reads
-    /// from -- a `.hostScreen` session never receives its own fresh offer,
-    /// so this is the only place its token can still be found.
+    /// through the same offer list `selectRealScreen(token:)` reads from --
+    /// pushed either by a `.canvas` outcome's own offer or, for a session
+    /// that started directly on host screen, by that connect's own offer.
     private func selectedScreenMenuToken() -> Data? {
         guard case let .hostScreen(displayIdentity) = currentTarget else { return nil }
         return lastHostScreenOffer.first(where: { $0.displayIdentity == displayIdentity })?.opaqueToken

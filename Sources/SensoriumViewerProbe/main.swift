@@ -104,7 +104,7 @@ enum ViewerProbe {
             switch outcome {
             case let .canvas(displayID, _):
                 emit("Session canvas ready, display \(displayID).")
-            case let .hostScreen(geometry, _):
+            case let .hostScreen(geometry, _, _):
                 emit("Host screen ready, \(geometry.logicalWidth)x\(geometry.logicalHeight).")
             }
             try await count(packetsOn: connection, seconds: seconds)

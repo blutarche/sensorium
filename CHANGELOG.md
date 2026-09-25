@@ -107,6 +107,9 @@ once it reaches 1.0.
   waits up to 3 seconds for the monitors to come back before it lists
   them. The stand-in display macOS keeps online while the monitors are
   off is offered only when it is the only display.
+- The Screen menu now lists every screen the host offered, with the one
+  it is streaming checked, even when a session starts directly on host
+  screen instead of a virtual display first.
 
 ## [0.1.3] - 2026-09-19
 

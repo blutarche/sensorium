@@ -150,7 +150,7 @@ enum ViewVerbs {
             switch try await controller.connect(deviceName: ViewerProbe.deviceName(), target: .sessionCanvas) {
             case let .canvas(displayID, _):
                 say("Session canvas ready, display \(displayID).")
-            case let .hostScreen(geometry, _):
+            case let .hostScreen(geometry, _, _):
                 say("Host screen ready, \(geometry.logicalWidth)x\(geometry.logicalHeight).")
             }
             window.updateTitle(ViewerWindowTitle.resolve(

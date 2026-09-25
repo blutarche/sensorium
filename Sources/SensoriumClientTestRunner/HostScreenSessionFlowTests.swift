@@ -261,8 +261,8 @@ func testHostScreenSessionFlowTests() async {
         )
 
         expect(
-            outcome == .hostScreen(geometry: geometry, resumeTicket: resumeTicket),
-            "a .hostScreen connect that reaches hostScreenReady returns the geometry and resume ticket it carried"
+            outcome == .hostScreen(geometry: geometry, resumeTicket: resumeTicket, hostScreenOffer: [entry]),
+            "a .hostScreen connect that reaches hostScreenReady returns the geometry, resume ticket and offer it carried"
         )
         expect(
             await transport.sent.allSatisfy { if case .canvasRequest = $0 { return false } else { return true } },
@@ -270,6 +270,66 @@ func testHostScreenSessionFlowTests() async {
         )
 
         print("PASS: a .hostScreen connect never sends canvasRequest")
+    }
+
+    do {
+        // Field bug: a viewer that starts directly on host screen -- no
+        // canvas connect first, so `ClientSessionHost.hostScreenOffered`
+        // never runs on a separate `.canvas` outcome -- must still see
+        // every screen the host offered on this same connect, with the one
+        // it is streaming checked. The offer this connect received is the
+        // only place that list can come from.
+        let streamingIdentity = "00000610-0000a189"
+        let builtin = HostScreenListEntry(
+            opaqueToken: Data([0x01]), label: "Built-in Display",
+            logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0, isBuiltin: true,
+            displayIdentity: "00000610-0000a038"
+        )
+        let external = HostScreenListEntry(
+            opaqueToken: Data([0x02]), label: "LS27A800U",
+            logicalWidth: 2560, logicalHeight: 1440, backingScale: 1.0, isBuiltin: false,
+            displayIdentity: streamingIdentity
+        )
+        let geometry = SessionSurfaceGeometry(logicalWidth: 2560, logicalHeight: 1440, backingScale: 1.0)
+        let resumeTicket = Data([0x03])
+        let transport = ScriptedClientTransport(responses: [
+            .hostScreenList(displays: [builtin, external]),
+            .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket)
+        ])
+        let controller = ClientSessionController(transport: transport)
+
+        let outcome = try! await controller.connect(
+            deviceName: "Laptop",
+            target: .hostScreen(displayIdentity: streamingIdentity)
+        )
+
+        guard case let .hostScreen(_, _, hostScreenOffer) = outcome else {
+            expect(false, "a .hostScreen connect must return ConnectOutcome.hostScreen")
+            return
+        }
+        expect(
+            hostScreenOffer == [builtin, external],
+            "a .hostScreen connect's own outcome must carry the offer it received on this same connection, unchanged"
+        )
+
+        // `ClientSessionHost.selectedScreenMenuToken()`'s own lookup: the
+        // token for the display this connect is streaming, found in the
+        // offer this same connect carried.
+        let selectedToken = hostScreenOffer.first(where: { $0.displayIdentity == streamingIdentity })?.opaqueToken
+        let menu = ScreenMenuPlan.items(displays: hostScreenOffer, selectedToken: selectedToken)
+
+        expect(
+            menu == [
+                ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: false),
+                ScreenMenuItem(token: Data([0x01]), title: "Built-in Display", isSelected: false),
+                ScreenMenuItem(token: Data([0x02]), title: "LS27A800U", isSelected: true)
+            ],
+            "a direct host-screen connect's own offer must list every offered screen, with the streaming one "
+                + "selected and Virtual Display unselected -- got \(menu)"
+        )
+
+        print("PASS: a direct host-screen connect carries its own offer, so the Screen menu lists every screen "
+            + "with the live one checked")
     }
 
     do {
@@ -388,7 +448,7 @@ func testHostScreenSessionFlowTests() async {
         )
 
         expect(
-            outcome == .hostScreen(geometry: geometry, resumeTicket: refreshedTicket),
+            outcome == .hostScreen(geometry: geometry, resumeTicket: refreshedTicket, hostScreenOffer: [entry]),
             "a resumed connect returns the host's freshly minted ticket, not the one that was presented"
         )
         let sentRequest = await transport.sent.first { if case .hostScreenRequest = $0 { return true } else { return false } }
@@ -769,7 +829,7 @@ func testHostScreenSessionFlowTests() async {
         )
 
         expect(
-            hostScreenOutcome == .hostScreen(geometry: geometry, resumeTicket: resumeTicket),
+            hostScreenOutcome == .hostScreen(geometry: geometry, resumeTicket: resumeTicket, hostScreenOffer: [entry]),
             "a .hostScreen connect defaults to hostScreenGrant, not canvasCreation, so a host slow to answer because a "
                 + "person there must approve it does not time out"
         )
