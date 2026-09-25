@@ -856,11 +856,14 @@ public final class HostSessionController {
         // this wake exists to recover is never mistaken for a binding
         // mismatch.
         let resumeAccepted: Bool? = resumeTicket.map {
+            // `armingFingerprint` is never nil here: the guard above already
+            // proved `clientKey` has an arming record, the same `.first`
+            // this was mapped from.
             peekHostScreenResumeTicket(
                 $0,
                 devicePublicKey: clientKey,
                 displayIdentity: mintedIdentity,
-                armingFingerprint: armingFingerprint
+                armingFingerprint: armingFingerprint!
             )
         }
         // A ticket that is expired, or minted for another device or
@@ -1110,18 +1113,20 @@ public final class HostSessionController {
     /// this device is already live). Only `handle`'s own admission, once a
     /// request actually succeeds through to `.hostScreenReady`, spends any
     /// of the ticket's own life; see `refreshHostScreenResumeTicket` below.
-    /// `displayIdentity`/`armingFingerprint` are `nil` only when admission
-    /// has already failed for an unrelated reason (an unarmed device or an
-    /// unminted token), in which case a ticket has nothing to be checked
-    /// against and refuses -- the request refuses on the failed obligation
-    /// either way.
+    /// `displayIdentity` and `armingFingerprint` are always resolved by the
+    /// time this is called -- its one call site, in
+    /// `resolveHostScreenPreAdmission`, has already refused the request for
+    /// every case that would leave either unresolved (an unarmed device or
+    /// an unminted token) before reaching this. With no resume-ticket store
+    /// configured, there is nothing to check a presented ticket against, so
+    /// this refuses.
     private func peekHostScreenResumeTicket(
         _ token: Data,
         devicePublicKey: Data,
-        displayIdentity: HostScreenDisplayIdentity?,
-        armingFingerprint: HostScreenArmingFingerprint?
+        displayIdentity: HostScreenDisplayIdentity,
+        armingFingerprint: HostScreenArmingFingerprint
     ) -> Bool {
-        guard let hostScreenResumeTicketStore, let displayIdentity, let armingFingerprint else {
+        guard let hostScreenResumeTicketStore else {
             return false
         }
         return hostScreenResumeTicketStore.peek(
@@ -1742,7 +1747,11 @@ public final class HostSessionController {
                     resumeTicket = hostScreenResumeTicketStore.mint(
                         devicePublicKey: clientKey,
                         displayIdentity: HostScreenDisplayIdentity(display),
-                        armingFingerprint: armingFingerprint
+                        armingFingerprint: armingFingerprint,
+                        // Only a genuine resume carries the original grant's
+                        // mint time forward; a fresh admission starts its own
+                        // twelve-hour ceiling, same as today.
+                        resumedFrom: resumeAccepted == true ? presentedResumeTicket : nil
                     )
                 } else {
                     resumeTicket = Self.secureRandomToken()

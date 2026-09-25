@@ -117,6 +117,8 @@ once it reaches 1.0.
   screen instead of a virtual display first.
 - A paired device can no longer wake the host's displays without
   starting a session.
+- A session that keeps resuming after network drops no longer skips
+  asking first for more than twelve hours after it was first allowed.
 
 ## [0.1.3] - 2026-09-19
 

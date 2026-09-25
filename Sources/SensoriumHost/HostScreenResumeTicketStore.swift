@@ -39,10 +39,19 @@ public protocol HostScreenResumeTicketStoring: AnyObject, Sendable {
     /// live ticket if it opens more than one host-screen session over time,
     /// and minting a new one never invalidates an older still-valid one on
     /// its own.
+    ///
+    /// `resumedFrom`, when given, is the ticket this grant is resuming --
+    /// already validated by the caller. The new ticket then carries that
+    /// grant's own original mint time forward, rather than starting a new
+    /// twelve-hour ceiling of its own, so a session kept alive by nothing
+    /// but repeated resumes still runs out at twelve hours from when it was
+    /// first, non-resumed, admitted. `nil` starts a new grant, with a full
+    /// twelve hours of its own, exactly as before.
     func mint(
         devicePublicKey: Data,
         displayIdentity: HostScreenDisplayIdentity,
-        armingFingerprint: HostScreenArmingFingerprint
+        armingFingerprint: HostScreenArmingFingerprint,
+        resumedFrom presentedTicket: Data?
     ) -> Data
 
     /// `true` only when `token` is a ticket this store itself minted, for
@@ -115,19 +124,32 @@ public final class HostScreenResumeTicketStore: HostScreenResumeTicketStoring, @
     public func mint(
         devicePublicKey: Data,
         displayIdentity: HostScreenDisplayIdentity,
-        armingFingerprint: HostScreenArmingFingerprint
+        armingFingerprint: HostScreenArmingFingerprint,
+        resumedFrom presentedTicket: Data? = nil
     ) -> Data {
         let token = Self.secureRandomToken()
         let atSeconds = now()
         lock.lock()
+        defer { lock.unlock() }
+        // The original grant's own mint time, carried forward exactly when
+        // the presented ticket really does belong to this same
+        // device/display/arming combination -- the same match `validate`
+        // and `peek` both require. A mismatch, or no ticket presented at
+        // all, starts a fresh twelve-hour ceiling instead.
+        var originalMintedAtSeconds = atSeconds
+        if let presentedTicket, let presentedRecord = records[presentedTicket],
+           presentedRecord.devicePublicKey == devicePublicKey,
+           presentedRecord.displayIdentity == displayIdentity,
+           presentedRecord.armingFingerprint == armingFingerprint {
+            originalMintedAtSeconds = presentedRecord.mintedAtSeconds
+        }
         records[token] = HostScreenResumeTicketRecord(
             devicePublicKey: devicePublicKey,
             displayIdentity: displayIdentity,
             armingFingerprint: armingFingerprint,
-            mintedAtSeconds: atSeconds,
+            mintedAtSeconds: originalMintedAtSeconds,
             lastResumedAtSeconds: atSeconds
         )
-        lock.unlock()
         return token
     }
 

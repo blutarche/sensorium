@@ -762,6 +762,117 @@ func runHostScreenResumeTicketControllerTests() async {
 
         print("PASS: a resume that genuinely succeeds refreshes its ticket's grace window")
     }
+
+    do {
+        // A grant kept alive by nothing but a chain of resumes -- each one
+        // inside the five-minute grace window, none of them a fresh
+        // admission -- still runs out twelve hours after it was first,
+        // non-resumed, admitted. Each resume mints a new ticket that the
+        // viewer always adopts, so this only holds if a resumed grant's
+        // new ticket carries the *original* mint time forward, never
+        // starting a twelve-hour ceiling of its own.
+        let identity = try! DeviceIdentity.generate()
+        let display = hostScreenTestDisplay()
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: identity.publicKey,
+                deviceName: "Kestrel Laptop Pro",
+                armedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ])
+        let clock = FakeClock()
+        let store = HostScreenResumeTicketStore(now: clock.now)
+
+        let originalConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let originalToken = offerAndExtractToken(originalConnection)
+        guard case let .hostScreenReady(_, firstTicket) = try! originalConnection.handle(.hostScreenRequest(
+            token: originalToken,
+            resumeTicket: nil
+        )) else {
+            expect(false, "the original, non-resumed admission must succeed")
+            return
+        }
+
+        // Every 250 seconds -- comfortably inside the five-minute grace
+        // window -- a new connection resumes with whichever ticket the
+        // previous one just minted, standing in for a viewer that keeps
+        // dropping and redialing well before any single grace window
+        // closes. This must keep succeeding right up until the *original*
+        // grant's own twelve-hour ceiling, and refuse -- on the resume
+        // path's own reason -- the instant that ceiling is crossed,
+        // however good the most recently issued ticket otherwise looks.
+        let step: TimeInterval = 250
+        var currentTicket = firstTicket
+        var sawCeilingRefusal = false
+        while clock.seconds - 1_000 <= HostScreenResumeTicketStore.ceilingSeconds + step {
+            clock.advance(by: step)
+            let connection = makeReconnectableController(
+                identity: identity, display: display, arming: arming, resumeTicketStore: store
+            )
+            let token = offerAndExtractToken(connection)
+            let response = try! connection.handle(.hostScreenRequest(token: token, resumeTicket: currentTicket))
+            if clock.seconds - 1_000 <= HostScreenResumeTicketStore.ceilingSeconds {
+                guard case let .hostScreenReady(_, nextTicket) = response else {
+                    expect(false, "a chained resume still within the original twelve-hour ceiling is admitted -- got \(String(describing: response)) at \(clock.seconds - 1_000)s since the original grant")
+                    return
+                }
+                currentTicket = nextTicket
+            } else {
+                expect(
+                    response == .hostScreenRefused(reason: "host-screen-resume-refused"),
+                    "a chained resume past the *original* grant's own twelve-hour ceiling refuses on the resume path's own reason, even though every individual resume stayed inside its five-minute grace window -- got \(String(describing: response))"
+                )
+                sawCeilingRefusal = true
+                break
+            }
+        }
+        expect(sawCeilingRefusal, "the chain of resumes above must have crossed the original twelve-hour ceiling and been refused")
+
+        // A brand-new, non-resumed admission for the same device, made
+        // right after the chain above was refused, gets its own full
+        // twelve hours measured from *this* mint -- never held to the
+        // exhausted chain's own ceiling.
+        let freshConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let freshToken = offerAndExtractToken(freshConnection)
+        guard case let .hostScreenReady(_, freshTicket) = try! freshConnection.handle(.hostScreenRequest(
+            token: freshToken,
+            resumeTicket: nil
+        )) else {
+            expect(false, "a fresh admission for the same device, made right after the exhausted chain's own refusal, must still succeed")
+            return
+        }
+
+        // Chained the same way as the exhausted grant above, each resume
+        // still inside its own five-minute grace window: this must keep
+        // succeeding right up to just under *this* mint's own twelve-hour
+        // ceiling -- elapsed time that, measured from the original grant
+        // above, is already deep past its ceiling and would refuse.
+        let freshOrigin = clock.seconds
+        var currentFreshTicket = freshTicket
+        while clock.seconds - freshOrigin + step <= HostScreenResumeTicketStore.ceilingSeconds {
+            clock.advance(by: step)
+            let connection = makeReconnectableController(
+                identity: identity, display: display, arming: arming, resumeTicketStore: store
+            )
+            let token = offerAndExtractToken(connection)
+            let response = try! connection.handle(.hostScreenRequest(token: token, resumeTicket: currentFreshTicket))
+            guard case let .hostScreenReady(_, nextTicket) = response else {
+                expect(false, "a chained resume of the fresh grant, still within its own twelve-hour ceiling, is admitted -- got \(String(describing: response)) at \(clock.seconds - freshOrigin)s since the fresh grant")
+                return
+            }
+            currentFreshTicket = nextTicket
+        }
+        expect(
+            clock.seconds - 1_000 > HostScreenResumeTicketStore.ceilingSeconds,
+            "by now, elapsed time since the *original* grant is already well past its own twelve-hour ceiling -- otherwise this proves nothing about the two ceilings being independent"
+        )
+
+        print("PASS: a chain of resumes cannot outlive the original grant's own twelve-hour ceiling, and a fresh admission afterward still gets a full twelve hours of its own")
+    }
 }
 
 /// A live-mutable stand-in for `hostScreenCurrentDisplaysProvider`'s
