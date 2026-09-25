@@ -136,13 +136,22 @@ final class FakeInputInjector: InputInjecting {
 
 @MainActor
 final class FakeInputInjectorFactory: InputInjectingFactory {
+    struct MakeFailure: Error, Equatable {}
+
     private(set) var requestedDisplayIDs: [UInt32] = []
     private(set) var requestedSessionKinds: [InputSessionKind] = []
     let injector = FakeInputInjector()
+    /// When true, `make` throws instead of handing back an injector, so a
+    /// test can prove what a host-screen request's own bring-up failing --
+    /// after admission, before a session ever starts -- does elsewhere.
+    var shouldFailToMake = false
 
     func make(canvasDisplayID: UInt32, sessionKind: InputSessionKind) throws -> any InputInjecting {
         requestedDisplayIDs.append(canvasDisplayID)
         requestedSessionKinds.append(sessionKind)
+        if shouldFailToMake {
+            throw MakeFailure()
+        }
         return injector
     }
 }

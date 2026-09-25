@@ -91,6 +91,13 @@ once it reaches 1.0.
   input no longer counts as a person at the host.
 - The host no longer keeps the Mac marked as in use once a connection
   or session is over, so it can sleep and lock on its own again.
+- A host-screen session no longer loses its picture right after it
+  starts on a machine whose monitors had already idle-timed-out. The
+  host now keeps the Mac marked as in use from the moment it wakes a
+  display for a request through to the end of the session that
+  request starts, instead of letting go the instant the wake itself
+  returns -- the gap that let the monitors go back to sleep with the
+  session already live.
 - Clipboard sharing works during host-screen sessions.
 - A clipboard that is not shared now says why in the session window.
 - A copy made in another app just before switching back to the viewer

@@ -499,6 +499,16 @@ public final class HostSessionCoordinator {
             }
             return nil
         }
+        // Opened before this request wakes anything, and not closed until
+        // this whole request's outcome is known -- a session that goes on
+        // to hold the displays, or none -- so the gap between the wake
+        // below finishing and a hold this same call takes further down
+        // never lets the declaration lapse in between. `defer` closes it on
+        // every exit from here, a throw included, which is what a capture
+        // failure inside the `.canvasReady` or `.hostScreenReady` bring-up
+        // further down takes.
+        displayWake?.beginRequestScope()
+        defer { displayWake?.endRequestScope() }
         await wakeDisplaysForSessionStart(message)
         let response: SensoriumMessage?
         do {

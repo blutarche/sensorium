@@ -16,23 +16,32 @@ final class FakeDisplayPower: DisplayPowerControlling {
     /// Mirrors the one assertion `IOKitDisplayPower` actually holds: true from
     /// a declare until the next end, whatever the raw call counts above are.
     private(set) var isUserActivityDeclared = false
+    /// Every call in the order this machine's power state actually saw them,
+    /// so a test can prove one never lands between two others -- a release
+    /// between a wake and the hold that was meant to follow it, say -- and
+    /// not just that each eventually happened.
+    private(set) var callLog: [String] = []
 
     func declareUserActivity() {
         userActivityDeclarations += 1
         isUserActivityDeclared = true
+        callLog.append("declareUserActivity")
     }
 
     func preventDisplaySleep(named name: String) {
         preventedSleepNames.append(name)
+        callLog.append("preventDisplaySleep")
     }
 
     func allowDisplaySleep() {
         allowedSleepCount += 1
+        callLog.append("allowDisplaySleep")
     }
 
     func endUserActivity() {
         endedUserActivityCount += 1
         isUserActivityDeclared = false
+        callLog.append("endUserActivity")
     }
 }
 
@@ -761,8 +770,8 @@ func runDisplayWakeTests() async {
             "a session canvas starts against a woken machine, since a sleeping one draws nothing to capture, got \(power.userActivityDeclarations)"
         )
         expect(
-            !power.isUserActivityDeclared,
-            "the wake that started this session has already finished, so its declaration is already released even though the session is still live"
+            power.isUserActivityDeclared,
+            "the declaration stays up once the session has taken its own hold, so a machine already idle-timed-out does not go back to sleep out from under a session that just started"
         )
         expect(
             power.preventedSleepNames == [DisplayWakeController.assertionName],
@@ -776,7 +785,7 @@ func runDisplayWakeTests() async {
         )
         expect(
             power.endedUserActivityCount == 1,
-            "with the user-activity declaration already released by the wake itself, not by the session ending, got \(power.endedUserActivityCount)"
+            "with the user-activity declaration released by the session ending, not by the wake that started it, got \(power.endedUserActivityCount)"
         )
     }
     print("PASS: a session holds this machine's displays awake from start to end, independent of the wake that started it")
@@ -806,7 +815,7 @@ func runDisplayWakeTests() async {
         expect(power.allowedSleepCount == 0, "the hold lasts as long as the session does")
         expect(
             !power.isUserActivityDeclared,
-            "the wake that started this session has already released its own declaration before the host ever quits"
+            "nothing was ever asleep here, so the session's own wake never declared anything to begin with"
         )
         await coordinator.sessionDidEnd(reason: "host-quit")
         expect(
@@ -1815,4 +1824,151 @@ func runDisplayWakeTests() async {
     }
 
     print("PASS: a session that starts, ends, and starts again on the same connection wakes this machine each time")
+
+    do {
+        // The field regression: the declaration ended as soon as the wake
+        // that started the session finished, before the session's own hold
+        // was taken. On a machine already idle-timed-out, nothing then kept
+        // the display from going back to sleep with the session live. The
+        // declaration must stay up from the wake until the hold has taken
+        // over, and be released only when the session ends.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeWakeHostScreenFixture(
+            display: display,
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+        )
+        guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        )) else {
+            expect(false, "the fixture's own request is admitted")
+            return
+        }
+        expect(
+            power.isUserActivityDeclared,
+            "the declaration stays up once the session has started, not just for the wake that started it"
+        )
+        expect(
+            power.callLog.firstIndex(of: "endUserActivity") == nil,
+            "nothing has released it yet, got \(power.callLog)"
+        )
+        guard let holdIndex = power.callLog.firstIndex(of: "preventDisplaySleep") else {
+            expect(false, "the session's own hold was taken, got \(power.callLog)")
+            return
+        }
+        _ = try? await fixture.coordinator.handleWritingResponse(.goodbye(reason: "viewer-left"))
+        expect(
+            !power.isUserActivityDeclared,
+            "only the session ending releases it, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
+        )
+        guard let releaseIndex = power.callLog.firstIndex(of: "endUserActivity") else {
+            expect(false, "the session ending released it, got \(power.callLog)")
+            return
+        }
+        expect(
+            releaseIndex > holdIndex,
+            "the release comes only after the hold, never between the wake and it, got \(power.callLog)"
+        )
+    }
+
+    print("PASS: a successful host-screen request keeps the declaration held from the wake until the session ends")
+
+    do {
+        // Requirement 2 of the field-regression fix: a request the presence
+        // gate refuses takes no hold at all, so the declaration the wake
+        // before it made must still come down once `handle` has returned.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeDecliningWakeFixture(
+            display: display,
+            wake: wake,
+            outcome: .refused(reason: HostScreenPresenceRule.declinedReason)
+        )
+        let reply = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            reply == .hostScreenRefused(reason: "host-screen-presence-declined"),
+            "the request is refused, got \(String(describing: reply))"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and the declaration is released once handle has returned, with no session ever holding it, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
+        )
+        expect(
+            power.preventedSleepNames.isEmpty,
+            "no hold was ever taken for a refused request, got \(power.preventedSleepNames)"
+        )
+    }
+
+    print("PASS: a refused request releases the declaration once handle returns, with no hold ever taken")
+
+    do {
+        // Requirement 3 of the field-regression fix: a throw inside `handle`
+        // -- here, the host-screen session's own input injector failing to
+        // build after admission -- must still release the declaration the
+        // wake before it made, rather than leaving it stuck up because the
+        // request scope that was opened for it was never closed.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let identity = try! DeviceIdentity.generate()
+        let deviceKey = identity.publicKey
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(devicePublicKey: deviceKey, deviceName: "Kestrel Laptop Pro", armedAt: Date())
+        ])
+        let injectorFactory = FakeInputInjectorFactory()
+        injectorFactory.shouldFailToMake = true
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            approvedPublicKeys: [deviceKey],
+            requireAuthentication: true,
+            inputInjectorFactory: injectorFactory,
+            keyConfinement: .hostScreen,
+            hostScreenArmingProvider: { arming },
+            hostScreenCurrentDisplaysProvider: { [display] },
+            displayWake: wake,
+            log: { _ in }
+        )
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
+        )
+        _ = try! controller.handle(.authenticatedHello(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+        ))
+        let coordinator = HostSessionCoordinator(
+            controller: controller,
+            media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
+            videoSink: FakeVideoSink(),
+            workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
+        )
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+              let entry = displays.first else {
+            expect(false, "the fixture's own offer names the display it was armed for")
+            return
+        }
+        var threw = false
+        do {
+            _ = try await coordinator.handleFirstResponse(.hostScreenRequest(token: entry.opaqueToken, resumeTicket: nil))
+        } catch {
+            threw = true
+        }
+        expect(threw, "the injector failure inside handle reaches the caller as a throw")
+        expect(
+            power.userActivityDeclarations == 1,
+            "the request still woke this machine before the failure, got \(power.userActivityDeclarations)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and a throw inside handle still releases the declaration, since no session ever started to hold it, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
+        )
+    }
+
+    print("PASS: a throw inside handle still releases the declaration the wake before it made")
 }

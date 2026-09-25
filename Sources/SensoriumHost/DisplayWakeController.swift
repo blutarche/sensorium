@@ -131,12 +131,34 @@ public final class DisplayWakeController {
 
     /// How many wakes -- `wakeDisplays` or `wakeAndSettleDisplays` calls --
     /// are running right now. A wake is a one-shot declaration of user
-    /// activity, not a hold: it is released as soon as the wakes that made
-    /// it stop overlapping, whether or not a session goes on to hold the
-    /// displays awake afterward. The IOPM assertion behind it is one per
+    /// activity, not a hold. The IOPM assertion behind it is one per
     /// process, so an overlapping wake must not release it out from under
-    /// another one still running.
+    /// another one still running -- and neither may a session that is about
+    /// to hold the displays awake off the back of it, or a request that is
+    /// still being judged; see `requestScopesOpen`.
     private var wakesInFlight = 0
+
+    /// How many requests this process is still judging the outcome of.
+    ///
+    /// A wake at the start of a request and the hold a session it goes on to
+    /// start takes are two different calls, made moments apart with an
+    /// `await` between them. Without this, the wake's own declaration could
+    /// end in that gap -- on a machine already idle-timed-out, display sleep
+    /// takes the screen right back down before the hold is ever taken, which
+    /// is exactly what `PreventUserIdleDisplaySleep` cannot undo, since it
+    /// holds a display awake but never wakes one already asleep. A caller
+    /// opens a scope with `beginRequestScope` before it wakes anything for a
+    /// request, and closes it with `endRequestScope` once that request's
+    /// outcome is known -- a session that goes on to hold the displays, or
+    /// none -- on every exit, a throw included.
+    private var requestScopesOpen = 0
+
+    /// Whether a wake has declared user activity that nothing has released
+    /// yet. A hold taken with no wake behind it -- the direct
+    /// `holdDisplaysAwake()` calls production never makes on their own, but
+    /// tests do -- must not manufacture a release call of its own once that
+    /// hold drops; `releaseDeclarationIfIdle` checks this first.
+    private var declarationOutstanding = false
 
     /// Whether anything is holding the displays out of idle sleep right now.
     public var isHoldingDisplaysAwake: Bool {
@@ -197,6 +219,7 @@ public final class DisplayWakeController {
         beginWake()
         defer { endWake() }
         power.declareUserActivity()
+        declarationOutstanding = true
         return await waitForDisplaysToWake(targets: targets)
     }
 
@@ -217,6 +240,7 @@ public final class DisplayWakeController {
         beginWake()
         defer { endWake() }
         power.declareUserActivity()
+        declarationOutstanding = true
         var previous = displays().filter(\.online)
         guard !Self.hasAwakeMonitor(previous) else {
             return
@@ -286,9 +310,10 @@ public final class DisplayWakeController {
     }
 
     /// Marks that wake as finished, whether it settled or timed out or was
-    /// cancelled. Releases the declaration only once every overlapping wake
-    /// has finished, so one wake ending early never takes the declaration
-    /// out from under one still running.
+    /// cancelled. Only once every overlapping wake has finished is the
+    /// declaration even a candidate for release, so one wake ending early
+    /// never takes it out from under one still running -- and `requestScopesOpen`
+    /// and `sessionsHoldingDisplaysAwake` get the same say `releaseDeclarationIfIdle` gives them.
     private func endWake() {
         guard wakesInFlight > 0 else {
             return
@@ -297,6 +322,38 @@ public final class DisplayWakeController {
         guard wakesInFlight == 0 else {
             return
         }
+        releaseDeclarationIfIdle()
+    }
+
+    /// Opens a scope around one request this process is judging the outcome
+    /// of. See `requestScopesOpen`.
+    public func beginRequestScope() {
+        requestScopesOpen += 1
+    }
+
+    /// Closes one request's scope, once its outcome -- a session that goes
+    /// on to hold the displays, or none -- is known. Releases the
+    /// declaration if nothing else is still holding it up.
+    public func endRequestScope() {
+        guard requestScopesOpen > 0 else {
+            return
+        }
+        requestScopesOpen -= 1
+        releaseDeclarationIfIdle()
+    }
+
+    /// Releases the user-activity declaration once nothing is left that
+    /// needs it up: no wake still running, no live session's own hold, and
+    /// no request still being judged. Whichever of the three is the last to
+    /// let go is the one that actually releases it. A no-op when no wake
+    /// ever declared one in the first place -- a hold taken with no wake
+    /// behind it must not manufacture a release call of its own.
+    private func releaseDeclarationIfIdle() {
+        guard declarationOutstanding,
+              wakesInFlight == 0, sessionsHoldingDisplaysAwake == 0, requestScopesOpen == 0 else {
+            return
+        }
+        declarationOutstanding = false
         power.endUserActivity()
     }
 
@@ -315,10 +372,10 @@ public final class DisplayWakeController {
     /// Drops this session's own hold. Called on every path that ends a
     /// session, including the ones that end it on an error and the one that
     /// ends it because the host is quitting. This machine idles its displays
-    /// again only once the last live session has let go. The user-activity
-    /// declaration is not this method's business: it belongs to whichever
-    /// wake made it, and is released there, whether or not a session ever
-    /// held the displays awake afterward.
+    /// again only once the last live session has let go -- and if the
+    /// user-activity declaration was still up only because this hold was
+    /// (see `releaseDeclarationIfIdle`), the last hold to drop is what
+    /// releases that too.
     public func releaseDisplaysAwake() {
         guard sessionsHoldingDisplaysAwake > 0 else {
             return
@@ -328,6 +385,7 @@ public final class DisplayWakeController {
             return
         }
         power.allowDisplaySleep()
+        releaseDeclarationIfIdle()
     }
 
     /// Drops every hold at once, for the one caller that knows no session can
@@ -344,6 +402,8 @@ public final class DisplayWakeController {
             power.allowDisplaySleep()
         }
         wakesInFlight = 0
+        requestScopesOpen = 0
+        declarationOutstanding = false
         power.endUserActivity()
     }
 }
