@@ -134,7 +134,7 @@ func runInputRoundTripTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleInputRoundTripSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleInputRoundTripSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

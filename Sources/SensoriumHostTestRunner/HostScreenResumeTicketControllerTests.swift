@@ -68,7 +68,7 @@ private func makeReconnectableController(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenResumeTicketStore: resumeTicketStore,
         hostScreenLiveSessionRegistry: liveSessionRegistry,
-        hostScreenLocalActivitySignal: presenceSignal,
+        hostScreenPresenceActivitySignal: presenceSignal,
         hostScreenPresenceGate: presenceGate
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -321,7 +321,7 @@ func runHostScreenResumeTicketControllerTests() async {
                 hostScreenArmingProvider: { arming },
                 hostScreenCurrentDisplaysProvider: { [mintedDisplay, otherDisplay] },
                 hostScreenResumeTicketStore: store,
-                hostScreenLocalActivitySignal: AlwaysIdleSignal()
+                hostScreenPresenceActivitySignal: AlwaysIdleSignal()
             )
             let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

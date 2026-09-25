@@ -20,6 +20,11 @@ public protocol DisplayPowerControlling: AnyObject {
     func preventDisplaySleep(named name: String)
     /// Drops that hold. Idle sleep behaves exactly as it did before.
     func allowDisplaySleep()
+    /// Releases the assertion `declareUserActivity()` last created, if any.
+    /// Without this, macOS keeps reporting this machine as in use --
+    /// `pmset -g assertions` still showing it -- long after the wake that
+    /// declared it has finished, so it can never sleep or lock on its own.
+    func endUserActivity()
 }
 
 /// The real calls, through public IOKit power management.
@@ -69,6 +74,14 @@ public final class IOKitDisplayPower: DisplayPowerControlling {
         displaySleepAssertion = nil
         IOPMAssertionRelease(assertion)
     }
+
+    public func endUserActivity() {
+        guard userActivityAssertion != IOPMAssertionID(0) else {
+            return
+        }
+        IOPMAssertionRelease(userActivityAssertion)
+        userActivityAssertion = IOPMAssertionID(0)
+    }
 }
 
 /// Wakes this machine's displays at the start of a session, and keeps them
@@ -115,6 +128,15 @@ public final class DisplayWakeController {
     /// connection at a time: the session that ends first must not take the
     /// screen out from under a session that is still running.
     public private(set) var sessionsHoldingDisplaysAwake = 0
+
+    /// How many wakes -- `wakeDisplays` or `wakeAndSettleDisplays` calls --
+    /// are running right now. A wake is a one-shot declaration of user
+    /// activity, not a hold: it is released as soon as the wakes that made
+    /// it stop overlapping, whether or not a session goes on to hold the
+    /// displays awake afterward. The IOPM assertion behind it is one per
+    /// process, so an overlapping wake must not release it out from under
+    /// another one still running.
+    private var wakesInFlight = 0
 
     /// Whether anything is holding the displays out of idle sleep right now.
     public var isHoldingDisplaysAwake: Bool {
@@ -172,6 +194,8 @@ public final class DisplayWakeController {
             return true
         }
         log?("waking this machine's displays; a sleeping display draws nothing to capture")
+        beginWake()
+        defer { endWake() }
         power.declareUserActivity()
         return await waitForDisplaysToWake(targets: targets)
     }
@@ -190,6 +214,8 @@ public final class DisplayWakeController {
     /// attached waits out the bound and is left with the stand-in, which is
     /// then all it has.
     public func wakeAndSettleDisplays() async {
+        beginWake()
+        defer { endWake() }
         power.declareUserActivity()
         var previous = displays().filter(\.online)
         guard !Self.hasAwakeMonitor(previous) else {
@@ -253,6 +279,27 @@ public final class DisplayWakeController {
         }
     }
 
+    /// Marks one more wake as running, before the user-activity declaration
+    /// that starts it.
+    private func beginWake() {
+        wakesInFlight += 1
+    }
+
+    /// Marks that wake as finished, whether it settled or timed out or was
+    /// cancelled. Releases the declaration only once every overlapping wake
+    /// has finished, so one wake ending early never takes the declaration
+    /// out from under one still running.
+    private func endWake() {
+        guard wakesInFlight > 0 else {
+            return
+        }
+        wakesInFlight -= 1
+        guard wakesInFlight == 0 else {
+            return
+        }
+        power.endUserActivity()
+    }
+
     /// Keeps the displays awake for as long as this session is live. One
     /// assertion however many sessions ask for one; each caller releases its
     /// own hold, and every caller must balance this with exactly one
@@ -268,7 +315,10 @@ public final class DisplayWakeController {
     /// Drops this session's own hold. Called on every path that ends a
     /// session, including the ones that end it on an error and the one that
     /// ends it because the host is quitting. This machine idles its displays
-    /// again only once the last live session has let go.
+    /// again only once the last live session has let go. The user-activity
+    /// declaration is not this method's business: it belongs to whichever
+    /// wake made it, and is released there, whether or not a session ever
+    /// held the displays awake afterward.
     public func releaseDisplaysAwake() {
         guard sessionsHoldingDisplaysAwake > 0 else {
             return
@@ -283,11 +333,17 @@ public final class DisplayWakeController {
     /// Drops every hold at once, for the one caller that knows no session can
     /// still be live: this process quitting. A session teardown must use
     /// `releaseDisplaysAwake` instead, which lets go of its own hold alone.
+    ///
+    /// Also releases the user-activity declaration outright, whatever
+    /// `wakesInFlight` says: this is the one path that must leave nothing
+    /// declared no matter what, and a wake a dying process left mid-flight
+    /// is not going to finish and release it on its own.
     public func releaseEveryHold() {
-        guard sessionsHoldingDisplaysAwake > 0 else {
-            return
+        if sessionsHoldingDisplaysAwake > 0 {
+            sessionsHoldingDisplaysAwake = 0
+            power.allowDisplaySleep()
         }
-        sessionsHoldingDisplaysAwake = 0
-        power.allowDisplaySleep()
+        wakesInFlight = 0
+        power.endUserActivity()
     }
 }

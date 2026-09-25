@@ -248,11 +248,17 @@ public final class HostSessionController {
     /// held from admission until `goodbye` releases it. `nil` until a
     /// host-screen session is admitted and again after it ends.
     private var hostScreenSessionClaim: HostScreenLiveSessionClaim?
-    /// `nil` reads as `.unavailable` (unknown is not absent), exactly what
+    /// The raw local-activity reading, never self-post-discounted: this is
+    /// the ask-first gate, and over-reporting activity here only means
+    /// asking the person at the host more often, which is the safe
+    /// direction. Discounting it the way `HostSessionCoordinator`'s own
+    /// relock decision does would let a viewer's continuously forwarded
+    /// input hide a real person at the machine from this gate. `nil` reads
+    /// as `.unavailable` (unknown is not absent), exactly what
     /// `HostScreenPresenceRule.assess` already does with that
     /// reading -- this controller adds no separate handling for a missing
     /// signal.
-    private let hostScreenLocalActivitySignal: (any HostLocalActivitySignal)?
+    private let hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)?
     private let hostScreenPresenceThreshold: TimeInterval
     /// The ask-the-person-here gate, shared across every connection. `nil`
     /// refuses a `.mustAsk` request outright, with the same reason asking it and
@@ -453,7 +459,7 @@ public final class HostSessionController {
         hostScreenUnlockThrottle: (any HostScreenUnlockThrottling)? = nil,
         hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
         deviceConnectionRegistry: HostDeviceConnectionRegistry? = nil,
-        hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil,
+        hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceThreshold: TimeInterval = HostScreenPresenceRule.recommendedPresenceThreshold,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
@@ -480,7 +486,7 @@ public final class HostSessionController {
         self.hostScreenUnlockThrottle = hostScreenUnlockThrottle
         self.hostScreenLiveSessionRegistry = hostScreenLiveSessionRegistry
         self.deviceConnectionRegistry = deviceConnectionRegistry
-        self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
+        self.hostScreenPresenceActivitySignal = hostScreenPresenceActivitySignal
         self.hostScreenPresenceThreshold = hostScreenPresenceThreshold
         self.hostScreenPresenceGate = hostScreenPresenceGate
         self.hostScreenModeController = hostScreenModeController
@@ -783,6 +789,29 @@ public final class HostSessionController {
             return nil
         }
         return hostScreenCurrentDisplaysProvider().first { HostScreenDisplayIdentity($0) == identity }?.id
+    }
+
+    /// Whether a `.hostScreenRequest` arriving on this connection right now
+    /// would still reach admission, rather than being refused before any of
+    /// it is even judged: unauthenticated, a canvas already active on this
+    /// connection, an answer already given for it, or a host-screen session
+    /// already live on it. These are exactly the guards `handle` itself
+    /// checks first, ahead of the token, the arming record, and the
+    /// presence gate.
+    ///
+    /// Read by the coordinator before it wakes this machine's displays for a
+    /// request, so a resend that can only be refused the same way again --
+    /// for instance an armed device replaying an already-minted token after
+    /// its first request was already declined, or while its session is
+    /// already live -- never wakes anything for nothing. A refusal for want
+    /// of a presence gate, or one the gate has not yet answered, does not
+    /// count here: those are retryable, and a legitimate resend must still
+    /// wake this machine.
+    public var hostScreenRequestWouldReachAdmission: Bool {
+        (!requireAuthentication || isAuthenticated)
+            && connectionShape != .canvas
+            && hostScreenAnsweredRefusal == nil
+            && hostScreenSurface == nil
     }
 
     public func offerHostScreenList() throws -> SensoriumMessage {
@@ -1495,7 +1524,7 @@ public final class HostSessionController {
                     return .proceed
                 }
                 let assessment = HostScreenPresenceRule.assess(
-                    reading: hostScreenLocalActivitySignal?.currentReading() ?? .unavailable,
+                    reading: hostScreenPresenceActivitySignal?.currentReading() ?? .unavailable,
                     presenceThreshold: hostScreenPresenceThreshold
                 )
                 switch assessment {

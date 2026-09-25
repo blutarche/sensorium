@@ -12,20 +12,14 @@ public enum CoreGraphicsInputInjectorError: Error, Equatable {
 /// logical points and are translated through that display's own bounds, so a
 /// physical display is never addressed.
 ///
-/// Every posted event targets `.cgSessionEventTap`, not `.cghidEventTap`:
-/// `.cghidEventTap` also resets the `hidSystemState` idle counter
-/// `CoreGraphicsLocalActivitySignal` reads, so a viewer's own remote input
-/// posted there would make the host believe a person is sitting at the
-/// keyboard for as long as `HostScreenPresenceRule` then requires before
-/// it treats this machine as unattended again.
+/// Every posted event targets `.cgSessionEventTap` unless one of the two
+/// exceptions below applies.
 ///
 /// One exception: a key matching `SystemHotkeyChord.isSystemHotkey` -- the
 /// window server and Dock's own hotkeys, such as Mission Control or
 /// Spotlight -- is posted at `.cghidEventTap` instead, because those
 /// consumers act ahead of `.cgSessionEventTap` and never see an event posted
-/// there at all. Sending one from the viewer therefore touches
-/// `hidSystemState` the same way a real key at the machine would; see below
-/// for how that is kept from reading as a person at the host.
+/// there at all.
 ///
 /// A second exception: while `lockStateReader` reports the screen locked, a
 /// `.hostScreen` injector posts every event -- key, pointer, and scroll
@@ -34,11 +28,15 @@ public enum CoreGraphicsInputInjectorError: Error, Equatable {
 /// nothing at all while the screen is locked: only a host-screen session,
 /// with its arming, indicator and session log, may reach the lock screen.
 ///
-/// Both exceptions sample `hostInjectedHIDActivity` immediately before they
-/// post, and record into it once they do, so
-/// `SelfPostDiscountingLocalActivitySignal` can tell that counted-as-local
-/// input apart from a real person later -- and so a real person's own input
-/// just before one of these posts is not lost to it.
+/// A post can reset the `hidSystemState` idle counter
+/// `CoreGraphicsLocalActivitySignal` reads, the same way a real key at the
+/// machine does: a key event posted at `.cgSessionEventTap` reset it on a
+/// real host, as a post at `.cghidEventTap` does. So every post, at either
+/// tap and of any event type, samples `hostInjectedHIDActivity`
+/// immediately before it is posted and records into it, so
+/// `SelfPostDiscountingLocalActivitySignal` can tell the viewer's input apart
+/// from a real person later -- and so a real person's own input just before
+/// one of these posts is not lost to it.
 ///
 /// A key on the navigation cluster (arrows, Home, End, Page Up/Down, forward
 /// delete) or the F-row also carries `CoreGraphicsInputTranslation
@@ -157,7 +155,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                     tap: tap
                 )
             }
-            postEvent(scroll, tap)
+            send(scroll, tap: tap)
         case let .pointerCaptureChanged(isCaptured):
             if isCaptured {
                 let bounds = CGDisplayBounds(canvasDisplayID)
@@ -185,15 +183,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // arrow key.
             key.flags = modifiers.union(CoreGraphicsInputTranslation.nativeAuxiliaryFlags(forKeyCode: keyCode))
             let isSystemHotkey = SystemHotkeyChord.isSystemHotkey(keyCode: keyCode, modifiers: eventModifiers)
-            let tap: CGEventTapLocation
-            if isSystemHotkey {
-                hostInjectedHIDActivity.sampleBeforePost()
-                hostInjectedHIDActivity.recordPost()
-                tap = .cghidEventTap
-            } else {
-                tap = tapLocation()
-            }
-            postEvent(key, tap)
+            send(key, tap: isSystemHotkey ? .cghidEventTap : tapLocation())
         case .releaseAllInput:
             // Not a real release: this injector only remembers the single most
             // recent button and modifier flags, not every held key or the
@@ -208,16 +198,18 @@ public final class CoreGraphicsInputInjector: InputInjecting {
 
     /// `.cghidEventTap` while a host-screen session's screen is locked,
     /// `.cgSessionEventTap` otherwise -- see the type's own doc comment for
-    /// why. Sampling and
-    /// recording into `hostInjectedHIDActivity` live here, not at each call
-    /// site, because this is called at most once per posted event that
-    /// reaches here (the system-hotkey exception samples and records at its
-    /// own call site instead, since it never calls this at all).
+    /// why.
     private func tapLocation() -> CGEventTapLocation {
         guard sessionKind == .hostScreen, lockStateReader.isScreenLocked() else { return .cgSessionEventTap }
+        return .cghidEventTap
+    }
+
+    /// The only place this class posts, so no post can skip the sample and
+    /// record the type's doc comment explains.
+    private func send(_ event: CGEvent, tap: CGEventTapLocation) {
         hostInjectedHIDActivity.sampleBeforePost()
         hostInjectedHIDActivity.recordPost()
-        return .cghidEventTap
+        postEvent(event, tap)
     }
 
     private static func posts(_ event: SensoriumInputEvent) -> Bool {
@@ -267,7 +259,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             event.setIntegerValueField(.mouseEventDeltaY, value: Int64(relativeDeltaY.rounded()))
         }
         event.flags = modifiers
-        postEvent(event, tap)
+        send(event, tap: tap)
     }
 }
 

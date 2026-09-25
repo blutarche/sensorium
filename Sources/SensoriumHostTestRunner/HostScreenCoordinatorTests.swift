@@ -102,7 +102,7 @@ private func makeHostScreenFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenLocalActivitySignal: localActivitySignal ?? AlwaysIdleSignal(),
+        hostScreenPresenceActivitySignal: localActivitySignal ?? AlwaysIdleSignal(),
         hostScreenPresenceGate: presenceGate,
         hostScreenModeController: modeController
     )
@@ -285,7 +285,7 @@ func runHostScreenCoordinatorTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

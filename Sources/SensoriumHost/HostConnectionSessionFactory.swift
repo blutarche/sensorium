@@ -43,7 +43,9 @@ public final class HostConnectionSessionFactory {
     /// any one connection.
     private let hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)?
     private let deviceConnectionRegistry: HostDeviceConnectionRegistry?
-    private let hostScreenLocalActivitySignal: (any HostLocalActivitySignal)?
+    /// Forwarded to `HostSessionController`'s own ask-first gate. Raw, never
+    /// self-post-discounted -- see that property's own doc comment.
+    private let hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)?
     private let hostScreenPresenceGate: (any HostScreenPresenceGating)?
     /// Shared rather than per-connection for a reason of its own: this is
     /// what remembers the mode each display was on before any session
@@ -75,7 +77,7 @@ public final class HostConnectionSessionFactory {
         hostScreenUnlockThrottle: (any HostScreenUnlockThrottling)? = nil,
         hostScreenLiveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
         deviceConnectionRegistry: HostDeviceConnectionRegistry? = nil,
-        hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil,
+        hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
         displayWake: DisplayWakeController? = nil
@@ -95,7 +97,7 @@ public final class HostConnectionSessionFactory {
         self.hostScreenUnlockThrottle = hostScreenUnlockThrottle
         self.hostScreenLiveSessionRegistry = hostScreenLiveSessionRegistry
         self.deviceConnectionRegistry = deviceConnectionRegistry
-        self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
+        self.hostScreenPresenceActivitySignal = hostScreenPresenceActivitySignal
         self.hostScreenPresenceGate = hostScreenPresenceGate
         self.hostScreenModeController = hostScreenModeController
         self.displayWake = displayWake
@@ -123,7 +125,7 @@ public final class HostConnectionSessionFactory {
             hostScreenUnlockThrottle: hostScreenUnlockThrottle,
             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
             deviceConnectionRegistry: deviceConnectionRegistry,
-            hostScreenLocalActivitySignal: hostScreenLocalActivitySignal,
+            hostScreenPresenceActivitySignal: hostScreenPresenceActivitySignal,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake

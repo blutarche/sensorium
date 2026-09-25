@@ -133,7 +133,7 @@ func runDisplayCountTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, hostCertificateHash: nil)
         _ = try! controller.handle(.authenticatedHello(protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)))

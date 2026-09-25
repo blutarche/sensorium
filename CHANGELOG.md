@@ -86,6 +86,11 @@ once it reaches 1.0.
 
 ### Fixed
 
+- A host unlocked from the viewer locks again when the session ends,
+  even after the viewer typed or clicked while it was unlocked. That
+  input no longer counts as a person at the host.
+- The host no longer keeps the Mac marked as in use once a connection
+  or session is over, so it can sleep and lock on its own again.
 - Clipboard sharing works during host-screen sessions.
 - A clipboard that is not shared now says why in the session window.
 - A copy made in another app just before switching back to the viewer

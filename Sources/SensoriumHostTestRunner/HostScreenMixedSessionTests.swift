@@ -70,7 +70,7 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -127,7 +127,7 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -202,7 +202,7 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [firstDisplay, secondDisplay] },
-            hostScreenLocalActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -274,7 +274,7 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

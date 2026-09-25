@@ -64,7 +64,7 @@ private func makeDecliningFixture() -> (
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenLocalActivitySignal: DeclineTestActivitySignal(),
+        hostScreenPresenceActivitySignal: DeclineTestActivitySignal(),
         hostScreenPresenceGate: gate
     )
     _ = try! controller.handle(.authenticatedHello(
@@ -171,7 +171,7 @@ func runHostScreenDeclineIsFinalTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1,

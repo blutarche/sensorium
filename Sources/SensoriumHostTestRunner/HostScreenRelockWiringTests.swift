@@ -65,7 +65,7 @@ private func makeRelockWiringFixture(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenUnlockThrottle: HostScreenUnlockThrottle(),
         hostScreenLiveSessionRegistry: nil,
-        hostScreenLocalActivitySignal: AlwaysIdleRelockWiringSignal(),
+        hostScreenPresenceActivitySignal: AlwaysIdleRelockWiringSignal(),
         hostScreenPresenceGate: nil,
         hostScreenModeController: nil
     )
@@ -84,7 +84,7 @@ private func makeRelockWiringFixture(
         lockStateReader: lockStateReader,
         lockScreenUnlocker: RelockWiringTestUnlocker(),
         hostScreenRelockPoster: relockPoster,
-        hostScreenLocalActivitySignal: localActivitySignal
+        hostScreenRelockActivitySignal: localActivitySignal
     )
     return (coordinator, controller)
 }
@@ -136,6 +136,12 @@ private final class FakeRelockWiringHIDActivity: HostInjectedHIDActivity, @unche
     /// scenario -- only our own post, which `secondsSinceLastPost` above
     /// stands in for.
     func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
+}
+
+private enum RelockWiringRealKey {
+    case none
+    case afterLastForwardedKey
+    case betweenForwardedKeys
 }
 
 private final class WiringScriptedClock: @unchecked Sendable {
@@ -389,6 +395,81 @@ func runHostScreenRelockWiringTests() async {
                 + "still vetoes the relock, even though the injector's own later post masks it from the raw reading"
         )
         print("PASS: a real person's input the real injector's pre-post sample proved still vetoes relock, masked or not")
+    }
+
+    // The field case: the viewer types the password into the lock screen,
+    // the machine unlocks, and the viewer keeps typing before it quits.
+    // Every forwarded key after the unlock reaches the session tap, and a
+    // key posted there resets the `hidSystemState` idle counter, as a real
+    // host showed. With nothing else touching the machine, teardown must
+    // relock.
+    for realKeyAtMachine in [RelockWiringRealKey.none, .afterLastForwardedKey, .betweenForwardedKeys] {
+        let poster = RecordingRelockPoster()
+        let reader = FlippableLockState(locked: true)
+        let clock = WiringScriptedClock(time: 1000)
+        // Nobody has touched this machine for well past the presence threshold.
+        let rawSignal = WiringScriptedRawSignal(reading: .idleFor(1000))
+        let ownActivity = MutableHostInjectedHIDActivity(rawActivity: rawSignal, now: clock.now)
+        let injector = try! CoreGraphicsInputInjector(
+            canvasDisplayID: CGMainDisplayID(),
+            sessionKind: .hostScreen,
+            lockStateReader: reader,
+            hostInjectedHIDActivity: ownActivity,
+            postEvent: { _, _ in }
+        )
+        let signal = SelfPostDiscountingLocalActivitySignal(raw: rawSignal, ownActivity: ownActivity)
+        let fixture = makeRelockWiringFixture(lockStateReader: reader, relockPoster: poster, localActivitySignal: signal)
+        await admitRelockWiringHostScreen(fixture)
+
+        // The password's last key, typed into the lock screen.
+        try! injector.inject(.key(keyCode: 0, isDown: true, modifiers: []))
+        rawSignal.reading = .idleFor(0)
+
+        clock.time = 1002
+        rawSignal.reading = .idleFor(2)
+        reader.setLocked(false)
+        _ = fixture.coordinator.tickHostScreenLockState()
+
+        // Forwarded keys while unlocked, each resetting the raw counter.
+        var lastForwardedKey: TimeInterval = 1000
+        for keyTime: TimeInterval in [1010, 1020] {
+            if realKeyAtMachine == .betweenForwardedKeys, keyTime == 1020 {
+                // A real key at 1015, then masked by the forwarded key at 1020.
+                rawSignal.reading = .idleFor(keyTime - 1015)
+            } else {
+                rawSignal.reading = .idleFor(keyTime - lastForwardedKey)
+            }
+            clock.time = keyTime
+            try! injector.inject(.key(keyCode: 0, isDown: true, modifiers: []))
+            rawSignal.reading = .idleFor(0)
+            lastForwardedKey = keyTime
+        }
+
+        clock.time = 1030
+        rawSignal.reading = realKeyAtMachine == .afterLastForwardedKey ? .idleFor(3) : .idleFor(10)
+
+        _ = try! await fixture.coordinator.handleWritingResponse(.goodbye(reason: GoodbyeReason.stoppedByHost))
+        switch realKeyAtMachine {
+        case .none:
+            expect(
+                poster.relockCount == 1,
+                "a raw idle reading fully explained by this host's own forwarded keys after unlock relocks at session end"
+            )
+            print("PASS: a remote unlock followed by forwarded typing while unlocked is relocked at session end")
+        case .afterLastForwardedKey:
+            expect(
+                poster.relockCount == 0,
+                "a real key at the machine after the last forwarded key still vetoes the relock"
+            )
+            print("PASS: a real key at the machine after the last forwarded key still vetoes the relock")
+        case .betweenForwardedKeys:
+            expect(
+                poster.relockCount == 0,
+                "a real key at the machine between two forwarded keys, proven by the later key's pre-post sample, "
+                    + "still vetoes the relock"
+            )
+            print("PASS: a real key at the machine masked by a later forwarded key still vetoes the relock")
+        }
     }
 
     // The person locks it again themselves after the last poll, with no further poll before

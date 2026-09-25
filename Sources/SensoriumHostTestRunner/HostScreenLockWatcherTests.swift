@@ -100,7 +100,7 @@ private func makeLockWatcherFixture(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenUnlockThrottle: HostScreenUnlockThrottle(),
         hostScreenLiveSessionRegistry: nil,
-        hostScreenLocalActivitySignal: LockWatcherTestIdleSignal(),
+        hostScreenPresenceActivitySignal: LockWatcherTestIdleSignal(),
         hostScreenPresenceGate: nil,
         hostScreenModeController: nil
     )

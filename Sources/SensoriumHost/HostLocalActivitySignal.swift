@@ -46,15 +46,13 @@ public final class CoreGraphicsLocalActivitySignal: HostLocalActivitySignal {
     /// somebody is typing.
     public static let anyInputEventType = CGEventType(rawValue: ~0)!
 
-    /// `combinedSessionState` also resets on ordinary input posted at
-    /// `.cgSessionEventTap` -- everything a viewer forwards while
-    /// unlocked -- which would make nearly all remote input read as a
-    /// person at the machine. `hidSystemState` only touches on the
-    /// narrower set this host itself posts at `.cghidEventTap`:
-    /// locked-screen input, a system hotkey, and the relock shortcut. Even
-    /// that narrower set still touches it: `SelfPostDiscountingLocalActivitySignal`
-    /// is what reads this signal everywhere a presence or relock decision
-    /// is made, so that narrower set is never mistaken for a real person.
+    /// Input this host posts can reset this counter too: a key event posted
+    /// at `.cgSessionEventTap` reset it on a real host, as a post at
+    /// `.cghidEventTap` does. Every post is therefore recorded, and
+    /// `SelfPostDiscountingLocalActivitySignal` reads this signal for the
+    /// relock decision, so those posts are never mistaken there for a real
+    /// person. The ask-first presence gate reads this signal raw instead --
+    /// see `HostScreenActivitySignals`.
     public static let sourceStateID: CGEventSourceStateID = .hidSystemState
 
     public func currentReading() -> HostLocalActivityReading {

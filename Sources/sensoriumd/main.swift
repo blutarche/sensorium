@@ -533,14 +533,16 @@ struct sensoriumd {
         // empty, which is exactly right.
         let hostScreenLiveSessionRegistry = sharedLiveSessionRegistry ?? HostScreenLiveSessionRegistry()
         let deviceConnectionRegistry = sharedDeviceConnectionRegistry ?? HostDeviceConnectionRegistry()
-        // Discounted against this process's own posts at `.cghidEventTap`
-        // -- locked-screen input, a system hotkey, and the relock shortcut
-        // -- against `MutableHostInjectedHIDActivity.shared`, the default
-        // every post site also records into. Wrapped once, here, so the
-        // presence gate below and every session's relock decision read one
-        // consistent, self-post-corrected signal rather than two that could
-        // disagree.
-        let hostScreenLocalActivitySignal = SelfPostDiscountingLocalActivitySignal(raw: CoreGraphicsLocalActivitySignal())
+        // Built once, here, from one shared raw signal: the ask-first
+        // presence gate below reads it unmodified, while every session's
+        // relock decision reads it discounted against this process's own
+        // input posts -- every forwarded event, at either tap, and the
+        // relock shortcut -- against `MutableHostInjectedHIDActivity.shared`,
+        // the default every post site also records into. Over-reporting
+        // activity to the presence gate only means asking more often, the
+        // safe direction; discounting it there would let a viewer's
+        // continuously forwarded input hide a real person at the machine.
+        let hostScreenActivitySignals = HostScreenActivitySignals(raw: CoreGraphicsLocalActivitySignal())
         // The accountability record: who drove this machine's screen, which
         // display, and when. Reused from the caller when one was already
         // built and reconciled (the GUI); built and reconciled here,
@@ -622,7 +624,7 @@ struct sensoriumd {
             hostScreenUnlockThrottle: hostScreenUnlockThrottle,
             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
             deviceConnectionRegistry: deviceConnectionRegistry,
-            hostScreenLocalActivitySignal: hostScreenLocalActivitySignal,
+            hostScreenPresenceActivitySignal: hostScreenActivitySignals.presence,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake
@@ -813,7 +815,7 @@ struct sensoriumd {
                         session?.stop()
                     },
                     hostScreenMediaFactory: hostScreenAccountableMedia.makeMedia,
-                    hostScreenLocalActivitySignal: hostScreenLocalActivitySignal
+                    hostScreenRelockActivitySignal: hostScreenActivitySignals.relock
                 )
                 session.attach(coordinator: coordinator)
                 // Quitting from the menu bar ends a live session the same

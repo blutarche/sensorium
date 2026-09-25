@@ -360,7 +360,7 @@ func runHostStopIsFinalTests() async {
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenLiveSessionRegistry: world.liveSessions,
             deviceConnectionRegistry: world.connections,
-            hostScreenLocalActivitySignal: InUseLocalActivitySignal(),
+            hostScreenPresenceActivitySignal: InUseLocalActivitySignal(),
             hostScreenPresenceGate: gate
         )
         _ = try! controller.handle(world.hello(from: device))
@@ -606,7 +606,7 @@ private func makeLiveHostScreenFixture() async -> LiveHostScreenFixture {
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenLiveSessionRegistry: registry,
         deviceConnectionRegistry: connections,
-        hostScreenLocalActivitySignal: FakeHostScreenIdleSignal(),
+        hostScreenPresenceActivitySignal: FakeHostScreenIdleSignal(),
         hostScreenPresenceGate: nil,
         hostScreenModeController: nil
     )

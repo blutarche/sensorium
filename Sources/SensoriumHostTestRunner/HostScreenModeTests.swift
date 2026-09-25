@@ -88,7 +88,7 @@ private func makeModeFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenLocalActivitySignal: LongIdleSignal(),
+        hostScreenPresenceActivitySignal: LongIdleSignal(),
         hostScreenModeController: modes,
         hostScreenModeRestorePolicy: restorePolicy,
         log: { log.record($0) }

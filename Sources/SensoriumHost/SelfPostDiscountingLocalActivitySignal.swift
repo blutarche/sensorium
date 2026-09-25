@@ -1,14 +1,19 @@
 import Foundation
 
 /// Wraps a raw `HostLocalActivitySignal` and corrects it for this host's own
-/// posts to `.cghidEventTap` -- locked-screen input, a system hotkey, and
+/// input posts -- every event forwarded from the viewer, at either tap, and
 /// the relock shortcut -- all of which touch the same `hidSystemState`
 /// counter a real key at the machine would. Without this, forwarded input
 /// would read as a person at the machine for as long as
 /// `HostScreenPresenceRule` requires before it treats this host as
-/// unattended again, defeating both the presence gate
-/// (`HostScreenPresenceRule.assess`) and `HostScreenRelockTracker`'s own
-/// local-activity check.
+/// unattended again, defeating `HostScreenRelockTracker`'s own
+/// local-activity check, which is the one decision this signal feeds --
+/// see `HostScreenActivitySignals`. The ask-first presence gate
+/// (`HostScreenPresenceRule.assess` in `HostSessionController`)
+/// deliberately reads the raw signal instead: over-reporting activity there
+/// only means asking the person at the host more often, which is the safe
+/// direction, while this discount hiding a real person from that gate
+/// would not be.
 ///
 /// Two readings are combined, the more recent of the two winning:
 ///
@@ -84,5 +89,26 @@ public struct SelfPostDiscountingLocalActivitySignal: HostLocalActivitySignal {
             return .idleFor(.infinity)
         }
         return reading
+    }
+}
+
+/// The two local-activity readings a host-screen session needs, built from
+/// one shared raw signal: `presence` is that raw signal itself, and `relock`
+/// is the same signal discounted against this host's own posts. Named and
+/// split apart so a caller wires each into its own place by construction,
+/// rather than passing one shared discounted signal to both and relying on
+/// each call site to remember which one it is. See `HostSessionController`'s
+/// and `HostSessionCoordinator`'s own doc comments for why the two must
+/// differ.
+public struct HostScreenActivitySignals: Sendable {
+    public let presence: any HostLocalActivitySignal
+    public let relock: any HostLocalActivitySignal
+
+    public init(
+        raw: any HostLocalActivitySignal,
+        ownActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared
+    ) {
+        presence = raw
+        relock = SelfPostDiscountingLocalActivitySignal(raw: raw, ownActivity: ownActivity)
     }
 }

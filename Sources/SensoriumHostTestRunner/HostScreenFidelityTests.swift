@@ -125,7 +125,7 @@ private func makeFidelityFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenLocalActivitySignal: FidelityIdleSignal(),
+        hostScreenPresenceActivitySignal: FidelityIdleSignal(),
         hostScreenModeController: modeController
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -418,7 +418,7 @@ func runHostScreenFidelityTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: FidelityIdleSignal()
+            hostScreenPresenceActivitySignal: FidelityIdleSignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,

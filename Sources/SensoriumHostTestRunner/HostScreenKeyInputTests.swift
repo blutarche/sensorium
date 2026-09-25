@@ -70,7 +70,7 @@ func runHostScreenKeyInputTests() async {
             keyConfinement: .confined(to: workspaces, scanning: FakeFrontmostWindowScan()),
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenLocalActivitySignal: AlwaysIdleHostScreenKeySignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleHostScreenKeySignal()
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

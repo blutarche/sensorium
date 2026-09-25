@@ -12,9 +12,14 @@ final class FakeDisplayPower: DisplayPowerControlling {
     private(set) var userActivityDeclarations = 0
     private(set) var preventedSleepNames: [String] = []
     private(set) var allowedSleepCount = 0
+    private(set) var endedUserActivityCount = 0
+    /// Mirrors the one assertion `IOKitDisplayPower` actually holds: true from
+    /// a declare until the next end, whatever the raw call counts above are.
+    private(set) var isUserActivityDeclared = false
 
     func declareUserActivity() {
         userActivityDeclarations += 1
+        isUserActivityDeclared = true
     }
 
     func preventDisplaySleep(named name: String) {
@@ -23,6 +28,11 @@ final class FakeDisplayPower: DisplayPowerControlling {
 
     func allowDisplaySleep() {
         allowedSleepCount += 1
+    }
+
+    func endUserActivity() {
+        endedUserActivityCount += 1
+        isUserActivityDeclared = false
     }
 }
 
@@ -143,6 +153,70 @@ func armedHostScreenController(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
     ))
     return controller
+}
+
+private final class WakeGateActivitySignal: HostLocalActivitySignal, @unchecked Sendable {
+    var reading: HostLocalActivityReading = .idleFor(0)
+    func currentReading() -> HostLocalActivityReading { reading }
+}
+
+private final class WakeGatePresenceGate: HostScreenPresenceGating, @unchecked Sendable {
+    var outcome: HostScreenPresenceOutcome
+    init(outcome: HostScreenPresenceOutcome) { self.outcome = outcome }
+    func ask(content: HostScreenBadgeContent) -> HostScreenPresenceOutcome { outcome }
+}
+
+/// A connection armed with asking first switched on, wired with `wake` so a
+/// test can watch what a request the presence gate answers does to this
+/// machine's power state, not just to the reply the viewer gets.
+@MainActor
+private func makeDecliningWakeFixture(
+    display: DisplaySnapshot,
+    wake: DisplayWakeController,
+    outcome: HostScreenPresenceOutcome
+) -> (coordinator: HostSessionCoordinator, token: Data) {
+    let identity = try! DeviceIdentity.generate()
+    let deviceKey = identity.publicKey
+    let arming = HostScreenArming(devices: [
+        HostScreenDeviceArming(
+            devicePublicKey: deviceKey,
+            deviceName: "Kestrel Laptop Pro",
+            armedAt: Date(),
+            asksWhenSomeoneIsUsingThisMachine: true
+        )
+    ])
+    let controller = HostSessionController(
+        sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+        approvedPublicKeys: [deviceKey],
+        requireAuthentication: true,
+        inputInjectorFactory: FakeInputInjectorFactory(),
+        keyConfinement: .hostScreen,
+        hostScreenArmingProvider: { arming },
+        hostScreenCurrentDisplaysProvider: { [display] },
+        hostScreenPresenceActivitySignal: WakeGateActivitySignal(),
+        hostScreenPresenceGate: WakeGatePresenceGate(outcome: outcome),
+        displayWake: wake,
+        log: { _ in }
+    )
+    let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
+    )
+    _ = try! controller.handle(.authenticatedHello(
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+    ))
+    let coordinator = HostSessionCoordinator(
+        controller: controller,
+        media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
+        videoSink: FakeVideoSink(),
+        workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
+    )
+    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+          let entry = displays.first else {
+        expect(false, "the fixture's own offer names the display it was armed for")
+        return (coordinator, Data())
+    }
+    return (coordinator, entry.opaqueToken)
 }
 
 /// A canvas session on a machine with nothing asleep, sharing `wake` with
@@ -367,14 +441,50 @@ func runDisplayWakeTests() async {
             "the last session ending is what drops it, got \(power.allowedSleepCount)"
         )
         expect(!controller.isHoldingDisplaysAwake, "after which this machine idles its displays as it did before")
+        expect(
+            power.endedUserActivityCount == 0,
+            "the user-activity declaration is untouched by a hold release; nothing here ever woke a display, so nothing was ever declared, got \(power.endedUserActivityCount)"
+        )
         controller.releaseDisplaysAwake()
         expect(
             power.allowedSleepCount == 1,
             "and a release with nothing left holding changes nothing, got \(power.allowedSleepCount)"
         )
     }
-
     print("PASS: the prevent-sleep hold is counted, so the last session to end is the one that drops it")
+
+    do {
+        // `releaseEveryHold()` is the belt-and-braces path this process
+        // registers for its own shutdown, not a per-session teardown -- it
+        // must leave nothing declared no matter what, so it releases the
+        // user-activity declaration outright rather than only when its own
+        // bookkeeping says a wake is still owed one.
+        let power = FakeDisplayPower()
+        let controller = DisplayWakeController(
+            power: power,
+            displays: { [] },
+            wait: { _ in }
+        )
+        controller.holdDisplaysAwake()
+        controller.holdDisplaysAwake()
+        controller.releaseEveryHold()
+        expect(
+            power.allowedSleepCount == 1,
+            "releaseEveryHold drops every session's hold at once, whatever the count, got \(power.allowedSleepCount)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and leaves nothing declared, even though nothing here ever woke a display to declare it in the first place"
+        )
+        expect(!controller.isHoldingDisplaysAwake, "after which nothing is holding this machine's displays awake")
+        controller.releaseEveryHold()
+        expect(
+            power.allowedSleepCount == 1,
+            "a second releaseEveryHold with nothing left holding changes nothing, got \(power.allowedSleepCount)"
+        )
+    }
+
+    print("PASS: releaseEveryHold also releases the user-activity declaration, whatever the hold count was")
 
     do {
         // The field failure: the host's own monitor had idled to sleep, so
@@ -575,8 +685,12 @@ func runDisplayWakeTests() async {
             "a session canvas starts against a woken machine, since a sleeping one draws nothing to capture, got \(power.userActivityDeclarations)"
         )
         expect(
+            !power.isUserActivityDeclared,
+            "the wake that started this session has already finished, so its declaration is already released even though the session is still live"
+        )
+        expect(
             power.preventedSleepNames == [DisplayWakeController.assertionName],
-            "and the live session holds this machine's displays awake, got \(power.preventedSleepNames)"
+            "and the live session holds this machine's displays awake on its own, independent of that declaration, got \(power.preventedSleepNames)"
         )
         expect(power.allowedSleepCount == 0, "the hold lasts as long as the session does")
         _ = try? await coordinator.handleWritingResponse(.goodbye(reason: "viewer-left"))
@@ -584,9 +698,52 @@ func runDisplayWakeTests() async {
             power.allowedSleepCount == 1,
             "and is dropped when the session ends, got \(power.allowedSleepCount)"
         )
+        expect(
+            power.endedUserActivityCount == 1,
+            "with the user-activity declaration already released by the wake itself, not by the session ending, got \(power.endedUserActivityCount)"
+        )
+    }
+    print("PASS: a session holds this machine's displays awake from start to end, independent of the wake that started it")
+
+    do {
+        // The host quitting mid-session reaches the same teardown a goodbye
+        // does, and must still leave the display-sleep hold dropped.
+        let power = FakeDisplayPower()
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { [sleepingDisplaySnapshot(asleep: false)] },
+            wait: { _ in }
+        )
+        let coordinator = HostSessionCoordinator(
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined,
+                displayWake: wake
+            ),
+            media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
+            videoSink: FakeVideoSink(),
+            workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        expect(power.allowedSleepCount == 0, "the hold lasts as long as the session does")
+        expect(
+            !power.isUserActivityDeclared,
+            "the wake that started this session has already released its own declaration before the host ever quits"
+        )
+        await coordinator.sessionDidEnd(reason: "host-quit")
+        expect(
+            power.allowedSleepCount == 1,
+            "the host quitting mid-session drops the display-sleep hold the same way a goodbye does, got \(power.allowedSleepCount)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and this machine is left with nothing declared, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
+        )
     }
 
-    print("PASS: a session holds this machine's displays awake from start to end")
+    print("PASS: the host quitting mid-session drops the display-sleep hold and leaves nothing declared")
 
     do {
         let power = FakeDisplayPower()
@@ -1103,4 +1260,221 @@ func runDisplayWakeTests() async {
     }
 
     print("PASS: a host-screen request with an unminted token makes no power call")
+
+    do {
+        // The field bug, half one: an offer with no request behind it at all
+        // never takes a hold, so under the old hold-tied release this
+        // declaration was never released either.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(asleep: false)])
+        let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        _ = try! await controller.offerHostScreenListWakingDisplays()
+        expect(
+            power.userActivityDeclarations == 1,
+            "the offer wakes this machine, got \(power.userActivityDeclarations)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and releases the declaration once the offer is built, even though the viewer never went on to request anything"
+        )
+        _ = try? controller.handle(.goodbye(reason: "viewer-left"))
+        expect(
+            !power.isUserActivityDeclared,
+            "disconnecting afterward leaves nothing declared either, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
+        )
+    }
+
+    print("PASS: an offer-only connection releases the declaration once the offer is built, with no session ever held")
+
+    do {
+        // The field bug, half two: a request the controller goes on to
+        // refuse still wakes this machine first, since waking happens
+        // before the request is judged. A refused request never takes a
+        // hold either, so it needs the same per-wake release.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeDecliningWakeFixture(
+            display: display,
+            wake: wake,
+            outcome: .refused(reason: HostScreenPresenceRule.declinedReason)
+        )
+        let reply = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            reply == .hostScreenRefused(reason: "host-screen-presence-declined"),
+            "the request is refused, got \(String(describing: reply))"
+        )
+        expect(
+            power.userActivityDeclarations == 1,
+            "but this machine was still woken before the refusal was reached, got \(power.userActivityDeclarations)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and the declaration is released once that wake finishes, whether or not the request it was for was ever admitted"
+        )
+    }
+
+    print("PASS: a refused host-screen request still releases the declaration the wake before it made")
+
+    do {
+        // Two overlapping wakes: the assertion is one per process, so a
+        // wake that finishes first must not release it out from under one
+        // that is still running.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(id: 7, asleep: true)])
+        var controllerBox: DisplayWakeController!
+        var secondStarted = false
+        var secondResult: Bool?
+        var isDeclaredWhenNestedFinished: Bool?
+        let controller = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in
+                if !secondStarted {
+                    secondStarted = true
+                    secondResult = await controllerBox.wakeDisplays(targets: [7])
+                    isDeclaredWhenNestedFinished = power.isUserActivityDeclared
+                } else {
+                    list.displays = [sleepingDisplaySnapshot(id: 7, asleep: false)]
+                }
+            },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        controllerBox = controller
+        let firstResult = await controller.wakeDisplays(targets: [7])
+        expect(firstResult, "the outer wake reports the display awake once the overlapping one has woken it")
+        expect(
+            secondResult == true,
+            "and the overlapping wake it started reports the display awake too, got \(String(describing: secondResult))"
+        )
+        expect(
+            power.userActivityDeclarations == 2,
+            "each overlapping wake still makes its own declaration, got \(power.userActivityDeclarations)"
+        )
+        expect(
+            isDeclaredWhenNestedFinished == true,
+            "the declaration is still standing once the first wake to finish returns, because the other one is still running"
+        )
+        expect(
+            power.endedUserActivityCount == 1,
+            "and is released exactly once, when the second and last wake to finish returns, got \(power.endedUserActivityCount)"
+        )
+        expect(!power.isUserActivityDeclared, "leaving nothing declared once both have finished")
+    }
+
+    print("PASS: two overlapping wakes release the declaration only once both have finished")
+
+    do {
+        // The hold and the wake are two different assertions entirely: a
+        // session keeps the displays awake with its own hold, independent
+        // of whatever the wake that started it already released.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(asleep: true)])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in list.displays = [sleepingDisplaySnapshot(asleep: false)] },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        let woke = await wake.wakeDisplays()
+        expect(woke, "the display wakes before the hold is taken")
+        expect(
+            !power.isUserActivityDeclared,
+            "and the wake has already released its own declaration by the time it returns"
+        )
+        wake.holdDisplaysAwake()
+        expect(
+            wake.isHoldingDisplaysAwake && power.preventedSleepNames == [DisplayWakeController.assertionName],
+            "a session can still take its own hold afterward, got \(power.preventedSleepNames)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "with the user-activity declaration staying released the whole time; the hold never touches it"
+        )
+    }
+
+    print("PASS: a live session's hold on the displays outlives the wake's own declaration")
+
+    do {
+        // Security: a viewer resending an already-used token once its
+        // session is already live must not wake this machine again -- that
+        // would keep resetting the idle timer with no badge and no session
+        // record to show for it.
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let power = FakeDisplayPower()
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeWakeHostScreenFixture(
+            display: display,
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+        )
+        guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        )) else {
+            expect(false, "the fixture's own request is admitted")
+            return
+        }
+        expect(
+            power.userActivityDeclarations == 1,
+            "the request that starts the session wakes this machine once, got \(power.userActivityDeclarations)"
+        )
+        let resend = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            resend == .hostScreenRefused(reason: "host-screen-session-active"),
+            "a resend of the same token while the session is live is refused, got \(String(describing: resend))"
+        )
+        expect(
+            power.userActivityDeclarations == 1,
+            "and wakes nothing more, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: resending an already-used token while its session is live wakes nothing more")
+
+    do {
+        // Security: once a person at the host has already declined, a
+        // resend of the same token must not wake this machine again
+        // either.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeDecliningWakeFixture(
+            display: display,
+            wake: wake,
+            outcome: .refused(reason: HostScreenPresenceRule.declinedReason)
+        )
+        let first = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            first == .hostScreenRefused(reason: "host-screen-presence-declined"),
+            "the first request is refused with the decline's own reason, got \(String(describing: first))"
+        )
+        expect(
+            power.userActivityDeclarations == 1,
+            "which still wakes this machine once, before the decline is reached, got \(power.userActivityDeclarations)"
+        )
+        let resend = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            resend == .hostScreenRefused(reason: "host-screen-presence-declined"),
+            "a resend on the same connection is refused the same way, got \(String(describing: resend))"
+        )
+        expect(
+            power.userActivityDeclarations == 1,
+            "and wakes nothing more, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: resending an already-declined token wakes nothing more")
 }

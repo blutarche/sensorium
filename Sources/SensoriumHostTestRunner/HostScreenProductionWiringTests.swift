@@ -21,6 +21,29 @@ private final class FakeProductionWiringLocalActivitySignal: HostLocalActivitySi
     func currentReading() -> HostLocalActivityReading { reading }
 }
 
+/// A fixed reading of this host's own last hid-tap post, standing in for
+/// `MutableHostInjectedHIDActivity` the same way
+/// `SelfPostDiscountingLocalActivitySignalTests.swift`'s own fake does.
+private final class FakeProductionWiringHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {
+    private let seconds: TimeInterval?
+    init(secondsSinceLastPost seconds: TimeInterval?) { self.seconds = seconds }
+    func recordPost() {}
+    func secondsSinceLastPost() -> TimeInterval? { seconds }
+    func sampleBeforePost() {}
+    func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
+}
+
+/// Stands in for `HostScreenPresenceGate`: records every ask, the same way
+/// `HostScreenSessionControllerAdmissionTests.swift`'s own fake does -- kept
+/// as its own copy since that one is private to its file.
+private final class FakeProductionWiringPresenceGate: HostScreenPresenceGating, @unchecked Sendable {
+    private(set) var calls: [HostScreenBadgeContent] = []
+    func ask(content: HostScreenBadgeContent) -> HostScreenPresenceOutcome {
+        calls.append(content)
+        return .proceed
+    }
+}
+
 @MainActor
 private func wiringTestDisplay(id: UInt32) -> DisplaySnapshot {
     DisplaySnapshot(
@@ -90,7 +113,7 @@ func runHostScreenProductionWiringTests() async {
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
-            hostScreenLocalActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -141,7 +164,7 @@ func runHostScreenProductionWiringTests() async {
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
-            hostScreenLocalActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -173,6 +196,70 @@ func runHostScreenProductionWiringTests() async {
         )
 
         print("PASS: an armed device is admitted end to end through the objects sensoriumd constructs")
+    }
+
+    do {
+        // The split that matters: the ask-first gate must read the raw
+        // signal even while a `SelfPostDiscountingLocalActivitySignal` built
+        // from the very same raw reading and the very same `ownActivity` --
+        // this host's own most recent post -- would read the discount as no
+        // activity at all. Discounting the gate's own reading the way the
+        // relock decision's does would let a viewer's continuously
+        // forwarded input hide a real person at the machine from it, the
+        // unsafe direction -- see `HostScreenActivitySignals`.
+        let armingURL = temporaryArmingStoreURL()
+        defer { try? FileManager.default.removeItem(at: armingURL) }
+        let armingStore = HostScreenArmingStore(url: armingURL)
+        let display = wiringTestDisplay(id: 23)
+        let identity = try! DeviceIdentity.generate()
+        armingStore.arm(HostScreenDeviceArming(
+            devicePublicKey: identity.publicKey,
+            deviceName: "Kestrel Laptop Pro",
+            armedAt: Date(),
+            asksWhenSomeoneIsUsingThisMachine: true
+        ))
+        let resumeTicketStore = HostScreenResumeTicketStore()
+        let rawSignal = FakeProductionWiringLocalActivitySignal()
+        rawSignal.reading = .idleFor(0)
+        let ownActivity = FakeProductionWiringHIDActivity(secondsSinceLastPost: 0)
+        let signals = HostScreenActivitySignals(raw: rawSignal, ownActivity: ownActivity)
+        let gate = FakeProductionWiringPresenceGate()
+
+        let factory = HostConnectionSessionFactory(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            approvedPublicKeys: [identity.publicKey],
+            requireAuthentication: true,
+            inputInjectorFactory: FakeInputInjectorFactory(),
+            keyConfinement: .hostScreen,
+            hostScreenArmingProvider: { armingStore.load() },
+            hostScreenCurrentDisplaysProvider: { [display] },
+            hostScreenResumeTicketStore: resumeTicketStore,
+            hostScreenPresenceActivitySignal: signals.presence,
+            hostScreenPresenceGate: gate
+        )
+        let controller = factory.makeController()
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+            hostCertificateHash: nil
+        )
+        _ = try! controller.handle(.authenticatedHello(
+            protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
+        ))
+        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+            expect(false, "an armed device with an eligible display offers at least one entry")
+            return
+        }
+        _ = try! controller.handle(.hostScreenRequest(token: entry.opaqueToken, resumeTicket: nil))
+        expect(
+            gate.calls.count == 1,
+            "the ask-first gate is asked even though a self-post-discounted reading of this same raw signal and ownActivity would have read as no activity at all"
+        )
+        expect(
+            signals.relock.currentReading() == .idleFor(.infinity),
+            "the relock decision reads the same raw signal discounted instead, and still discounts this host's own recorded post"
+        )
+
+        print("PASS: the ask-first gate reads the raw signal, never the self-post discount the relock decision reads instead")
     }
 
     do {

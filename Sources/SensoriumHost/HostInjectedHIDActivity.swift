@@ -1,7 +1,7 @@
 import Foundation
 
-/// Records this host's own posts to `.cghidEventTap` -- locked-screen input,
-/// a system hotkey, and the relock shortcut -- and, sampled immediately
+/// Records this host's own input posts -- every event forwarded from the
+/// viewer, at either tap, and the relock shortcut -- and, sampled immediately
 /// before each one, the most recent hardware activity time those posts have
 /// not yet touched. All of it feeds `SelfPostDiscountingLocalActivitySignal`,
 /// so a post of this host's own is never confused with a real person's.
@@ -13,7 +13,7 @@ public protocol HostInjectedHIDActivity: Sendable {
     /// first one.
     func secondsSinceLastPost() -> TimeInterval?
 
-    /// Call immediately before a post at `.cghidEventTap`, while
+    /// Call immediately before any input post of this host's own, while
     /// `hidSystemState`'s idle counter still reflects whatever last touched
     /// it before this post can. The raw idle time read at that instant
     /// proves a hardware-input time -- now minus that idle time -- which is

@@ -19,7 +19,10 @@ func runLockScreenInputTapTests() async {
             sessionKind: .hostScreen,
             lockStateReader: FakeScreenLockState(locked: true),
             hostInjectedHIDActivity: clock,
-            postEvent: { event, tap in recorder.record(tap) }
+            postEvent: { event, tap in
+                recorder.record(tap)
+                clock.notePost()
+            }
         )
 
         try! injector.inject(.key(keyCode: 0, isDown: true, modifiers: []))
@@ -33,17 +36,11 @@ func runLockScreenInputTapTests() async {
             recorder.all().allSatisfy { $0 == .cghidEventTap },
             "every event posted while the screen is locked reaches the hid tap, not the session tap"
         )
+        // Five posts: the scroll posts a cursor-positioning move before the scroll itself.
+        expect(recorder.all().count == 5, "the four inputs above post five events")
         expect(
-            clock.recordCount == 4,
-            "each of the four posted events above records once into the host-injected hid activity"
-        )
-        expect(
-            clock.sampleCount == 4,
-            "each of the four posted events above samples before it records, so an earlier real person is not lost"
-        )
-        expect(
-            clock.callLog == Array(repeating: ["sample", "record"], count: 4).flatMap { $0 },
-            "sampling always precedes recording for each post, never the reverse"
+            clock.callLog == Array(repeating: ["sample", "record", "post"], count: 5).flatMap { $0 },
+            "every post samples, then records, immediately before it is posted"
         )
 
         print("PASS: a locked screen routes every key, pointer, and scroll event to the hid tap")
@@ -58,11 +55,18 @@ func runLockScreenInputTapTests() async {
             sessionKind: .hostScreen,
             lockStateReader: FakeScreenLockState(locked: false),
             hostInjectedHIDActivity: clock,
-            postEvent: { event, tap in recorder.record(tap) }
+            postEvent: { event, tap in
+                recorder.record(tap)
+                clock.notePost()
+            }
         )
 
         try! injector.inject(.key(keyCode: 0, isDown: true, modifiers: []))
         expect(recorder.all() == [.cgSessionEventTap], "an ordinary key stays on the session tap while unlocked")
+        expect(
+            clock.callLog == ["sample", "record", "post"],
+            "an ordinary key posted at the session tap is still recorded as this host's own post"
+        )
 
         recorder.reset()
         try! injector.inject(.pointerMoved(x: 10, y: 10))
@@ -82,14 +86,15 @@ func runLockScreenInputTapTests() async {
             "a system hotkey still reaches the hid tap while unlocked, unaffected by lock routing"
         )
 
+        // A post at the session tap also resets the hidSystemState idle
+        // counter, so every post records, whichever tap it reaches. Five
+        // posts: the scroll posts a cursor-positioning move before the scroll.
         expect(
-            clock.recordCount == 1,
-            "only the system hotkey above posts at the hid tap while unlocked, so it alone records"
+            clock.callLog == Array(repeating: ["sample", "record", "post"], count: 5).flatMap { $0 },
+            "every post while unlocked, at either tap, samples and records immediately before it is posted"
         )
-        expect(clock.sampleCount == 1, "the system hotkey samples before it records, the same as any other hid-tap post")
-        expect(clock.callLog == ["sample", "record"], "the system hotkey samples before it records, never the reverse")
 
-        print("PASS: an unlocked screen leaves ordinary and system-hotkey tap routing unchanged")
+        print("PASS: an unlocked screen keeps its tap routing and records every post as this host's own")
     }
 
     do {
@@ -131,12 +136,16 @@ func runLockScreenInputTapTests() async {
     do {
         // A session canvas while unlocked: exactly the session tap, as before
         let recorder = RecordedTapPosts()
+        let clock = SpyHostInjectedHIDActivity()
         let injector = try! CoreGraphicsInputInjector(
             canvasDisplayID: CGMainDisplayID(),
             sessionKind: .sessionCanvas,
             lockStateReader: FakeScreenLockState(locked: false),
-            hostInjectedHIDActivity: SpyHostInjectedHIDActivity(),
-            postEvent: { _, tap in recorder.record(tap) }
+            hostInjectedHIDActivity: clock,
+            postEvent: { _, tap in
+                recorder.record(tap)
+                clock.notePost()
+            }
         )
 
         try! injector.inject(.key(keyCode: 0, isDown: true, modifiers: []))
@@ -147,6 +156,10 @@ func runLockScreenInputTapTests() async {
         expect(
             recorder.all().allSatisfy { $0 == .cgSessionEventTap },
             "a session canvas posts every ordinary event at the session tap while unlocked"
+        )
+        expect(
+            clock.callLog == Array(repeating: ["sample", "record", "post"], count: recorder.all().count).flatMap { $0 },
+            "a session canvas records every post as this host's own, sampling first"
         )
 
         print("PASS: a session canvas posts at the session tap while the screen is unlocked")
@@ -224,13 +237,18 @@ func runLockScreenInputTapTests() async {
 
 /// Counts `recordPost()` calls instead of measuring real time, so a test can
 /// check the injector records exactly the posts it should, without racing a
-/// real clock.
+/// real clock. A test's `postEvent` calls `notePost()`, so the log also shows
+/// where each post falls relative to its sample and record.
 private final class SpyHostInjectedHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {
     private(set) var recordCount = 0
     private(set) var sampleCount = 0
-    /// "sample" and "record" in call order, so a test can catch the two
+    /// "sample", "record" and "post" in call order, so a test can catch them
     /// ever happening out of order, not only the right count of each.
     private(set) var callLog: [String] = []
+
+    func notePost() {
+        callLog.append("post")
+    }
 
     func recordPost() {
         recordCount += 1

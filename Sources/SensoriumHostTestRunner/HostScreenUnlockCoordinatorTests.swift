@@ -72,7 +72,7 @@ private func makeUnlockFixture(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenUnlockThrottle: throttle,
         hostScreenLiveSessionRegistry: liveSessionRegistry,
-        hostScreenLocalActivitySignal: UnlockTestIdleSignal(),
+        hostScreenPresenceActivitySignal: UnlockTestIdleSignal(),
         hostScreenPresenceGate: nil,
         hostScreenModeController: nil
     )

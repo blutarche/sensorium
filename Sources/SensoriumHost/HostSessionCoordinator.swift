@@ -265,12 +265,15 @@ public final class HostSessionCoordinator {
     /// This machine's own local-input-idle signal, read to keep a relock
     /// from firing on a machine someone is actually using -- see
     /// `hardwareActivityNearby()`. Expected to already be a
-    /// `SelfPostDiscountingLocalActivitySignal`, the same instance fed to
-    /// this connection's `HostSessionController` for its own presence gate,
-    /// so both read one consistent, self-post-corrected signal. `nil` where
-    /// a caller never wired one in, which reads as `.unavailable`, the same
-    /// fail-safe reading `HostScreenPresenceRule` gives an absent sensor.
-    private let hostScreenLocalActivitySignal: (any HostLocalActivitySignal)?
+    /// `SelfPostDiscountingLocalActivitySignal`, so a viewer's continuously
+    /// forwarded input is never mistaken for a person at the machine.
+    /// Deliberately its own instance, separate from this connection's
+    /// `HostSessionController`'s presence-gate signal, which must stay raw
+    /// -- see that property's own doc comment for why the two must differ.
+    /// `nil` where a caller never wired one in, which reads as
+    /// `.unavailable`, the same fail-safe reading `HostScreenPresenceRule`
+    /// gives an absent sensor.
+    private let hostScreenRelockActivitySignal: (any HostLocalActivitySignal)?
     /// Host-screen frames are tagged surface 0 inside the telemetry,
     /// admission-priority and send machinery shared with the canvas path.
     /// Safe because a connection is one shape for its whole life: a
@@ -414,12 +417,12 @@ public final class HostSessionCoordinator {
         lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
         lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker(),
         hostScreenRelockPoster: any HostScreenRelocking = CoreGraphicsHostScreenRelockPoster(),
-        hostScreenLocalActivitySignal: (any HostLocalActivitySignal)? = nil
+        hostScreenRelockActivitySignal: (any HostLocalActivitySignal)? = nil
     ) {
         self.lockStateReader = lockStateReader
         self.lockScreenUnlocker = lockScreenUnlocker
         self.hostScreenRelockPoster = hostScreenRelockPoster
-        self.hostScreenLocalActivitySignal = hostScreenLocalActivitySignal
+        self.hostScreenRelockActivitySignal = hostScreenRelockActivitySignal
         self.captureAvailability = captureAvailability
         self.controller = controller
         self.media = media
@@ -935,9 +938,17 @@ public final class HostSessionCoordinator {
     /// unauthenticated peer has none, so nothing it sends reaches a power
     /// call here. The token is checked as minted rather than resolved, so a
     /// display that went offline since the offer is still woken.
+    ///
+    /// Also gated on `hostScreenRequestWouldReachAdmission`: a resend on a
+    /// connection whose request the controller will refuse outright, because
+    /// a session is already live on it or an answer was already given, must
+    /// not wake this machine's displays either. Otherwise an armed device
+    /// could keep resetting this machine's idle timer by replaying its own
+    /// minted token, with no badge shown and no session recorded for it.
     private func wakeDisplaysForSessionStart(_ message: SensoriumMessage) async {
         guard let displayWake, case let .hostScreenRequest(token, _) = message,
-              controller.hostScreenTokenWasMinted(token) else {
+              controller.hostScreenTokenWasMinted(token),
+              controller.hostScreenRequestWouldReachAdmission else {
             return
         }
         await displayWake.wakeAndSettleDisplays()
@@ -984,7 +995,7 @@ public final class HostSessionCoordinator {
 
     /// One fresh reading for `hostScreenRelockTracker`, using the same
     /// `HostScreenPresenceRule.assess` window a session's own admission
-    /// check uses. `hostScreenLocalActivitySignal` is expected to already
+    /// check uses. `hostScreenRelockActivitySignal` is expected to already
     /// discount this session's own forwarded input -- see
     /// `SelfPostDiscountingLocalActivitySignal`. Read fresh at every call
     /// rather than cached: it is asked for at each lock-state observation
@@ -992,7 +1003,7 @@ public final class HostSessionCoordinator {
     /// moments needs its own answer.
     private func hardwareActivityNearby() -> Bool {
         HostScreenPresenceRule.assess(
-            reading: hostScreenLocalActivitySignal?.currentReading() ?? .unavailable,
+            reading: hostScreenRelockActivitySignal?.currentReading() ?? .unavailable,
             presenceThreshold: HostScreenPresenceRule.recommendedPresenceThreshold
         ) == .mustAsk
     }
