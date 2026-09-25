@@ -731,49 +731,53 @@ public final class HostSessionController {
     /// promised were valid.
     /// The same offer, with this machine's displays woken first.
     ///
-    /// macOS draws nothing to a sleeping display, so a screen that has
-    /// merely idled would otherwise be refused as asleep while sitting
-    /// awake in front of the person at this machine. The wake runs before
-    /// the offer and the offer then reads the display list fresh, so a
-    /// display that comes back is offered and one that does not is refused
-    /// exactly as it was. Only a display an armed machine could already be
-    /// offered is ever woken, so nothing on the wire reaches this machine's
-    /// power state on its own.
+    /// macOS draws nothing to a sleeping display, and display sleep can take
+    /// a monitor offline altogether, leaving only macOS's headless stand-in
+    /// to offer. So an armed device's offer always wakes the displays and
+    /// waits for the online set to settle, and then for any display still
+    /// asleep that sleep alone keeps out of the offer. The offer reads the
+    /// display list fresh afterward, so a display that comes back is offered
+    /// and one that does not is refused exactly as it was. Only an
+    /// authenticated, armed device reaches the wake, so nothing on the wire
+    /// reaches this machine's power state on its own.
     public func offerHostScreenListWakingDisplays() async throws -> SensoriumMessage {
-        if let displayWake {
-            let sleeping = armedSleepingDisplayIDs
+        if let displayWake, isAuthenticatedArmedDevice {
+            await displayWake.wakeAndSettleDisplays()
+            let current = hostScreenCurrentDisplaysProvider()
+            let sleeping = Set(
+                current
+                    .filter { HostScreenOfferEligibility.offerGapReason(for: $0, among: current) == .asleep }
+                    .map(\.id)
+            )
             if !sleeping.isEmpty {
-                await displayWake.wakeDisplays(targets: sleeping)
+                await displayWake.waitForDisplaysToWake(targets: sleeping)
             }
         }
         return try offerHostScreenList()
     }
 
-    /// The displays this connection's own device could be offered that
-    /// macOS is not drawing to right now. Sleep is the one gap waking can
-    /// close, so `HostScreenOfferEligibility` -- the same rule the offer
-    /// itself runs -- is what decides: a display held back for any other
-    /// reason, a canvas Sensorium created among them, never reaches this
-    /// machine's power state.
-    private var armedSleepingDisplayIDs: Set<UInt32> {
-        guard let clientKey = authenticatedClientKey,
-              let arming = hostScreenArmingProvider?(),
-              arming.devices.contains(where: { $0.devicePublicKey == clientKey }) else {
-            return []
+    /// `isAuthenticated` as well as the key: a device the host stopped keeps
+    /// its key on this connection but loses its authentication.
+    private var isAuthenticatedArmedDevice: Bool {
+        guard isAuthenticated,
+              let clientKey = authenticatedClientKey,
+              let arming = hostScreenArmingProvider?() else {
+            return false
         }
-        return Set(
-            hostScreenCurrentDisplaysProvider()
-                .filter { HostScreenOfferEligibility.offerGapReason(for: $0) == .asleep }
-                .map(\.id)
-        )
+        return arming.devices.contains { $0.devicePublicKey == clientKey }
+    }
+
+    /// Whether this host minted `token` in its current offer, whether or not
+    /// the display it names is still online.
+    public func hostScreenTokenWasMinted(_ token: Data) -> Bool {
+        hostScreenMintedTokens[token] != nil
     }
 
     /// Which display a token this host itself minted names right now, or
     /// `nil` if it names none this machine currently has. Read by the
     /// coordinator before a host-screen request is judged, so the one
-    /// display a session is about to be admitted for can be woken first. A
-    /// token this host never minted resolves to nothing, which is what
-    /// keeps a wire message from reaching this machine's power state.
+    /// display a session is about to be admitted for can be waited on. A
+    /// token this host never minted resolves to nothing.
     public func hostScreenTargetDisplayID(for token: Data) -> UInt32? {
         guard let identity = hostScreenMintedTokens[token] else {
             return nil
@@ -799,7 +803,7 @@ public final class HostSessionController {
         // operator reading the log is never left guessing. A canvas
         // Sensorium created is not a gap: it was never a candidate.
         for display in current {
-            guard let reason = HostScreenOfferEligibility.offerGapReason(for: display), reason != .createdBySensorium else {
+            guard let reason = HostScreenOfferEligibility.offerGapReason(for: display, among: current), reason != .createdBySensorium else {
                 continue
             }
             let label = HostScreenArmingPresentation.displayLabel(for: display)

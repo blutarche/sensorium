@@ -215,6 +215,68 @@ func makeWakeHostScreenFixture(
     return (coordinator, entry.opaqueToken)
 }
 
+/// The display macOS reports when no monitor is drawing: what a Mac mini
+/// with its monitors powered off by display sleep, or with none attached,
+/// has online. Awake, unnamed, and not a canvas of this host's own making.
+@MainActor
+func headlessStandInSnapshot(id: UInt32 = 429) -> DisplaySnapshot {
+    DisplaySnapshot(
+        id: id,
+        pixelWidth: 1920,
+        pixelHeight: 1080,
+        modeWidth: 1920,
+        modeHeight: 1080,
+        modePixelWidth: 1920,
+        modePixelHeight: 1080,
+        bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+        online: true,
+        asleep: false,
+        builtin: false,
+        main: true,
+        vendorNumber: 0x756E_6B6E,
+        modelNumber: 0x7669_7274,
+        name: nil
+    )
+}
+
+/// A controller whose one device is authenticated or not, and armed or
+/// not, for the tests that prove a wake never reaches past those gates.
+@MainActor
+func wakeGateController(
+    displays: FakeDisplayList,
+    displayWake: DisplayWakeController,
+    authenticate: Bool,
+    armed: Bool,
+    connections: HostDeviceConnectionRegistry? = nil
+) -> (controller: HostSessionController, deviceKey: Data) {
+    let identity = try! DeviceIdentity.generate()
+    let deviceKey = identity.publicKey
+    let arming = HostScreenArming(devices: armed ? [
+        HostScreenDeviceArming(devicePublicKey: deviceKey, deviceName: "Kestrel Laptop Pro", armedAt: Date())
+    ] : [])
+    let controller = HostSessionController(
+        sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+        approvedPublicKeys: [deviceKey],
+        requireAuthentication: true,
+        keyConfinement: .hostScreen,
+        hostScreenArmingProvider: { arming },
+        hostScreenCurrentDisplaysProvider: { displays.read() },
+        deviceConnectionRegistry: connections,
+        displayWake: displayWake,
+        log: { _ in }
+    )
+    if authenticate {
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+            hostCertificateHash: nil
+        )
+        _ = try! controller.handle(.authenticatedHello(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+        ))
+    }
+    return (controller, deviceKey)
+}
+
 @MainActor
 func runDisplayWakeTests() async {
     do {
@@ -382,7 +444,7 @@ func runDisplayWakeTests() async {
 
     do {
         // A canvas Sensorium created is never a host-screen target, so a
-        // sleeping one is no reason to touch this machine's power state.
+        // sleeping one is never offered, whatever the wake does.
         let power = FakeDisplayPower()
         let list = FakeDisplayList([
             sleepingDisplaySnapshot(asleep: false),
@@ -407,12 +469,12 @@ func runDisplayWakeTests() async {
             "the canvas is not offered and the physical display still is, got \(displays.map(\.label))"
         )
         expect(
-            power.userActivityDeclarations == 0,
-            "and a sleeping canvas reaches no power call on this machine, got \(power.userActivityDeclarations)"
+            power.userActivityDeclarations == 1,
+            "and the offer declares user activity once, as every armed offer does, got \(power.userActivityDeclarations)"
         )
     }
 
-    print("PASS: a sleeping canvas Sensorium created is never woken")
+    print("PASS: a sleeping canvas Sensorium created is never offered")
 
     do {
         let power = FakeDisplayPower()
@@ -453,8 +515,7 @@ func runDisplayWakeTests() async {
 
     do {
         // A display mirroring another one shows that display's picture and
-        // is never offerable, so waking it would be a power call made for a
-        // screen no session could ever stream.
+        // is never offerable, however awake it gets.
         let power = FakeDisplayPower()
         let list = FakeDisplayList([
             sleepingDisplaySnapshot(asleep: false),
@@ -479,12 +540,12 @@ func runDisplayWakeTests() async {
             "the mirror is not offered and the display it mirrors still is, got \(displays.map(\.label))"
         )
         expect(
-            power.userActivityDeclarations == 0,
-            "and a sleeping mirror reaches no power call on this machine, got \(power.userActivityDeclarations)"
+            power.userActivityDeclarations == 1,
+            "and the offer declares user activity once, as every armed offer does, got \(power.userActivityDeclarations)"
         )
     }
 
-    print("PASS: a sleeping display that mirrors another one is never woken")
+    print("PASS: a sleeping display that mirrors another one is never offered")
 
     do {
         let power = FakeDisplayPower()
@@ -792,4 +853,254 @@ func runDisplayWakeTests() async {
     }
 
     print("PASS: a host-screen session reads only the display it captures when it asks whether sleep explains the silence")
+
+    do {
+        // The field failure on a locked Mac mini: display sleep had taken its
+        // monitors offline, so the only display online was macOS's awake
+        // headless stand-in, nothing read asleep, and the offer named the
+        // stand-in. Its capture was black.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([headlessStandInSnapshot()])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in
+                if power.userActivityDeclarations > 0 {
+                    list.displays = [
+                        sleepingDisplaySnapshot(id: 2, asleep: false),
+                        sleepingDisplaySnapshot(id: 3, asleep: false)
+                    ]
+                }
+            },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "an armed device is offered this machine's displays")
+            return
+        }
+        expect(
+            power.userActivityDeclarations == 1,
+            "the offer declares user activity even though no display reads asleep, got \(power.userActivityDeclarations)"
+        )
+        expect(
+            displays.count == 2 && displays.allSatisfy { $0.logicalWidth == 2560 },
+            "and offers the two monitors that came back, not the stand-in, got \(displays.map(\.label))"
+        )
+    }
+
+    print("PASS: an offer made while display sleep has taken the monitors offline wakes them and offers them")
+
+    do {
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([
+            sleepingDisplaySnapshot(id: 2, asleep: false),
+            sleepingDisplaySnapshot(id: 3, asleep: false)
+        ])
+        var waits = 0
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in waits += 1 },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "an armed device is offered this machine's displays")
+            return
+        }
+        expect(
+            power.userActivityDeclarations == 1,
+            "an offer on an awake machine still declares user activity, got \(power.userActivityDeclarations)"
+        )
+        expect(waits == 0, "and builds the offer without waiting at all, got \(waits) waits")
+        expect(displays.count == 2, "offering both displays, got \(displays.count)")
+    }
+
+    print("PASS: an offer on a machine whose monitors are already on is built without waiting")
+
+    do {
+        // A Mac mini with no monitor attached: the stand-in is all it has,
+        // and it is offered once the bounded wait for a monitor runs out.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([headlessStandInSnapshot()])
+        var waits = 0
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in waits += 1 },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1,
+            settleSeconds: 3
+        )
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "an armed device is offered this machine's displays")
+            return
+        }
+        expect(
+            displays.count == 1 && displays.first?.logicalWidth == 1920,
+            "the stand-in is offered when it is the only display, got \(displays.map(\.label))"
+        )
+        expect(waits == 30, "after a wait bounded by the settle time, got \(waits) polls")
+    }
+
+    print("PASS: a machine with no monitor still offers the headless stand-in after a bounded wait")
+
+    do {
+        let power = FakeDisplayPower()
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { [sleepingDisplaySnapshot(id: 7, asleep: false)] },
+            wait: { _ in }
+        )
+        let fixture = makeWakeHostScreenFixture(
+            display: sleepingDisplaySnapshot(id: 7, asleep: false),
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+        )
+        _ = try? await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: fixture.token,
+            resumeTicket: nil
+        ))
+        expect(
+            power.userActivityDeclarations == 1,
+            "a host-screen session start declares user activity even when no display reads asleep, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a host-screen session start declares user activity whatever the displays report")
+
+    do {
+        // Monitors that came back beside the stand-in: the stand-in draws
+        // nothing a person sees, so only the monitor is offered.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([headlessStandInSnapshot(), sleepingDisplaySnapshot(id: 2, asleep: false)])
+        let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "an armed device is offered this machine's displays")
+            return
+        }
+        expect(
+            displays.count == 1 && displays.first?.logicalWidth == 2560,
+            "the stand-in is left out while a monitor is online, got \(displays.map(\.label))"
+        )
+    }
+
+    print("PASS: the headless stand-in is not offered beside a monitor")
+
+    do {
+        // Two monitors that come back one after the other: the offer waits
+        // for the second rather than settling on the first.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([headlessStandInSnapshot()])
+        var polls = 0
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in
+                polls += 1
+                if polls == 1 {
+                    list.displays = [sleepingDisplaySnapshot(id: 2, asleep: false)]
+                } else if polls == 3 {
+                    list.displays = [
+                        sleepingDisplaySnapshot(id: 2, asleep: false),
+                        sleepingDisplaySnapshot(id: 3, asleep: false)
+                    ]
+                }
+            },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1,
+            settleSeconds: 3
+        )
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+            expect(false, "an armed device is offered this machine's displays")
+            return
+        }
+        expect(displays.count == 2, "both staggered monitors are offered, got \(displays.count)")
+        expect(polls < 30, "and the wait ends once the set has held still, not at the bound, got \(polls) polls")
+    }
+
+    print("PASS: monitors that come back one after the other are all offered")
+
+    do {
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(id: 2, asleep: true)])
+        let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
+        let gate = wakeGateController(displays: list, displayWake: wake, authenticate: false, armed: true)
+        _ = try? await gate.controller.offerHostScreenListWakingDisplays()
+        expect(
+            power.userActivityDeclarations == 0,
+            "an offer to a peer that has not authenticated wakes nothing, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: an offer to an unauthenticated peer makes no power call")
+
+    do {
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(id: 2, asleep: true)])
+        let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
+        let gate = wakeGateController(displays: list, displayWake: wake, authenticate: true, armed: false)
+        _ = try? await gate.controller.offerHostScreenListWakingDisplays()
+        expect(
+            power.userActivityDeclarations == 0,
+            "an offer to an authenticated device that is not armed wakes nothing, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: an offer to an unarmed device makes no power call")
+
+    do {
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(id: 2, asleep: true)])
+        let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
+        let connections = HostDeviceConnectionRegistry()
+        let gate = wakeGateController(
+            displays: list, displayWake: wake, authenticate: true, armed: true, connections: connections
+        )
+        connections.stopConnections(for: gate.deviceKey)
+        let offer = try? await gate.controller.offerHostScreenListWakingDisplays()
+        expect(
+            power.userActivityDeclarations == 0,
+            "a device the host stopped wakes nothing, got \(power.userActivityDeclarations)"
+        )
+        if case let .hostScreenList(displays)? = offer {
+            expect(displays.isEmpty, "and is offered nothing, got \(displays.count)")
+        }
+    }
+
+    print("PASS: an offer after the host stopped the device makes no power call and offers nothing")
+
+    do {
+        let power = FakeDisplayPower()
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { [sleepingDisplaySnapshot(id: 7, asleep: false)] },
+            wait: { _ in }
+        )
+        let fixture = makeWakeHostScreenFixture(
+            display: sleepingDisplaySnapshot(id: 7, asleep: false),
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+        )
+        _ = try? await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: Data(repeating: 0xA5, count: 32),
+            resumeTicket: nil
+        ))
+        expect(
+            power.userActivityDeclarations == 0,
+            "a host-screen request carrying a token this host never minted wakes nothing, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a host-screen request with an unminted token makes no power call")
 }

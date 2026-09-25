@@ -100,7 +100,7 @@ The viewer never names a raw display ID. `CGDirectDisplayID` is not stable acros
 
 `opaqueToken` and `displayIdentity` answer different questions. The token is a one-shot capability, minted fresh per offer, meaningless outside the session that minted it. `displayIdentity` is a stable encoding of the same display across every offer this host makes, including across a restart. It is opaque to the viewer, not secret. It lets a viewer recognize "the same display as last time" once a token is gone.
 
-A display is admitted only when every one of these holds: this machine's key is armed, the token was minted in this session, the display is still present, online, awake, and unmirrored, and it does not carry this host's own canvas identity. One display streams per session. Serving two at once is architecturally possible but not built.
+A display is admitted only when every one of these holds: this machine's key is armed, the token was minted in this session, the display is still present, online, awake, and unmirrored, it does not carry this host's own canvas identity, and it is not macOS's headless stand-in sitting beside another display. One display streams per session. Serving two at once is architecturally possible but not built.
 
 ### 5.5 Remembering a chosen mode
 
@@ -178,10 +178,12 @@ A sleeping display is drawn to by nothing. Capture of it, or of a virtual displa
 
 The assertion is named "Sensorium session is live", which is what macOS shows anyone at the host asking what is keeping the screen on.
 
-- **At session start.** If sleep is the only thing keeping a display out of the offer, the host declares user activity and waits for the display it is about to stream, up to five seconds. A display held back for any other reason, a mirror of another display among them, is left alone: waking it would not make it offerable. A display that comes back is offered and captured. A display that stays asleep is refused as `asleep`.
+- **Before an offer and at session start.** The host declares user activity every time it builds an offer for an armed device and every time a host-screen session starts. It does not first check whether a display reads asleep. Display sleep can take a monitor offline instead of leaving it online and asleep. On a Mac mini the only display left online is then macOS's headless stand-in, which reads awake and captures black.
+- **Waiting for the monitors.** If an awake monitor is already online, the host goes on at once. Otherwise it polls the online displays every tenth of a second. It stops once an awake monitor is online and the set has held still for half a second, or after three seconds. Monitors come back one after another, and the half second lets the later ones arrive. A machine with no monitor attached waits out the three seconds and offers the stand-in, since that is all it has. After that, a display that sleep alone keeps out of the offer is given up to five seconds to read awake. A display that comes back is offered and captured. A display that stays asleep is refused as `asleep`.
+- **The stand-in beside a monitor.** The stand-in is left out of the offer whenever any other display that is not a canvas is online. It is offered only when it is the only display. A monitor that takes longer than the three seconds to come back is not yet online when the offer is built. That offer then lists only the stand-in, which streams black.
 - **While a session is live.** One prevent-sleep assertion, taken once however many surfaces the session has.
 - **At session end.** The assertion is released on every path that ends a session, the ones that end it on an error and the one that ends it because the host is quitting included.
-- **Nothing on the wire.** Only a display an armed machine could already be offered is woken before an offer, and only the display a token this host itself minted names is woken before a request. A message naming anything else reaches no power call.
+- **Nothing on the wire.** Only an authenticated, armed device's offer wakes the displays, and only a request carrying a token this host itself minted wakes them at session start. A message naming anything else reaches no power call.
 - **Still forbidden.** No display is created, destroyed, resized, re-arranged, mirrored, or blanked. The machine itself is never woken from sleep. An activity declaration wakes a display, not a sleeping machine.
 
 A capture that delivers nothing while the display it captures is asleep is answered by waking that display and building the stream once more, rather than by giving up on this process's ability to capture. A host-screen session reads only the display it is streaming. A session canvas reads the machine, since display sleep is machine-wide.

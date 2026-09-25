@@ -55,7 +55,7 @@ public enum HostScreenSelectionGuard {
             return .failure(.tokenNotMinted)
         }
         let matches = currentDisplays.filter { HostScreenDisplayIdentity($0) == identity }
-        guard let live = matches.first(where: HostScreenOfferEligibility.isOfferable) else {
+        guard let live = matches.first(where: { HostScreenOfferEligibility.isOfferable($0, among: currentDisplays) }) else {
             return .failure(
                 matches.contains(where: PhysicalDisplayEvidence.isSensoriumCanvas)
                     ? .displayIsSensoriumCanvas

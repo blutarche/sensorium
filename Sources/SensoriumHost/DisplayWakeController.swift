@@ -92,6 +92,13 @@ public final class DisplayWakeController {
     /// a viewer is not left watching a connection that may never start.
     public static let defaultWakeSeconds = 5.0
     public static let defaultPollSeconds = 0.1
+    /// How long monitors that display sleep took offline are given to come
+    /// back online after a wake before an offer is built without them.
+    public static let defaultSettleSeconds = 3.0
+    /// How long the set of online displays must hold still, once a monitor
+    /// is back, before it counts as settled. Monitors attached to one
+    /// machine come back one after another, not all at once.
+    public static let settledHoldSeconds = 0.5
 
     private let power: any DisplayPowerControlling
     private let displays: () -> [DisplaySnapshot]
@@ -99,6 +106,7 @@ public final class DisplayWakeController {
     /// bound without spending it.
     private let wait: (Double) async -> Void
     private let wakeSeconds: Double
+    private let settleSeconds: Double
     private let pollSeconds: Double
     private let log: ((String) -> Void)?
 
@@ -121,12 +129,14 @@ public final class DisplayWakeController {
         },
         timeoutSeconds: Double = DisplayWakeController.defaultWakeSeconds,
         pollSeconds: Double = DisplayWakeController.defaultPollSeconds,
+        settleSeconds: Double = DisplayWakeController.defaultSettleSeconds,
         log: ((String) -> Void)? = nil
     ) {
         self.power = power
         self.displays = displays
         self.wait = wait
         wakeSeconds = max(timeoutSeconds, 0)
+        self.settleSeconds = max(settleSeconds, 0)
         self.pollSeconds = max(pollSeconds, 0.01)
         self.log = log
     }
@@ -163,6 +173,60 @@ public final class DisplayWakeController {
         }
         log?("waking this machine's displays; a sleeping display draws nothing to capture")
         power.declareUserActivity()
+        return await waitForDisplaysToWake(targets: targets)
+    }
+
+    /// Declares user activity whatever the displays report, then waits for
+    /// the set of online displays to settle, up to `settleSeconds`.
+    ///
+    /// Display sleep can take a monitor offline rather than leave it online
+    /// and asleep. A machine in that state reads as nothing asleep at all:
+    /// on a Mac mini the only display online is macOS's headless stand-in,
+    /// which reads awake and captures black. So nothing here is gated on a
+    /// display reading asleep. When an awake monitor is already online the
+    /// monitors are on and this returns without waiting. Otherwise it polls
+    /// until an awake monitor is online and the set of online displays has
+    /// held still for `settledHoldSeconds`. A machine with no monitor
+    /// attached waits out the bound and is left with the stand-in, which is
+    /// then all it has.
+    public func wakeAndSettleDisplays() async {
+        power.declareUserActivity()
+        var previous = displays().filter(\.online)
+        guard !Self.hasAwakeMonitor(previous) else {
+            return
+        }
+        let holdPolls = Int((Self.settledHoldSeconds / pollSeconds).rounded(.up))
+        var unchangedPolls = 0
+        var waited = 0.0
+        while waited < settleSeconds {
+            await wait(pollSeconds)
+            if Task.isCancelled {
+                return
+            }
+            waited += pollSeconds
+            let current = displays().filter(\.online)
+            unchangedPolls = Set(current.map(\.id)) == Set(previous.map(\.id)) ? unchangedPolls + 1 : 0
+            previous = current
+            if Self.hasAwakeMonitor(current), unchangedPolls >= holdPolls {
+                return
+            }
+        }
+        log?("no monitor came online after waking this machine's displays")
+    }
+
+    /// Waits, without declaring anything, for the displays named in
+    /// `targets` to stop reading asleep, up to `timeoutSeconds`. An empty
+    /// `targets` means every online display. `true` when none in scope is
+    /// asleep by the time this returns.
+    @discardableResult
+    public func waitForDisplaysToWake(targets: Set<UInt32> = []) async -> Bool {
+        func stillAsleep() -> Set<UInt32> {
+            let sleeping = sleepingDisplayIDs
+            return targets.isEmpty ? sleeping : sleeping.intersection(targets)
+        }
+        guard !stillAsleep().isEmpty else {
+            return true
+        }
         var waited = 0.0
         while waited < wakeSeconds {
             await wait(pollSeconds)
@@ -179,6 +243,14 @@ public final class DisplayWakeController {
         }
         log?("this machine's displays are still asleep after waiting for them to wake")
         return false
+    }
+
+    /// An online, awake display that is neither the headless stand-in nor a
+    /// canvas Sensorium created: proof that this machine's monitors are on.
+    private static func hasAwakeMonitor(_ online: [DisplaySnapshot]) -> Bool {
+        online.contains {
+            !$0.asleep && !PhysicalDisplayEvidence.isHeadlessStandIn($0) && !PhysicalDisplayEvidence.isSensoriumCanvas($0)
+        }
     }
 
     /// Keeps the displays awake for as long as this session is live. One

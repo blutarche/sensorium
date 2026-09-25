@@ -40,6 +40,17 @@ public struct PhysicalDisplayEvidence: Equatable, Sendable {
         display.vendorNumber == CanvasDisplayIdentity.vendorID
     }
 
+    /// The EDID vendor ('unkn') and model ('virt') macOS reported for the
+    /// display it keeps online while no monitor is drawing, observed on a
+    /// Mac mini whose monitors display sleep had taken offline. It reads
+    /// awake, so `CGDisplayIsAsleep` cannot tell that the monitors are off.
+    public static let headlessStandInVendor: UInt32 = 0x756E_6B6E
+    public static let headlessStandInModel: UInt32 = 0x7669_7274
+
+    public static func isHeadlessStandIn(_ display: DisplaySnapshot) -> Bool {
+        display.vendorNumber == headlessStandInVendor && display.modelNumber == headlessStandInModel
+    }
+
     public var hasPhysicalDisplay: Bool {
         physicalDisplayCount > 0
     }

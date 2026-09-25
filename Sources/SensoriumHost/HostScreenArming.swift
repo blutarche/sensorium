@@ -30,7 +30,7 @@ public struct HostScreenDisplayIdentity: Codable, Equatable, Hashable, Sendable 
 }
 
 /// Why one of this machine's displays is missing from what `offerHostScreenList`
-/// actually offers -- the same four gaps, decided by `HostScreenOfferEligibility`
+/// actually offers -- the same five gaps, decided by `HostScreenOfferEligibility`
 /// alone, so the operator log and the Host Setup window never disagree about why.
 public enum HostScreenOfferGapReason: Equatable, Sendable {
     /// `CGDisplayIsOnline` is false: genuinely disconnected, not merely
@@ -47,6 +47,10 @@ public enum HostScreenOfferGapReason: Equatable, Sendable {
     /// display's picture, never its own, so it is never a legitimate
     /// host-screen target.
     case mirrored
+    /// macOS's headless stand-in, online beside a display a person can see.
+    /// It is what macOS keeps online while no monitor is drawing, and it is
+    /// offered only when it is the only display this machine has.
+    case headlessStandIn
     /// The display is a canvas Sensorium itself created, never a display a
     /// person could be looking at.
     case createdBySensorium
@@ -61,6 +65,8 @@ public enum HostScreenOfferGapReason: Equatable, Sendable {
             "asleep"
         case .mirrored:
             "mirrored"
+        case .headlessStandIn:
+            "stand-in for a monitor that is online"
         case .createdBySensorium:
             "created by Sensorium"
         }
@@ -81,14 +87,14 @@ public enum HostScreenOfferGapReason: Equatable, Sendable {
 public enum HostScreenOfferEligibility {
     /// A display that can be captured and shown right now: not ours, online,
     /// awake, and showing its own picture rather than another display's.
-    public static func isOfferable(_ display: DisplaySnapshot) -> Bool {
-        offerGapReason(for: display) == nil
+    public static func isOfferable(_ display: DisplaySnapshot, among displays: [DisplaySnapshot]) -> Bool {
+        offerGapReason(for: display, among: displays) == nil
     }
 
     /// Every display in `displays` that `isOfferable` accepts, in the order
     /// given.
     public static func offerable(from displays: [DisplaySnapshot]) -> [DisplaySnapshot] {
-        displays.filter(isOfferable)
+        displays.filter { isOfferable($0, among: displays) }
     }
 
     /// Why `display` cannot be offered right now, `nil` when it can. A
@@ -99,7 +105,14 @@ public enum HostScreenOfferEligibility {
     /// only thing in the way. That is what lets the wake path treat this one
     /// answer as "waking this display would make it offerable", rather than
     /// waking a mirror no session could stream however awake it gets.
-    public static func offerGapReason(for display: DisplaySnapshot) -> HostScreenOfferGapReason? {
+    ///
+    /// `displays` is every display this machine has online, `display`
+    /// included. It decides whether a headless stand-in is the only display
+    /// or sits beside one a person can see.
+    public static func offerGapReason(
+        for display: DisplaySnapshot,
+        among displays: [DisplaySnapshot]
+    ) -> HostScreenOfferGapReason? {
         if PhysicalDisplayEvidence.isSensoriumCanvas(display) {
             return .createdBySensorium
         }
@@ -108,6 +121,12 @@ public enum HostScreenOfferEligibility {
         }
         if display.mirrorsDisplay != 0 {
             return .mirrored
+        }
+        if PhysicalDisplayEvidence.isHeadlessStandIn(display),
+           displays.contains(where: {
+               $0.id != display.id && $0.online && !PhysicalDisplayEvidence.isSensoriumCanvas($0)
+           }) {
+            return .headlessStandIn
         }
         if display.asleep {
             return .asleep

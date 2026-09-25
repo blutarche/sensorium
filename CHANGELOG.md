@@ -101,6 +101,12 @@ once it reaches 1.0.
   explain, sampled immediately before each forwarded post so a real
   person's input right before it is never masked by the post that
   follows.
+- A host whose monitors had been turned off by display sleep no longer
+  streams a black screen. The host now wakes its displays every time it
+  offers its screens and every time a host-screen session starts. It
+  waits up to 3 seconds for the monitors to come back before it lists
+  them. The stand-in display macOS keeps online while the monitors are
+  off is offered only when it is the only display.
 
 ## [0.1.3] - 2026-09-19
 

@@ -928,21 +928,23 @@ public final class HostSessionCoordinator {
     /// is judged, because macOS draws nothing at all to a sleeping display
     /// and a session canvas is no exception.
     ///
-    /// A host-screen request wakes only the one display the token it carries
-    /// names, and only when this host itself minted that token: a display
-    /// this machine never offered is never woken by anything arriving on the
-    /// wire.
+    /// A host-screen request wakes this machine's displays whatever they
+    /// report, since display sleep can take a monitor offline without any
+    /// display reading asleep, and then waits for the one display its token
+    /// names. Only a token this host itself minted gets that far: an
+    /// unauthenticated peer has none, so nothing it sends reaches a power
+    /// call here. The token is checked as minted rather than resolved, so a
+    /// display that went offline since the offer is still woken.
     private func wakeDisplaysForSessionStart(_ message: SensoriumMessage) async {
-        guard let displayWake, case let .hostScreenRequest(token, _) = message else {
+        guard let displayWake, case let .hostScreenRequest(token, _) = message,
+              controller.hostScreenTokenWasMinted(token) else {
             return
         }
-        // A token this host never minted resolves to no display, and an
-        // unauthenticated peer has none: nothing it sends reaches a power
-        // call here.
+        await displayWake.wakeAndSettleDisplays()
         guard let target = controller.hostScreenTargetDisplayID(for: token) else {
             return
         }
-        await displayWake.wakeDisplays(targets: [target])
+        await displayWake.waitForDisplaysToWake(targets: [target])
     }
 
     /// Takes this session's own hold on the machine's displays, once, however
