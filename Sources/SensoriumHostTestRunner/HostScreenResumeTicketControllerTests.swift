@@ -555,4 +555,256 @@ func runHostScreenResumeTicketControllerTests() async {
 
         print("PASS: the live-session registry refuses a resume alongside a live session yet lets a reconnect replace a dead one tap-free")
     }
+
+    do {
+        // A resume that peeks valid but is then refused for an unrelated
+        // reason -- here, the display it names has gone offline -- must
+        // never spend any of the ticket's own five-minute grace window.
+        // Repeating that refused resume cannot stretch a dead ticket back
+        // to life either.
+        let identity = try! DeviceIdentity.generate()
+        let display = hostScreenTestDisplay()
+        let offlineDisplay = DisplaySnapshot(
+            id: display.id,
+            pixelWidth: display.pixelWidth,
+            pixelHeight: display.pixelHeight,
+            modeWidth: display.modeWidth,
+            modeHeight: display.modeHeight,
+            modePixelWidth: display.modePixelWidth,
+            modePixelHeight: display.modePixelHeight,
+            bounds: display.bounds,
+            online: false,
+            builtin: display.builtin,
+            main: display.main,
+            vendorNumber: display.vendorNumber,
+            modelNumber: display.modelNumber
+        )
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: identity.publicKey,
+                deviceName: "Kestrel Laptop Pro",
+                armedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ])
+        let clock = FakeClock()
+        let store = HostScreenResumeTicketStore(now: clock.now)
+
+        let firstConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let firstToken = offerAndExtractToken(firstConnection)
+        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+            token: firstToken,
+            resumeTicket: nil
+        )) else {
+            expect(false, "the first connection's own admission must succeed")
+            return
+        }
+
+        // Three resends, each its own connection standing in for the
+        // viewer's own automatic redial, each offered the display while it
+        // was still online -- so the token really is minted for its
+        // identity -- and then finding it offline by the time the resume
+        // itself is sent, refused on that obligation alone. The ticket
+        // itself peeks good every time.
+        for attempt in 1...3 {
+            clock.advance(by: 100)
+            let box = HostScreenResumeTicketTestDisplaysBox([display])
+            let controller = makeDisplaysBoxController(
+                identity: identity, arming: arming, displaysBox: box, resumeTicketStore: store
+            )
+            let token = offerAndExtractToken(controller)
+            box.displays = [offlineDisplay]
+            let response = try! controller.handle(.hostScreenRequest(token: token, resumeTicket: mintedTicket))
+            expect(
+                response == .hostScreenRefused(reason: "host-screen-not-allowed"),
+                "attempt \(attempt): a resume whose display has gone offline refuses on that obligation, not the ticket's own -- got \(response as Any)"
+            )
+        }
+
+        // Sixty seconds further: past the grace window measured from the
+        // *original* mint (300s ago, at clock start plus 300), but well
+        // within it measured from the last refused attempt above (300s
+        // before this point). A ticket any of those three attempts had
+        // refreshed would still read as good here.
+        clock.advance(by: 60)
+        let finalBox = HostScreenResumeTicketTestDisplaysBox([display])
+        let finalController = makeDisplaysBoxController(
+            identity: identity, arming: arming, displaysBox: finalBox, resumeTicketStore: store
+        )
+        let finalToken = offerAndExtractToken(finalController)
+        let finalResponse = try! finalController.handle(.hostScreenRequest(token: finalToken, resumeTicket: mintedTicket))
+        expect(
+            finalResponse == .hostScreenRefused(reason: "host-screen-resume-refused"),
+            "a ticket that only ever hit refused resumes is expired by its own original grace window, not kept alive by any of them -- got \(finalResponse as Any)"
+        )
+
+        print("PASS: repeated refused resumes with a valid ticket do not extend its grace window")
+    }
+
+    do {
+        // The wake gate -- `hostScreenRequestPassesPreAdmission`, the exact
+        // method `HostSessionCoordinator` calls before waking this
+        // machine's displays -- must never itself spend any of a
+        // presented ticket's grace window, however many times it is asked.
+        let identity = try! DeviceIdentity.generate()
+        let display = hostScreenTestDisplay()
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: identity.publicKey,
+                deviceName: "Kestrel Laptop Pro",
+                armedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ])
+        let clock = FakeClock()
+        let store = HostScreenResumeTicketStore(now: clock.now)
+
+        let firstConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let firstToken = offerAndExtractToken(firstConnection)
+        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+            token: firstToken,
+            resumeTicket: nil
+        )) else {
+            expect(false, "the first connection's own admission must succeed")
+            return
+        }
+
+        // Three bare wake-gate calls, one hundred seconds apart, none of
+        // them going anywhere near `handle` -- every one of them still
+        // finds the ticket good, since none has extended it yet.
+        for attempt in 1...3 {
+            clock.advance(by: 100)
+            let probeConnection = makeReconnectableController(
+                identity: identity, display: display, arming: arming, resumeTicketStore: store
+            )
+            let probeToken = offerAndExtractToken(probeConnection)
+            expect(
+                probeConnection.hostScreenRequestPassesPreAdmission(token: probeToken, resumeTicket: mintedTicket),
+                "attempt \(attempt): the wake gate still finds a ticket within its original grace window good"
+            )
+        }
+
+        // As in the test above: sixty seconds further is past the
+        // original grace window, but within it measured from the last
+        // wake-gate call above -- a call that itself refreshed the ticket
+        // would still read as good here.
+        clock.advance(by: 60)
+        let finalConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let finalToken = offerAndExtractToken(finalConnection)
+        expect(
+            !finalConnection.hostScreenRequestPassesPreAdmission(token: finalToken, resumeTicket: mintedTicket),
+            "a ticket only ever presented to the bare wake gate is expired by its own original grace window, since the wake gate itself never refreshed it"
+        )
+
+        print("PASS: the wake gate alone never refreshes a resume ticket's grace window, however many times it is asked")
+    }
+
+    do {
+        // The one path that must refresh: a resume that genuinely
+        // succeeds, all the way through to `.hostScreenReady`.
+        let identity = try! DeviceIdentity.generate()
+        let display = hostScreenTestDisplay()
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: identity.publicKey,
+                deviceName: "Kestrel Laptop Pro",
+                armedAt: Date(timeIntervalSince1970: 1_700_000_000)
+            )
+        ])
+        let clock = FakeClock()
+        let store = HostScreenResumeTicketStore(now: clock.now)
+
+        let firstConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let firstToken = offerAndExtractToken(firstConnection)
+        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+            token: firstToken,
+            resumeTicket: nil
+        )) else {
+            expect(false, "the first connection's own admission must succeed")
+            return
+        }
+
+        // Two hundred fifty seconds in, still within the original grace
+        // window: a genuine, successful resume.
+        clock.advance(by: 250)
+        let secondConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let secondToken = offerAndExtractToken(secondConnection)
+        guard case .hostScreenReady = try! secondConnection.handle(.hostScreenRequest(
+            token: secondToken, resumeTicket: mintedTicket
+        )) else {
+            expect(false, "a resume ticket within its grace window is admitted")
+            return
+        }
+
+        // Two hundred fifty seconds further: five hundred since the
+        // original mint -- past its original grace window entirely -- but
+        // only two hundred fifty since the successful resume above. The
+        // same original ticket is presented again, proving that resume
+        // refreshed it rather than leaving it to expire on schedule.
+        clock.advance(by: 250)
+        let thirdConnection = makeReconnectableController(
+            identity: identity, display: display, arming: arming, resumeTicketStore: store
+        )
+        let thirdToken = offerAndExtractToken(thirdConnection)
+        let thirdResponse = try! thirdConnection.handle(.hostScreenRequest(token: thirdToken, resumeTicket: mintedTicket))
+        guard case .hostScreenReady = thirdResponse else {
+            expect(false, "a successful resume refreshed the ticket's grace window, so presenting the same ticket again well within that fresh window is admitted -- got \(String(describing: thirdResponse))")
+            return
+        }
+
+        print("PASS: a resume that genuinely succeeds refreshes its ticket's grace window")
+    }
+}
+
+/// A live-mutable stand-in for `hostScreenCurrentDisplaysProvider`'s
+/// captured list -- lets a test change what this machine currently reports
+/// between an offer and the request that follows it, standing in for a
+/// display that changed state in between, without needing a second,
+/// separate controller for the two reads.
+@MainActor
+private final class HostScreenResumeTicketTestDisplaysBox {
+    var displays: [DisplaySnapshot]
+    init(_ displays: [DisplaySnapshot]) {
+        self.displays = displays
+    }
+}
+
+/// Identical to `makeReconnectableController`, except its
+/// `hostScreenCurrentDisplaysProvider` reads `displaysBox` live on every
+/// call rather than closing over one fixed list, so a test can move a
+/// display offline after this connection's own offer already named it.
+@MainActor
+private func makeDisplaysBoxController(
+    identity: DeviceIdentity,
+    arming: HostScreenArming,
+    displaysBox: HostScreenResumeTicketTestDisplaysBox,
+    resumeTicketStore: (any HostScreenResumeTicketStoring)?
+) -> HostSessionController {
+    let controller = HostSessionController(
+        sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+        approvedPublicKeys: [identity.publicKey],
+        requireAuthentication: true,
+        inputInjectorFactory: FakeInputInjectorFactory(),
+        keyConfinement: .hostScreen,
+        hostScreenArmingProvider: { arming },
+        hostScreenCurrentDisplaysProvider: { displaysBox.displays },
+        hostScreenResumeTicketStore: resumeTicketStore,
+        hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+    )
+    let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+        protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
+        hostCertificateHash: nil
+    )
+    _ = try! controller.handle(.authenticatedHello(
+        protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
+    ))
+    return controller
 }

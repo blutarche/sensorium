@@ -773,12 +773,6 @@ public final class HostSessionController {
         return arming.devices.contains { $0.devicePublicKey == clientKey }
     }
 
-    /// Whether this host minted `token` in its current offer, whether or not
-    /// the display it names is still online.
-    public func hostScreenTokenWasMinted(_ token: Data) -> Bool {
-        hostScreenMintedTokens[token] != nil
-    }
-
     /// Which display a token this host itself minted names right now, or
     /// `nil` if it names none this machine currently has. Read by the
     /// coordinator before a host-screen request is judged, so the one
@@ -791,27 +785,116 @@ public final class HostSessionController {
         return hostScreenCurrentDisplaysProvider().first { HostScreenDisplayIdentity($0) == identity }?.id
     }
 
-    /// Whether a `.hostScreenRequest` arriving on this connection right now
-    /// would still reach admission, rather than being refused before any of
-    /// it is even judged: unauthenticated, a canvas already active on this
-    /// connection, an answer already given for it, or a host-screen session
-    /// already live on it. These are exactly the guards `handle` itself
-    /// checks first, ahead of the token, the arming record, and the
-    /// presence gate.
+    /// What `resolveHostScreenPreAdmission` found for one `.hostScreenRequest`,
+    /// stopping short of the one obligation only a fresh display read can
+    /// settle: whether the display `token` names is actually online right
+    /// now. A display asleep or briefly off the bus is exactly the case a
+    /// wake exists to recover, so `handle` resolves that afterward, against
+    /// a fresh `DisplayInventory` read, once this has already passed.
+    private enum HostScreenPreAdmissionCheck {
+        case unauthenticated
+        case refused(reason: String)
+        case passed(
+            clientKey: Data,
+            arming: HostScreenArming,
+            mintedIdentity: HostScreenDisplayIdentity,
+            armingFingerprint: HostScreenArmingFingerprint?,
+            resumeAccepted: Bool?
+        )
+    }
+
+    /// The one place every obligation a `.hostScreenRequest` can be refused
+    /// for without asking a person is decided: authentication, connection
+    /// shape, any sticky refusal or live surface already recorded on this
+    /// connection, that this device is armed right now -- read fresh here,
+    /// never a value captured at hello or at an earlier request -- that
+    /// this session itself minted `token`, and, when the request offers
+    /// one, that its resume ticket is valid.
     ///
-    /// Read by the coordinator before it wakes this machine's displays for a
-    /// request, so a resend that can only be refused the same way again --
-    /// for instance an armed device replaying an already-minted token after
-    /// its first request was already declined, or while its session is
-    /// already live -- never wakes anything for nothing. A refusal for want
-    /// of a presence gate, or one the gate has not yet answered, does not
-    /// count here: those are retryable, and a legitimate resend must still
-    /// wake this machine.
-    public var hostScreenRequestWouldReachAdmission: Bool {
-        (!requireAuthentication || isAuthenticated)
-            && connectionShape != .canvas
-            && hostScreenAnsweredRefusal == nil
-            && hostScreenSurface == nil
+    /// `handle` calls this to decide the request itself.
+    /// `hostScreenRequestPassesPreAdmission`, backed by this same method, is
+    /// what the coordinator calls to decide whether the request is worth
+    /// waking this machine's displays for. Neither can refuse, admit, or
+    /// wake on a rule the other does not also enforce, because there is
+    /// only the one method computing it.
+    private func resolveHostScreenPreAdmission(
+        token: Data,
+        resumeTicket: Data?
+    ) -> HostScreenPreAdmissionCheck {
+        guard !requireAuthentication || isAuthenticated else {
+            return .unauthenticated
+        }
+        // Once a canvas request has been admitted, a host-screen request
+        // refuses from then on.
+        guard connectionShape != .canvas else {
+            return .refused(reason: "canvas-session-active")
+        }
+        // A person at this machine already answered for this connection.
+        // Refused with the reason they gave, before any gate is reached, so
+        // resending prompts nobody.
+        if let hostScreenAnsweredRefusal {
+            return .refused(reason: hostScreenAnsweredRefusal)
+        }
+        // A second host-screen request would overwrite `hostScreenSurface`
+        // underneath whatever already has it.
+        guard hostScreenSurface == nil else {
+            return .refused(reason: "host-screen-session-active")
+        }
+        guard let clientKey = authenticatedClientKey,
+              let arming = hostScreenArmingProvider?(),
+              arming.devices.contains(where: { $0.devicePublicKey == clientKey }),
+              let mintedIdentity = hostScreenMintedTokens[token] else {
+            return .refused(reason: "host-screen-not-allowed")
+        }
+        let armingFingerprint = arming.devices
+            .first { $0.devicePublicKey == clientKey }
+            .map(HostScreenArmingFingerprint.init)
+        // A ticket this request did not offer is neither valid nor
+        // refused: the request is an ordinary fresh one and is admitted on
+        // its own terms. Validated against the token's own minted display
+        // identity rather than a live display resolution, so a display
+        // this wake exists to recover is never mistaken for a binding
+        // mismatch.
+        let resumeAccepted: Bool? = resumeTicket.map {
+            peekHostScreenResumeTicket(
+                $0,
+                devicePublicKey: clientKey,
+                displayIdentity: mintedIdentity,
+                armingFingerprint: armingFingerprint
+            )
+        }
+        // A ticket that is expired, or minted for another device or
+        // display, is refused on its own terms rather than quietly demoted
+        // to a fresh request: a viewer that believed it was resuming
+        // should be told it was not.
+        guard resumeAccepted != false else {
+            return .refused(reason: "host-screen-resume-refused")
+        }
+        return .passed(
+            clientKey: clientKey,
+            arming: arming,
+            mintedIdentity: mintedIdentity,
+            armingFingerprint: armingFingerprint,
+            resumeAccepted: resumeAccepted
+        )
+    }
+
+    /// Whether a `.hostScreenRequest` carrying `token` and `resumeTicket`
+    /// would pass every obligation `resolveHostScreenPreAdmission` checks.
+    /// Read by the coordinator before it wakes this machine's displays for
+    /// a request, so a resend that can only be refused the same way again
+    /// -- an unarmed or disarmed device, a stale or unminted token, an
+    /// invalid resume ticket, or a connection with a sticky refusal or a
+    /// session already live on it -- never wakes anything for nothing. A
+    /// refusal only the presence gate can give -- want of a gate, one
+    /// already showing for another connection, a decline, or a timeout --
+    /// is never checked here: none of those is decided without asking a
+    /// person, or without displays already awake to ask on.
+    public func hostScreenRequestPassesPreAdmission(token: Data, resumeTicket: Data?) -> Bool {
+        if case .passed = resolveHostScreenPreAdmission(token: token, resumeTicket: resumeTicket) {
+            return true
+        }
+        return false
     }
 
     public func offerHostScreenList() throws -> SensoriumMessage {
@@ -1019,15 +1102,20 @@ public final class HostSessionController {
     }
 
     /// Whether a resume ticket this request offered really does resume a
-    /// session this host already granted, validated entirely by
-    /// `hostScreenResumeTicketStore` against the device, display, and
-    /// arming record this request actually names.
+    /// session this host already granted, read-only: this never extends the
+    /// ticket's own five-minute grace window, because a request that merely
+    /// reaches pre-admission has not yet resumed anything -- it may still be
+    /// refused for a reason that has nothing to do with the ticket itself
+    /// (the display it names is offline or mirrored, another session for
+    /// this device is already live). Only `handle`'s own admission, once a
+    /// request actually succeeds through to `.hostScreenReady`, spends any
+    /// of the ticket's own life; see `refreshHostScreenResumeTicket` below.
     /// `displayIdentity`/`armingFingerprint` are `nil` only when admission
     /// has already failed for an unrelated reason (an unarmed device or an
-    /// unminted token), in which case a ticket has nothing to be validated
+    /// unminted token), in which case a ticket has nothing to be checked
     /// against and refuses -- the request refuses on the failed obligation
     /// either way.
-    private func validateHostScreenResumeTicket(
+    private func peekHostScreenResumeTicket(
         _ token: Data,
         devicePublicKey: Data,
         displayIdentity: HostScreenDisplayIdentity?,
@@ -1036,7 +1124,28 @@ public final class HostSessionController {
         guard let hostScreenResumeTicketStore, let displayIdentity, let armingFingerprint else {
             return false
         }
-        return hostScreenResumeTicketStore.validate(
+        return hostScreenResumeTicketStore.peek(
+            token: token,
+            devicePublicKey: devicePublicKey,
+            displayIdentity: displayIdentity,
+            armingFingerprint: armingFingerprint
+        )
+    }
+
+    /// Spends the one thing a genuinely successful resume owes the ticket
+    /// it presented: refreshing its five-minute grace window. Called from
+    /// exactly one place -- immediately before `handle` returns
+    /// `.hostScreenReady` for a request that presented a ticket
+    /// `peekHostScreenResumeTicket` already accepted -- so a request that
+    /// is refused after peeking the ticket as good, for any reason at all,
+    /// never extends it.
+    private func refreshHostScreenResumeTicket(
+        _ token: Data,
+        devicePublicKey: Data,
+        displayIdentity: HostScreenDisplayIdentity,
+        armingFingerprint: HostScreenArmingFingerprint
+    ) {
+        _ = hostScreenResumeTicketStore?.validate(
             token: token,
             devicePublicKey: devicePublicKey,
             displayIdentity: displayIdentity,
@@ -1445,235 +1554,214 @@ public final class HostSessionController {
             // short-circuited, which is a wiring bug, not a message to act on.
             throw HostSessionControllerError.unexpectedMessage
         case let .hostScreenRequest(token, resumeTicket):
-            guard !requireAuthentication || isAuthenticated else {
+            switch resolveHostScreenPreAdmission(token: token, resumeTicket: resumeTicket) {
+            case .unauthenticated:
                 throw HostSessionControllerError.authenticationRequired
-            }
-            // Reset for this request before anything below can set it, so a
-            // coordinator reading it after `handle` returns never sees a
-            // stale value an earlier request on this same connection left
-            // behind.
-            hostScreenLastPresencePromptContent = nil
-            // Once a canvas request has been admitted, a host-screen
-            // request refuses from then on.
-            guard connectionShape != .canvas else {
-                return .hostScreenRefused(reason: "canvas-session-active")
-            }
-            // A person at this machine already answered for this
-            // connection. Refused with the reason they gave, before any
-            // gate is reached, so resending prompts nobody.
-            if let hostScreenAnsweredRefusal {
-                return .hostScreenRefused(reason: hostScreenAnsweredRefusal)
-            }
-            // A second host-screen request would overwrite `hostScreenSurface`
-            // underneath whatever already has it.
-            guard hostScreenSurface == nil else {
-                return .hostScreenRefused(reason: "host-screen-session-active")
-            }
-            guard let clientKey = authenticatedClientKey, let arming = hostScreenArmingProvider?() else {
-                return .hostScreenRefused(reason: "host-screen-not-allowed")
-            }
-            let currentDisplays = hostScreenCurrentDisplaysProvider()
-            // Every obligation below is computed independently, before any
-            // of them is acted on.
-            let admission = HostScreenSelectionGuard.admit(
-                deviceKey: clientKey,
-                token: token,
-                mintedTokens: hostScreenMintedTokens,
-                arming: arming,
-                currentDisplays: currentDisplays
-            )
-            // Resolved once, as its own independent value, so the geometry
-            // reply and a resume ticket's own device/display/arming binding
-            // both read the exact same snapshot rather than two separate
-            // re-derivations of "the display admission just resolved."
-            // `nil` exactly when admission itself failed, in which case
-            // there is no display for a resume ticket to be bound to either.
-            let resolvedDisplay: DisplaySnapshot? = {
-                guard case let .success(displayID) = admission else {
-                    return nil
-                }
-                return currentDisplays.first(where: { $0.id == displayID })
-            }()
-            let armingFingerprint = arming.devices
-                .first { $0.devicePublicKey == clientKey }
-                .map(HostScreenArmingFingerprint.init)
-            // A ticket this request did not offer is neither valid nor
-            // refused: the request is an ordinary fresh one and is admitted
-            // on its own terms.
-            let resumeAccepted: Bool? = resumeTicket.map {
-                validateHostScreenResumeTicket(
-                    $0,
-                    devicePublicKey: clientKey,
-                    displayIdentity: resolvedDisplay.map(HostScreenDisplayIdentity.init),
-                    armingFingerprint: armingFingerprint
+            case let .refused(reason):
+                // Reset for this request before anything below can set it, so a
+                // coordinator reading it after `handle` returns never sees a
+                // stale value an earlier request on this same connection left
+                // behind.
+                hostScreenLastPresencePromptContent = nil
+                return .hostScreenRefused(reason: reason)
+            case let .passed(clientKey, arming, mintedIdentity, armingFingerprint, resumeAccepted):
+                hostScreenLastPresencePromptContent = nil
+                // Captured before `resumeTicket` is shadowed below by the
+                // freshly minted one this response hands back -- this is
+                // the ticket the request itself presented, the one
+                // `refreshHostScreenResumeTicket` must refresh.
+                let presentedResumeTicket = resumeTicket
+                let currentDisplays = hostScreenCurrentDisplaysProvider()
+                // Every obligation below is computed independently, before any
+                // of them is acted on.
+                let admission = HostScreenSelectionGuard.admit(
+                    deviceKey: clientKey,
+                    token: token,
+                    mintedTokens: hostScreenMintedTokens,
+                    arming: arming,
+                    currentDisplays: currentDisplays
                 )
-            }
-            let presenceOutcome: HostScreenPresenceOutcome? = {
-                guard case .success = admission, resumeAccepted != false, let display = resolvedDisplay else {
-                    return nil
-                }
-                // A validated resume ticket is the prior session's grant;
-                // it resumes silently and never re-runs the fresh-presence
-                // rule or its gate.
-                if resumeAccepted == true {
-                    return .proceed
-                }
-                let armedDevice = arming.devices.first { $0.devicePublicKey == clientKey }
-                guard armedDevice?.asksWhenSomeoneIsUsingThisMachine == true else {
-                    log("host screen: \(armedDevice?.deviceName ?? "") is armed without asking first; no presence prompt")
-                    return .proceed
-                }
-                let assessment = HostScreenPresenceRule.assess(
-                    reading: hostScreenPresenceActivitySignal?.currentReading() ?? .unavailable,
-                    presenceThreshold: hostScreenPresenceThreshold
-                )
-                switch assessment {
-                case .mayProceed:
-                    return .proceed
-                case .mustAsk:
-                    let content = HostScreenBadgeContent(
-                        deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
-                        displayLabel: HostScreenArmingPresentation.displayLabel(for: display)
+                // Resolved once, as its own independent value, so the geometry
+                // reply reads the exact same snapshot `admission` itself
+                // resolved. `nil` exactly when admission itself failed.
+                let resolvedDisplay: DisplaySnapshot? = {
+                    guard case let .success(displayID) = admission else {
+                        return nil
+                    }
+                    return currentDisplays.first(where: { $0.id == displayID })
+                }()
+                let presenceOutcome: HostScreenPresenceOutcome? = {
+                    guard case .success = admission, let display = resolvedDisplay else {
+                        return nil
+                    }
+                    // A validated resume ticket is the prior session's grant;
+                    // it resumes silently and never re-runs the fresh-presence
+                    // rule or its gate.
+                    if resumeAccepted == true {
+                        return .proceed
+                    }
+                    let armedDevice = arming.devices.first { $0.devicePublicKey == clientKey }
+                    guard armedDevice?.asksWhenSomeoneIsUsingThisMachine == true else {
+                        log("host screen: \(armedDevice?.deviceName ?? "") is armed without asking first; no presence prompt")
+                        return .proceed
+                    }
+                    let assessment = HostScreenPresenceRule.assess(
+                        reading: hostScreenPresenceActivitySignal?.currentReading() ?? .unavailable,
+                        presenceThreshold: hostScreenPresenceThreshold
                     )
-                    guard let gate = hostScreenPresenceGate else {
-                        return .refused(reason: "host-screen-presence-check-required")
+                    switch assessment {
+                    case .mayProceed:
+                        return .proceed
+                    case .mustAsk:
+                        let content = HostScreenBadgeContent(
+                            deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
+                            displayLabel: HostScreenArmingPresentation.displayLabel(for: display)
+                        )
+                        guard let gate = hostScreenPresenceGate else {
+                            return .refused(reason: "host-screen-presence-check-required")
+                        }
+                        hostScreenLastPresencePromptContent = content
+                        return gate.ask(content: content)
                     }
-                    hostScreenLastPresencePromptContent = content
-                    return gate.ask(content: content)
-                }
-            }()
+                }()
 
-            guard case let .success(displayID) = admission,
-                  resumeAccepted != false,
-                  case .proceed = presenceOutcome,
-                  let display = resolvedDisplay else {
-                // A ticket that is expired, or minted for another device or
-                // display, is refused on its own terms rather than quietly
-                // demoted to a fresh request: a viewer that believed it was
-                // resuming should be told it was not.
-                if case .success = admission, resumeAccepted == false {
-                    return .hostScreenRefused(reason: "host-screen-resume-refused")
-                }
-                // A person's own decline and the window's own timeout carry
-                // their own wire reasons; every other cause a gate can
-                // refuse for -- no gate configured, or one already showing
-                // for another connection -- keeps the one existing reason,
-                // since neither says anything a person at the viewer can
-                // act on differently.
-                if case .success = admission, case let .refused(gateReason) = presenceOutcome {
-                    switch gateReason {
-                    case HostScreenPresenceRule.declinedReason:
-                        // Remembered for this connection: only the two
-                        // reasons below are somebody's own answer. A
-                        // refusal for want of a gate, or for one already
-                        // showing to another connection, is nobody's answer
-                        // and stays retryable.
-                        hostScreenAnsweredRefusal = "host-screen-presence-declined"
-                        return .hostScreenRefused(reason: "host-screen-presence-declined")
-                    case HostScreenPresenceRule.unansweredReason:
-                        hostScreenAnsweredRefusal = "host-screen-presence-unanswered"
-                        return .hostScreenRefused(reason: "host-screen-presence-unanswered")
-                    default:
-                        return .hostScreenRefused(reason: "host-screen-presence-check-required")
+                guard case let .success(displayID) = admission,
+                      case .proceed = presenceOutcome,
+                      let display = resolvedDisplay else {
+                    // A person's own decline and the window's own timeout carry
+                    // their own wire reasons; every other cause a gate can
+                    // refuse for -- no gate configured, or one already showing
+                    // for another connection -- keeps the one existing reason,
+                    // since neither says anything a person at the viewer can
+                    // act on differently.
+                    if case .success = admission, case let .refused(gateReason) = presenceOutcome {
+                        switch gateReason {
+                        case HostScreenPresenceRule.declinedReason:
+                            // Remembered for this connection: only the two
+                            // reasons below are somebody's own answer. A
+                            // refusal for want of a gate, or for one already
+                            // showing to another connection, is nobody's answer
+                            // and stays retryable.
+                            hostScreenAnsweredRefusal = "host-screen-presence-declined"
+                            return .hostScreenRefused(reason: "host-screen-presence-declined")
+                        case HostScreenPresenceRule.unansweredReason:
+                            hostScreenAnsweredRefusal = "host-screen-presence-unanswered"
+                            return .hostScreenRefused(reason: "host-screen-presence-unanswered")
+                        default:
+                            return .hostScreenRefused(reason: "host-screen-presence-check-required")
+                        }
                     }
+                    return .hostScreenRefused(reason: "host-screen-not-allowed")
                 }
-                return .hostScreenRefused(reason: "host-screen-not-allowed")
-            }
 
-            // The ask-first prompt keeps the run loop live for up to thirty
-            // seconds, long enough for the person here to turn this device
-            // off or remove it. Turning it off stops nothing yet, since no
-            // host-screen session is registered as live. Removing it stops
-            // this connection, which is registered from its authenticated
-            // hello. Either way admission is decided again on what is
-            // recorded now, and a connection stopped meanwhile is refused.
-            guard !isStoppedByHost,
-                  isKeyAllowed(clientKey),
-                  let currentArming = hostScreenArmingProvider?(),
-                  currentArming.devices
-                      .first(where: { $0.devicePublicKey == clientKey })
-                      .map(HostScreenArmingFingerprint.init) == armingFingerprint,
-                  case .success(displayID) = HostScreenSelectionGuard.admit(
-                      deviceKey: clientKey,
-                      token: token,
-                      mintedTokens: hostScreenMintedTokens,
-                      arming: currentArming,
-                      currentDisplays: currentDisplays
-                  ) else {
-                return .hostScreenRefused(reason: "host-screen-not-allowed")
-            }
-
-            // One live host-screen session per device. A second concurrent
-            // session for a device already streaming one is refused, with its
-            // own distinct reason -- never `.tooManyAttempts` or an unlock
-            // outcome, which describe wholly different refusals. A device whose
-            // recorded session is no longer live (a connection that dropped
-            // without releasing) is evicted and this one admitted, so an
-            // unattended host always recovers. Captured before the surface is
-            // built and released at `goodbye`, or right here if the injector
-            // below fails to build. A resume that replaces a dead session for
-            // the same device passes here exactly as a fresh request does.
-            if let registry = hostScreenLiveSessionRegistry {
-                guard let claim = registry.admit(
-                    devicePublicKey: clientKey,
-                    isLive: { [weak self] in self?.hasLiveHostScreenSession ?? false },
-                    stop: { [weak self] in self?.stopByHost() }
-                ) else {
-                    return .hostScreenRefused(reason: "host-screen-already-live")
+                // The ask-first prompt keeps the run loop live for up to thirty
+                // seconds, long enough for the person here to turn this device
+                // off or remove it. Turning it off stops nothing yet, since no
+                // host-screen session is registered as live. Removing it stops
+                // this connection, which is registered from its authenticated
+                // hello. Either way admission is decided again on what is
+                // recorded now, and a connection stopped meanwhile is refused.
+                guard !isStoppedByHost,
+                      isKeyAllowed(clientKey),
+                      let currentArming = hostScreenArmingProvider?(),
+                      currentArming.devices
+                          .first(where: { $0.devicePublicKey == clientKey })
+                          .map(HostScreenArmingFingerprint.init) == armingFingerprint,
+                      case .success(displayID) = HostScreenSelectionGuard.admit(
+                          deviceKey: clientKey,
+                          token: token,
+                          mintedTokens: hostScreenMintedTokens,
+                          arming: currentArming,
+                          currentDisplays: currentDisplays
+                      ) else {
+                    return .hostScreenRefused(reason: "host-screen-not-allowed")
                 }
-                hostScreenSessionClaim = claim
-            }
-            let geometry = SessionSurfaceGeometry(
-                logicalWidth: display.modeWidth,
-                logicalHeight: display.modeHeight,
-                backingScale: display.modeWidth > 0
-                    ? Double(display.modePixelWidth) / Double(display.modeWidth) : 1.0
-            )
-            // No session or display to unwind on failure here, unlike
-            // canvasRequest: a host-screen surface resolves and validates a
-            // display it did not create and never releases. The one thing
-            // recorded before this point is the live-session claim above, so an
-            // injector failure gives it back deterministically rather than
-            // leaving the device to self-heal on its next admission.
-            let injector: (any InputInjecting)?
-            do {
-                injector = try inputInjectorFactory?.make(canvasDisplayID: displayID, sessionKind: .hostScreen)
-            } catch {
-                releaseHostScreenSessionClaim()
-                throw error
-            }
-            connectionShape = .hostScreen
-            // `armingFingerprint` is never nil on this path: admission's own
-            // success at :1284 above already required an arming record for
-            // `clientKey` to exist, and `armingFingerprint` is that same
-            // record's fingerprint. `HostScreenSelectionGuard.admit` returns
-            // `.success` only when `arming.devices` contains this device, so
-            // the `.first` this was mapped from cannot have been nil.
-            let admittedFingerprint = armingFingerprint!
-            hostScreenSurface = HostScreenSurfaceState(
-                geometry: geometry,
-                displayID: displayID,
-                devicePublicKey: clientKey,
-                armingFingerprint: admittedFingerprint,
-                deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
-                displayLabel: HostScreenArmingPresentation.displayLabel(for: display),
-                inputInjector: injector
-            )
-            // `armingFingerprint` is never nil here: admission's own success
-            // already required an arming record for this device to exist,
-            // computed the same way. The fallback below only ever protects
-            // against that invariant being wrong, not a real reachable path.
-            let resumeTicket: Data
-            if let hostScreenResumeTicketStore, let armingFingerprint {
-                resumeTicket = hostScreenResumeTicketStore.mint(
-                    devicePublicKey: clientKey,
-                    displayIdentity: HostScreenDisplayIdentity(display),
-                    armingFingerprint: armingFingerprint
+
+                // One live host-screen session per device. A second concurrent
+                // session for a device already streaming one is refused, with its
+                // own distinct reason -- never `.tooManyAttempts` or an unlock
+                // outcome, which describe wholly different refusals. A device whose
+                // recorded session is no longer live (a connection that dropped
+                // without releasing) is evicted and this one admitted, so an
+                // unattended host always recovers. Captured before the surface is
+                // built and released at `goodbye`, or right here if the injector
+                // below fails to build. A resume that replaces a dead session for
+                // the same device passes here exactly as a fresh request does.
+                if let registry = hostScreenLiveSessionRegistry {
+                    guard let claim = registry.admit(
+                        devicePublicKey: clientKey,
+                        isLive: { [weak self] in self?.hasLiveHostScreenSession ?? false },
+                        stop: { [weak self] in self?.stopByHost() }
+                    ) else {
+                        return .hostScreenRefused(reason: "host-screen-already-live")
+                    }
+                    hostScreenSessionClaim = claim
+                }
+                let geometry = SessionSurfaceGeometry(
+                    logicalWidth: display.modeWidth,
+                    logicalHeight: display.modeHeight,
+                    backingScale: display.modeWidth > 0
+                        ? Double(display.modePixelWidth) / Double(display.modeWidth) : 1.0
                 )
-            } else {
-                resumeTicket = Self.secureRandomToken()
+                // No session or display to unwind on failure here, unlike
+                // canvasRequest: a host-screen surface resolves and validates a
+                // display it did not create and never releases. The one thing
+                // recorded before this point is the live-session claim above, so an
+                // injector failure gives it back deterministically rather than
+                // leaving the device to self-heal on its next admission.
+                let injector: (any InputInjecting)?
+                do {
+                    injector = try inputInjectorFactory?.make(canvasDisplayID: displayID, sessionKind: .hostScreen)
+                } catch {
+                    releaseHostScreenSessionClaim()
+                    throw error
+                }
+                connectionShape = .hostScreen
+                // `armingFingerprint` is never nil on this path: admission's own
+                // success above already required an arming record for
+                // `clientKey` to exist, and `armingFingerprint` is that same
+                // record's fingerprint. `HostScreenSelectionGuard.admit` returns
+                // `.success` only when `arming.devices` contains this device, so
+                // the `.first` this was mapped from cannot have been nil.
+                let admittedFingerprint = armingFingerprint!
+                hostScreenSurface = HostScreenSurfaceState(
+                    geometry: geometry,
+                    displayID: displayID,
+                    devicePublicKey: clientKey,
+                    armingFingerprint: admittedFingerprint,
+                    deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
+                    displayLabel: HostScreenArmingPresentation.displayLabel(for: display),
+                    inputInjector: injector
+                )
+                // `armingFingerprint` is never nil here: admission's own success
+                // already required an arming record for this device to exist,
+                // computed the same way. The fallback below only ever protects
+                // against that invariant being wrong, not a real reachable path.
+                let resumeTicket: Data
+                if let hostScreenResumeTicketStore, let armingFingerprint {
+                    resumeTicket = hostScreenResumeTicketStore.mint(
+                        devicePublicKey: clientKey,
+                        displayIdentity: HostScreenDisplayIdentity(display),
+                        armingFingerprint: armingFingerprint
+                    )
+                } else {
+                    resumeTicket = Self.secureRandomToken()
+                }
+                // The one place a resume actually spends any of the
+                // presented ticket's own grace window: everything above
+                // this line could still have refused the request even
+                // after `peekHostScreenResumeTicket` accepted it, and none
+                // of those refusals reaches here.
+                if resumeAccepted == true, let presentedResumeTicket {
+                    refreshHostScreenResumeTicket(
+                        presentedResumeTicket,
+                        devicePublicKey: clientKey,
+                        displayIdentity: mintedIdentity,
+                        armingFingerprint: admittedFingerprint
+                    )
+                }
+                return .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket)
             }
-            return .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket)
         case let .hostScreenModeRequest(modeID):
             guard !requireAuthentication || isAuthenticated else {
                 throw HostSessionControllerError.authenticationRequired

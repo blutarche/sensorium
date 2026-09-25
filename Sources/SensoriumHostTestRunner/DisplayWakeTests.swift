@@ -244,7 +244,7 @@ func makeWakeHostScreenFixture(
     availability: HostCaptureAvailability,
     onStreamUnrecoverable: @escaping @Sendable (String) -> Void,
     hostScreenMediaFactory: @escaping (VideoEncoderConfiguration) -> any CanvasMediaStreaming
-) -> (coordinator: HostSessionCoordinator, token: Data) {
+) -> (coordinator: HostSessionCoordinator, controller: HostSessionController, token: Data) {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
     let arming = HostScreenArming(devices: [
@@ -284,9 +284,9 @@ func makeWakeHostScreenFixture(
     guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's own offer names the display it was armed for")
-        return (coordinator, Data())
+        return (coordinator, controller, Data())
     }
-    return (coordinator, entry.opaqueToken)
+    return (coordinator, controller, entry.opaqueToken)
 }
 
 /// The display macOS reports when no monitor is drawing: what a Mac mini
@@ -349,6 +349,82 @@ func wakeGateController(
         ))
     }
     return (controller, deviceKey)
+}
+
+/// A display this machine no longer has online, sharing `sleepingDisplaySnapshot`'s
+/// own vendor/model pair -- and so the same `HostScreenDisplayIdentity` -- so
+/// a token minted for the online display still names this one once it goes
+/// offline.
+@MainActor
+func offlineDisplaySnapshot(id: UInt32 = 7) -> DisplaySnapshot {
+    DisplaySnapshot(
+        id: id,
+        pixelWidth: 5120,
+        pixelHeight: 2880,
+        modeWidth: 2560,
+        modeHeight: 1440,
+        modePixelWidth: 5120,
+        modePixelHeight: 2880,
+        bounds: CGRect(x: 0, y: 0, width: 2560, height: 1440),
+        online: false,
+        asleep: false,
+        builtin: false,
+        main: false,
+        vendorNumber: 1552,
+        modelNumber: 40
+    )
+}
+
+/// An arming record a test can flip after a connection has already
+/// authenticated, or already been offered, without touching either.
+@MainActor
+private final class WakeGateArmingBox {
+    var arming: HostScreenArming
+    init(_ arming: HostScreenArming) { self.arming = arming }
+}
+
+/// A connection armed or not, with its own arming record a test can flip
+/// after hello, after an offer, or after a request -- unlike
+/// `wakeGateController` and `armedHostScreenController`, whose arming is
+/// fixed for the fixture's whole life.
+@MainActor
+private func makeMutableArmingWakeFixture(
+    display: DisplaySnapshot,
+    wake: DisplayWakeController,
+    armed: Bool,
+    resumeTicketStore: (any HostScreenResumeTicketStoring)? = nil
+) -> (coordinator: HostSessionCoordinator, controller: HostSessionController, armingBox: WakeGateArmingBox, deviceKey: Data) {
+    let identity = try! DeviceIdentity.generate()
+    let deviceKey = identity.publicKey
+    let armingBox = WakeGateArmingBox(HostScreenArming(devices: armed ? [
+        HostScreenDeviceArming(devicePublicKey: deviceKey, deviceName: "Kestrel Laptop Pro", armedAt: Date())
+    ] : []))
+    let controller = HostSessionController(
+        sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+        approvedPublicKeys: [deviceKey],
+        requireAuthentication: true,
+        inputInjectorFactory: FakeInputInjectorFactory(),
+        keyConfinement: .hostScreen,
+        hostScreenArmingProvider: { armingBox.arming },
+        hostScreenCurrentDisplaysProvider: { [display] },
+        hostScreenResumeTicketStore: resumeTicketStore,
+        displayWake: wake,
+        log: { _ in }
+    )
+    let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+        hostCertificateHash: nil
+    )
+    _ = try! controller.handle(.authenticatedHello(
+        protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+    ))
+    let coordinator = HostSessionCoordinator(
+        controller: controller,
+        media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
+        videoSink: FakeVideoSink(),
+        workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
+    )
+    return (coordinator, controller, armingBox, deviceKey)
 }
 
 @MainActor
@@ -1477,4 +1553,266 @@ func runDisplayWakeTests() async {
     }
 
     print("PASS: resending an already-declined token wakes nothing more")
+
+    do {
+        // Security: a resume ticket this host cannot validate is refused on
+        // its own terms, and a resend with the same invalid ticket must not
+        // wake this machine either.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeMutableArmingWakeFixture(
+            display: display, wake: wake, armed: true, resumeTicketStore: HostScreenResumeTicketStore()
+        )
+        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+              let entry = displays.first else {
+            expect(false, "the fixture's own offer names the display it was armed for")
+            return
+        }
+        let garbageTicket = Data(repeating: 0xEE, count: 16)
+        let first = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: entry.opaqueToken, resumeTicket: garbageTicket
+        ))
+        expect(
+            first == .hostScreenRefused(reason: "host-screen-resume-refused"),
+            "an invalid resume ticket is refused on its own terms, got \(String(describing: first))"
+        )
+        expect(power.userActivityDeclarations == 0, "and wakes nothing, got \(power.userActivityDeclarations)")
+        let resend = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: entry.opaqueToken, resumeTicket: garbageTicket
+        ))
+        expect(
+            resend == .hostScreenRefused(reason: "host-screen-resume-refused"),
+            "a resend with the same invalid ticket is refused the same way, got \(String(describing: resend))"
+        )
+        expect(power.userActivityDeclarations == 0, "and wakes nothing more, got \(power.userActivityDeclarations)")
+    }
+
+    print("PASS: a resend with an invalid resume ticket wakes nothing more")
+
+    do {
+        // Security: `HostScreenDeviceRevocation.turnOff` does not stop this
+        // connection, so a device the person here just disarmed can still
+        // send a request on it. Arming is read fresh, not a value captured
+        // at hello or at the offer, so that request is refused, and wakes
+        // nothing.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeMutableArmingWakeFixture(display: display, wake: wake, armed: true)
+        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+              let entry = displays.first else {
+            expect(false, "the fixture's own offer names the display it was armed for")
+            return
+        }
+        fixture.armingBox.arming = HostScreenArming()
+        let response = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: entry.opaqueToken, resumeTicket: nil
+        ))
+        expect(
+            response == .hostScreenRefused(reason: "host-screen-not-allowed"),
+            "a device disarmed after hello, with its connection still open, is refused as any disarmed device is, got \(String(describing: response))"
+        )
+        expect(power.userActivityDeclarations == 0, "and wakes nothing, got \(power.userActivityDeclarations)")
+    }
+
+    print("PASS: a request from a device disarmed after hello wakes nothing")
+
+    do {
+        // Security: the hello-time offer wakes this machine only for a
+        // device armed right now, not one that held an arming record at
+        // some earlier point on this same connection.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: true)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeMutableArmingWakeFixture(display: display, wake: wake, armed: true)
+        fixture.armingBox.arming = HostScreenArming()
+        _ = try? await fixture.controller.offerHostScreenListWakingDisplays()
+        expect(
+            power.userActivityDeclarations == 0,
+            "the hello offer for a device disarmed before it wakes nothing, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: the hello offer for a device disarmed before it wakes nothing")
+
+    do {
+        // Security: a refusal only the presence gate can give without
+        // asking a person -- one already showing for another connection,
+        // here, or want of a gate elsewhere -- is retryable, and stays
+        // retryable on this connection. Without a cap, each resend into it
+        // would wake this machine again, resetting its idle timer with no
+        // badge and no session to show for it.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeDecliningWakeFixture(
+            display: display, wake: wake,
+            outcome: .refused(reason: HostScreenPresenceGate.alreadyAskingReason)
+        )
+        let first = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            first == .hostScreenRefused(reason: "host-screen-presence-check-required"),
+            "a gate already showing for another connection refuses without a sticky answer, got \(String(describing: first))"
+        )
+        expect(power.userActivityDeclarations == 1, "which still wakes this machine once, got \(power.userActivityDeclarations)")
+        let resend = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            resend == .hostScreenRefused(reason: "host-screen-presence-check-required"),
+            "a resend on the same connection is refused the same retryable way, got \(String(describing: resend))"
+        )
+        expect(power.userActivityDeclarations == 1, "but wakes this machine no more than once for it, got \(power.userActivityDeclarations)")
+        let secondResend = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        ))
+        expect(
+            secondResend == .hostScreenRefused(reason: "host-screen-presence-check-required"),
+            "a further resend is refused the same retryable way too, got \(String(describing: secondResend))"
+        )
+        expect(power.userActivityDeclarations == 1, "and still wakes at most once, got \(power.userActivityDeclarations)")
+    }
+
+    print("PASS: repeated retryable refusals on one connection wake at most once")
+
+    do {
+        // A legitimate first request wakes this machine even when the
+        // display its token names has gone offline since the offer -- the
+        // exact case a session-start wake exists to recover -- and a
+        // resumed session with a valid ticket wakes it too.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(id: 7, asleep: false)])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in list.displays = [sleepingDisplaySnapshot(id: 7, asleep: false)] },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1
+        )
+        let identity = try! DeviceIdentity.generate()
+        let deviceKey = identity.publicKey
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(devicePublicKey: deviceKey, deviceName: "Kestrel Laptop Pro", armedAt: Date())
+        ])
+        let resumeStore = HostScreenResumeTicketStore()
+
+        func makeConnection() -> (coordinator: HostSessionCoordinator, controller: HostSessionController) {
+            let controller = HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                approvedPublicKeys: [deviceKey],
+                requireAuthentication: true,
+                inputInjectorFactory: FakeInputInjectorFactory(),
+                keyConfinement: .hostScreen,
+                hostScreenArmingProvider: { arming },
+                hostScreenCurrentDisplaysProvider: { list.read() },
+                hostScreenResumeTicketStore: resumeStore,
+                displayWake: wake,
+                log: { _ in }
+            )
+            let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+                protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
+                hostCertificateHash: nil
+            )
+            _ = try! controller.handle(.authenticatedHello(
+                protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+            ))
+            let coordinator = HostSessionCoordinator(
+                controller: controller,
+                media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
+                videoSink: FakeVideoSink(),
+                workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
+                hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() },
+                captureAvailability: HostCaptureAvailability()
+            )
+            return (coordinator, controller)
+        }
+
+        let first = makeConnection()
+        guard case let .hostScreenList(firstDisplays) = try! first.controller.offerHostScreenList(),
+              let firstEntry = firstDisplays.first else {
+            expect(false, "the fixture's own offer names the display it was armed for")
+            return
+        }
+        // Gone offline since the offer, exactly the case a session-start
+        // wake exists to recover -- the coordinator's own wake gate must
+        // never require a live display resolution to wake this machine.
+        list.displays = [offlineDisplaySnapshot(id: 7)]
+        let firstReply = try! await first.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: firstEntry.opaqueToken, resumeTicket: nil
+        ))
+        guard case let .hostScreenReady(_, mintedTicket) = firstReply else {
+            expect(false, "the fixture's own first request is admitted once the wake brings its display back, got \(String(describing: firstReply))")
+            return
+        }
+        expect(
+            power.userActivityDeclarations == 1,
+            "a legitimate first request wakes this machine, got \(power.userActivityDeclarations)"
+        )
+        _ = try? await first.coordinator.handleWritingResponse(.goodbye(reason: "viewer-left"))
+
+        let second = makeConnection()
+        guard case let .hostScreenList(secondDisplays) = try! second.controller.offerHostScreenList(),
+              let secondEntry = secondDisplays.first else {
+            expect(false, "the second connection's own offer names the display too")
+            return
+        }
+        let resumed = try! await second.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: secondEntry.opaqueToken, resumeTicket: mintedTicket
+        ))
+        guard case .hostScreenReady = resumed else {
+            expect(false, "a resume with a valid ticket is admitted, got \(String(describing: resumed))")
+            return
+        }
+        expect(
+            power.userActivityDeclarations == 2,
+            "and a resumed session with a valid ticket wakes this machine too, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a legitimate first request still wakes, and a resumed session with a valid ticket still wakes")
+
+    do {
+        // The cap is scoped to one request cycle, not to the connection's
+        // whole life: a session that starts, ends with `goodbye`, and is
+        // then started again on the same connection is a session actually
+        // starting, exactly what the cap is supposed to allow past it.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeWakeHostScreenFixture(
+            display: display,
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+        )
+        guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: fixture.token, resumeTicket: nil
+        )) else {
+            expect(false, "the fixture's own first request is admitted")
+            return
+        }
+        expect(power.userActivityDeclarations == 1, "the first session wakes this machine once, got \(power.userActivityDeclarations)")
+        _ = try? await fixture.coordinator.handleWritingResponse(.goodbye(reason: "viewer-left"))
+        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+              let entry = displays.first else {
+            expect(false, "the same connection's own second offer names the display again")
+            return
+        }
+        guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: entry.opaqueToken, resumeTicket: nil
+        )) else {
+            expect(false, "a second session on the same connection, after the first ended, is admitted")
+            return
+        }
+        expect(
+            power.userActivityDeclarations == 2,
+            "and wakes this machine again, since a session actually started in between, got \(power.userActivityDeclarations)"
+        )
+    }
+
+    print("PASS: a session that starts, ends, and starts again on the same connection wakes this machine each time")
 }

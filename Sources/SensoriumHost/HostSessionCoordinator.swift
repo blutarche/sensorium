@@ -524,6 +524,17 @@ public final class HostSessionCoordinator {
             throw error
         }
 
+        if case .hostScreenReady = response {
+            // The cap on `wakeDisplaysForSessionStart` covers one request
+            // cycle, not this connection's whole life: a session that
+            // actually started is the one thing the spec names as ending
+            // it, and `goodbye` clears `hostScreenSurface` and
+            // `connectionShape` on the controller, so a later request on
+            // this same connection can be a genuinely new session -- one
+            // this machine's displays are worth waking for again.
+            hasWokenForHostScreenSessionStart = false
+        }
+
         if case .hostScreenRequest = message, let content = controller.hostScreenLastPresencePromptContent {
             onEvent?(
                 "asking the person at this machine whether \(content.deviceName) may see \(content.displayLabel)"
@@ -927,6 +938,19 @@ public final class HostSessionCoordinator {
         controller.displayWake
     }
 
+    /// Set the first time `wakeDisplaysForSessionStart` actually wakes this
+    /// machine's displays for a `.hostScreenRequest` on this connection, and
+    /// cleared again once a session actually starts -- `handle` resets it
+    /// the moment `response` is `.hostScreenReady`, below. A person's own
+    /// refusal never needs the same reset: `resolveHostScreenPreAdmission`'s
+    /// own sticky state already refuses every later request on this
+    /// connection, so no later request would reach the wake gate to ask
+    /// this flag anything. A session that ends with `goodbye` and starts
+    /// again on the same connection is what this flag exists to let past:
+    /// `goodbye` clears the controller's `hostScreenSurface` and
+    /// `connectionShape`, so that later request is a genuinely new session.
+    private var hasWokenForHostScreenSessionStart = false
+
     /// Wakes this machine's displays before a request that starts a session
     /// is judged, because macOS draws nothing at all to a sleeping display
     /// and a session canvas is no exception.
@@ -934,23 +958,37 @@ public final class HostSessionCoordinator {
     /// A host-screen request wakes this machine's displays whatever they
     /// report, since display sleep can take a monitor offline without any
     /// display reading asleep, and then waits for the one display its token
-    /// names. Only a token this host itself minted gets that far: an
-    /// unauthenticated peer has none, so nothing it sends reaches a power
-    /// call here. The token is checked as minted rather than resolved, so a
-    /// display that went offline since the offer is still woken.
+    /// names. The display itself is never checked here -- only
+    /// `controller.hostScreenRequestPassesPreAdmission`, which stops short
+    /// of resolving one -- so a display that went offline since the offer
+    /// is still woken rather than mistaken for a reason not to.
     ///
-    /// Also gated on `hostScreenRequestWouldReachAdmission`: a resend on a
-    /// connection whose request the controller will refuse outright, because
-    /// a session is already live on it or an answer was already given, must
-    /// not wake this machine's displays either. Otherwise an armed device
-    /// could keep resetting this machine's idle timer by replaying its own
-    /// minted token, with no badge shown and no session recorded for it.
+    /// Gated on `hostScreenRequestPassesPreAdmission`, the same method
+    /// `handle` itself decides the request with, so a resend the controller
+    /// will refuse outright -- an unarmed or disarmed device, a stale or
+    /// unminted token, an invalid resume ticket, a sticky refusal, or a
+    /// session already live on this connection -- never wakes this
+    /// machine's displays either.
+    ///
+    /// Still capped at one wake per connection until a session actually
+    /// starts: `handle` resets it the moment `response` is
+    /// `.hostScreenReady`, and never otherwise. A person's own decline or
+    /// an unanswered prompt sets a sticky refusal on the controller
+    /// instead, which keeps every later request on this connection from
+    /// reaching pre-admission at all, so this flag needs no reset for
+    /// either. What the cap actually guards against is a request the
+    /// presence gate itself refuses without asking anyone -- for want of a
+    /// gate, or one already showing for another connection -- which passes
+    /// pre-admission on every resend; without this cap an armed device
+    /// could keep resetting this machine's idle timer by resending into
+    /// that gate, with no badge shown and no session recorded for it.
     private func wakeDisplaysForSessionStart(_ message: SensoriumMessage) async {
-        guard let displayWake, case let .hostScreenRequest(token, _) = message,
-              controller.hostScreenTokenWasMinted(token),
-              controller.hostScreenRequestWouldReachAdmission else {
+        guard let displayWake, case let .hostScreenRequest(token, resumeTicket) = message,
+              !hasWokenForHostScreenSessionStart,
+              controller.hostScreenRequestPassesPreAdmission(token: token, resumeTicket: resumeTicket) else {
             return
         }
+        hasWokenForHostScreenSessionStart = true
         await displayWake.wakeAndSettleDisplays()
         guard let target = controller.hostScreenTargetDisplayID(for: token) else {
             return

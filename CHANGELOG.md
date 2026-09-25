@@ -115,6 +115,8 @@ once it reaches 1.0.
 - The Screen menu now lists every screen the host offered, with the one
   it is streaming checked, even when a session starts directly on host
   screen instead of a virtual display first.
+- A paired device can no longer wake the host's displays without
+  starting a session.
 
 ## [0.1.3] - 2026-09-19
 

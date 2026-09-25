@@ -58,6 +58,20 @@ public protocol HostScreenResumeTicketStoring: AnyObject, Sendable {
         armingFingerprint: HostScreenArmingFingerprint
     ) -> Bool
 
+    /// The same yes/no `validate` answers, read only: neither window is
+    /// refreshed on success, and an expired record is left in place rather
+    /// than deleted. For a caller that only needs to know whether a ticket
+    /// is presently good -- deciding whether a request is even worth
+    /// waking displays for, or worth admitting past a check that can still
+    /// refuse it for an unrelated reason -- without itself spending any of
+    /// the ticket's own grace window to find out.
+    func peek(
+        token: Data,
+        devicePublicKey: Data,
+        displayIdentity: HostScreenDisplayIdentity,
+        armingFingerprint: HostScreenArmingFingerprint
+    ) -> Bool
+
     /// Every ticket this device currently holds stops resuming anything.
     func invalidateAll(for devicePublicKey: Data)
 }
@@ -146,6 +160,27 @@ public final class HostScreenResumeTicketStore: HostScreenResumeTicketStoring, @
         record.lastResumedAtSeconds = atSeconds
         records[token] = record
         return true
+    }
+
+    public func peek(
+        token: Data,
+        devicePublicKey: Data,
+        displayIdentity: HostScreenDisplayIdentity,
+        armingFingerprint: HostScreenArmingFingerprint
+    ) -> Bool {
+        let atSeconds = now()
+        lock.lock()
+        defer { lock.unlock() }
+        guard let record = records[token] else {
+            return false
+        }
+        guard record.devicePublicKey == devicePublicKey,
+              record.displayIdentity == displayIdentity,
+              record.armingFingerprint == armingFingerprint else {
+            return false
+        }
+        return atSeconds - record.lastResumedAtSeconds <= Self.graceWindowSeconds
+            && atSeconds - record.mintedAtSeconds <= Self.ceilingSeconds
     }
 
     public func invalidateAll(for devicePublicKey: Data) {
