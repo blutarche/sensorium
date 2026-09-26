@@ -187,6 +187,11 @@ final class FakeScalableCanvasMedia: CanvasMediaStreaming {
     var currentStreamScale: Double = StreamScalePolicy.defaultScale
     /// `nil` reconfigures successfully; otherwise the error thrown instead.
     var reconfigurationFailure: (any Error)?
+    /// `nil` starts successfully; otherwise the error thrown instead, which
+    /// is what ScreenCaptureKit refusing to build capture against a display
+    /// that is not actually there to draw -- still asleep, briefly off the
+    /// bus -- looks like to a caller.
+    var startFailure: (any Error)?
     /// Every frame rate and quality this media was asked to apply, in order,
     /// so a test can prove both which fidelity step was taken and that it was
     /// taken exactly once.
@@ -211,13 +216,47 @@ final class FakeScalableCanvasMedia: CanvasMediaStreaming {
     /// Held so a test can put a frame through the caller's own packet path,
     /// which is where the periodic video line is written.
     private var packetHandler: (@Sendable (EncodedVideoFramePacket) -> Bool)?
+    /// What `setCaptureStoppedHandler` was last given, so a test can fire it
+    /// directly to simulate `SCStreamDelegate`'s own stream-stopped signal.
+    private var captureStoppedHandler: (@Sendable () -> Void)?
+    /// 1-based call number `start` should block on, until a test calls
+    /// `releaseHeldStart()` -- `nil` never holds. Lets a test park a rebuild
+    /// mid-flight at a chosen point in a longer sequence of starts, the way
+    /// a real capture's own bring-up would still be suspended inside
+    /// `SCStream.startCapture()` while another request arrives.
+    var holdStartOnCall: Int?
+    private(set) var isHoldingStart = false
+    private var startCallCount = 0
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    /// Run synchronously from inside `stop()`, before it returns -- lets a
+    /// test fire `simulateCaptureStoppedOnItsOwn()` on this same instance
+    /// while a deliberate stop is still underway, standing in for
+    /// `SCStreamDelegate` reporting a stop of its own at the same moment.
+    var stopSideEffect: (() -> Void)?
 
     func start(
         canvasDisplayID: UInt32,
         onPacket: @escaping @Sendable (EncodedVideoFramePacket) -> Bool
     ) async throws {
+        startCallCount += 1
+        if let startFailure {
+            throw startFailure
+        }
         startedDisplayIDs.append(canvasDisplayID)
         packetHandler = onPacket
+        if startCallCount == holdStartOnCall {
+            isHoldingStart = true
+            await withCheckedContinuation { (k: CheckedContinuation<Void, Never>) in
+                startContinuation = k
+            }
+            isHoldingStart = false
+        }
+    }
+
+    /// Lets a `start()` call parked by `holdStartOnCall` return.
+    func releaseHeldStart() {
+        startContinuation?.resume()
+        startContinuation = nil
     }
 
     func emit(_ packet: EncodedVideoFramePacket) {
@@ -227,6 +266,19 @@ final class FakeScalableCanvasMedia: CanvasMediaStreaming {
     func stop() async {
         stopCount += 1
         packetHandler = nil
+        if let stopSideEffect {
+            stopSideEffect()
+            // `stopSideEffect` fires a `@Sendable () -> Void` handler that,
+            // in production, is wired to spawn a new `Task { @MainActor in
+            // ... }` -- not run synchronously. Yielding here, still inside
+            // `stop()`, gives that spawned task a real chance to run before
+            // this returns to its caller, the same way a genuinely
+            // concurrent signal would reach the coordinator while this
+            // capture's own deliberate stop is still in flight.
+            for _ in 0..<10 {
+                await Task.yield()
+            }
+        }
     }
 
     func reconfigure(streamScale: Double) async throws {
@@ -260,6 +312,16 @@ final class FakeScalableCanvasMedia: CanvasMediaStreaming {
 
     func requestKeyFrame() async {
         keyFrameRequestCount += 1
+    }
+
+    func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {
+        captureStoppedHandler = handler
+    }
+
+    /// Stands in for `SCStreamDelegate.stream(_:didStopWithError:)` firing:
+    /// a capture stopping on its own, not a stop the caller asked for.
+    func simulateCaptureStoppedOnItsOwn() {
+        captureStoppedHandler?()
     }
 }
 

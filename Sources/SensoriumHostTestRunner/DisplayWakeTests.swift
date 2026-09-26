@@ -133,7 +133,8 @@ func sleepingCanvasSnapshot(id: UInt32 = 11, asleep: Bool) -> DisplaySnapshot {
 func armedHostScreenController(
     displays: FakeDisplayList,
     displayWake: DisplayWakeController,
-    log: @escaping @MainActor (String) -> Void
+    log: @escaping @MainActor (String) -> Void,
+    modeController: (any HostScreenModeControlling)? = nil
 ) -> HostSessionController {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
@@ -151,6 +152,7 @@ func armedHostScreenController(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { displays.read() },
+        hostScreenModeController: modeController,
         displayWake: displayWake,
         log: log
     )

@@ -126,6 +126,8 @@ once it reaches 1.0.
   starting a session.
 - A session that keeps resuming after network drops no longer skips
   asking first for more than twelve hours after it was first allowed.
+- A host screen whose monitor went to sleep or briefly disappeared
+  mid-session now comes back instead of freezing.
 
 ## [0.1.3] - 2026-09-19
 

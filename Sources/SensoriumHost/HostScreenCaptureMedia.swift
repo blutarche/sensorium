@@ -39,6 +39,11 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
     /// Where this pipeline's own troubles reach the person reading the host
     /// log -- the same reasoning `ScreenCaptureCanvasMedia.log` documents.
     private let log: (@Sendable (String) -> Void)?
+    /// Told when `SCStreamDelegate`'s own stop signal fires -- capture
+    /// stopping on its own, never a stop this object was asked for. `nil`
+    /// until `setCaptureStoppedHandler` is called, which
+    /// `HostSessionCoordinator` does before this pipeline is ever started.
+    private var captureStoppedHandler: (@Sendable () -> Void)?
 
     /// `configuration` is the caller's own, already sized for the real
     /// target display -- see `HostScreenEncoderSizing`. This type never
@@ -64,6 +69,10 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         self.admissionGate = admissionGate
         self.packetizer = H264SampleBufferPacketizer(sequencer: sequencer)
         self.log = log
+    }
+
+    public func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {
+        captureStoppedHandler = handler
     }
 
     public var currentStreamScale: Double { configuration.streamScale }
@@ -197,8 +206,9 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
             focus: focus,
             captureTarget: .hostScreen,
             packetizer: packetizer,
-            streamStoppedHandler: { [log] error in
+            streamStoppedHandler: { [log, captureStoppedHandler] error in
                 log?(ScreenCaptureStopReport.streamStopped(displayID: displayID, error: error))
+                captureStoppedHandler?()
             },
             encodedPacketHandler: packetHandler
         )

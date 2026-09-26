@@ -947,4 +947,73 @@ func runHostScreenModeAccountabilityTests() async {
         )
         print("PASS: a resolution change that will not stream, and the recovery from it, still leave one open record and one unbroken badge")
     }
+
+    do {
+        // A capture reporting stopped on its own during its own deliberate
+        // stop -- an independent signal landing at the same moment a mode
+        // change is already replacing it -- must never start a second,
+        // concurrent rebuild against the capture already replacing it.
+        let display = hostScreenTestDisplay()
+        let modes = makeModeController(displayID: display.id)
+        let logURL = temporaryModeSessionLogURL()
+        defer { try? FileManager.default.removeItem(at: logURL) }
+        let sessionLog = HostScreenSessionLogStore(url: logURL)
+        let badge = RecordingBadgeDisplay()
+        let events = DiagnosticsRecorder()
+        var captures: [FakeScalableCanvasMedia] = []
+        let accountable = HostScreenAccountableMedia(
+            rawFactory: { _, _ in
+                let capture = FakeScalableCanvasMedia()
+                captures.append(capture)
+                return capture
+            },
+            sessionLog: sessionLog,
+            deviceName: { "Kestrel Laptop Pro" },
+            displayLabel: { "Built-in Display" },
+            onBadgeStop: {},
+            badgeFactory: { _ in badge }
+        )
+        let fixture = makeHostScreenFixture(
+            display: display,
+            onEvent: { events.record($0) },
+            modeController: modes,
+            hostScreenMediaFactory: { accountable.makeMedia($0) }
+        )
+        let token = offerAndExtractToken(fixture.controller)
+        _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
+            token: token,
+            resumeTicket: nil
+        ))
+        expect(captures.count == 1, "the session's own start builds the first capture")
+
+        // Wired so the capture about to be replaced reports itself stopped
+        // on its own from inside its own deliberate stop -- standing in
+        // for `SCStreamDelegate` reporting a stop at the same moment.
+        let firstCapture = captures[0]
+        firstCapture.stopSideEffect = { firstCapture.simulateCaptureStoppedOnItsOwn() }
+
+        var writtenMessages: [SensoriumMessage] = []
+        _ = try! await fixture.coordinator.handle(.hostScreenModeRequest(modeID: fixtureReadableMode.modeID)) { message in
+            writtenMessages.append(message)
+        }
+        // Whatever task the stopped signal's own handler spawned, a real
+        // chance to run beyond what `stop()`'s own yields already gave it.
+        try? await Task.sleep(for: .milliseconds(50))
+
+        expect(
+            writtenMessages.contains { if case .hostScreenModeApplied = $0 { return true } else { return false } },
+            "the mode change itself still succeeds, got \(writtenMessages)"
+        )
+        expect(
+            captures.count == 2,
+            "only the mode change's own replacement capture is built -- a second, concurrent rebuild would build "
+                + "a third, got \(captures.count)"
+        )
+        expect(
+            !events.messages.contains { $0.contains("attempting to recover") },
+            "a stop signal for the capture just replaced, arriving during its own deliberate stop, never starts "
+                + "recovery against the one replacing it, got \(events.messages)"
+        )
+        print("PASS: a capture reporting stopped on its own during its own deliberate stop never starts a concurrent recovery against the capture replacing it")
+    }
 }

@@ -61,6 +61,16 @@ public protocol CanvasMediaStreaming: AnyObject {
     /// All zero from a media with no recorder behind it. That means nothing
     /// was measured, not that nothing was dropped.
     var frameCounts: HostFrameCounts { get async }
+    /// Told when this capture stops on its own -- `SCStreamDelegate`'s own
+    /// stream-stopped signal, never a stop this caller asked for through
+    /// `stop()`. `nil` clears whatever handler was set. Default no-op below,
+    /// so a conformer with no such signal to report keeps conforming
+    /// unchanged.
+    func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?)
+}
+
+public extension CanvasMediaStreaming {
+    func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {}
 }
 
 public enum CanvasMediaReconfigurationError: Error, Equatable {
@@ -399,6 +409,71 @@ public final class HostSessionCoordinator {
     /// second teardown happens to be idempotent about.
     public private(set) var hasEnded = false
     private var hasSignalledSessionEnd = false
+    /// Bumped every time host-screen capture is (re)built or deliberately
+    /// stopped. Captured by value the moment a capture's stopped-on-its-own
+    /// handler is wired, so a stop signal reaching this coordinator for a
+    /// capture it has already moved on from -- one it deliberately stopped,
+    /// or one an earlier recovery has already replaced -- is ignored rather
+    /// than starting a second recovery for a capture nobody is streaming
+    /// any more.
+    private var hostScreenCaptureGeneration = 0
+    /// The in-flight recovery for a host-screen capture that stopped on its
+    /// own, or `nil` when none is running. At most one at a time: a second
+    /// stop signal while one is already running names the same dead
+    /// capture, not a second failure. Cancelled on teardown; otherwise
+    /// cleared only once `isHostScreenCaptureRebuildInFlight` itself is,
+    /// at the very end of the `Task` this starts.
+    private var hostScreenRecoveryTask: Task<Void, Never>?
+    /// True from the moment a host-screen capture recovery starts until
+    /// every mode request it parked has been drained -- see
+    /// `drainPendingHostScreenModeRequests`. A second `.hostScreenModeRequest`
+    /// reaching `handle` anywhere in that window parks instead of racing
+    /// whichever rebuild already owns the surface: recovery's own restart,
+    /// or a parked request's own replay once recovery hands the surface
+    /// back. Without this, `hostScreenRecoveryTask` alone is not enough --
+    /// it goes `nil` the instant recovery's own restart finishes, before
+    /// the drain that follows even begins, and a request arriving in that
+    /// gap would reach `restartHostScreenStreaming` at the same moment the
+    /// drain's own replay is still inside it.
+    private var isHostScreenCaptureRebuildInFlight = false
+    /// A `.hostScreenModeRequest` that arrived while a rebuild owned the
+    /// host-screen surface, parked here instead of blocking `handle` on
+    /// that rebuild's own outcome -- blocking there would starve this
+    /// connection's whole read loop (`HostNetworkSession.run()` awaits
+    /// `handle` serially) of goodbye, input, clipboard and keepalive
+    /// frames for up to the recovery bound. Drained through
+    /// `processMessage`, with the exact `writeResponse` a live request
+    /// would have used, once the rebuild in front of it finishes. Latest
+    /// wins: a later park overwrites an earlier one outright, since a mode
+    /// request the viewer sent again supersedes whichever came before it.
+    private var pendingHostScreenModeRequest: (
+        message: SensoriumMessage,
+        writeResponse: @MainActor @Sendable (SensoriumMessage) async throws -> Void
+    )?
+    /// How long a host-screen capture that stopped on its own is retried
+    /// before this session gives up on its own target display.
+    private let hostScreenCaptureRecoveryBoundSeconds: Double
+    /// The pace of one retry attempt within that bound.
+    private let hostScreenCaptureRecoveryPollSeconds: Double
+    /// How one retry's own pause is waited out, injected so a test proves
+    /// the bound without spending it.
+    private let hostScreenCaptureRecoveryWait: (Double) async -> Void
+    /// How often a live host-screen session re-declares user activity, so
+    /// the monitor it streams does not idle to sleep out from under the
+    /// prevent-sleep hold this session already took -- see
+    /// `DisplayWakeController.redeclareUserActivityForLiveSession`.
+    private let hostScreenKeepAwakeRedeclareIntervalSeconds: Double
+    /// The tick clock reading a live host-screen session last re-declared
+    /// activity at. `nil` before the first tick of a live host-screen
+    /// session.
+    private var hostScreenLastKeepAwakeRedeclareAtSeconds: Double?
+    /// Reads elapsed wall-clock time for `hostScreenCaptureRecoveryBoundSeconds`,
+    /// injected so a test can prove the bound without spending it. Production
+    /// reads the real clock; `wakeAndSettleDisplays` and
+    /// `waitForDisplaysToWake` can each spend several real seconds inside one
+    /// retry, and the bound must count that time rather than treat every
+    /// retry as instant.
+    private let hostScreenNowSecondsProvider: () -> Double
 
     public init(
         controller: HostSessionController,
@@ -417,8 +492,22 @@ public final class HostSessionCoordinator {
         lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
         lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker(),
         hostScreenRelockPoster: any HostScreenRelocking = CoreGraphicsHostScreenRelockPoster(),
-        hostScreenRelockActivitySignal: (any HostLocalActivitySignal)? = nil
+        hostScreenRelockActivitySignal: (any HostLocalActivitySignal)? = nil,
+        hostScreenCaptureRecoveryBoundSeconds: Double = 30,
+        hostScreenCaptureRecoveryPollSeconds: Double = 1,
+        hostScreenCaptureRecoveryWait: @escaping (Double) async -> Void = { seconds in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        },
+        hostScreenKeepAwakeRedeclareIntervalSeconds: Double = 5,
+        hostScreenNowSecondsProvider: @escaping () -> Double = {
+            Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
+        }
     ) {
+        self.hostScreenCaptureRecoveryBoundSeconds = hostScreenCaptureRecoveryBoundSeconds
+        self.hostScreenCaptureRecoveryPollSeconds = hostScreenCaptureRecoveryPollSeconds
+        self.hostScreenCaptureRecoveryWait = hostScreenCaptureRecoveryWait
+        self.hostScreenKeepAwakeRedeclareIntervalSeconds = hostScreenKeepAwakeRedeclareIntervalSeconds
+        self.hostScreenNowSecondsProvider = hostScreenNowSecondsProvider
         self.lockStateReader = lockStateReader
         self.lockScreenUnlocker = lockScreenUnlocker
         self.hostScreenRelockPoster = hostScreenRelockPoster
@@ -451,7 +540,7 @@ public final class HostSessionCoordinator {
     /// the isolation.
     public func handle(
         _ message: SensoriumMessage,
-        writeResponse: @MainActor @Sendable (SensoriumMessage) async throws -> Void
+        writeResponse: @escaping @MainActor @Sendable (SensoriumMessage) async throws -> Void
     ) async throws -> SensoriumMessage? {
         if case .goodbye = message {
             hasEnded = true
@@ -499,6 +588,40 @@ public final class HostSessionCoordinator {
             }
             return nil
         }
+        if case .hostScreenModeRequest = message, isHostScreenCaptureRebuildInFlight {
+            // A mode change reaching this connection while a rebuild
+            // already owns capture on this same display would otherwise
+            // race it: the controller would apply the new mode against a
+            // display the rebuild in front of it has not yet confirmed is
+            // even back, and that rebuild -- unaware anything else touched
+            // the capture -- would either collide with it or redo it a
+            // moment later. There is no wire reason for "try again once
+            // this settles", so the request itself is parked, rather than
+            // answered here: blocking this call on that outcome would
+            // block this connection's whole read loop behind it
+            // (`HostNetworkSession.run()` awaits `handle` serially), so
+            // every other frame on the wire -- goodbye, input, clipboard,
+            // keepalive -- would go unread for up to the recovery bound.
+            // Parked instead, it is handled exactly as it would have been
+            // had it arrived a moment later, once nothing is racing --
+            // see `drainPendingHostScreenModeRequests`.
+            pendingHostScreenModeRequest = (message, writeResponse)
+            return nil
+        }
+        return try await processMessage(message, writeResponse: writeResponse)
+    }
+
+    /// `handle`'s own body once nothing is rebuilding the host-screen
+    /// capture: dispatches to the controller and, for a mode change,
+    /// rebuilds the capture at the new geometry before replying. Also
+    /// `drainPendingHostScreenModeRequests`'s own path for a parked
+    /// request, once the rebuild in front of it is done -- called
+    /// directly, never back through `handle`, whose own park check would
+    /// otherwise park it a second time.
+    private func processMessage(
+        _ message: SensoriumMessage,
+        writeResponse: @escaping @MainActor @Sendable (SensoriumMessage) async throws -> Void
+    ) async throws -> SensoriumMessage? {
         // Opened before this request wakes anything, and not closed until
         // this whole request's outcome is known -- a session that goes on
         // to hold the displays, or none -- so the gap between the wake
@@ -731,7 +854,10 @@ public final class HostSessionCoordinator {
             // anything -- the same ordering bring-up follows, for the same
             // reason.
             do {
-                try await restartHostScreenStreaming(geometry: geometry)
+                try await restartHostScreenStreaming(
+                    geometry: geometry,
+                    note: "mode changed to \(geometry.logicalWidth)x\(geometry.logicalHeight)"
+                )
             } catch {
                 if hasEnded {
                     // The session ended while the rebuild was in flight. Its
@@ -750,7 +876,10 @@ public final class HostSessionCoordinator {
                 // exactly what the viewer cannot tell from a frozen one.
                 if let restoredGeometry = controller.restoreHostScreenMode() {
                     do {
-                        try await restartHostScreenStreaming(geometry: restoredGeometry)
+                        try await restartHostScreenStreaming(
+                            geometry: restoredGeometry,
+                            note: "mode changed to \(restoredGeometry.logicalWidth)x\(restoredGeometry.logicalHeight)"
+                        )
                     } catch {
                         onEvent?(HostScreenBringUpStage.captureStart.failureEvent(error: error))
                         hasEnded = true
@@ -903,7 +1032,7 @@ public final class HostSessionCoordinator {
     /// starts. Everything about how one starts stays in
     /// `startHostScreenStreaming`, which this only sequences a stop in front
     /// of.
-    private func restartHostScreenStreaming(geometry: SessionSurfaceGeometry) async throws {
+    private func restartHostScreenStreaming(geometry: SessionSurfaceGeometry, note: String) async throws {
         // Never for a session that has ended. A capture built here after the
         // transport died has no viewer to send to, no badge naming the
         // connected machine, and no open session record -- exactly the
@@ -927,10 +1056,18 @@ public final class HostSessionCoordinator {
             return
         }
         let sizing = hostScreenEncoderSizing(for: geometry)
-        await replaceable.replaceCapture(
-            with: sizing.configuration,
-            note: "mode changed to \(geometry.logicalWidth)x\(geometry.logicalHeight)"
-        )
+        // Bumped before the capture being replaced is even asked to stop,
+        // the same ordering `stopHostScreenStreaming` already follows for
+        // its own path (generation bumped, then `hostScreenMedia?.stop()`
+        // awaited): a stop signal that capture reports from here on --
+        // whether the deliberate stop below causes it or a genuinely
+        // independent one lands at the same moment -- names a capture this
+        // coordinator has already moved on from, not the one about to
+        // replace it. `beginHostScreenCapture` bumps again once the new
+        // capture is actually wired; two bumps in one rebuild cost nothing,
+        // since every reader only ever compares this counter for equality.
+        hostScreenCaptureGeneration += 1
+        await replaceable.replaceCapture(with: sizing.configuration, note: note)
         guard !hasEnded else {
             // The session ended inside the rebuild above, which leaves a
             // capture built and not started. Stopping it is what releases
@@ -1067,6 +1204,10 @@ public final class HostSessionCoordinator {
             streamScaleSettleTask[surface]?.cancel()
             streamScaleSettleTask[surface] = nil
         }
+        hostScreenRecoveryTask?.cancel()
+        hostScreenRecoveryTask = nil
+        pendingHostScreenModeRequest = nil
+        isHostScreenCaptureRebuildInFlight = false
         let stoppedCanvas = await stopStreaming()
         // No display to release here, unlike a canvas -- host screen never
         // owns the display it captures, so there is nothing beyond the
@@ -1366,6 +1507,32 @@ public final class HostSessionCoordinator {
         guard isStreaming[surface] else {
             return
         }
+        // While a rebuild owns the host-screen surface -- recovery's own
+        // restart, or a parked request's own replay -- there is no live
+        // media to reconfigure, only a capture that rebuild is still
+        // building or about to replace, and reconfiguring it ends the
+        // session with "stream-reconfiguration-failed", bypassing that
+        // rebuild entirely. Left alone here, nothing is lost for recovery's
+        // own restart: it rebuilds from the viewer's latest stream-scale
+        // preference (see `restartRecoveredHostScreenCapture`), and this
+        // settle timer's own request already lives on in
+        // `lastRequestedScale`.
+        guard !(isHostScreenSurface(surface) && isHostScreenCaptureRebuildInFlight) else {
+            return
+        }
+        await reconfigureStreamScale(scale, on: surface)
+    }
+
+    /// The unguarded core of applying a stream scale to whatever this
+    /// surface is actually streaming through right now, and recording the
+    /// outcome. `applyStreamScale` is the gated entry point every settle
+    /// timer calls through; a host-screen recovery reaches this directly,
+    /// once its own restart has put a live capture back, because
+    /// `isHostScreenCaptureRebuildInFlight` is still held at that point --
+    /// recovery's own restart is only the first of what the drain that
+    /// follows it may still process -- and would otherwise gate this out
+    /// too.
+    private func reconfigureStreamScale(_ scale: Double, on surface: CanvasSurfaceID) async {
         // From here on `streamScale[surface].appliedScale` is a real,
         // deliberately-applied value worth comparing a future request
         // against -- not just whatever a fresh pipeline happened to start
@@ -1441,6 +1608,19 @@ public final class HostSessionCoordinator {
                 previousFidelityReading[surface] = nil
                 previousCaptureDeliveryReading[surface] = nil
                 continue
+            }
+            if isHostScreenSurface(surface) {
+                redeclareHostScreenKeepAwakeIfDue(atSeconds: now)
+                guard !isHostScreenCaptureRebuildInFlight else {
+                    // A rebuild already owns this surface's capture --
+                    // recovery's own restart, or a parked request's own
+                    // replay -- torn down and rebuilt, and its counters
+                    // describe neither the capture that just died nor the
+                    // one that may replace it. Judging either against the
+                    // other here would only rebuild or give up on a stream
+                    // that is not this tick's to judge.
+                    continue
+                }
             }
             let reading = FidelityReading(
                 counts: await streamingMedia(on: surface).frameCounts,
@@ -1614,6 +1794,253 @@ public final class HostSessionCoordinator {
         await tearDownSurfaces()
         _ = try? controller.handle(.goodbye(reason: GoodbyeReason.captureUnavailable))
         onStreamUnrecoverable?(GoodbyeReason.captureUnavailable)
+    }
+
+    /// `CanvasMediaStreaming.setCaptureStoppedHandler`'s own signal: capture
+    /// stopped on its own, distinct from the tick-driven silence machinery
+    /// above, which reads what a stream delivers rather than whether the
+    /// stream itself is still there. `generation` guards a signal from a
+    /// capture this coordinator has already moved on from -- see
+    /// `hostScreenCaptureGeneration`.
+    private func hostScreenCaptureStoppedOnItsOwn(generation: Int) {
+        guard !hasEnded, isHostScreenStreaming, generation == hostScreenCaptureGeneration,
+              !isHostScreenCaptureRebuildInFlight else {
+            return
+        }
+        // Held for this Task's whole lifetime, recovery's own restart and
+        // the drain that follows it alike -- see
+        // `isHostScreenCaptureRebuildInFlight`'s own documentation for why
+        // clearing it the moment recovery's own restart finishes, before
+        // the drain begins, would reopen exactly the race this guards
+        // against.
+        isHostScreenCaptureRebuildInFlight = true
+        hostScreenRecoveryTask = Task { @MainActor [weak self] in
+            await self?.recoverHostScreenCapture(generation: generation)
+            await self?.drainPendingHostScreenModeRequests()
+            self?.hostScreenRecoveryTask = nil
+        }
+    }
+
+    /// Runs every mode request parked while a rebuild owned the host-screen
+    /// surface, latest first as a new one arrives while an earlier one is
+    /// still being drained, until none is left. Called only from inside the
+    /// `Task` `hostScreenCaptureStoppedOnItsOwn` starts, with
+    /// `isHostScreenCaptureRebuildInFlight` already held from the moment
+    /// that recovery began -- so this drains through `processMessage`
+    /// directly, not back through `handle`, whose own park check would
+    /// otherwise park what this is already in the middle of draining. Ends
+    /// the moment `hasEnded` is true, whether that happened before this
+    /// began or partway through: there is no live connection left to
+    /// answer, and a capture built now would have nowhere to send to.
+    /// Clears `isHostScreenCaptureRebuildInFlight` only once the queue is
+    /// genuinely empty, which is the one moment a fresh request may reach
+    /// `processMessage` again without parking.
+    private func drainPendingHostScreenModeRequests() async {
+        while let pending = pendingHostScreenModeRequest {
+            pendingHostScreenModeRequest = nil
+            guard !hasEnded else {
+                break
+            }
+            _ = try? await processMessage(pending.message, writeResponse: pending.writeResponse)
+        }
+        isHostScreenCaptureRebuildInFlight = false
+        // A settle dropped while a drained request rebuilt the capture is
+        // reapplied here, clamped to the current mode's ceiling like the
+        // recovery restart's own reapply.
+        let surface = Self.hostScreenTelemetrySurface
+        let target = Swift.min(
+            lastRequestedScale[surface] ?? streamScale[surface].appliedScale,
+            controller.hostScreenMaximumStreamScale ?? .infinity
+        )
+        if StreamScalePolicy.isWorthReconfiguring(from: streamScale[surface].appliedScale, to: target) {
+            await applyStreamScale(target, on: surface)
+        }
+    }
+
+    /// Brings a host-screen capture that stopped on its own back up on the
+    /// same display, waking it first: macOS draws nothing while a display
+    /// sleeps or is briefly off the bus, and a hardware mirror set's
+    /// "primary" role can flip onto another member without any of this
+    /// machine's own displays actually going anywhere. The session survives
+    /// throughout -- the badge naming the connected device stays up and the
+    /// session record stays open, exactly as a display-mode rebuild leaves
+    /// them -- and only the capture is rebuilt, and only once this
+    /// session's own target display is confirmed online, awake, and not now
+    /// a mirror member.
+    ///
+    /// Bounded by `hostScreenCaptureRecoveryBoundSeconds` of elapsed
+    /// wall-clock time, not a fixed count of retries: `wakeAndSettleDisplays`
+    /// and `waitForDisplaysToWake` can each spend real seconds waiting
+    /// inside one retry, so counting retries as if each were instant let a
+    /// display gone for good be retried for minutes past the bound this
+    /// names. A display gone for good ends the session the way an
+    /// unavailable host screen already does, rather than retrying past that
+    /// bound against a viewer that has long since frozen. A display that has
+    /// become a mirror member is never captured in its place, and ends the
+    /// session at once rather than waiting out the bound for an answer that
+    /// will not change.
+    ///
+    /// `generation` is this recovery's own capture generation, re-checked
+    /// after every suspension: a mode change deferred while this was
+    /// running is handled once this returns, but nothing else this
+    /// coordinator does is deferred, and a capture this recovery no longer
+    /// answers for -- one a mode change rebuilt, or one a later stop
+    /// deliberately tore down -- must never be rebuilt a second time or
+    /// reported recovered out from under whatever replaced it.
+    private func recoverHostScreenCapture(generation: Int) async {
+        func isCurrent() -> Bool {
+            !hasEnded && generation == hostScreenCaptureGeneration
+        }
+        let surfaceName = surfaceLogName(Self.hostScreenTelemetrySurface)
+        onEvent?("\(surfaceName) capture stopped on its own; attempting to recover")
+        let deadline = hostScreenNowSecondsProvider() + hostScreenCaptureRecoveryBoundSeconds
+        while true {
+            guard isCurrent() else {
+                return
+            }
+            await displayWake?.wakeAndSettleDisplays()
+            guard isCurrent() else {
+                return
+            }
+            let gap = controller.hostScreenTargetAvailability()
+            switch gap {
+            case nil:
+                await restartRecoveredHostScreenCapture()
+                return
+            case .mirrored:
+                await endHostScreenSessionForRecoveryFailure(gapReason: gap)
+                return
+            case .asleep:
+                if let id = controller.hostScreenDisplayID {
+                    guard isCurrent() else {
+                        return
+                    }
+                    await displayWake?.waitForDisplaysToWake(targets: [id])
+                    guard isCurrent() else {
+                        return
+                    }
+                }
+            case .notOnline, .headlessStandIn, .createdBySensorium:
+                break
+            }
+            guard hostScreenNowSecondsProvider() < deadline else {
+                await endHostScreenSessionForRecoveryFailure(gapReason: gap)
+                return
+            }
+            await hostScreenCaptureRecoveryWait(hostScreenCaptureRecoveryPollSeconds)
+            guard isCurrent() else {
+                return
+            }
+        }
+    }
+
+    /// The one successful outcome `recoverHostScreenCapture` retries
+    /// toward: the target display read back online, awake, and not a
+    /// mirror member. Rebuilds through the same seam a display-mode change
+    /// already rebuilds through, at the geometry the display is on right
+    /// now, and sends the viewer a key frame the moment it is back so the
+    /// picture recovers at once rather than waiting for the next change.
+    private func restartRecoveredHostScreenCapture() async {
+        guard !hasEnded, let geometry = controller.hostScreenGeometry else {
+            return
+        }
+        let surface = Self.hostScreenTelemetrySurface
+        do {
+            try await restartHostScreenStreaming(
+                geometry: geometry,
+                note: "capture recovered after stopping on its own"
+            )
+        } catch {
+            guard !hasEnded else {
+                return
+            }
+            onEvent?(surfaceLogName(surface) + " could not recover its capture. \(HostOperatorLog.describe(error))")
+            hasEnded = true
+            await tearDownSurfaces()
+            _ = try? controller.handle(.goodbye(reason: GoodbyeReason.captureUnavailable))
+            onStreamUnrecoverable?(GoodbyeReason.captureUnavailable)
+            return
+        }
+        guard !hasEnded else {
+            return
+        }
+        // The rebuild above always opens at this display's native or
+        // hardware-clamped opening scale -- `HostScreenEncoderSizing` has
+        // no awareness of anything the viewer asked for -- so the viewer's
+        // latest stream-scale preference is reapplied here, directly:
+        // `applyStreamScale`'s own gate would drop this, since this call
+        // runs before recovery has released the surface
+        // (`isHostScreenCaptureRebuildInFlight` is not cleared until the
+        // whole drain the recovery function this is called from feeds into
+        // is empty). `lastRequestedScale` survives a rebuild
+        // untouched, whichever restart path just ran -- unlike
+        // `streamScale[surface].appliedScale`, which a stop-and-start
+        // rebuild resets to the opening scale and an in-place rebuild
+        // leaves stale at whatever was applied before the capture died.
+        let target = Swift.min(
+            lastRequestedScale[surface] ?? streamScale[surface].appliedScale,
+            controller.hostScreenMaximumStreamScale ?? .infinity
+        )
+        let openingScale = HostScreenEncoderSizing.resolve(for: geometry).configuration.streamScale
+        if StreamScalePolicy.isWorthReconfiguring(from: openingScale, to: target) {
+            await reconfigureStreamScale(target, on: surface)
+            guard !hasEnded else {
+                return
+            }
+        }
+        resetCaptureDeliveryBookkeeping(for: surface)
+        await streamingMedia(on: surface).requestKeyFrame()
+        onEvent?(surfaceLogName(surface) + " capture recovered")
+    }
+
+    /// The target display never came back within the bound, or came back
+    /// as a mirror member rather than its own picture. Ends the session the
+    /// way an unavailable host screen already ends one: `hostDisplaysAsleep`
+    /// names a remedy a person at the host can act on -- a screen that has
+    /// to come back on -- covering both a display that stayed asleep or
+    /// off the bus and one that is now mirroring another; neither is this
+    /// process losing its own ability to capture, so `captureAvailability`
+    /// is never marked and later sessions on this machine are not refused.
+    private func endHostScreenSessionForRecoveryFailure(gapReason: HostScreenOfferGapReason?) async {
+        guard !hasEnded else {
+            return
+        }
+        hasEnded = true
+        let words = gapReason?.words ?? HostScreenOfferGapReason.notOnline.words
+        onEvent?(surfaceLogName(Self.hostScreenTelemetrySurface) + " did not come back (\(words)); ending the session")
+        await tearDownSurfaces()
+        _ = try? controller.handle(.goodbye(reason: GoodbyeReason.hostDisplaysAsleep))
+        onStreamUnrecoverable?(GoodbyeReason.hostDisplaysAsleep)
+    }
+
+    /// Re-declares user activity for a live host-screen session, at
+    /// `hostScreenKeepAwakeRedeclareIntervalSeconds`, rate-limited against
+    /// the same clock the fidelity tick already runs on rather than a timer
+    /// of its own. Host-screen only: a session canvas already holds every
+    /// display awake through `holdDisplaysAwake()`'s own prevent-sleep
+    /// assertion for the whole life of the session, with no one display it
+    /// alone is answerable for staying lit, so it has no equivalent need.
+    private func redeclareHostScreenKeepAwakeIfDue(atSeconds now: Double) {
+        if let last = hostScreenLastKeepAwakeRedeclareAtSeconds,
+           now - last < hostScreenKeepAwakeRedeclareIntervalSeconds {
+            return
+        }
+        hostScreenLastKeepAwakeRedeclareAtSeconds = now
+        displayWake?.redeclareUserActivityForLiveSession()
+    }
+
+    /// Wipes what the capture-delivery and fidelity tick machinery knows
+    /// about a surface's stream, the same reset a display-mode rebuild
+    /// already gets through `beginHostScreenCapture`'s own warm-up: a
+    /// rebuilt capture answers for nothing the one it replaced delivered or
+    /// failed to.
+    private func resetCaptureDeliveryBookkeeping(for surface: CanvasSurfaceID) {
+        previousCaptureDeliveryReading[surface] = nil
+        captureDeliveryBaseline[surface] = nil
+        previousFidelityReading[surface] = nil
+        silentCaptureReports[surface] = 0
+        didRebuildSilentCapture[surface] = false
+        didWakeSleepingDisplaysForSilentCapture[surface] = false
     }
 
     private func observation(
@@ -1990,10 +2417,14 @@ public final class HostSessionCoordinator {
         let surface = Self.hostScreenTelemetrySurface
         isHostScreenStreaming = false
         isStreaming[surface] = false
+        // A stop signal this capture reports from here on names a capture
+        // this coordinator has already deliberately let go of.
+        hostScreenCaptureGeneration += 1
         await hostScreenMedia?.stop()
         hostScreenMedia = nil
         hostScreenStreamStartedAt = nil
         hostScreenEncodeBase = nil
+        hostScreenLastKeepAwakeRedeclareAtSeconds = nil
         // The same per-surface reset a canvas stream's own stop performs:
         // what it streamed, the readings behind it and the hold-offs it
         // learned were all measurements of a capture that no longer exists.
@@ -2075,6 +2506,17 @@ public final class HostSessionCoordinator {
             let openingScale = sizing.configuration.streamScale
             streamScale[telemetrySurface].markApplied(openingScale)
             fidelity[telemetrySurface].setRequestedScale(openingScale)
+        }
+        // Wired before `start`, so a capture that stops on its own the
+        // instant it comes up is still caught. Bumped first: a stop signal
+        // for the capture this replaces, however this one turns out, is
+        // never this generation's problem.
+        hostScreenCaptureGeneration += 1
+        let generation = hostScreenCaptureGeneration
+        media.setCaptureStoppedHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.hostScreenCaptureStoppedOnItsOwn(generation: generation)
+            }
         }
         try await media.start(canvasDisplayID: displayID) { packet in
             let taken = videoSink.send(

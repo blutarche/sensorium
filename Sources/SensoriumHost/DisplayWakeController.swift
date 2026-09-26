@@ -369,6 +369,25 @@ public final class DisplayWakeController {
         power.preventDisplaySleep(named: Self.assertionName)
     }
 
+    /// Re-declares user activity while a session is live, so the monitor it
+    /// is streaming does not idle to sleep out from under the prevent-sleep
+    /// hold `holdDisplaysAwake()` already took: that hold keeps a display
+    /// that is already awake from sleeping, but it does not wake one that
+    /// already has, which is exactly what a display idling mid-session
+    /// needs. Guarded on a live hold, so this is never called with nothing
+    /// to keep awake and never manufactures a wake of its own -- no
+    /// `beginWake`/`endWake` pairing, since the hold this session already
+    /// took keeps the declaration alive, and `releaseDisplaysAwake`
+    /// releases it exactly as it releases any other wake's declaration once
+    /// the last hold drops.
+    public func redeclareUserActivityForLiveSession() {
+        guard sessionsHoldingDisplaysAwake > 0 else {
+            return
+        }
+        power.declareUserActivity()
+        declarationOutstanding = true
+    }
+
     /// Drops this session's own hold. Called on every path that ends a
     /// session, including the ones that end it on an error and the one that
     /// ends it because the host is quitting. This machine idles its displays

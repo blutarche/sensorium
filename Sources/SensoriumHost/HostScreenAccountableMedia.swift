@@ -79,6 +79,10 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     private let badgeFactory: (HostScreenBadgeState) -> any HostScreenBadgeDisplaying
 
     private var inner: (any CanvasMediaStreaming)?
+    /// Re-applied to `inner` every time `makeMedia` or `replaceCapture`
+    /// builds a fresh one, so a handler set once on this wrapper survives
+    /// every capture it goes on to replace.
+    private var captureStoppedHandler: (@Sendable () -> Void)?
     private var recordID: HostScreenSessionRecord.ID?
     /// True between `replaceCapture` and the `start` that follows it. A
     /// capture being rebuilt mid-session is the one case where a failed
@@ -128,7 +132,13 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         badgeState = state
         badgeDisplay = display
         inner = rawFactory(configuration, sequencer)
+        inner?.setCaptureStoppedHandler(captureStoppedHandler)
         return self
+    }
+
+    public func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {
+        captureStoppedHandler = handler
+        inner?.setCaptureStoppedHandler(handler)
     }
 
     public var currentStreamScale: Double { inner?.currentStreamScale ?? 1.0 }
@@ -164,6 +174,7 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         }
         await inner?.stop()
         inner = rawFactory(configuration, sequencer)
+        inner?.setCaptureStoppedHandler(captureStoppedHandler)
         isReplacingCapture = true
         sessionLog.recordDisplayModeChange(recordID, note: note)
     }

@@ -115,6 +115,7 @@ struct SensoriumHostTestRunner {
             { await runViewerTelemetryReceiptTests() },
             { await runOnlineDisplayLeakDetectionTests() },
             { await runDisplayWakeTests() },
+            { await runHostScreenCaptureRecoveryTests() },
             { await runCaptureUnavailableTests() },
             { await runHostStopIsFinalTests() },
             { await runHostViewerSilenceWatchdogTests() },

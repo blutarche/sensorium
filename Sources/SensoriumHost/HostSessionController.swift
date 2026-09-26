@@ -98,6 +98,11 @@ private enum ConnectionShape: Equatable {
 private struct HostScreenSurfaceState {
     var geometry: SessionSurfaceGeometry
     var displayID: UInt32
+    /// This display's own vendor/model identity at admission, kept so a
+    /// capture that stopped on its own can confirm the display it finds
+    /// again under `displayID` is still this same monitor, not a different
+    /// one that has since come up under the same ID.
+    var displayIdentity: HostScreenDisplayIdentity
     /// The verified device identity this session was admitted for, and the
     /// arming record it was admitted under -- together the key the unlock
     /// budget is charged against, so every connection this device opens spends
@@ -541,6 +546,44 @@ public final class HostSessionController {
     /// `hostScreenDeviceName` names.
     public var hostScreenDisplayLabel: String? {
         hostScreenSurface?.displayLabel
+    }
+
+    /// The geometry this connection's live host-screen surface is on right
+    /// now, or `nil` when none is live. A mode change updates this before
+    /// it tells the coordinator, so a capture rebuilt after it -- a display
+    /// mode change or a recovered capture alike -- always sizes against
+    /// what the display is actually showing, not what it opened at.
+    public var hostScreenGeometry: SessionSurfaceGeometry? {
+        hostScreenSurface?.geometry
+    }
+
+    /// This connection's live host-screen surface's own display identity,
+    /// or `nil` when none is live. See `hostScreenTargetAvailability()`.
+    public var hostScreenDisplayIdentity: HostScreenDisplayIdentity? {
+        hostScreenSurface?.displayIdentity
+    }
+
+    /// Where a host-screen capture that stopped on its own reads its own
+    /// target fresh, exactly as `offerHostScreenListWakingDisplays` already
+    /// reads a display for an offer: found by the exact `CGDirectDisplayID`
+    /// this session was admitted for and confirmed against the identity
+    /// recorded then, never a different display of the same model that has
+    /// since come up under the same ID. `nil` when the target is online,
+    /// awake, and not a mirror member -- ready to capture again. Non-`nil`
+    /// names why not, in the same terms an offer already gives a person
+    /// choosing a screen; a display no longer found under that ID at all,
+    /// or found but no longer the same display, reads as `.notOnline`
+    /// rather than attempting to rebind capture to a different display.
+    public func hostScreenTargetAvailability() -> HostScreenOfferGapReason? {
+        guard let hostScreenSurface else {
+            return .notOnline
+        }
+        let current = hostScreenCurrentDisplaysProvider()
+        guard let display = current.first(where: { $0.id == hostScreenSurface.displayID }),
+              HostScreenDisplayIdentity(display) == hostScreenSurface.displayIdentity else {
+            return .notOnline
+        }
+        return HostScreenOfferEligibility.offerGapReason(for: display, among: current)
     }
 
     /// The largest stream scale this connection's live host-screen surface
@@ -1732,6 +1775,7 @@ public final class HostSessionController {
                 hostScreenSurface = HostScreenSurfaceState(
                     geometry: geometry,
                     displayID: displayID,
+                    displayIdentity: HostScreenDisplayIdentity(display),
                     devicePublicKey: clientKey,
                     armingFingerprint: admittedFingerprint,
                     deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
