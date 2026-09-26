@@ -30,12 +30,15 @@ A session streams exactly one of two targets, and the target is named
 explicitly when the session is set up:
 
 - **Session canvas**: a session-owned virtual display this host
-  created. It is removed at disconnect. The session starts here when the
-  host does not offer a host screen.
+  created. It is removed at disconnect. It exists only when the person at
+  the host has turned on "Offer a private desktop", which is off by
+  default. With it off, the host creates no virtual display at all. A
+  session starts here only when the viewer asks for it by name.
 - **Host screen**: one existing display of this machine, captured as it
   is. It is never created and never removed. Pairing arms it. The person
-  at the host can turn it off afterward. The session starts here when the
-  host offers one. Its display mode (resolution and scaling) may be
+  at the host can turn it off afterward. The session starts here. If the
+  host offers no host screen, the viewer says so and streams nothing. Its
+  display mode (resolution and scaling) may be
   changed only on the viewer's explicit request during a live host-screen
   session, choosing among the modes macOS already offers for that display
   through public CoreGraphics display-mode APIs, and the mode it had
