@@ -16,6 +16,22 @@ public enum HostVirtualDisplayCapability {
         /// whose cases name a step, not a hardware reason a reader would
         /// recognize.
         case unsupported(reason: String)
+        /// This host offers no private desktop, so nothing was checked.
+        case notOffered
+    }
+
+    /// The launch-time check. With the private desktop off it creates nothing
+    /// at all, since no session on this host will ask for a canvas.
+    public static func startupCheck(
+        offersPrivateDesktop: Bool,
+        log: @escaping (String) -> Void = { _ in },
+        shutdown: CanvasShutdown? = nil,
+        makeAdapter: ((@escaping (String) -> Void) -> any VirtualDisplayAdapter)? = nil
+    ) -> Verdict {
+        guard offersPrivateDesktop else {
+            return .notOffered
+        }
+        return probe(log: log, shutdown: shutdown, makeAdapter: makeAdapter)
     }
 
     /// Creates a real virtual display and releases it immediately -- never

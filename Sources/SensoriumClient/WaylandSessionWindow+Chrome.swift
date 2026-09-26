@@ -133,9 +133,10 @@ extension WaylandSessionWindow: SessionWindowChrome {
         refreshSessionControls()
     }
 
-    public func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?) {
+    public func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool) {
         chrome.state.controls.hostScreens = displays
         chrome.state.controls.selectedScreenToken = selectedToken
+        chrome.state.controls.canvasAvailable = canvasAvailable
         refreshSessionControls()
     }
 

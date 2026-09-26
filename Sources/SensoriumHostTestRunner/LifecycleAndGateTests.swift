@@ -39,7 +39,9 @@ func runLifecycleAndGateTests() async {
             let busySession = VirtualDisplaySession(adapter: busyAdapter, creationGate: busyGate)
             // One set of display sessions shared by both connections, exactly
             // as `sensoriumd`'s single `HostConnectionSessionFactory` shares it.
-            let busyFactory = HostConnectionSessionFactory(sessions: surfaceZeroOnly(busySession), keyConfinement: .unconfined)
+            let busyFactory = HostConnectionSessionFactory(
+                sessions: surfaceZeroOnly(busySession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            )
             let placingWorkspace = InterleavingCanvasWorkspace(gate: busyGate)
             let placingCoordinator = HostSessionCoordinator(
                 controller: busyFactory.makeController(),
@@ -145,7 +147,9 @@ func runLifecycleAndGateTests() async {
             let transportGate = CanvasCreationGate()
             let transportAdapter = FakeVirtualDisplayAdapter()
             let transportCanvasSession = VirtualDisplaySession(adapter: transportAdapter, creationGate: transportGate)
-            let transportFactory = HostConnectionSessionFactory(sessions: surfaceZeroOnly(transportCanvasSession), keyConfinement: .unconfined)
+            let transportFactory = HostConnectionSessionFactory(
+                sessions: surfaceZeroOnly(transportCanvasSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            )
             let transportPlacingWorkspace = InterleavingCanvasWorkspace(gate: transportGate)
             let transportPlacingCoordinator = HostSessionCoordinator(
                 controller: transportFactory.makeController(),
@@ -249,7 +253,8 @@ func runLifecycleAndGateTests() async {
             unavailableAdapter.acquireError = CoreGraphicsVirtualDisplayError.creationFailed
             let unavailableController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: unavailableAdapter)),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let unavailableEvents = DiagnosticsRecorder()
             let unavailableChannel = FakeHostByteChannel(scriptedMessages: [

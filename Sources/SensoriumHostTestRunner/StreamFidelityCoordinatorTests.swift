@@ -50,7 +50,8 @@ func runStreamFidelityCoordinatorTests() async {
         HostSessionCoordinator(
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             ),
             media: media,
             videoSink: videoSink,

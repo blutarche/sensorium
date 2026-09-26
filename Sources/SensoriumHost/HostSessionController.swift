@@ -414,6 +414,10 @@ public final class HostSessionController {
     /// on every canvas request, because the answer is a fact about the
     /// process rather than about this connection.
     private let captureAvailability: HostCaptureAvailability
+    /// Whether this host offers a private desktop right now. Read on every
+    /// request that would create a canvas, so turning the setting off applies
+    /// to the next request and leaves a live canvas alone.
+    private let privateDesktopOffered: () -> Bool
     /// Wrong-code guesses this connection has made. Distinct from
     /// `PairingAuthority`'s own per-code budget: that one belongs to the
     /// issued code and survives a redial, this one belongs to the socket and
@@ -471,9 +475,11 @@ public final class HostSessionController {
         hostScreenModeRestorePolicy: HostScreenModeRestorePolicy = .standard,
         displayWake: DisplayWakeController? = nil,
         captureAvailability: HostCaptureAvailability = .shared,
+        privateDesktopOffered: @escaping () -> Bool = { false },
         log: @escaping @MainActor (String) -> Void = { print($0) }
     ) {
         self.captureAvailability = captureAvailability
+        self.privateDesktopOffered = privateDesktopOffered
         self.encodeAdmission = encodeAdmission
         self.sessions = sessions
         self.approvedPublicKeys = approvedPublicKeys
@@ -990,7 +996,7 @@ public final class HostSessionController {
             log("Sensorium host: offered \(entries.count) host screens to \(device.deviceName): \(labels.joined(separator: ", "))")
         }
         hostScreenMintedTokens = minted
-        return .hostScreenList(displays: entries)
+        return .hostScreenList(displays: entries, canvasAvailable: privateDesktopOffered())
     }
 
     /// The viewer's own pick of a display mode for the host screen this
@@ -1337,6 +1343,9 @@ public final class HostSessionController {
             // capture is a black window the viewer has no way to tell from a
             // stalled one, and the state says the next attempt would fail the
             // same way.
+            guard privateDesktopOffered() else {
+                return .canvasRefused(reason: CanvasRefusalReason.canvasNotOffered, surfaceID: surfaceID)
+            }
             guard !captureAvailability.isUnavailable else {
                 return .canvasRefused(reason: CanvasRefusalReason.canvasUnavailable, surfaceID: surfaceID)
             }
@@ -1393,6 +1402,9 @@ public final class HostSessionController {
                 // an explicit canvasRequest for the same surface.
                 guard secondSurface.index < maxSurfaceCount else {
                     return .canvasRefused(reason: "display-count-exceeds-host-limit", surfaceID: secondSurface.wireValue)
+                }
+                guard privateDesktopOffered() else {
+                    return .canvasRefused(reason: CanvasRefusalReason.canvasNotOffered, surfaceID: secondSurface.wireValue)
                 }
                 connectionShape = .canvas
                 // A change that fails leaves the session as it was and

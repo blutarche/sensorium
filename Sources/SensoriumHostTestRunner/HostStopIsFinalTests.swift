@@ -16,7 +16,11 @@ func runHostStopIsFinalTests() async {
         // Stop names itself to the peer, while the socket is still open
         let adapter = FakeVirtualDisplayAdapter()
         let session = VirtualDisplaySession(adapter: adapter)
-        let controller = HostSessionController(sessions: surfaceZeroOnly(session), keyConfinement: .unconfined)
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(session),
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         expect(session.isActive, "the canvas is established before Stop is pressed")
         let channel = FakeHostByteChannel(scriptedMessages: [])
@@ -42,7 +46,11 @@ func runHostStopIsFinalTests() async {
         // whether or not the bytes ever left.
         let adapter = FakeVirtualDisplayAdapter()
         let session = VirtualDisplaySession(adapter: adapter)
-        let controller = HostSessionController(sessions: surfaceZeroOnly(session), keyConfinement: .unconfined)
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(session),
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         let channel = FakeHostByteChannel(scriptedMessages: [])
         channel.sendBytesError = HostNetworkSessionError.closed
@@ -63,7 +71,11 @@ func runHostStopIsFinalTests() async {
         // still outstanding when the deadline closes the socket underneath it.
         let adapter = FakeVirtualDisplayAdapter()
         let session = VirtualDisplaySession(adapter: adapter)
-        let controller = HostSessionController(sessions: surfaceZeroOnly(session), keyConfinement: .unconfined)
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(session),
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         let channel = FakeHostByteChannel(scriptedMessages: [])
         channel.sendDelay = .seconds(10)
@@ -367,7 +379,7 @@ func runHostStopIsFinalTests() async {
         let channel = FakeHostByteChannel(scriptedMessages: [])
         let networkSession = HostNetworkSession(connection: channel, controller: controller)
         controller.onStopRequested = { [weak networkSession] in networkSession?.stop() }
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let token = displays.first?.opaqueToken else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let token = displays.first?.opaqueToken else {
             expect(false, "the armed device is offered the display")
             return
         }
@@ -505,7 +517,8 @@ private final class RevocationWorld {
             pairing: pairing,
             keyConfinement: .unconfined,
             hostScreenLiveSessionRegistry: liveSessions,
-            deviceConnectionRegistry: connections
+            deviceConnectionRegistry: connections,
+            privateDesktopOffered: { true }
         )
     }
 
@@ -626,7 +639,7 @@ private func makeLiveHostScreenFixture() async -> LiveHostScreenFixture {
     let channel = FakeHostByteChannel(scriptedMessages: [])
     let networkSession = HostNetworkSession(connection: channel, controller: controller, coordinator: coordinator)
     controller.onStopRequested = { [weak networkSession] in networkSession?.stop() }
-    if case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let token = displays.first?.opaqueToken {
+    if case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let token = displays.first?.opaqueToken {
         _ = try! await coordinator.handleWritingResponse(
             .hostScreenRequest(token: token, resumeTicket: nil),
             onWrite: { _ in }

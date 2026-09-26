@@ -199,7 +199,7 @@ nonisolated final class FakeViewerSessionWindow: ViewerSessionWindow, @unchecked
 
     func updateDisplayCount(_ count: Int) {}
     func updateIsHostScreenSession(_ isHostScreenSession: Bool) {}
-    func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?) {}
+    func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool) {}
     func updateHostScreenModes(_ modes: [HostScreenModeEntry], currentModeID: String?) {}
     func updateStartTargetPreference(_ preference: StartTarget) {}
     func updateClipboardSharingEnabled(_ enabled: Bool) {}
@@ -406,13 +406,17 @@ private struct ViewerApplicationHarness {
     }
 }
 
-private func savedTestMachine(hostPublicKey: Data) -> SavedHost {
+private func savedTestMachine(
+    hostPublicKey: Data,
+    startTargetPreference: StartTarget = .hostScreenWhenOffered
+) -> SavedHost {
     SavedHost(
         displayName: "Studio",
         host: "studio.tail1234.ts.net",
         port: 7777,
         hostPublicKey: hostPublicKey,
-        tlsCertificateHash: Data([9, 9, 9])
+        tlsCertificateHash: Data([9, 9, 9]),
+        startTargetPreference: startTargetPreference
     )
 }
 
@@ -432,7 +436,8 @@ func testViewerApplicationTests() async {
 @MainActor
 private func testViewerApplicationFailedDialReturnsToTheList() async {
     // One refused canvas is a dead end the reconnect driver stops on, so this
-    // is one dial and one report rather than a backoff schedule.
+    // is one dial and one report rather than a backoff schedule. Pinned to a
+    // virtual display: the default start never asks for a canvas.
     let harness = ViewerApplicationHarness {
         ScriptedControlConnection(responses: [
             .control(.hostScreenRefused(reason: "host-screen-not-armed")),
@@ -440,7 +445,7 @@ private func testViewerApplicationFailedDialReturnsToTheList() async {
         ])
     }
     defer { harness.cleanUp() }
-    let machine = savedTestMachine(hostPublicKey: Data([7]))
+    let machine = savedTestMachine(hostPublicKey: Data([7]), startTargetPreference: .virtualDisplay)
     harness.store.save(machine)
 
     await harness.viewer.run(arguments: [])
@@ -486,7 +491,7 @@ private func testViewerApplicationFailedDialReturnsToTheList() async {
 @MainActor
 private func testViewerApplicationLiveSessionAndHostEnding() async {
     let hostIdentity = try! DeviceIdentity.generate()
-    let machine = savedTestMachine(hostPublicKey: hostIdentity.publicKey)
+    let machine = savedTestMachine(hostPublicKey: hostIdentity.publicKey, startTargetPreference: .virtualDisplay)
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("sensorium-viewer-app-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

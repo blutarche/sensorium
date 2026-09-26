@@ -100,7 +100,9 @@ public enum ViewerSessionEvent: Equatable, Sendable {
     /// `ViewerSessionFailureCopy`/`HostScreenRefusalCopy` before this call:
     /// this state machine holds no wire vocabulary of its own, the same way
     /// `ClientReconnectEvent.attemptFailed`'s text lives outside this type.
-    case hostScreenConnectEnded(reasonLine: String)
+    /// `offersVirtualDisplay` is false when the host said it opens no
+    /// session canvas, so the panel offers none.
+    case hostScreenConnectEnded(reasonLine: String, offersVirtualDisplay: Bool = true)
     /// One dial attempt ended without a session and the reconnect policy is
     /// about to try again -- the already-translated sentence, same
     /// discipline as `hostScreenConnectEnded`: this state machine holds no
@@ -255,7 +257,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     + "is connected on both machines, then choose Try again.",
                 buttons: Self.recoveryButtons
             )
-        case let .hostScreenConnectEnded(reasonLine):
+        case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay):
             status = ViewerSessionStatus(
                 phase: .ended,
                 tone: .bad,
@@ -264,7 +266,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     ? "The host-screen session with \(hostName) ended."
                     : "Could not show a host screen from \(hostName).",
                 detail: reasonLine,
-                buttons: Self.endedButtons
+                buttons: offersVirtualDisplay ? Self.endedButtons : Self.endedWithoutVirtualDisplayButtons
             )
         case let .unverifiedHostConnectEnded(reasonLine):
             lastFailureLine = nil
@@ -314,6 +316,11 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         )
     ]
 
+    private static let endedWithoutVirtualDisplayButtons = [
+        ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
+        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: true)
+    ]
+
     /// A certificate pin or host key mismatch is security-relevant and
     /// terminal: re-pinning the key is the only fix, so it leads, and it is
     /// the accent -- the accent is for the action that restores the session,
@@ -333,6 +340,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         reconnectingButtons,
         recoveryButtons,
         endedButtons,
+        endedWithoutVirtualDisplayButtons,
         unverifiedHostButtons
     ].map { $0.map(\.title) }
 

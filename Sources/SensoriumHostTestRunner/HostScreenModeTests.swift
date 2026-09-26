@@ -107,7 +107,7 @@ private func makeModeFixture(
 /// session, which is the state every mode operation requires.
 @MainActor
 private func admitHostScreenSession(_ controller: HostSessionController) {
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the mode fixture's own offer names the armed display")
         return

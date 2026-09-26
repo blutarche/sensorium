@@ -112,9 +112,19 @@ The host owes a changed display its earlier mode until a restore succeeds, and k
 
 ### 5.7 Starting on the same screen next time
 
-The viewer keeps one more per-machine setting, **Start with**. Its options are a private canvas, a host screen named by its own `displayIdentity`, or host screen when offered, the default. A machine that has ever been offered a screen starts on the screen it last reached, or the first one offered. A machine never offered one starts on a private canvas, updated from the host's own most recent offer so it tracks whichever target a session actually reached.
+The viewer keeps one more per-machine setting, **Start with**. Its options are a private canvas, a host screen named by its own `displayIdentity`, or host screen when offered, the default.
 
-A canvas connection made only for lack of anything remembered still carries the unprompted offer from §2.3. The moment it arrives, before the viewer has shown a picture, the default setting switches that same attempt to the first screen offered. An empty offer leaves it on the canvas and says nothing. A person's own pick from the Screen menu is not second-guessed this way again. If the default setting's own choice is refused and nothing has been shown yet, the viewer falls back to a private canvas on its own, after saying once why. Once a picture has shown, the ordinary ending applies, and trying again is a person's own decision.
+The default always starts on a host screen, on the same connection that received the offer from §2.3. It picks the screen this machine last reached when the fresh offer still has it, and the first one offered otherwise. A session that last ran on a private canvas counts as nothing remembered. The viewer never falls back to a private canvas on its own. A private canvas starts only from a person's own pick in the Screen menu, or from Start with set to it.
+
+The offer also says whether the host opens a private canvas at all. The person at the host turns this on with **Offer a private desktop**, which is off by default. An offer without the field means one is available. When the host opens none, the viewer hides every private canvas choice and offers no button for one.
+
+| Offer | What the viewer does |
+| --- | --- |
+| At least one screen | Starts on the remembered screen, or the first one |
+| No screen | Ends the attempt and says "This Mac has no screen available to share right now." |
+| Refused, as for a machine that is not armed | Ends the attempt with the host's reason |
+
+A refusal ends the attempt the ordinary way. Trying again, or choosing a private canvas the host offers, is a person's own decision.
 
 ---
 

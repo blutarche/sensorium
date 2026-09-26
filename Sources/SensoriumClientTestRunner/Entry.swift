@@ -59,6 +59,7 @@ struct SensoriumClientTestRunner {
         testShortcutStripPinMemoryTests()
         testSavedMachinesStoreTests()
         testStartTargetTests()
+        await testOfferedHostScreenStartTests()
         testYourMachinesWindowModelTests()
         await testViewerApplicationTests()
         testViewerSessionFailureCopyRowLineTests()

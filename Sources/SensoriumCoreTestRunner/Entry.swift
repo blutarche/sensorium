@@ -84,6 +84,7 @@ struct SensoriumCoreTestRunner {
             ("stream scale preference composes with the sustainability ceiling", testStreamScalePreferenceComposesWithTheSustainabilityCeiling),
             ("host-screen types: geometry round-trips and a capture intent is never silently substituted", testHostScreenTypes),
             ("host-screen protocol round-trips, skips on an older peer, and can only reference an arming", testHostScreenProtocol),
+            ("host-screen offer carries canvas availability, readable by an older and a newer peer alike", testHostScreenListCarriesCanvasAvailability),
             ("host-screen display mode messages round-trip, refuse malformed fields, and stay skippable for an older peer", testHostScreenModeProtocol),
             ("host-screen unlock messages round-trip, keep the password intact, and refuse malformed outcomes", testHostScreenUnlockProtocol),
             ("stream scale preference message round-trips both directions", testStreamScalePreferenceMessageRoundTripsBothDirections),

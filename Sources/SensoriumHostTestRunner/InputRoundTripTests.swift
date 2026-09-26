@@ -47,7 +47,8 @@ func runInputRoundTripTests() async {
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
             inputInjector: injector,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         _ = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
 
@@ -81,7 +82,8 @@ func runInputRoundTripTests() async {
         // An event the host refuses to inject (no Accessibility) is never acknowledged
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         _ = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         expectThrows(
@@ -102,7 +104,8 @@ func runInputRoundTripTests() async {
             keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                 surface0: FakeCanvasWorkspace(),
                 surface1: NoCanvasWorkspace()
-            ))
+            )),
+            privateDesktopOffered: { true }
         )
         _ = try! droppedController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         let droppedReply = try! droppedController.handle(
@@ -143,7 +146,7 @@ func runInputRoundTripTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
             expect(false, "the fixture's offer names at least one display")
             return
         }

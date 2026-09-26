@@ -62,15 +62,22 @@ public enum HostScreenResumeTicketRetention {
     /// up for it. An automatic redial holding no ticket therefore stops and
     /// waits for the person at the viewer, rather than asking the person at
     /// the host once per backoff attempt, the same way a host's own refusal
-    /// already stops without retrying. A session-canvas target presents no
-    /// ticket at all, so this is always `false` for one.
+    /// already stops without retrying. `.offeredHostScreen` is gated exactly
+    /// like `.hostScreen`: its own request reaches the same person at the
+    /// host, so a transport failure after it was sent must stop the same
+    /// way. A session-canvas target presents no ticket at all, so this is
+    /// always `false` for one.
     public static func mustStopWithoutTicket(
         target: SessionTarget,
         ticketToPresent: Data?,
         isPersonInitiated: Bool
     ) -> Bool {
-        guard case .hostScreen = target else { return false }
-        return ticketToPresent == nil && !isPersonInitiated
+        switch target {
+        case .hostScreen, .offeredHostScreen:
+            return ticketToPresent == nil && !isPersonInitiated
+        case .sessionCanvas:
+            return false
+        }
     }
 }
 

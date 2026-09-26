@@ -99,7 +99,7 @@ private func makeUnlockFixture(
 
 @MainActor
 private func admitHostScreen(_ fixture: (coordinator: HostSessionCoordinator, controller: HostSessionController)) async -> [SensoriumMessage] {
-    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
           let token = displays.first?.opaqueToken else {
         expect(false, "the fixture offers at least one display")
         return []
@@ -728,7 +728,7 @@ private enum HostScreenAdmissionResult: Equatable {
 private func admitHostScreenResult(
     _ fixture: (coordinator: HostSessionCoordinator, controller: HostSessionController)
 ) async -> HostScreenAdmissionResult {
-    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
           let token = displays.first?.opaqueToken else {
         expect(false, "the fixture offers at least one display")
         return .refused(reason: "no-display")
@@ -943,7 +943,7 @@ func runHostScreenLiveSessionTests() async {
             liveSessionRegistry: registry,
             inputInjectorFactory: ThrowingInputInjectorFactory()
         )
-        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
               let token = displays.first?.opaqueToken else {
             expect(false, "the fixture offers at least one display")
             return

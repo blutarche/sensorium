@@ -19,7 +19,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             let splitAdapter = FakeVirtualDisplayAdapter()
             splitAdapter.handleValuesToVend = [7, 8]
             let splitSessions = CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: splitAdapter) }
-            let splitFactory = HostConnectionSessionFactory(sessions: splitSessions, keyConfinement: .unconfined)
+            let splitFactory = HostConnectionSessionFactory(
+                sessions: splitSessions, keyConfinement: .unconfined, privateDesktopOffered: { true }
+            )
             let splitWorkspace0 = FakeCanvasWorkspace()
             let splitWorkspace1 = FakeCanvasWorkspace()
             var splitOrder: [String] = []
@@ -287,7 +289,10 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         let lostMedia = FakeCanvasMedia()
         let lostInjector = FakeInputInjector()
         let lostCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(lostSession), inputInjector: lostInjector, keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(lostSession), inputInjector: lostInjector, keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
+            ),
             media: onlyOnSurfaceZero(lostMedia),
             videoSink: FakeVideoSink()
         )
@@ -315,7 +320,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             var stopOrder: [String] = []
             stopOrderWorkspace.onStop = { stopOrder.append("workspace") }
             stopOrderAdapter.onRelease = { _ in stopOrder.append("display") }
-            let stopOrderController = HostSessionController(sessions: surfaceZeroOnly(stopOrderSession), keyConfinement: .unconfined)
+            let stopOrderController = HostSessionController(sessions: surfaceZeroOnly(stopOrderSession), keyConfinement: .unconfined, privateDesktopOffered: { true })
             let stopOrderCoordinator = HostSessionCoordinator(
                 controller: stopOrderController,
                 media: onlyOnSurfaceZero(stopOrderMedia),
@@ -357,7 +362,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let orderAdapter = FakeVirtualDisplayAdapter()
             let orderSession = VirtualDisplaySession(adapter: orderAdapter)
-            let orderController = HostSessionController(sessions: surfaceZeroOnly(orderSession), keyConfinement: .unconfined)
+            let orderController = HostSessionController(sessions: surfaceZeroOnly(orderSession), keyConfinement: .unconfined, privateDesktopOffered: { true })
             let orderChannel = FakeHostByteChannel(scriptedMessages: [
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0),
             ])
@@ -394,7 +399,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             lateFailureWorkspace.onStop = { lateFailureOrder.append("workspace") }
             lateFailureAdapter.onRelease = { _ in lateFailureOrder.append("display") }
             let lateFailureSignals = DiagnosticsRecorder()
-            let lateFailureController = HostSessionController(sessions: surfaceZeroOnly(lateFailureSession), keyConfinement: .unconfined)
+            let lateFailureController = HostSessionController(sessions: surfaceZeroOnly(lateFailureSession), keyConfinement: .unconfined, privateDesktopOffered: { true })
             let lateFailureChannel = FakeHostByteChannel(scriptedMessages: [
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0),
             ])
@@ -432,7 +437,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let noCoordinatorAdapter = FakeVirtualDisplayAdapter()
             let noCoordinatorSession = VirtualDisplaySession(adapter: noCoordinatorAdapter)
-            let noCoordinatorController = HostSessionController(sessions: surfaceZeroOnly(noCoordinatorSession), keyConfinement: .unconfined)
+            let noCoordinatorController = HostSessionController(sessions: surfaceZeroOnly(noCoordinatorSession), keyConfinement: .unconfined, privateDesktopOffered: { true })
             _ = try! noCoordinatorController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
             expect(noCoordinatorSession.isActive, "the canvas is established before the no-coordinator fallback is exercised")
             let noCoordinatorChannel = FakeHostByteChannel(scriptedMessages: [])
@@ -452,7 +457,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             let doubleStopMedia = FakeCanvasMedia()
             let doubleStopWorkspace = FakeCanvasWorkspace()
             let doubleStopEvents = DiagnosticsRecorder()
-            let doubleStopController = HostSessionController(sessions: surfaceZeroOnly(doubleStopSession), keyConfinement: .unconfined)
+            let doubleStopController = HostSessionController(sessions: surfaceZeroOnly(doubleStopSession), keyConfinement: .unconfined, privateDesktopOffered: { true })
             let doubleStopCoordinator = HostSessionCoordinator(
                 controller: doubleStopController,
                 media: onlyOnSurfaceZero(doubleStopMedia),
@@ -488,7 +493,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             raceWorkspace.onStop = { raceOrder.append("workspace") }
             raceAdapter.onRelease = { _ in raceOrder.append("display") }
             let raceEvents = DiagnosticsRecorder()
-            let raceController = HostSessionController(sessions: surfaceZeroOnly(raceSession), keyConfinement: .unconfined)
+            let raceController = HostSessionController(sessions: surfaceZeroOnly(raceSession), keyConfinement: .unconfined, privateDesktopOffered: { true })
             let raceCoordinator = HostSessionCoordinator(
                 controller: raceController,
                 media: onlyOnSurfaceZero(raceMedia),
@@ -644,7 +649,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         let diagnosticsSession = VirtualDisplaySession(adapter: diagnosticsAdapter)
         let events = DiagnosticsRecorder()
         let diagnosticsCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(diagnosticsSession), keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(diagnosticsSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            ),
             media: onlyOnSurfaceZero(failingMedia),
             videoSink: FakeVideoSink(),
             onEvent: { events.record($0) }
@@ -671,7 +678,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             let placementCoordinator = HostSessionCoordinator(
                 controller: HostSessionController(
                     sessions: surfaceZeroOnly(placementSession),
-                    keyConfinement: .unconfined
+                    keyConfinement: .unconfined,
+                    privateDesktopOffered: { true }
                 ),
                 media: onlyOnSurfaceZero(placementMedia),
                 videoSink: FakeVideoSink(),
@@ -706,7 +714,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             let writeCoordinator = HostSessionCoordinator(
                 controller: HostSessionController(
                     sessions: surfaceZeroOnly(writeSession),
-                    keyConfinement: .unconfined
+                    keyConfinement: .unconfined,
+                    privateDesktopOffered: { true }
                 ),
                 media: onlyOnSurfaceZero(writeMedia),
                 videoSink: FakeVideoSink(),
@@ -752,7 +761,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             endedAdapter.onRelease = { _ in endedOrder.append("display") }
             let endedSignals = DiagnosticsRecorder()
             let endedCoordinator = HostSessionCoordinator(
-                controller: HostSessionController(sessions: surfaceZeroOnly(endedSession), keyConfinement: .unconfined),
+                controller: HostSessionController(
+                    sessions: surfaceZeroOnly(endedSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+                ),
                 media: onlyOnSurfaceZero(endedMedia),
                 videoSink: FakeVideoSink(),
                 workspaces: onlyOnSurfaceZero(endedWorkspace),
@@ -891,7 +902,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             approvedPublicKeys: [pairedIdentity.publicKey],
             requireAuthentication: true,
             inputInjectorFactory: FakeInputInjectorFactory(),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let pairedHello = SensoriumMessage.authenticatedHello(
             protocolVersion: 1,

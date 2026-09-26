@@ -40,7 +40,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                     hostIdentity: dualSignHost,
                     approvedPublicKeys: [dualSignClient.publicKey]
                 ),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let dualSignTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1,
@@ -95,7 +96,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in
                     VirtualDisplaySession(adapter: dualWireAdapter, creationGate: dualWireGate)
                 },
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let dualWireChannel = FakeHostByteChannel(scriptedMessages: [
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0),
@@ -141,7 +143,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let legacyController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let legacyMedia = FakeCanvasMedia()
             let legacyChannel = FakeHostByteChannel(scriptedMessages: [
@@ -238,7 +241,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in
                     VirtualDisplaySession(adapter: taggedAdapter, creationGate: taggedGate)
                 },
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let taggedMediaZero = FakeCanvasMedia()
             let taggedMediaOne = FakeCanvasMedia()
@@ -305,7 +309,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let focusController = HostSessionController(
                 sessions: focusSessions,
                 inputInjector: FakeInputInjector(),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             expect(
                 focusController.focusedSurface == nil,
@@ -368,7 +373,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             // refused rather than redirected to the other one.
             let singleSurfaceFocusController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             _ = try! singleSurfaceFocusController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
@@ -388,7 +394,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             // skipped. The session keeps running and never learns of focus.
             let oldPeerController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             _ = try! oldPeerController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
@@ -477,7 +484,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let endingController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             _ = try! endingController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
@@ -559,7 +567,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: clipboardAdapter) },
                 approvedPublicKeys: [clipboardIdentity.publicKey],
                 requireAuthentication: true,
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let clipboardPasteboard = FakeClipboardPasteboard()
             let clipboardLog = DiagnosticsRecorder()
@@ -742,7 +751,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let ignoringController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let ignoringChannel = FakeHostByteChannel(scriptedPackets: [
                 .clipboard(.text("copied on the Laptop")),
@@ -776,7 +786,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let wiredController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let wiredPasteboard = FakeClipboardPasteboard()
             let wiredClipboard = ClipboardSyncSession(
@@ -890,7 +901,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let sharingController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 onClipboardSharingChanged: { enabled in sharingClipboardBox.session?.setEnabled(enabled) },
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let sharingPasteboard = FakeClipboardPasteboard()
             let sharingClipboard = ClipboardSyncSession(
@@ -959,7 +971,9 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let focus = CanvasFocusTracker()
             let focusSessions = CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) }
-            let focusController = HostSessionController(sessions: focusSessions, keyConfinement: .unconfined)
+            let focusController = HostSessionController(
+                sessions: focusSessions, keyConfinement: .unconfined, privateDesktopOffered: { true }
+            )
             let focusMedia = CanvasSurfaceSlots { _ in FakeCanvasMedia() }
             let focusSink = FakeVideoSink()
             let focusCoordinator = HostSessionCoordinator(
@@ -1067,7 +1081,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                     surface0: workspaceZero,
                     surface1: workspaceOne
-                ))
+                )),
+                privateDesktopOffered: { true }
             )
             _ = try! confinementController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0)
@@ -1121,6 +1136,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                     surface0: FakeCanvasWorkspace(),
                     surface1: NoCanvasWorkspace()
                 )),
+                privateDesktopOffered: { true },
                 log: { unplacedLog.record($0) }
             )
             _ = try! unplacedController.handle(
@@ -1175,7 +1191,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                     surface0: failedRaiseWorkspace,
                     surface1: NoCanvasWorkspace()
-                ))
+                )),
+                privateDesktopOffered: { true }
             )
             try! failedRaiseWorkspace.start(canvasDisplayID: 7, owner: failedRaiseController.canvasOwner)
             failedRaiseWorkspace.raiseFailure = true
@@ -1204,7 +1221,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                     surface0: mixedPlacedWorkspace,
                     surface1: FakeCanvasWorkspace()
-                ))
+                )),
+                privateDesktopOffered: { true }
             )
             try! mixedPlacedWorkspace.start(canvasDisplayID: 7, owner: mixedController.canvasOwner)
             _ = try! mixedController.handle(
@@ -1242,7 +1260,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                     surface0: pointerWorkspace,
                     surface1: NoCanvasWorkspace()
-                ))
+                )),
+                privateDesktopOffered: { true }
             )
             try! pointerWorkspace.start(canvasDisplayID: 7, owner: pointerController.canvasOwner)
             _ = try! pointerController.handle(
@@ -1266,7 +1285,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                     surface0: singleWorkspace,
                     surface1: NoCanvasWorkspace()
-                ))
+                )),
+                privateDesktopOffered: { true }
             )
             try! singleWorkspace.start(canvasDisplayID: 7, owner: singleController.canvasOwner)
             _ = try! singleController.handle(
@@ -1298,7 +1318,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let unconfinedController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: unconfinedInjector,
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             _ = try! unconfinedController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
@@ -1318,7 +1339,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let confinedController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: confinedInjector,
-                keyConfinement: .confined(to: onlyOnSurfaceZero(confinedWorkspace))
+                keyConfinement: .confined(to: onlyOnSurfaceZero(confinedWorkspace)),
+                privateDesktopOffered: { true }
             )
             _ = try! confinedController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
@@ -1340,7 +1362,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let ownershipController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: ownershipInjector,
-                keyConfinement: .confined(to: onlyOnSurfaceZero(ownershipWorkspace))
+                keyConfinement: .confined(to: onlyOnSurfaceZero(ownershipWorkspace)),
+                privateDesktopOffered: { true }
             )
             _ = try! ownershipController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
@@ -1381,6 +1404,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: takeoverInjector,
                 keyConfinement: .confined(to: onlyOnSurfaceZero(takeoverWorkspace)),
+                privateDesktopOffered: { true },
                 log: { takeoverLog.record($0) }
             )
             _ = try! takeoverController.handle(
@@ -1453,6 +1477,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: focusInjector,
                 keyConfinement: .confined(to: onlyOnSurfaceZero(focusWorkspace)),
+                privateDesktopOffered: { true },
                 log: { focusLog.record($0) }
             )
             _ = try! focusController.handle(
@@ -1540,7 +1565,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let controllerA = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: injectorA,
-                keyConfinement: .confined(to: slots)
+                keyConfinement: .confined(to: slots),
+                privateDesktopOffered: { true }
             )
             let controllerB = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
@@ -1596,7 +1622,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let unconfinedFocusController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: unconfinedFocusInjector,
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             _ = try! unconfinedFocusController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
@@ -1742,6 +1769,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: launchedInjector,
                 keyConfinement: .confined(to: onlyOnSurfaceZero(launchedWorkspace), scanning: launchedScan),
+                privateDesktopOffered: { true },
                 log: { launchedLog.record($0) }
             )
             _ = try! launchedController.handle(
@@ -1830,6 +1858,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: strangerInjector,
                 keyConfinement: .confined(to: onlyOnSurfaceZero(launchedWorkspace), scanning: launchedScan),
+                privateDesktopOffered: { true },
                 log: { strangerLog.record($0) }
             )
             _ = try! strangerController.handle(
@@ -1854,7 +1883,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let unscannedController = HostSessionController(
                 sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
                 inputInjector: unscannedInjector,
-                keyConfinement: .confined(to: onlyOnSurfaceZero(unscannedWorkspace))
+                keyConfinement: .confined(to: onlyOnSurfaceZero(unscannedWorkspace)),
+                privateDesktopOffered: { true }
             )
             _ = try! unscannedController.handle(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
@@ -1880,7 +1910,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let wiredController = HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 inputInjector: wiredInjector,
-                keyConfinement: .confined(to: wiredWorkspaces)
+                keyConfinement: .confined(to: wiredWorkspaces),
+                privateDesktopOffered: { true }
             )
             let wiredCoordinator = HostSessionCoordinator(
                 controller: wiredController,
@@ -1909,7 +1940,8 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let orderingCoordinator = HostSessionCoordinator(
                 controller: HostSessionController(
                     sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                    keyConfinement: .unconfined
+                    keyConfinement: .unconfined,
+                    privateDesktopOffered: { true }
                 ),
                 media: onlyOnSurfaceZero(StartTimelineCanvasMedia { orderingTimeline.record("capture") }),
                 videoSink: FakeVideoSink()

@@ -79,7 +79,7 @@ func runHostScreenOfferOnHelloTests() async {
         try! await Task.sleep(for: .milliseconds(200))
         let sent = sentControlMessages(channel)
         expect(sent.count == 1, "the offer is the only thing the host sends an armed device after its hello")
-        guard case let .hostScreenList(displays) = sent.first else {
+        guard case let .hostScreenList(displays, _) = sent.first else {
             expect(false, "an armed device's hello is answered with hostScreenList, unprompted")
             break armedDeviceCheck
         }
@@ -124,7 +124,8 @@ func runHostScreenOfferOnHelloTests() async {
             requireAuthentication: true,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { HostScreenArming() },
-            hostScreenCurrentDisplaysProvider: { [] }
+            hostScreenCurrentDisplaysProvider: { [] },
+            privateDesktopOffered: { true }
         )
         let channel = FakeHostByteChannel(scriptedMessages: [
             helloScript(for: identity),

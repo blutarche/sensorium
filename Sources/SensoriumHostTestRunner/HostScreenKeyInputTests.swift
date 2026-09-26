@@ -82,7 +82,7 @@ func runHostScreenKeyInputTests() async {
             publicKey: identity.publicKey,
             signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the fixture's offer names at least one display")
             return
@@ -139,7 +139,8 @@ func runHostScreenKeyInputTests() async {
             keyConfinement: .confined(to: CanvasSurfaceSlots<any CanvasWorkspacePresenting>(
                 surface0: FakeCanvasWorkspace(),
                 surface1: NoCanvasWorkspace()
-            ))
+            )),
+            privateDesktopOffered: { true }
         )
         _ = try! canvasController.handle(
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)

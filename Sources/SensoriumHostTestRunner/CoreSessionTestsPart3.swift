@@ -646,7 +646,9 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         // deliver: video keeps flowing and the canvas stays up.
         let noInjectorAdapter = FakeVirtualDisplayAdapter()
         let noInjectorSession = VirtualDisplaySession(adapter: noInjectorAdapter)
-        let noInjectorController = HostSessionController(sessions: surfaceZeroOnly(noInjectorSession), keyConfinement: .unconfined)
+        let noInjectorController = HostSessionController(
+            sessions: surfaceZeroOnly(noInjectorSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+        )
         _ = try! noInjectorController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         expectThrows(
             HostSessionControllerError.inputInjectionUnavailable,
@@ -1217,7 +1219,9 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         let sessionEndMedia = FakeCanvasMedia()
         let sessionEndEvents = DiagnosticsRecorder()
         let sessionEndCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(sessionEndSession), keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(sessionEndSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            ),
             media: onlyOnSurfaceZero(sessionEndMedia),
             videoSink: FakeVideoSink(),
             onSessionEnded: { sessionEndEvents.record("ended") }
@@ -1318,7 +1322,9 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
 
         let scaleAdapter = FakeVirtualDisplayAdapter()
         let scaleSession = VirtualDisplaySession(adapter: scaleAdapter)
-        let scaleController = HostSessionController(sessions: surfaceZeroOnly(scaleSession), keyConfinement: .unconfined)
+        let scaleController = HostSessionController(
+            sessions: surfaceZeroOnly(scaleSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+        )
         expectThrows(
             HostSessionControllerError.inputSessionUnavailable,
             { _ = try scaleController.handle(.viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2400, surfaceID: nil, maximumScale: nil)) },
@@ -1358,7 +1364,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         let burstMedia = FakeScalableCanvasMedia()
         let burstEvents = DiagnosticsRecorder()
         let burstCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined),
+            controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined, privateDesktopOffered: { true }),
             media: onlyOnSurfaceZero(burstMedia),
             videoSink: FakeVideoSink(),
             streamScaleSettleSeconds: 0.2,
@@ -1387,7 +1393,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         let recoveredEvents = DiagnosticsRecorder()
         let recoveredSession = VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())
         let recoveredCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(recoveredSession), keyConfinement: .unconfined),
+            controller: HostSessionController(sessions: surfaceZeroOnly(recoveredSession), keyConfinement: .unconfined, privateDesktopOffered: { true }),
             media: onlyOnSurfaceZero(recoveredMedia),
             videoSink: FakeVideoSink(),
             streamScaleSettleSeconds: 0.05,
@@ -1411,7 +1417,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         let brokenWorkspace = FakeCanvasWorkspace()
         let brokenTeardowns = DiagnosticsRecorder()
         let brokenCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(brokenSession), keyConfinement: .unconfined),
+            controller: HostSessionController(sessions: surfaceZeroOnly(brokenSession), keyConfinement: .unconfined, privateDesktopOffered: { true }),
             media: onlyOnSurfaceZero(brokenMedia),
             videoSink: FakeVideoSink(),
             workspaces: onlyOnSurfaceZero(brokenWorkspace),
@@ -1442,7 +1448,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
             let cappedMedia = FakeScalableCanvasMedia()
             let cappedEvents = DiagnosticsRecorder()
             let cappedCoordinator = HostSessionCoordinator(
-                controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined),
+                controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined, privateDesktopOffered: { true }),
                 media: onlyOnSurfaceZero(cappedMedia),
                 videoSink: FakeVideoSink(),
                 streamScaleSettleSeconds: 0.05,
@@ -1485,7 +1491,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let smallDeltaMedia = FakeScalableCanvasMedia()
             let smallDeltaCoordinator = HostSessionCoordinator(
-                controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined),
+                controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined, privateDesktopOffered: { true }),
                 media: onlyOnSurfaceZero(smallDeltaMedia),
                 videoSink: FakeVideoSink(),
                 streamScaleSettleSeconds: 0.05
@@ -1547,7 +1553,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
             dualWorkspaceB.pump = { creationOrder.record("workspace-1-placement-in-flight") }
             let dualEnded = DiagnosticsRecorder()
             let dualCoordinator = HostSessionCoordinator(
-                controller: HostSessionController(sessions: dualSessions, keyConfinement: .unconfined),
+                controller: HostSessionController(sessions: dualSessions, keyConfinement: .unconfined, privateDesktopOffered: { true }),
                 media: CanvasSurfaceSlots(surface0: dualMediaA, surface1: dualMediaB),
                 videoSink: FakeVideoSink(),
                 workspaces: CanvasSurfaceSlots(surface0: dualWorkspaceA, surface1: dualWorkspaceB),
@@ -1629,7 +1635,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
             let sizeMismatchSessions = CanvasSurfaceSlots { _ in
                 VirtualDisplaySession(adapter: sizeMismatchAdapter)
             }
-            let sizeMismatchController = HostSessionController(sessions: sizeMismatchSessions, keyConfinement: .unconfined)
+            let sizeMismatchController = HostSessionController(sessions: sizeMismatchSessions, keyConfinement: .unconfined, privateDesktopOffered: { true })
             expectThrows(
                 HostSessionControllerError.invalidCanvasRequest,
                 { _ = try sizeMismatchController.handle(.canvasRequest(logicalWidth: 1280, logicalHeight: 800, scale: 2, surfaceID: 1)) },

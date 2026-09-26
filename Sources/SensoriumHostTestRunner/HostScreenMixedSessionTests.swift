@@ -41,7 +41,7 @@ private final class AlwaysIdleSignal: HostLocalActivitySignal, @unchecked Sendab
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return Data()
     }
@@ -70,7 +70,8 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+            privateDesktopOffered: { true }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -212,7 +213,7 @@ func runHostScreenMixedSessionTests() async {
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
 
-        guard case let .hostScreenList(firstDisplays) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(firstDisplays, _) = try! controller.offerHostScreenList(),
               let firstEntry = firstDisplays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(firstDisplay).wireStableIdentifier }) else {
             expect(false, "the fixture's offer names the first display")
             return
@@ -230,7 +231,7 @@ func runHostScreenMixedSessionTests() async {
         // display -- proving this refuses even a well-formed request
         // naming a display the device really is armed for, not just a
         // malformed or unknown one.
-        guard case let .hostScreenList(secondDisplays) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(secondDisplays, _) = try! controller.offerHostScreenList(),
               let secondEntry = secondDisplays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(secondDisplay).wireStableIdentifier }) else {
             expect(false, "the fixture's second offer names the second display")
             return
@@ -274,7 +275,8 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+            privateDesktopOffered: { true }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

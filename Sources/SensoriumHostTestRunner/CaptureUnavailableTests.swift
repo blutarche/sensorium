@@ -32,7 +32,8 @@ func runCaptureUnavailableTests() async {
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
             keyConfinement: .unconfined,
-            captureAvailability: availability
+            captureAvailability: availability,
+            privateDesktopOffered: { true }
         )
         availability.markUnavailable(log: { _ in })
         let response = try? controller.handle(
@@ -64,7 +65,8 @@ func runCaptureUnavailableTests() async {
         let coordinator = HostSessionCoordinator(
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(media),
             videoSink: FakeVideoSink(),

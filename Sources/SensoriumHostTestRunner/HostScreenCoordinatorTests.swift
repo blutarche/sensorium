@@ -130,7 +130,7 @@ private func makeHostScreenFixture(
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return Data()
     }

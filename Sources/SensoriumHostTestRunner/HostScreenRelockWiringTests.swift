@@ -160,7 +160,7 @@ private final class WiringScriptedRawSignal: HostLocalActivitySignal, @unchecked
 private func admitRelockWiringHostScreen(
     _ fixture: (coordinator: HostSessionCoordinator, controller: HostSessionController)
 ) async {
-    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
           let token = displays.first?.opaqueToken else {
         expect(false, "the fixture offers at least one display")
         return

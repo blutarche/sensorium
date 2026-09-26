@@ -36,7 +36,7 @@ private func hostScreenTestDisplay(id: UInt32 = 7) -> DisplaySnapshot {
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return Data()
     }
@@ -334,7 +334,7 @@ func runHostScreenResumeTicketControllerTests() async {
         }
 
         let firstConnection = makeControllerForBothDisplays()
-        guard case let .hostScreenList(displays) = try! firstConnection.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! firstConnection.offerHostScreenList(),
               let mintedEntry = displays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(mintedDisplay).wireStableIdentifier }) else {
             expect(false, "the fixture offers the minted display among its entries")
             return
@@ -348,7 +348,7 @@ func runHostScreenResumeTicketControllerTests() async {
         }
 
         let secondConnection = makeControllerForBothDisplays()
-        guard case let .hostScreenList(secondDisplays) = try! secondConnection.offerHostScreenList(),
+        guard case let .hostScreenList(secondDisplays, _) = try! secondConnection.offerHostScreenList(),
               let otherEntry = secondDisplays.first(where: { $0.displayIdentity == HostScreenDisplayIdentity(otherDisplay).wireStableIdentifier }) else {
             expect(false, "the second connection's own offer names the other display too")
             return

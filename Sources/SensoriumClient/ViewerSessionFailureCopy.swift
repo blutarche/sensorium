@@ -197,6 +197,8 @@ public enum ViewerSessionFailureCopy {
             return "busy opening a canvas for another connection; try again in a moment"
         case CanvasRefusalReason.canvasUnavailable:
             return "could not open a session canvas; quit and reopen Sensorium Host there"
+        case CanvasRefusalReason.canvasNotOffered:
+            return "does not offer a virtual display"
         default:
             return "refused: \u{201C}\(reason)\u{201D}"
         }
@@ -229,6 +231,10 @@ public enum ViewerSessionFailureCopy {
             // the only thing that changes the answer happens at that machine.
             return "Stopped: \(hostLabel) could not open a session canvas. Its Sensorium Host app needs "
                 + "to be quit and opened again at the machine itself before this machine can connect."
+        case CanvasRefusalReason.canvasNotOffered:
+            return "\(hostLabel) does not offer a virtual display. A person at that machine can turn on "
+                + "\u{201C}Offer a private desktop\u{201D} in Sensorium Host, or choose one of its screens "
+                + "from the Screen menu."
         default:
             return "\(hostLabel) would not open a session canvas. It gave a reason this version of "
                 + "Sensorium does not know: \u{201C}\(reason)\u{201D}. Try again, and if it keeps "

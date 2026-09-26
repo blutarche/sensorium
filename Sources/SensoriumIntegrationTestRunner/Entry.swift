@@ -220,7 +220,8 @@ struct SensoriumIntegrationTestRunner {
             approvedPublicKeys: [identity.publicKey],
             requireAuthentication: true,
             inputInjector: injector,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let transport = LoopbackTransport(offerHostScreenList: {
             try await MainActor.run { try hostController.offerHostScreenList() }
@@ -290,7 +291,11 @@ struct SensoriumIntegrationTestRunner {
         }
         let abruptAdapter = IntegrationFakeAdapter()
         let abruptSession = VirtualDisplaySession(adapter: abruptAdapter)
-        let abruptController = HostSessionController(sessions: surfaceZeroOnly(abruptSession), keyConfinement: .unconfined)
+        let abruptController = HostSessionController(
+            sessions: surfaceZeroOnly(abruptSession),
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! abruptController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         guard abruptSession.isActive else {
             print("FAIL: abrupt-loss scenario did not create a canvas to lose")
@@ -314,7 +319,11 @@ struct SensoriumIntegrationTestRunner {
 
         let failingAdapter = FailingVirtualDisplayAdapter()
         let failingSession = VirtualDisplaySession(adapter: failingAdapter)
-        let failingController = HostSessionController(sessions: surfaceZeroOnly(failingSession), keyConfinement: .unconfined)
+        let failingController = HostSessionController(
+            sessions: surfaceZeroOnly(failingSession),
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         do {
             _ = try failingController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
             print("FAIL: a failed virtual display creation was reported as success")
@@ -417,7 +426,8 @@ struct SensoriumIntegrationTestRunner {
             sessions: surfaceZeroOnly(streamSession),
             approvedPublicKeys: [streamIdentity.publicKey],
             requireAuthentication: true,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let streamMedia = IntegrationScalableMedia()
         let streamCoordinator = HostSessionCoordinator(
@@ -487,7 +497,8 @@ struct SensoriumIntegrationTestRunner {
             sessions: surfaceZeroOnly(enteredSession),
             approvedPublicKeys: [enteredIdentity.publicKey],
             requireAuthentication: true,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let enteredCoordinator = HostSessionCoordinator(
             controller: enteredHostController,
@@ -521,7 +532,11 @@ struct SensoriumIntegrationTestRunner {
         let legacyMedia = IntegrationScalableMedia()
         let legacySession = VirtualDisplaySession(adapter: IntegrationFakeAdapter())
         let legacyCoordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(legacySession), keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(legacySession),
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
+            ),
             media: onlyOnSurfaceZero(legacyMedia),
             videoSink: IntegrationVideoSink(),
             streamScaleSettleSeconds: 0.05
@@ -545,7 +560,8 @@ struct SensoriumIntegrationTestRunner {
         let dualSecondarySession = VirtualDisplaySession(adapter: IntegrationFakeAdapter(displayID: 102))
         let dualHostController = HostSessionController(
             sessions: CanvasSurfaceSlots(surface0: dualPrimarySession, surface1: dualSecondarySession),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let dualSurfaceZeroKeyFrame = EncodedVideoFramePacket(
             sequence: 0,

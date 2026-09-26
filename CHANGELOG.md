@@ -23,6 +23,11 @@ once it reaches 1.0.
 - Lock at start: if the host launches with its screen unlocked and no
   one has touched this machine since before the process started, it
   locks the screen again before doing anything else.
+- Offer a private desktop, a switch in the host window, off by default.
+  It lets a viewer open a separate desktop that isn't shown on this
+  Mac's screens. While it is off, the host creates no virtual display at
+  all, refuses a viewer that asks for one, and tells the viewer none is
+  available so its menus do not offer one.
 
 ### Removed
 
@@ -83,6 +88,12 @@ once it reaches 1.0.
   locked. Only a host-screen session reaches the lock screen.
 - A machine turned off or removed while the ask-first prompt is showing
   is refused, even if the person then allows it.
+- The viewer always starts on one of the host's screens: the one it
+  last used if the host still offers it, otherwise the first one. It
+  never switches to a virtual display on its own. A virtual display
+  opens only when you choose it from the Screen menu, and only when the
+  host offers one. When the host offers no screen, the viewer says
+  "This Mac has no screen available to share right now."
 
 ### Fixed
 
@@ -128,6 +139,15 @@ once it reaches 1.0.
   asking first for more than twelve hours after it was first allowed.
 - A host screen whose monitor went to sleep or briefly disappeared
   mid-session now comes back instead of freezing.
+- A virtual display whose picture stops on its own is restarted once.
+  If that fails, the session ends instead of leaving the viewer on a
+  frozen picture.
+- A connection attempt that fails for any reason now closes its
+  connection, not only one that timed out.
+- The host log says nothing on this machine is being shared any more
+  only once the last connected viewer has left.
+- A host screen refused before it ever named its own screens no longer
+  offers "Connect with a virtual display" on a host that has none.
 
 ## [0.1.3] - 2026-09-19
 

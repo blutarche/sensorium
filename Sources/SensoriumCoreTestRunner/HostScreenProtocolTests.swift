@@ -106,7 +106,7 @@ func testHostScreenProtocol() {
         namedDecoded == namedMessage,
         "hostScreenList round-trips a display entry's own displayIdentity unchanged, alongside every other field"
     )
-    guard case let .hostScreenList(decodedDisplays) = namedDecoded else {
+    guard case let .hostScreenList(decodedDisplays, _) = namedDecoded else {
         expect(false, "the round-tripped message is still a hostScreenList")
         return
     }
@@ -239,4 +239,42 @@ func testHostScreenModeProtocol() {
     )
 
     print("PASS: an unknown host-screen mode message decodes as .unrecognized, so an older peer skips it rather than dying")
+}
+
+/// A host that offers no session canvas says so in its offer, and the field
+/// stays optional in both directions: an offer from a host that predates it
+/// reads as offering one, and an offer carrying a field this build has
+/// never heard of still decodes.
+func testHostScreenListCarriesCanvasAvailability() {
+    let entry = HostScreenListEntry(
+        opaqueToken: Data([0x01, 0x02]),
+        label: "Studio Display",
+        logicalWidth: 2560,
+        logicalHeight: 1440,
+        backingScale: 2.0,
+        isBuiltin: false,
+        displayIdentity: "00000610-00000028"
+    )
+    for canvasAvailable in [true, false] {
+        let message = SensoriumMessage.hostScreenList(displays: [entry], canvasAvailable: canvasAvailable)
+        let decoded = try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(message))
+        expect(decoded == message, "hostScreenList with canvasAvailable \(canvasAvailable) round-trips unchanged")
+    }
+
+    let olderHost = frame(fromJSON: "{\"type\":\"hostScreenList\",\"hostScreenDisplays\":[]}")
+    expect(
+        try! SensoriumFrameCodec.decode(olderHost) == .hostScreenList(displays: [], canvasAvailable: true),
+        "an offer from a host that predates the field reads as offering a session canvas"
+    )
+
+    let newerHost = frame(
+        fromJSON: "{\"type\":\"hostScreenList\",\"hostScreenDisplays\":[],\"canvasAvailable\":false,"
+            + "\"fieldNotYetInvented\":true}"
+    )
+    expect(
+        try! SensoriumFrameCodec.decode(newerHost) == .hostScreenList(displays: [], canvasAvailable: false),
+        "an offer carrying a field this build does not know still decodes, so an older viewer reads a newer host's offer"
+    )
+
+    print("PASS: hostScreenList carries canvas availability, defaults to available when absent, and tolerates unknown fields")
 }

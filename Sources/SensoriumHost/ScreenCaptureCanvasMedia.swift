@@ -69,6 +69,11 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
     /// cached filter fails to bring a pipeline up, since ScreenCaptureKit
     /// is the only authority on whether a filter it vended is still good.
     private var cachedContentFilter: SCContentFilter?
+    private var captureStoppedHandler: (@Sendable () -> Void)?
+    /// Bumped for every pipeline built and at `stop`, so a stream-stopped
+    /// signal from a pipeline this media already replaced or stopped is
+    /// dropped rather than reported as the live capture ending.
+    private var pipelineGeneration = 0
 
     public init(
         surface: CanvasSurfaceID,
@@ -101,6 +106,10 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         self.log = log
         self.pipelineFactory = pipelineFactory
         self.contentFilterProvider = contentFilterProvider
+    }
+
+    public func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {
+        captureStoppedHandler = handler
     }
 
     public var currentStreamScale: Double { configuration.streamScale }
@@ -164,6 +173,7 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
             await stopPipeline(displayID: canvasDisplayID)
         }
         pipeline = nil
+        pipelineGeneration += 1
         canvasDisplayID = nil
         packetHandler = nil
         cachedContentFilter = nil
@@ -250,6 +260,8 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
             filter = try await contentFilterProvider(VirtualDisplayHandle(rawValue: canvasDisplayID))
             cachedContentFilter = filter
         }
+        pipelineGeneration += 1
+        let generation = pipelineGeneration
         let pipeline = try pipelineFactory(
             filter,
             surface,
@@ -259,8 +271,14 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
             focus,
             .sessionCanvas,
             packetizer,
-            { [log] error in
+            { [log, weak self] error in
                 log?(ScreenCaptureStopReport.streamStopped(displayID: canvasDisplayID, error: error))
+                Task { @MainActor [weak self] in
+                    guard let self, generation == self.pipelineGeneration else {
+                        return
+                    }
+                    self.captureStoppedHandler?()
+                }
             },
             packetHandler
         )

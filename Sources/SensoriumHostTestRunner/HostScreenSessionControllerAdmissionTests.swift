@@ -180,7 +180,7 @@ private func expectNoInjectorWasBuilt(_ factory: FakeInputInjectorFactory, _ con
 
 @MainActor
 private func offerAndExtractToken(_ controller: HostSessionController) -> Data {
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the admissible fixture's offer names at least one display")
         return Data()
     }
@@ -467,7 +467,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         // but a viewer needs a stable way to say "that one again."
         let fixture = makeAdmissibleFixture()
         func nextEntry() -> HostScreenListEntry? {
-            guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(), let entry = displays.first else {
+            guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(), let entry = displays.first else {
                 expect(false, "the admissible fixture's offer names at least one display")
                 return nil
             }
@@ -596,7 +596,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList() else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
             expect(false, "an armed device with two eligible displays is offered a list, not a refusal")
             return
         }
@@ -774,7 +774,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList() else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
             expect(false, "an armed device with one shareable display still receives hostScreenList")
             return
         }
@@ -846,7 +846,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
         let offer = try! controller.offerHostScreenList()
-        if case .hostScreenList(let displays) = offer {
+        if case .hostScreenList(let displays, _) = offer {
             expect(displays.isEmpty, "a display asleep right now is offered to no one, whatever it was at host start -- got: \(displays.count)")
         }
         expect(
@@ -934,7 +934,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList() else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList() else {
             expect(false, "an armed machine is offered this machine's current displays, not refused")
             return
         }
@@ -1058,7 +1058,8 @@ func runHostScreenSessionControllerAdmissionTests() async {
             sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()) },
             approvedPublicKeys: [identity.publicKey],
             requireAuthentication: true,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,

@@ -103,13 +103,16 @@ public actor ClientReconnectDriver {
                 // One refused canvas stops: macOS would not create one under
                 // any identity the host has, so the next dial is refused
                 // exactly as this one was and only the host app being opened
-                // again at that machine changes the answer. Every other reason
-                // keeps the policy below -- `canvas-creation-in-progress` is a
-                // race with another connection's creation that is over in a
-                // moment, and a reason this build has never seen is not proof
-                // the host can never recover from it.
+                // again at that machine changes the answer. `canvas-not-offered`
+                // is just as permanent -- only a person at the host turning
+                // the setting on changes that answer, not a retry. Every
+                // other reason keeps the policy below -- `canvas-creation-
+                // in-progress` is a race with another connection's creation
+                // that is over in a moment, and a reason this build has
+                // never seen is not proof the host can never recover from it.
                 if case let .canvasRefused(reason) = failure,
-                   reason == CanvasRefusalReason.canvasUnavailable {
+                   reason == CanvasRefusalReason.canvasUnavailable
+                       || reason == CanvasRefusalReason.canvasNotOffered {
                     return .stopped
                 }
                 switch supervisor.handle(.connectFailed) {

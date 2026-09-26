@@ -149,7 +149,8 @@ func runScreenChangeAdmissionTests() async {
     let coordinator = HostSessionCoordinator(
         controller: HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         ),
         media: onlyOnSurfaceZero(media),
         videoSink: FakeVideoSink(),

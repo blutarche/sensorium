@@ -298,7 +298,8 @@ func runHostCapabilityAndSettingsTests() async {
         let cappedController = HostSessionController(
             sessions: surfaceZeroOnly(cappedSession),
             keyConfinement: .unconfined,
-            maxSurfaceCount: 1
+            maxSurfaceCount: 1,
+            privateDesktopOffered: { true }
         )
         expectThrows(
             HostSessionControllerError.invalidCanvasRequest,
@@ -311,7 +312,8 @@ func runHostCapabilityAndSettingsTests() async {
 
         let uncappedController = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let uncappedReady = try! uncappedController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 1))
         expect(uncappedReady != nil, "the default cap (every canvas the wire protocol allows) leaves surface 1 reachable, unchanged from before this setting existed")

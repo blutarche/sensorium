@@ -62,7 +62,8 @@ func runHostViewerSilenceWatchdogTests() async {
     do {
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let channel = FakeHostByteChannel(scriptedMessages: [
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil),
@@ -131,7 +132,8 @@ func runHostViewerSilenceWatchdogTests() async {
     do {
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let channel = FakeHostByteChannel(scriptedMessages: [
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil),

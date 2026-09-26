@@ -159,7 +159,7 @@ private func startFidelitySession(_ fixture: (
     controller: HostSessionController,
     canvasMedia: FakeScalableCanvasMedia
 )) async {
-    guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return
@@ -427,7 +427,7 @@ func runHostScreenFidelityTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(offered) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(offered, _) = try! controller.offerHostScreenList(),
               let entry = offered.first else {
             expect(false, "the fixture's offer names at least one display")
             return

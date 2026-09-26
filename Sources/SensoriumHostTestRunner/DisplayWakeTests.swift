@@ -222,7 +222,7 @@ private func makeDecliningWakeFixture(
         videoSink: FakeVideoSink(),
         workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
     )
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's own offer names the display it was armed for")
         return (coordinator, Data())
@@ -238,7 +238,8 @@ func makeAwakeCanvasCoordinator(wake: DisplayWakeController) -> HostSessionCoord
         controller: HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
             keyConfinement: .unconfined,
-            displayWake: wake
+            displayWake: wake,
+            privateDesktopOffered: { true }
         ),
         media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
         videoSink: FakeVideoSink(),
@@ -292,7 +293,7 @@ func makeWakeHostScreenFixture(
         hostScreenMediaFactory: hostScreenMediaFactory,
         captureAvailability: availability
     )
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's own offer names the display it was armed for")
         return (coordinator, controller, Data())
@@ -590,7 +591,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { loggedLines.append($0) }
         )
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed display that was merely asleep is offered once it has been woken")
             return
         }
@@ -624,7 +625,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { loggedLines.append($0) }
         )
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "a display that would not wake still produces an offer, with nothing in it")
             return
         }
@@ -657,7 +658,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { _ in }
         )
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "the awake display is still offered with a canvas asleep beside it")
             return
         }
@@ -694,7 +695,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { _ in }
         )
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "the woken physical display is offered")
             return
         }
@@ -728,7 +729,7 @@ func runDisplayWakeTests() async {
         let controller = armedHostScreenController(
             displays: list, displayWake: wake, log: { _ in }
         )
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "the display being mirrored is still offered")
             return
         }
@@ -758,7 +759,8 @@ func runDisplayWakeTests() async {
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 keyConfinement: .unconfined,
-                displayWake: wake
+                displayWake: wake,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
@@ -805,7 +807,8 @@ func runDisplayWakeTests() async {
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 keyConfinement: .unconfined,
-                displayWake: wake
+                displayWake: wake,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
@@ -843,7 +846,8 @@ func runDisplayWakeTests() async {
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 keyConfinement: .unconfined,
-                displayWake: wake
+                displayWake: wake,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(FailingCanvasMedia()),
             videoSink: FakeVideoSink(),
@@ -887,7 +891,8 @@ func runDisplayWakeTests() async {
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 keyConfinement: .unconfined,
-                displayWake: wake
+                displayWake: wake,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(media),
             videoSink: FakeVideoSink(),
@@ -940,7 +945,8 @@ func runDisplayWakeTests() async {
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 keyConfinement: .unconfined,
-                displayWake: wake
+                displayWake: wake,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(media),
             videoSink: FakeVideoSink(),
@@ -1120,7 +1126,7 @@ func runDisplayWakeTests() async {
             pollSeconds: 0.1
         )
         let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed device is offered this machine's displays")
             return
         }
@@ -1151,7 +1157,7 @@ func runDisplayWakeTests() async {
             pollSeconds: 0.1
         )
         let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed device is offered this machine's displays")
             return
         }
@@ -1180,7 +1186,7 @@ func runDisplayWakeTests() async {
             settleSeconds: 3
         )
         let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed device is offered this machine's displays")
             return
         }
@@ -1226,7 +1232,7 @@ func runDisplayWakeTests() async {
         let list = FakeDisplayList([headlessStandInSnapshot(), sleepingDisplaySnapshot(id: 2, asleep: false)])
         let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
         let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed device is offered this machine's displays")
             return
         }
@@ -1263,7 +1269,7 @@ func runDisplayWakeTests() async {
             settleSeconds: 3
         )
         let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
-        guard case let .hostScreenList(displays) = try! await controller.offerHostScreenListWakingDisplays() else {
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays() else {
             expect(false, "an armed device is offered this machine's displays")
             return
         }
@@ -1315,7 +1321,7 @@ func runDisplayWakeTests() async {
             power.userActivityDeclarations == 0,
             "a device the host stopped wakes nothing, got \(power.userActivityDeclarations)"
         )
-        if case let .hostScreenList(displays)? = offer {
+        if case let .hostScreenList(displays, _)? = offer {
             expect(displays.isEmpty, "and is offered nothing, got \(displays.count)")
         }
     }
@@ -1575,7 +1581,7 @@ func runDisplayWakeTests() async {
         let fixture = makeMutableArmingWakeFixture(
             display: display, wake: wake, armed: true, resumeTicketStore: HostScreenResumeTicketStore()
         )
-        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the fixture's own offer names the display it was armed for")
             return
@@ -1611,7 +1617,7 @@ func runDisplayWakeTests() async {
         let display = sleepingDisplaySnapshot(id: 7, asleep: false)
         let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
         let fixture = makeMutableArmingWakeFixture(display: display, wake: wake, armed: true)
-        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the fixture's own offer names the display it was armed for")
             return
@@ -1742,7 +1748,7 @@ func runDisplayWakeTests() async {
         }
 
         let first = makeConnection()
-        guard case let .hostScreenList(firstDisplays) = try! first.controller.offerHostScreenList(),
+        guard case let .hostScreenList(firstDisplays, _) = try! first.controller.offerHostScreenList(),
               let firstEntry = firstDisplays.first else {
             expect(false, "the fixture's own offer names the display it was armed for")
             return
@@ -1765,7 +1771,7 @@ func runDisplayWakeTests() async {
         _ = try? await first.coordinator.handleWritingResponse(.goodbye(reason: "viewer-left"))
 
         let second = makeConnection()
-        guard case let .hostScreenList(secondDisplays) = try! second.controller.offerHostScreenList(),
+        guard case let .hostScreenList(secondDisplays, _) = try! second.controller.offerHostScreenList(),
               let secondEntry = secondDisplays.first else {
             expect(false, "the second connection's own offer names the display too")
             return
@@ -1808,7 +1814,7 @@ func runDisplayWakeTests() async {
         }
         expect(power.userActivityDeclarations == 1, "the first session wakes this machine once, got \(power.userActivityDeclarations)")
         _ = try? await fixture.coordinator.handleWritingResponse(.goodbye(reason: "viewer-left"))
-        guard case let .hostScreenList(displays) = try! fixture.controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the same connection's own second offer names the display again")
             return
@@ -1950,7 +1956,7 @@ func runDisplayWakeTests() async {
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
         )
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the fixture's own offer names the display it was armed for")
             return

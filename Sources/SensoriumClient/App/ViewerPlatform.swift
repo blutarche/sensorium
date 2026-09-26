@@ -62,7 +62,7 @@ public protocol SessionWindowChrome: ShortcutForwardingTarget {
     func apply(status: ViewerSessionStatus)
     func updateDisplayCount(_ count: Int)
     func updateIsHostScreenSession(_ isHostScreenSession: Bool)
-    func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?)
+    func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool)
     func updateHostScreenModes(_ modes: [HostScreenModeEntry], currentModeID: String?)
     func updateStartTargetPreference(_ preference: StartTarget)
     func updateClipboardSharingEnabled(_ enabled: Bool)

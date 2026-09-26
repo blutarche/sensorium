@@ -112,6 +112,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// built lazily, off the main HUD tick, and needs a synchronous answer.
     private var cachedScreenMenuDisplays: [HostScreenListEntry] = []
     private var cachedScreenMenuSelectedToken: Data?
+    private var cachedScreenMenuCanvasAvailable = true
     /// The host screen's own display modes, and the one it is on, as the
     /// host last reported them. Cached for exactly the same reason the two
     /// lines above are.
@@ -777,7 +778,8 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         ScreenMenuState(
             items: ScreenMenuPlan.items(
                 displays: cachedScreenMenuDisplays,
-                selectedToken: cachedScreenMenuSelectedToken
+                selectedToken: cachedScreenMenuSelectedToken,
+                canvasAvailable: cachedScreenMenuCanvasAvailable
             ),
             modes: ScreenMenuPlan.modeMenu(
                 modes: cachedHostScreenModes,
@@ -787,13 +789,14 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
             startWith: ScreenMenuPlan.startWithMenu(
                 preference: cachedStartTargetPreference,
                 offeredHostScreens: cachedScreenMenuDisplays,
-                isHostScreenSessionLive: cachedIsHostScreenSession
+                isHostScreenSessionLive: cachedIsHostScreenSession,
+                canvasAvailable: cachedScreenMenuCanvasAvailable
             )
         )
     }
 
     /// This machine's own saved "Start with" preference, set by whoever owns
-    /// the live session -- the same ownership `updateScreenMenu(displays:selectedToken:)`
+    /// the live session -- the same ownership `updateScreenMenu(displays:selectedToken:canvasAvailable:)`
     /// above already has.
     public func updateStartTargetPreference(_ preference: StartTarget) {
         cachedStartTargetPreference = preference
@@ -812,9 +815,10 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// What the Screen menu offers and which row is checked, kept here the
     /// same way `updateDisplayCount(_:)`'s own count is: set by whoever owns
     /// the live session, so the menu (built lazily) can answer synchronously.
-    public func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?) {
+    public func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool) {
         cachedScreenMenuDisplays = displays
         cachedScreenMenuSelectedToken = selectedToken
+        cachedScreenMenuCanvasAvailable = canvasAvailable
     }
 
     /// The Screen menu's own action. Forwarded rather than acted on here,
@@ -830,7 +834,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
 
     /// What the Resolution submenu offers and which row is checked, set by
     /// whoever owns the live session -- the same ownership
-    /// `updateScreenMenu(displays:selectedToken:)` above already has.
+    /// `updateScreenMenu(displays:selectedToken:canvasAvailable:)` above already has.
     public func updateHostScreenModes(_ modes: [HostScreenModeEntry], currentModeID: String?) {
         cachedHostScreenModes = modes
         cachedHostScreenModeID = currentModeID

@@ -12,8 +12,14 @@ import SensoriumCore
 /// Every line is read under a headline that already names the host, so
 /// none names it again: "that machine" is the subject throughout.
 public enum HostScreenRefusalCopy {
+    /// Minted here rather than sent by the host: the host's offer held no
+    /// screen, and a session never falls back to a canvas on its own.
+    public static let noneAvailableReason = "host-screen-none-available"
+
     public static func line(reason: String) -> String {
         switch reason {
+        case noneAvailableReason:
+            return "This Mac has no screen available to share right now."
         case "canvas-session-active":
             return "That machine was already showing this machine a virtual display. That session has ended. "
                 + "Connect with a virtual display, then choose a host screen from the Screen menu."

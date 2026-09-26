@@ -176,36 +176,40 @@ extension HostSessionControllerError {
     }
 }
 
-/// Who is on this machine, for the terminal.
+/// Who is on this machine, for the terminal. One log serves every
+/// connection, so a connection closing claims nothing is shared only when no
+/// other identified connection is still open.
 ///
 /// The transport reports a closed connection whether or not anyone ever
 /// authenticated on it, and a refused viewer closing is not a session ending.
-/// Keeping the last identified name here is what lets the log stay silent for
-/// the first and name the person for the second.
+/// Keeping each connection's identified name here is what lets the log stay
+/// silent for the first and name the person for the second.
 public struct HostPeerActivityLog: Sendable {
-    private var connectedPeer: String?
+    private var connectedPeers: [ObjectIdentifier: String] = [:]
 
     public init() {}
 
     /// `nil` when there is nothing true to say.
-    public mutating func line(for peer: HostPeerPresence) -> String? {
+    public mutating func line(for peer: HostPeerPresence, from connection: HostConnectionToken) -> String? {
+        let key = ObjectIdentifier(connection)
         switch peer {
         case let .identified(deviceName):
-            connectedPeer = deviceName
+            connectedPeers[key] = deviceName
             // The same hello precedes both targets; the line that follows
             // names which one it became.
             return "\(deviceName) is connected."
         case let .closed(reason):
-            guard let peer = connectedPeer else {
+            guard let peer = connectedPeers.removeValue(forKey: key) else {
                 return nil
             }
-            connectedPeer = nil
             // The reason goes where the ending is reported, not on a line of
             // its own: a drop and the cause of it read as one event.
-            guard let reason else {
-                return "\(peer) is no longer connected. Nothing on this machine is being shared now."
+            let ended = reason.map { "\(peer) is no longer connected (\($0))." }
+                ?? "\(peer) is no longer connected."
+            guard connectedPeers.isEmpty else {
+                return ended
             }
-            return "\(peer) is no longer connected (\(reason)). Nothing on this machine is being shared now."
+            return ended + " Nothing on this machine is being shared now."
         }
     }
 }

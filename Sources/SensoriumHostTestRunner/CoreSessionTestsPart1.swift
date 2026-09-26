@@ -358,7 +358,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             let interleavedFactory = HostConnectionSessionFactory(
                 sessions: surfaceZeroOnly(interleavedSession),
                 inputInjectorFactory: FakeInputInjectorFactory(),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             )
             let controllerA = interleavedFactory.makeController()
             let coordinatorA = HostSessionCoordinator(
@@ -501,7 +502,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         expect(VideoEncoderConfiguration.remoteDefault.maxFrameDelayCount == 0, "encoder disables frame buffering for interactive latency")
         expect(VideoEncoderConfiguration.remoteDefault.profileLevel == .mainAutoLevel, "encoder selects an explicit profile/level")
         expect(VideoEncoderConfiguration.remoteDefault.requiresHardwareAcceleration == true, "encoder requires hardware acceleration instead of silently falling back to software")
-        let controller = HostSessionController(sessions: surfaceZeroOnly(session), keyConfinement: .unconfined)
+        let controller = HostSessionController(sessions: surfaceZeroOnly(session), keyConfinement: .unconfined, privateDesktopOffered: { true })
         let ready = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         expect(
             ready == .canvasReady(
@@ -525,7 +526,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         suppliedSurfaceAdapter.handleValuesToVend = [7, 8]
         let suppliedSurfaceController = HostSessionController(
             sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: suppliedSurfaceAdapter) },
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let suppliedSurfaceReady = try! suppliedSurfaceController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 1))
         expect(
@@ -542,7 +544,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
 
         let omittedSurfaceAdapter = FakeVirtualDisplayAdapter()
         let omittedSurfaceSession = VirtualDisplaySession(adapter: omittedSurfaceAdapter)
-        let omittedSurfaceController = HostSessionController(sessions: surfaceZeroOnly(omittedSurfaceSession), keyConfinement: .unconfined)
+        let omittedSurfaceController = HostSessionController(
+            sessions: surfaceZeroOnly(omittedSurfaceSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+        )
         let omittedSurfaceReady = try! omittedSurfaceController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         expect(
             omittedSurfaceReady == .canvasReady(
@@ -563,7 +567,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         for outOfRange: UInt32 in [2, 3, 999] {
             let rejectedAdapter = FakeVirtualDisplayAdapter()
             let rejectedSession = VirtualDisplaySession(adapter: rejectedAdapter)
-            let rejectedController = HostSessionController(sessions: surfaceZeroOnly(rejectedSession), keyConfinement: .unconfined)
+            let rejectedController = HostSessionController(
+                sessions: surfaceZeroOnly(rejectedSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            )
             expectThrows(
                 HostSessionControllerError.invalidCanvasRequest,
                 { _ = try rejectedController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: outOfRange)) },
@@ -578,7 +584,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let surfaceValidationController = HostSessionController(
             sessions: surfaceZeroOnly(surfaceValidationSession),
             inputInjector: surfaceValidationInjector,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         _ = try! surfaceValidationController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         // An absent surfaceID and an explicit 0 name the same canvas.
@@ -621,7 +628,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             approvedPublicKeys: [identity.publicKey],
             requireAuthentication: true,
             inputInjector: inputInjector,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         expectThrows(
             HostSessionControllerError.authenticationRequired,
@@ -676,7 +684,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let factoryController = HostSessionController(
             sessions: surfaceZeroOnly(factorySession),
             inputInjectorFactory: factory,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         _ = try! factoryController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         expect(
@@ -703,7 +712,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let unrecognizedController = HostSessionController(
             sessions: surfaceZeroOnly(unrecognizedSession),
             inputInjector: unrecognizedInjector,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         _ = try! unrecognizedController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         let unrecognizedResponse = try! unrecognizedController.handle(.unrecognized(type: "futureFocusSignal"))
@@ -942,12 +952,13 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
 
         var peerLog = HostPeerActivityLog()
+        let connection = HostConnectionToken()
         expect(
-            peerLog.line(for: .closed(reason: nil)) == nil,
+            peerLog.line(for: .closed(reason: nil), from: connection) == nil,
             "a connection that never identified itself ends no session, and inventing one in the log would be a lie"
         )
-        let connectedLine = peerLog.line(for: .identified(deviceName: "Kestrel’s Laptop"))
-        let endedLine = peerLog.line(for: .closed(reason: nil))
+        let connectedLine = peerLog.line(for: .identified(deviceName: "Kestrel’s Laptop"), from: connection)
+        let endedLine = peerLog.line(for: .closed(reason: nil), from: connection)
         expect(
             connectedLine?.contains("Kestrel’s Laptop") == true && endedLine?.contains("Kestrel’s Laptop") == true,
             "the terminal records who connected and who left, by the name that arrived on the wire"
@@ -961,18 +972,35 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             "the connect line claims nothing about what the connected machine can see -- got \(connectedLine ?? "nothing")"
         )
         expect(
-            peerLog.line(for: .closed(reason: nil)) == nil,
+            peerLog.line(for: .closed(reason: nil), from: connection) == nil,
             "a session ends once; a second teardown of the same connection says nothing"
         )
 
         var droppedPeerLog = HostPeerActivityLog()
-        _ = droppedPeerLog.line(for: .identified(deviceName: "Kestrel\u{2019}s Laptop"))
-        let droppedLine = droppedPeerLog.line(for: .closed(reason: "macOS reported: The network connection was lost"))
+        let droppedConnection = HostConnectionToken()
+        _ = droppedPeerLog.line(for: .identified(deviceName: "Kestrel\u{2019}s Laptop"), from: droppedConnection)
+        let droppedLine = droppedPeerLog.line(for: .closed(reason: "macOS reported: The network connection was lost"), from: droppedConnection)
         expect(
             droppedLine == "Kestrel\u{2019}s Laptop is no longer connected (macOS reported: The network connection was lost). "
                 + "Nothing on this machine is being shared now.",
             "a connection that ended for a reason this host learned says the reason where it says the ending, so a drop mid-session is not a mystery in the log -- got \(droppedLine ?? "nothing")"
         )
+        var sharedPeerLog = HostPeerActivityLog()
+        let firstConnection = HostConnectionToken()
+        let secondConnection = HostConnectionToken()
+        _ = sharedPeerLog.line(for: .identified(deviceName: "Kestrel\u{2019}s Laptop"), from: firstConnection)
+        _ = sharedPeerLog.line(for: .identified(deviceName: "Wren\u{2019}s Desktop"), from: secondConnection)
+        let firstClosed = sharedPeerLog.line(for: .closed(reason: nil), from: firstConnection)
+        expect(
+            firstClosed == "Kestrel\u{2019}s Laptop is no longer connected.",
+            "a connection closing while another is still on this machine does not claim nothing is shared -- got \(firstClosed ?? "nothing")"
+        )
+        let lastClosed = sharedPeerLog.line(for: .closed(reason: nil), from: secondConnection)
+        expect(
+            lastClosed == "Wren\u{2019}s Desktop is no longer connected. Nothing on this machine is being shared now.",
+            "the last connection closing says nothing is shared any more -- got \(lastClosed ?? "nothing")"
+        )
+
         expect(
             HostOperatorLog.closeReason(for: HostNetworkSessionError.closed) == nil,
             "and an ending this host learned nothing about carries no reason at all, rather than a shrug dressed up as one"
@@ -1030,7 +1058,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let releaseAllAdapter = FakeVirtualDisplayAdapter()
         let releaseAllSession = VirtualDisplaySession(adapter: releaseAllAdapter)
         let releaseAllInjector = FakeInputInjector()
-        let releaseAllController = HostSessionController(sessions: surfaceZeroOnly(releaseAllSession), inputInjector: releaseAllInjector, keyConfinement: .unconfined)
+        let releaseAllController = HostSessionController(
+            sessions: surfaceZeroOnly(releaseAllSession), inputInjector: releaseAllInjector, keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! releaseAllController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
 
         _ = try! releaseAllController.handle(.input(.releaseAllInput, surfaceID: nil))
@@ -1069,7 +1100,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let flakyAdapter = FakeVirtualDisplayAdapter()
         let flakySession = VirtualDisplaySession(adapter: flakyAdapter)
         let flakyInjector = FakeInputInjector()
-        let flakyController = HostSessionController(sessions: surfaceZeroOnly(flakySession), inputInjector: flakyInjector, keyConfinement: .unconfined)
+        let flakyController = HostSessionController(
+            sessions: surfaceZeroOnly(flakySession), inputInjector: flakyInjector, keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! flakyController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         _ = try! flakyController.handle(.input(.pointerButton(button: .left, isDown: true, x: 30, y: 40), surfaceID: nil))
         _ = try! flakyController.handle(.input(.key(keyCode: 12, isDown: true, modifiers: [.shift]), surfaceID: nil))
@@ -1106,7 +1140,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let capturedAdapter = FakeVirtualDisplayAdapter()
         let capturedSession = VirtualDisplaySession(adapter: capturedAdapter)
         let capturedInjector = FakeInputInjector()
-        let capturedController = HostSessionController(sessions: surfaceZeroOnly(capturedSession), inputInjector: capturedInjector, keyConfinement: .unconfined)
+        let capturedController = HostSessionController(
+            sessions: surfaceZeroOnly(capturedSession), inputInjector: capturedInjector, keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
         _ = try! capturedController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         _ = try! capturedController.handle(.input(.pointerCaptureChanged(isCaptured: true), surfaceID: nil))
         _ = try! capturedController.handle(.goodbye(reason: "client-disconnected"))
@@ -1116,7 +1153,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         )
 
         let neverCapturedInjector = FakeInputInjector()
-        let neverCapturedController = HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), inputInjector: neverCapturedInjector, keyConfinement: .unconfined)
+        let neverCapturedController = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            inputInjector: neverCapturedInjector, keyConfinement: .unconfined, privateDesktopOffered: { true }
+        )
         _ = try! neverCapturedController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
         _ = try! neverCapturedController.handle(.goodbye(reason: "client-disconnected"))
         expect(
@@ -1133,6 +1173,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
             inputInjector: loggingInjector,
             keyConfinement: .unconfined,
+            privateDesktopOffered: { true },
             log: { releaseLog.record($0) }
         )
         _ = try! loggingController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
@@ -1358,7 +1399,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             sessions: surfaceZeroOnly(signedSession),
             requireAuthentication: true,
             pairing: signedPairing,
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let signedTranscript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1,
@@ -1530,7 +1572,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let workspace = FakeCanvasWorkspace()
         let videoSink = FakeVideoSink()
         let coordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(mediaSession), keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(mediaSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            ),
             media: onlyOnSurfaceZero(media),
             videoSink: videoSink,
             workspaces: onlyOnSurfaceZero(workspace))
@@ -1576,7 +1620,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         do {
             let reconnectAdapter = FakeVirtualDisplayAdapter()
             let reconnectSession = VirtualDisplaySession(adapter: reconnectAdapter)
-            let reconnectFactory = HostConnectionSessionFactory(sessions: surfaceZeroOnly(reconnectSession), keyConfinement: .unconfined)
+            let reconnectFactory = HostConnectionSessionFactory(
+                sessions: surfaceZeroOnly(reconnectSession), keyConfinement: .unconfined, privateDesktopOffered: { true }
+            )
             let sharedWorkspace = FakeCanvasWorkspace()
             var reconnectOrder: [String] = []
             sharedWorkspace.onStop = { reconnectOrder.append("workspace") }

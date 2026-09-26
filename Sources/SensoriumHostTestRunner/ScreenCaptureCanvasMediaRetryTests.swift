@@ -92,3 +92,44 @@ func runScreenCaptureCanvasMediaRetryTests() async {
 
     print("PASS: a canvas pipeline that fails to start is stopped before the retry replaces it")
 }
+
+/// A canvas capture that stops on its own is reported through
+/// `setCaptureStoppedHandler`, and only for the pipeline the media is
+/// streaming through now: one it already replaced, or stopped, is not news.
+@available(macOS 13.0, *)
+@MainActor
+func runScreenCaptureCanvasMediaStopSignalTests() async {
+    let surface = CanvasSurfaceID.allCases[0]
+    var stopHandlers: [(@Sendable (Error) -> Void)?] = []
+    let media = ScreenCaptureCanvasMedia(
+        surface: surface,
+        admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
+            capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
+        ),
+        pipelineFactory: { _, _, _, _, _, _, _, _, streamStoppedHandler, _ in
+            stopHandlers.append(streamStoppedHandler)
+            return FakeMediaPipeline(id: stopHandlers.count - 1, startError: nil)
+        },
+        contentFilterProvider: { _ in SCContentFilter() }
+    )
+    let stops = DiagnosticsRecorder()
+    media.setCaptureStoppedHandler { stops.record("stopped") }
+
+    try! await media.start(canvasDisplayID: 42, onPacket: { _ in true })
+    stopHandlers.last??(FakeMediaFailure.captureUnavailable)
+    try! await Task.sleep(for: .milliseconds(50))
+    expect(stops.messages.count == 1, "the live pipeline's own stop reaches the handler, got \(stops.messages.count)")
+
+    try! await media.reconfigure(streamScale: 0.5)
+    expect(stopHandlers.count == 2, "a reconfiguration builds a second pipeline, got \(stopHandlers.count)")
+    stopHandlers.first??(FakeMediaFailure.captureUnavailable)
+    try! await Task.sleep(for: .milliseconds(50))
+    expect(stops.messages.count == 1, "a replaced pipeline's stop is not reported, got \(stops.messages.count)")
+
+    await media.stop()
+    stopHandlers.last??(FakeMediaFailure.captureUnavailable)
+    try! await Task.sleep(for: .milliseconds(50))
+    expect(stops.messages.count == 1, "a stop after `stop()` is not reported, got \(stops.messages.count)")
+
+    print("PASS: a canvas capture that stops on its own is reported only for the live pipeline")
+}

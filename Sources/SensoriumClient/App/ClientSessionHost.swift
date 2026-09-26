@@ -98,7 +98,9 @@ final class ClientSessionHost {
     /// this, never a hardcoded `.sessionCanvas`.
     /// Set in `init` from `StartTargetResolution.resolve(preference:lastTarget:)`
     /// rather than always `.sessionCanvas`, so the very first connect of a
-    /// launch tries this machine's own saved "Start with" preference.
+    /// launch tries this machine's own saved "Start with" preference. An
+    /// `.offeredHostScreen` start becomes the `.hostScreen` it chose the
+    /// moment that connect succeeds, so every redial names one display.
     private var currentTarget: SessionTarget
     /// This machine's own saved "Start with" preference, as `currentTarget`
     /// last read it -- kept only so a "Start with" pick can update the
@@ -108,23 +110,16 @@ final class ClientSessionHost {
     /// alongside it rather than looked up again, since a target resolved
     /// from a saved preference at launch, or refused before any
     /// `hostScreenList` offer has arrived, has no live offer to look it up
-    /// in. `nil` whenever `currentTarget` is `.sessionCanvas`.
+    /// in. `nil` whenever `currentTarget` is `.sessionCanvas`, and while an
+    /// `.offeredHostScreen` start has not yet chosen a screen.
     private var currentTargetLabel: String?
-    /// Whether `currentTarget` is still the default `.hostScreenWhenOffered`
-    /// preference's own to adjust -- resolved from a remembered offer or a
-    /// session canvas at `init`, and updated at the two moments it changes on
-    /// its own: `hostScreenOffered(displays:)`'s own auto-switch, and a
-    /// refused host screen's own fallback, both below. Set to `false` the
-    /// moment a person's own action names a target instead -- `selectRealScreen(token:)`
-    /// and `perform(_:)`'s `.connectAsVirtualDisplay` -- so neither of those
-    /// two automatic moments ever second-guesses a person's own pick.
-    private var currentTargetIsDefaultChosen: Bool
-    /// Set once inside `runOnce()`'s own catch for a refused host-screen
-    /// connect that fell back to a session canvas on its own -- see
-    /// `StartTargetHostScreenRefusalFallback`. Read and cleared by
-    /// `consumeFallbackToVirtualDisplay()`, the run loop's own signal to
-    /// dial again immediately rather than reporting a dead end.
-    private var fellBackToVirtualDisplayAfterRefusal = false
+    /// Whether the host's latest offer said it opens a session canvas. Every
+    /// way of reaching one from here -- the Screen menu row, the launch
+    /// window's fallback, the ended panel's button -- is offered only while
+    /// this is true. Mirrors `ClientSessionController.hostOffersCanvas`'s own
+    /// default: unproven until an attempt's own outcome says otherwise, never
+    /// assumed while nothing has connected yet.
+    private(set) var hostOffersCanvas = false
     /// The canvas connection's own unprompted `hostScreenList` offer -- design
     /// §2.3 -- kept so the Screen menu's row-to-target lookup still works
     /// once the live connection has switched to `.hostScreen`, which never
@@ -192,26 +187,24 @@ final class ClientSessionHost {
         self.windowsRegistry = windowsRegistry
         self.environment = environment
         currentStartTargetPreference = saved.startTargetPreference
-        let isDefaultPreference = saved.startTargetPreference == .hostScreenWhenOffered
         switch StartTargetResolution.resolve(
             preference: saved.startTargetPreference,
-            lastTarget: saved.lastLiveTarget,
-            rememberedOffer: saved.rememberedHostScreenOffer
+            lastTarget: saved.lastLiveTarget
         ) {
         case .sessionCanvas:
             currentTarget = .sessionCanvas
             currentTargetLabel = nil
-            currentTargetIsDefaultChosen = isDefaultPreference
+        case let .offeredHostScreen(preferredDisplayIdentity):
+            currentTarget = .offeredHostScreen(preferredDisplayIdentity: preferredDisplayIdentity)
+            currentTargetLabel = nil
         case let .hostScreen(displayIdentity):
             currentTarget = .hostScreen(displayIdentity: displayIdentity)
-            // The label's own best source, in order: the preference (or the
-            // last-live record) that pinned this exact screen, then this
-            // machine's own most recently remembered offer, which is
-            // fresher than either whenever the default preference is what
-            // resolved here -- `lastHostScreenOffer` itself is empty until a
-            // connect actually receives one, which this resolved target may
-            // never do if it connects as `.hostScreen` directly and is
-            // refused before any offer arrives.
+            // The label's own best source, in order: the preference that
+            // pinned this exact screen, then this machine's own most
+            // recently remembered offer -- `lastHostScreenOffer` itself is
+            // empty until a connect actually receives one, which this
+            // resolved target may never do if it is refused before any
+            // offer arrives.
             currentTargetLabel = {
                 if case let .hostScreen(_, label) = saved.startTargetPreference {
                     return label
@@ -224,7 +217,6 @@ final class ClientSessionHost {
                 }
                 return displayIdentity
             }()
-            currentTargetIsDefaultChosen = isDefaultPreference
         }
         sessionState = ViewerSessionStateMachine(hostName: saved.displayName)
         shortcuts = environment.makeShortcutForwarder(mode: shortcutMode)
@@ -281,7 +273,9 @@ final class ClientSessionHost {
         }
         window.updateDisplayCount(desiredDisplayCount)
         window.updateClipboardSharingEnabled(desiredClipboardSharingEnabled)
-        window.updateScreenMenu(displays: lastHostScreenOffer, selectedToken: selectedScreenMenuToken())
+        window.updateScreenMenu(
+            displays: lastHostScreenOffer, selectedToken: selectedScreenMenuToken(), canvasAvailable: hostOffersCanvas
+        )
         window.updateHostScreenModes(hostScreenModes, currentModeID: hostScreenModeID)
         window.updateStartTargetPreference(currentStartTargetPreference)
         return window
@@ -346,30 +340,26 @@ final class ClientSessionHost {
                 resumeTicket: connectPlan.ticketToPresent
             )
         } catch let error as ClientSessionError {
+            // Read before the refusal is reported, so the launch window and
+            // the ended panel offer a virtual display only if this host has one.
+            // Written back only when this attempt actually read an offer or
+            // opened a canvas -- an attempt that fails before either (an
+            // unauthenticated connect refused before any offer arrives) has
+            // learned nothing, and must not overwrite what an earlier attempt
+            // already proved.
+            if await controller.hostOffersCanvasIsKnown {
+                hostOffersCanvas = await controller.hostOffersCanvas
+            }
             if connectPlan.ticketToPresent != nil, case .hostScreenRefused = error {
                 // A ticket the host refused is known bad and is
                 // never presented again. `ClientReconnectDriver` stops the
                 // whole run on this same error, so nothing here retries it.
                 heldResumeTicket = nil
             }
-            if case .hostScreenRefused = error,
-               StartTargetHostScreenRefusalFallback.shouldFallBackToVirtualDisplay(
-                   isDefaultChosen: currentTargetIsDefaultChosen, hasBeenLive: hasBeenLive
-               ) {
-                // The default preference chose this screen, nobody picked
-                // it, so its refusal is not the dead end the same refusal
-                // would be for an explicit pin -- `runHostSession`'s own
-                // loop reads this flag and dials again on a session canvas
-                // once the ordinary refusal reporting below has run.
-                heldResumeTicket = HostScreenResumeTicketRetention.afterTargetChanged(
-                    from: currentTarget, to: .sessionCanvas, held: heldResumeTicket
-                )
-                currentTarget = .sessionCanvas
-                currentTargetLabel = nil
-                currentTargetIsDefaultChosen = false
-                fellBackToVirtualDisplayAfterRefusal = true
-            }
             throw error
+        }
+        if await controller.hostOffersCanvasIsKnown {
+            hostOffersCanvas = await controller.hostOffersCanvas
         }
         let displayID: UInt32?
         let isHostScreenSession: Bool
@@ -387,29 +377,17 @@ final class ClientSessionHost {
             // that hook only sees what arrives after `connect()` already
             // returned.
             hostScreenOffered(displays: hostScreenOffer)
-            if let autoSwitch = StartTargetAutoSwitch.target(
-                isDefaultChosen: currentTargetIsDefaultChosen, currentTarget: currentTarget, offer: hostScreenOffer
-            ) {
-                // Nothing has been shown yet -- `markCanvasLive()` only
-                // fires at the first decoded frame, and none has arrived --
-                // so abandoning this canvas connect for the screen the
-                // default preference just offered costs no picture a person
-                // ever saw.
-                heldResumeTicket = HostScreenResumeTicketRetention.afterTargetChanged(
-                    from: currentTarget,
-                    to: .hostScreen(displayIdentity: autoSwitch.displayIdentity),
-                    held: heldResumeTicket
-                )
-                currentTarget = .hostScreen(displayIdentity: autoSwitch.displayIdentity)
-                currentTargetLabel = autoSwitch.label
-                hostScreenConnectIsPersonInitiated = true
-                print("Sensorium: starting on host screen \(autoSwitch.label)")
-                await controller.disconnect(reason: "start-target-auto-switch")
-                return try await runOnce()
-            }
         case let .hostScreen(_, resumeTicket, hostScreenOffer):
             displayID = nil
             isHostScreenSession = true
+            if case .offeredHostScreen = currentTarget,
+               let chosen = await controller.hostScreenDisplayIdentity {
+                // The screen the offer settled on is this session's target
+                // from here on, so a redial after a drop resumes that same
+                // display with the ticket below.
+                currentTarget = .hostScreen(displayIdentity: chosen)
+                currentTargetLabel = hostScreenOffer.first { $0.displayIdentity == chosen }?.label ?? chosen
+            }
             // Pushed unprompted with this same connect, the same as the
             // `.canvas` case above: a direct host-screen connect, with no
             // earlier `.canvas` outcome to have read the offer from, would
@@ -527,8 +505,9 @@ final class ClientSessionHost {
         // connection. The Screen menu's own state is pushed here the same
         // reason `onSecondDisplayReady` is pushed above -- the window cannot
         // reach across to this live runner synchronously at `menuNeedsUpdate`.
-        runner.onHostScreenOffered = { [weak self] displays in
+        runner.onHostScreenOffered = { [weak self] displays, canvasAvailable in
             Task { @MainActor in
+                self?.hostOffersCanvas = canvasAvailable
                 self?.hostScreenOffered(displays: displays)
             }
         }
@@ -748,14 +727,12 @@ final class ClientSessionHost {
             // Never resumes the target that just ended: nothing here is
             // automatic. Always switches to a session canvas, the same
             // dialling loop `onTryAgain` already wakes for a plain retry.
+            guard hostOffersCanvas else { return }
             heldResumeTicket = HostScreenResumeTicketRetention.afterTargetChanged(
                 from: currentTarget, to: .sessionCanvas, held: heldResumeTicket
             )
             currentTarget = .sessionCanvas
             currentTargetLabel = nil
-            // A person's own explicit choice, never second-guessed by a
-            // later offer the way the default preference's own canvas is.
-            currentTargetIsDefaultChosen = false
             applyStatus(sessionState.handle(.retryRequested))
             onTryAgain?()
         case .pairAgain:
@@ -779,7 +756,9 @@ final class ClientSessionHost {
             onFailureBeforeLive?(failure)
             return
         }
-        applyStatus(sessionState.handle(.hostScreenConnectEnded(reasonLine: reasonLine)))
+        applyStatus(sessionState.handle(.hostScreenConnectEnded(
+            reasonLine: reasonLine, offersVirtualDisplay: hostOffersCanvas
+        )))
     }
 
     /// The retry loop's own report of a dial that failed because the host
@@ -862,6 +841,7 @@ final class ClientSessionHost {
             target = .hostScreen(displayIdentity: entry.displayIdentity)
             label = entry.label
         } else {
+            guard hostOffersCanvas else { return }
             target = .sessionCanvas
             label = nil
         }
@@ -874,9 +854,6 @@ final class ClientSessionHost {
         )
         currentTarget = target
         currentTargetLabel = label
-        // A person's own explicit choice, never second-guessed by a later
-        // offer the way the default preference's own canvas is.
-        currentTargetIsDefaultChosen = false
         hostScreenConnectIsPersonInitiated = true
         guard lastRunner != nil else {
             // Nothing is connected yet; the next `runOnce()` reads
@@ -905,15 +882,26 @@ final class ClientSessionHost {
 
     /// What `currentTarget` names, in the shape `SavedHost.lastLiveTarget`
     /// stores -- read once a session actually goes live, never before: a
-    /// target that has only been attempted is not what `.lastUsed` should
-    /// fall back to next time.
+    /// target that has only been attempted is not what the default should
+    /// prefer next time. An `.offeredHostScreen` start has become the
+    /// `.hostScreen` it chose before anything goes live; should one ever be
+    /// read here, it stores as the default, which prefers nothing.
     var liveStartTarget: StartTarget {
         switch currentTarget {
         case .sessionCanvas:
             return .virtualDisplay
         case let .hostScreen(displayIdentity):
             return .hostScreen(displayIdentity: displayIdentity, label: currentTargetLabel ?? displayIdentity)
+        case .offeredHostScreen:
+            return .hostScreenWhenOffered
         }
+    }
+
+    /// Whether this attempt is trying a host screen rather than a session
+    /// canvas, read by the dialling loop the same way `currentHostScreenLabel`
+    /// is.
+    var isTryingHostScreen: Bool {
+        currentTarget != .sessionCanvas
     }
 
     /// `currentTarget`'s own label, when this attempt is trying a host
@@ -963,26 +951,17 @@ final class ClientSessionHost {
     private func hostScreenOffered(displays: [HostScreenListEntry]) {
         lastHostScreenOffer = displays
         for window in windows.compactMap({ $0 }) {
-            window.updateScreenMenu(displays: displays, selectedToken: selectedScreenMenuToken())
+            window.updateScreenMenu(
+                displays: displays, selectedToken: selectedScreenMenuToken(), canvasAvailable: hostOffersCanvas
+            )
         }
         // Remembered regardless of which target this connection is
-        // streaming: a canvas connect's own offer is what
-        // `.hostScreenWhenOffered` will read back next time -- see
-        // `StartTargetResolution.resolve(preference:lastTarget:rememberedOffer:)`.
+        // streaming, so the Screen menu can name these screens before the
+        // next connect's own offer arrives.
         savedHostStore.rememberHostScreenOffer(
             hostPublicKey: saved.hostPublicKey,
             offer: displays.map { RememberedHostScreen(displayIdentity: $0.displayIdentity, label: $0.label) }
         )
-    }
-
-    /// `runHostSession`'s own signal that a refused host screen the default
-    /// preference chose has already fallen back to a session canvas, and the
-    /// next dial should start at once rather than reporting a dead end.
-    /// Cleared the moment it is read, so it is acted on exactly once.
-    func consumeFallbackToVirtualDisplay() -> Bool {
-        let fellBack = fellBackToVirtualDisplayAfterRefusal
-        fellBackToVirtualDisplayAfterRefusal = false
-        return fellBack
     }
 
     /// The windows-and-menu reconciliation both a live "Displays" decrease

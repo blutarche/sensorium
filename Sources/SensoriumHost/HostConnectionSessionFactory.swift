@@ -60,6 +60,9 @@ public final class HostConnectionSessionFactory {
     /// controller: an `authenticatedHello` is bound to the host it was sent
     /// to, and this is what each connection checks that binding against.
     private let hostCertificateHash: Data?
+    /// Read fresh by each controller at every canvas request; see
+    /// `HostSessionController`'s own property of the same name.
+    private let privateDesktopOffered: () -> Bool
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -80,7 +83,8 @@ public final class HostConnectionSessionFactory {
         hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
-        displayWake: DisplayWakeController? = nil
+        displayWake: DisplayWakeController? = nil,
+        privateDesktopOffered: @escaping () -> Bool = { false }
     ) {
         self.sessions = sessions
         self.approvedPublicKeys = approvedPublicKeys
@@ -101,6 +105,7 @@ public final class HostConnectionSessionFactory {
         self.hostScreenPresenceGate = hostScreenPresenceGate
         self.hostScreenModeController = hostScreenModeController
         self.displayWake = displayWake
+        self.privateDesktopOffered = privateDesktopOffered
     }
 
     /// `onClipboardSharingChanged` is per-call, not factory-level like
@@ -128,7 +133,8 @@ public final class HostConnectionSessionFactory {
             hostScreenPresenceActivitySignal: hostScreenPresenceActivitySignal,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
-            displayWake: displayWake
+            displayWake: displayWake,
+            privateDesktopOffered: privateDesktopOffered
         )
     }
 }

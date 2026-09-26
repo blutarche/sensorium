@@ -446,11 +446,10 @@ public final class ViewerApplication {
         // dialling, or this machine forgotten mid-attempt: all three ask this
         // session to end, and the window has already updated its own row.
         launch.onCancelConnecting = { returnToList() }
-        // Nothing here is automatic beyond that: the one explicit way a
-        // failed host-screen attempt this machine's own "Start with"
-        // preference started switches to a virtual display and tries
-        // again -- the same action the live session panel's own button
-        // performs, reached here from the launch window's row instead.
+        // The one explicit way a failed host-screen attempt switches to a
+        // virtual display and tries again -- the same action the live
+        // session panel's own button performs, reached here from the launch
+        // window's row instead.
         launch.onConnectAsVirtualDisplayFallback = { hostPublicKey in
             guard hostPublicKey == saved.hostPublicKey else { return }
             session.perform(.connectAsVirtualDisplay)
@@ -483,14 +482,14 @@ public final class ViewerApplication {
             launch.connectStarted(hostPublicKey: saved.hostPublicKey)
         }
         session.onFailureBeforeLive = { failure in
-            // `currentHostScreenLabel` is still this failed attempt's own --
-            // nothing has changed `currentTarget` since it was read to make
-            // this very connect -- so its presence is exactly "this attempt
-            // was trying a host screen", the one case the row's own
-            // "Connect with a virtual display" is offered for.
+            // Nothing has changed `currentTarget` since it was read to make
+            // this very connect, so `isTryingHostScreen` is this failed
+            // attempt's own. The row's "Connect with a virtual display" is
+            // offered only for such an attempt, and only when the host
+            // opens a session canvas at all.
             launch.attemptFailed(
                 reason: ViewerSessionFailureCopy.rowLine(for: failure, hostLabel: saved.displayName),
-                offersConnectAsVirtualDisplayFallback: session.currentHostScreenLabel != nil
+                offersConnectAsVirtualDisplayFallback: session.isTryingHostScreen && session.hostOffersCanvas
             )
         }
 
@@ -502,14 +501,6 @@ public final class ViewerApplication {
             while outcome == .sessionEnded, !quit.hasFired, !dialling.isStopped, !wantsList {
                 print("Session lost; entering \(saved.displayName) again…")
                 outcome = await dialling.continueRun()
-            }
-            if outcome == .stopped, session.consumeFallbackToVirtualDisplay() {
-                // The default preference's own screen was refused before
-                // this session ever went live, and it has already switched
-                // itself to a session canvas -- the ordinary refusal
-                // reporting above already said why, once; dialling again
-                // is this run's own recovery, not a person's.
-                continue
             }
             if case .gaveUp = outcome {
                 print("Could not reach \(saved.displayName); giving up.")

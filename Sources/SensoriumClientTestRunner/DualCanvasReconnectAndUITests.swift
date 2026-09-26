@@ -94,12 +94,15 @@ func testDualCanvasReconnectAndUITests() async {
             await refusedPrimaryClient.didOpenSecondCanvas == false,
             "and no second canvas is opened off a session that never got its first"
         )
+        expect(
+            await refusedPrimaryTransport.closeCount == 1,
+            "a connect that fails for a reason other than a timeout still closes its transport"
+        )
 
         // What a client that predates `canvasRefused` sees: its decoder does
         // not know the type, so the refusal arrives as `.unrecognized` — never
         // as a `canvasReady` it would act on. It fails its handshake fast
-        // instead of waiting out the timeout, and does not close the transport
-        // on the way out.
+        // instead of waiting out the timeout.
         let oldPeerRefusalTransport = ScriptedClientTransport(responses: [
             .canvasReady(displayID: 95, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0),
             .unrecognized(type: "canvasRefused")
@@ -121,8 +124,8 @@ func testDualCanvasReconnectAndUITests() async {
             "an old client fails fast on a refusal rather than waiting out its canvas-creation timeout"
         )
         expect(
-            await oldPeerRefusalTransport.closeCount == 0,
-            "and does not itself close the session's transport"
+            await oldPeerRefusalTransport.closeCount == 1,
+            "and closes the transport it failed on, as every failed connect does"
         )
 
         // Input from each surface's window is tagged for its own canvas: the
@@ -2962,6 +2965,34 @@ func testDualCanvasReconnectAndUITests() async {
             }
 
             print("PASS: a canvas the host could not open at all ends the run, and every other refusal is redialled on the policy")
+        }
+
+        do {
+            // A canvas the host is not offering at all is just as permanent
+            // as one it could not open: turning the setting on is a person
+            // at the host, not a retry, so this stops exactly like
+            // `canvas-unavailable` above rather than backing off toward the
+            // generic give-up panel.
+            let events = RecordedReconnectEvents()
+            let driver = ClientReconnectDriver(
+                policy: ReconnectPolicy(initialDelay: 0.5, maximumDelay: 0.5, multiplier: 1, maximumAttempts: 3),
+                runSession: { throw ClientSessionError.canvasRefused(CanvasRefusalReason.canvasNotOffered) },
+                sleep: { _ in
+                    expect(false, "a canvas the host is not offering at all must never wait for a retry")
+                },
+                onEvent: { events.append($0) }
+            )
+            let outcome = await driver.runUntilConnectedSessionEnds()
+            expect(
+                outcome == .stopped,
+                "a canvas the host is not offering at all ends the run outright, got: \(outcome)"
+            )
+            expect(
+                events.all == [.attemptFailed(.canvasRefused(reason: CanvasRefusalReason.canvasNotOffered))],
+                "exactly one failure is reported, with no retrying event and no second attempt after it, got \(events.all)"
+            )
+
+            print("PASS: a canvas the host is not offering at all ends the run outright")
         }
 
         do {

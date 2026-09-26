@@ -86,51 +86,32 @@ func testStartTargetTests() {
 
     do {
         // The resolver: a pinned preference always wins and never looks at
-        // history or a remembered offer; only the default,
-        // `.hostScreenWhenOffered`, looks at either, and falls back to a
-        // canvas when it has neither.
+        // history. The default, `.hostScreenWhenOffered`, always starts on a
+        // host screen from the host's fresh offer, preferring the one this
+        // machine last went live on.
         expect(
-            StartTargetResolution.resolve(preference: .hostScreenWhenOffered, lastTarget: nil) == .sessionCanvas,
-            "no history and no remembered offer falls back to a session canvas"
+            StartTargetResolution.resolve(preference: .hostScreenWhenOffered, lastTarget: nil)
+                == .offeredHostScreen(preferredDisplayIdentity: nil),
+            "no history starts on the first screen the host offers, never a session canvas"
         )
         expect(
-            StartTargetResolution.resolve(preference: .hostScreenWhenOffered, lastTarget: .virtualDisplay) == .sessionCanvas,
-            "a machine that last went live on a canvas, with no remembered offer, resolves to one again"
-        )
-        expect(
-            StartTargetResolution.resolve(
-                preference: .hostScreenWhenOffered,
-                lastTarget: .hostScreen(displayIdentity: "office-display-id", label: "Office"),
-                rememberedOffer: [RememberedHostScreen(displayIdentity: "office-display-id", label: "Office")]
-            ) == .hostScreen(displayIdentity: "office-display-id"),
-            "a machine that last went live on a host screen still offered resolves to that same screen directly"
+            StartTargetResolution.resolve(preference: .hostScreenWhenOffered, lastTarget: .virtualDisplay)
+                == .offeredHostScreen(preferredDisplayIdentity: nil),
+            "a machine that last went live on a canvas resolves as if nothing were remembered"
         )
         expect(
             StartTargetResolution.resolve(
                 preference: .hostScreenWhenOffered,
-                lastTarget: .hostScreen(displayIdentity: "office-display-id", label: "Office"),
-                rememberedOffer: [RememberedHostScreen(displayIdentity: "lounge-display-id", label: "Lounge")]
-            ) == .hostScreen(displayIdentity: "lounge-display-id"),
-            "and one whose last-live screen is no longer among the ones remembered resolves to the first remembered instead"
-        )
-        expect(
-            StartTargetResolution.resolve(
-                preference: .hostScreenWhenOffered,
-                lastTarget: nil,
-                rememberedOffer: [
-                    RememberedHostScreen(displayIdentity: "office-display-id", label: "Office"),
-                    RememberedHostScreen(displayIdentity: "lounge-display-id", label: "Lounge")
-                ]
-            ) == .hostScreen(displayIdentity: "office-display-id"),
-            "a machine that has never gone live but has a remembered offer resolves to the first one offered"
+                lastTarget: .hostScreen(displayIdentity: "office-display-id", label: "Office")
+            ) == .offeredHostScreen(preferredDisplayIdentity: "office-display-id"),
+            "a machine that last went live on a host screen prefers that screen in the fresh offer"
         )
         expect(
             StartTargetResolution.resolve(
                 preference: .virtualDisplay,
-                lastTarget: .hostScreen(displayIdentity: "office-display-id", label: "Office"),
-                rememberedOffer: [RememberedHostScreen(displayIdentity: "office-display-id", label: "Office")]
+                lastTarget: .hostScreen(displayIdentity: "office-display-id", label: "Office")
             ) == .sessionCanvas,
-            "a pinned \u{2018}virtual display\u{2019} preference ignores history and any remembered offer entirely"
+            "a pinned \u{2018}virtual display\u{2019} preference ignores history entirely"
         )
         expect(
             StartTargetResolution.resolve(
@@ -138,50 +119,7 @@ func testStartTargetTests() {
             ) == .hostScreen(displayIdentity: "lounge-display-id"),
             "and a pinned host-screen preference ignores history the same way"
         )
-        print("PASS: the start-target resolver honours a pinned preference and falls back to history and a remembered offer only for the default")
-    }
-
-    do {
-        // The auto-switch decision: only the default preference's own
-        // canvas, still eligible, with something offered.
-        expect(
-            StartTargetAutoSwitch.target(isDefaultChosen: true, currentTarget: .sessionCanvas, offer: [office, lounge])
-                .map(\.displayIdentity) == "office-display-id",
-            "the first offered screen, when the default preference's own canvas is still eligible"
-        )
-        expect(
-            StartTargetAutoSwitch.target(isDefaultChosen: true, currentTarget: .sessionCanvas, offer: []) == nil,
-            "no switch at all when nothing was offered"
-        )
-        expect(
-            StartTargetAutoSwitch.target(isDefaultChosen: false, currentTarget: .sessionCanvas, offer: [office]) == nil,
-            "no switch once a person's own pick, or an earlier refusal fallback, made the canvas no longer the default's to adjust"
-        )
-        expect(
-            StartTargetAutoSwitch.target(
-                isDefaultChosen: true, currentTarget: .hostScreen(displayIdentity: "lounge-display-id"), offer: [office]
-            ) == nil,
-            "no switch once the target is already a host screen"
-        )
-        print("PASS: the auto-switch decision fires only for the default preference's own still-eligible canvas, with something offered")
-    }
-
-    do {
-        // The refused-host-screen fallback: only the default preference's
-        // own target, and only before this session has ever gone live.
-        expect(
-            StartTargetHostScreenRefusalFallback.shouldFallBackToVirtualDisplay(isDefaultChosen: true, hasBeenLive: false),
-            "the default preference's own refused screen falls back before this session has ever gone live"
-        )
-        expect(
-            !StartTargetHostScreenRefusalFallback.shouldFallBackToVirtualDisplay(isDefaultChosen: true, hasBeenLive: true),
-            "but not once a picture has already been shown -- ending outright is not a dead end by then"
-        )
-        expect(
-            !StartTargetHostScreenRefusalFallback.shouldFallBackToVirtualDisplay(isDefaultChosen: false, hasBeenLive: false),
-            "and never for an explicit pin or pick, which is never second-guessed this way"
-        )
-        print("PASS: the refused-host-screen fallback fires only for the default preference's own target, before this session has ever gone live")
+        print("PASS: the start-target resolver honours a pinned preference and otherwise starts on an offered host screen")
     }
 
     do {

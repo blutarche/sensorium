@@ -174,7 +174,7 @@ func runHostScreenProductionWiringTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
             expect(false, "an armed device with an eligible display offers at least one entry")
             return
         }
@@ -245,7 +245,7 @@ func runHostScreenProductionWiringTests() async {
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
             expect(false, "an armed device with an eligible display offers at least one entry")
             return
         }

@@ -26,7 +26,11 @@ func runDisplayCountTests() async {
         let fakeWorkspaces = CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
         let events = DiagnosticsRecorder()
         let coordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
+            ),
             media: CanvasSurfaceSlots(surface0: mediaZero, surface1: mediaOne),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { surface in fakeWorkspaces[surface] },
@@ -59,7 +63,11 @@ func runDisplayCountTests() async {
         let mediaOne = FakeScalableCanvasMedia()
         let fakeWorkspaces = CanvasSurfaceSlots { _ in FakeCanvasWorkspace() }
         let coordinator = HostSessionCoordinator(
-            controller: HostSessionController(sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())), keyConfinement: .unconfined),
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
+            ),
             media: CanvasSurfaceSlots(surface0: mediaZero, surface1: mediaOne),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { surface in fakeWorkspaces[surface] }
@@ -91,7 +99,8 @@ func runDisplayCountTests() async {
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
                 keyConfinement: .unconfined,
-                maxSurfaceCount: 1
+                maxSurfaceCount: 1,
+                privateDesktopOffered: { true }
             ),
             media: CanvasSurfaceSlots(surface0: mediaZero, surface1: mediaOne),
             videoSink: FakeVideoSink()
@@ -137,7 +146,7 @@ func runDisplayCountTests() async {
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, hostCertificateHash: nil)
         _ = try! controller.handle(.authenticatedHello(protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, signature: try! identity.sign(transcript)))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(), let entry = displays.first else {
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
             expect(false, "the fixture's offer names at least one display")
             return
         }

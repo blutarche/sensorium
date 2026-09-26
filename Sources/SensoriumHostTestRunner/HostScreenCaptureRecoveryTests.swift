@@ -106,7 +106,7 @@ private func startRecoveryHostScreenSession(
     controller: HostSessionController,
     coordinator: HostSessionCoordinator
 ) async throws {
-    guard case let .hostScreenList(displays) = try controller.offerHostScreenList(), let entry = displays.first else {
+    guard case let .hostScreenList(displays, _) = try controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
         return
     }

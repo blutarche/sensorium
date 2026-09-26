@@ -13,7 +13,7 @@ public enum SecondDisplayOutcome: Equatable, Sendable {
 /// own unprompted offer (`docs/host-screen-design.md` §2.3): `.offered` its list, `.refused` its
 /// answer when this machine is not armed for host screen at all.
 public enum HostScreenOutcome: Equatable, Sendable {
-    case offered(displays: [HostScreenListEntry])
+    case offered(displays: [HostScreenListEntry], canvasAvailable: Bool = true)
     case refused(reason: String)
 }
 
@@ -197,7 +197,7 @@ public final class ClientSessionRunner {
     /// menu (built by whoever owns this runner, off a window that cannot
     /// reach across to a live actor synchronously) can be pushed a fresh
     /// state the same way `onSecondDisplayReady` already pushes one.
-    public var onHostScreenOffered: ((_ displays: [HostScreenListEntry]) -> Void)?
+    public var onHostScreenOffered: ((_ displays: [HostScreenListEntry], _ canvasAvailable: Bool) -> Void)?
 
     /// A person at the host ended this session from that machine. Fires
     /// before `onEnded`, so whoever owns this runner knows which kind of
@@ -577,8 +577,8 @@ public final class ClientSessionRunner {
     /// without the live connection and windows the receive loop needs.
     public nonisolated static func hostScreenOutcome(for message: SensoriumMessage) -> HostScreenOutcome? {
         switch message {
-        case let .hostScreenList(displays):
-            return .offered(displays: displays)
+        case let .hostScreenList(displays, canvasAvailable):
+            return .offered(displays: displays, canvasAvailable: canvasAvailable)
         case let .hostScreenRefused(reason):
             return .refused(reason: reason)
         default:
@@ -762,9 +762,9 @@ public final class ClientSessionRunner {
         // person actually sees goes through
         // `ViewerSessionFailureCopy`.
         switch Self.hostScreenOutcome(for: message) {
-        case let .offered(displays):
+        case let .offered(displays, canvasAvailable):
             hostScreenDisplays = displays
-            onHostScreenOffered?(displays)
+            onHostScreenOffered?(displays, canvasAvailable)
         case let .refused(reason):
             onEnded?(HostScreenRefusalCopy.line(reason: reason))
             return true

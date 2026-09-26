@@ -78,7 +78,7 @@ private func makeDecliningFixture() -> (
             hostCertificateHash: nil
         ))
     ))
-    guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+    guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's offer names the one display it has")
         return (controller, gate, Data())
@@ -184,7 +184,7 @@ func runHostScreenDeclineIsFinalTests() async {
                 hostCertificateHash: nil
             ))
         ))
-        guard case let .hostScreenList(displays) = try! controller.offerHostScreenList(),
+        guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
               let entry = displays.first else {
             expect(false, "the no-gate fixture's offer names the one display it has")
             return

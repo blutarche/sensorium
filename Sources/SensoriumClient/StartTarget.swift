@@ -4,24 +4,21 @@ import SensoriumCore
 /// Which target a saved machine's session should try first, decided once per
 /// machine rather than picked again at every launch. `.hostScreenWhenOffered`
 /// is the default, and every machine saved before this field existed decodes
-/// as it: a machine this host has never offered a screen to still falls back
-/// to a session canvas, today's own unchanged behaviour, and one this host
-/// has offered a screen to now starts on it directly -- see
-/// `resolve(preference:lastTarget:rememberedOffer:)`.
+/// as it: the session starts on a screen the host offers on that same
+/// connection, and never on a session canvas by itself -- see
+/// `StartTargetResolution.resolve(preference:lastTarget:)`.
 ///
 /// `.virtualDisplay` and `.hostScreen` also name the one target a session
-/// actually reached and showed a picture on -- what `.hostScreenWhenOffered`
-/// falls back to when it has no remembered offer of its own, stamped on
+/// actually reached and showed a picture on -- which screen
+/// `.hostScreenWhenOffered` prefers when the host still offers it, stamped on
 /// `SavedHost.lastLiveTarget` the same moment `lastConnectedAt` is. A stored
 /// `lastLiveTarget` is never itself `.hostScreenWhenOffered`; nothing here
 /// enforces that structurally, since only one write path (a session going
 /// live) ever produces one, and it always names the target that session
 /// actually reached.
 public enum StartTarget: Equatable, Sendable {
-    /// The default: start on a host screen this host has offered this
-    /// machine, and fall back to a session canvas only for a machine that
-    /// has never been offered one -- see
-    /// `resolve(preference:lastTarget:rememberedOffer:)`.
+    /// The default: start on a host screen the host offers this machine.
+    /// A session canvas is only ever a person's own pick.
     case hostScreenWhenOffered
     case virtualDisplay
     /// `displayIdentity` is `HostScreenListEntry.displayIdentity` -- stable
@@ -31,11 +28,10 @@ public enum StartTarget: Equatable, Sendable {
     case hostScreen(displayIdentity: String, label: String)
 }
 
-/// One host screen a canvas connect most recently offered this machine,
-/// remembered per `SavedHost` so `.hostScreenWhenOffered` can connect to it
-/// directly next time rather than starting on a canvas and waiting for the
-/// same offer to arrive again. Never carries an `opaqueToken`: a token is
-/// good for one offer, and this is read back across a relaunch.
+/// One host screen a connect most recently offered this machine, remembered
+/// per `SavedHost` so the Screen menu can name it before the next offer
+/// arrives. Never carries an `opaqueToken`: a token is good for one offer,
+/// and this is read back across a relaunch.
 public struct RememberedHostScreen: Equatable, Sendable, Codable {
     public let displayIdentity: String
     public let label: String
@@ -50,73 +46,28 @@ public struct RememberedHostScreen: Equatable, Sendable, Codable {
 /// pure so `ClientSessionHost` (which these runners cannot name -- it is
 /// internal) reads it from something that can be.
 public enum StartTargetResolution {
-    /// `preference` is the machine's own saved choice; `lastTarget` is
-    /// whatever `.hostScreenWhenOffered` falls back to when it has no
-    /// remembered offer, or `nil` for a machine that has never gone live.
-    /// `rememberedOffer` is this machine's own `SavedHost.rememberedHostScreenOffer`
-    /// -- the most recent canvas connect's own unprompted offer. `.virtualDisplay`
-    /// and `.hostScreen` name themselves regardless of either -- a person who
-    /// pinned one of those is not asking this machine to remember anything.
+    /// `preference` is the machine's own saved choice; `lastTarget` is the
+    /// target a session with this machine last actually reached, or `nil`
+    /// for a machine that has never gone live. `.virtualDisplay` and
+    /// `.hostScreen` name themselves regardless -- a person who pinned one
+    /// of those is not asking this machine to remember anything.
     ///
-    /// `.hostScreenWhenOffered` connects directly to the screen a session
-    /// with this machine last actually reached, if that screen is still
-    /// among the ones remembered; otherwise the first screen remembered, in
-    /// the host's own offered order; otherwise a session canvas, for a
-    /// machine this host has never offered a screen to, or no longer offers
-    /// any of what it once did.
-    public static func resolve(
-        preference: StartTarget,
-        lastTarget: StartTarget?,
-        rememberedOffer: [RememberedHostScreen] = []
-    ) -> SessionTarget {
+    /// `.hostScreenWhenOffered` starts on a screen from the host's fresh
+    /// offer, preferring the one this machine last reached. A last-live
+    /// session canvas is not a preference: it resolves as if nothing were
+    /// remembered.
+    public static func resolve(preference: StartTarget, lastTarget: StartTarget?) -> SessionTarget {
         switch preference {
         case .virtualDisplay:
             return .sessionCanvas
         case let .hostScreen(displayIdentity, _):
             return .hostScreen(displayIdentity: displayIdentity)
         case .hostScreenWhenOffered:
-            if case let .hostScreen(lastIdentity, _) = lastTarget,
-               rememberedOffer.contains(where: { $0.displayIdentity == lastIdentity }) {
-                return .hostScreen(displayIdentity: lastIdentity)
+            guard case let .hostScreen(lastIdentity, _) = lastTarget else {
+                return .offeredHostScreen(preferredDisplayIdentity: nil)
             }
-            guard let first = rememberedOffer.first else {
-                return .sessionCanvas
-            }
-            return .hostScreen(displayIdentity: first.displayIdentity)
+            return .offeredHostScreen(preferredDisplayIdentity: lastIdentity)
         }
-    }
-}
-
-/// Whether a canvas connect's own unprompted offer, arriving the moment this
-/// attempt's `connect()` returns, should switch it to a host screen before it
-/// has ever gone live -- docs/host-screen-design.md §5.7's "the moment it
-/// arrives" rule. `isDefaultChosen` is true only while the current target is
-/// still the default preference's own to adjust: an explicit virtual-display
-/// pin or pick, or the default's own earlier refusal fallback, is never
-/// second-guessed by an offer that happens to arrive afterwards.
-public enum StartTargetAutoSwitch {
-    public static func target(
-        isDefaultChosen: Bool,
-        currentTarget: SessionTarget,
-        offer: [HostScreenListEntry]
-    ) -> (displayIdentity: String, label: String)? {
-        guard isDefaultChosen, currentTarget == .sessionCanvas, let first = offer.first else {
-            return nil
-        }
-        return (first.displayIdentity, first.label)
-    }
-}
-
-/// Whether a refused host-screen connect should fall back to a session
-/// canvas on its own, rather than end the whole run the way a refusal
-/// otherwise does -- docs/host-screen-design.md §5.7: a person's own
-/// explicit pin or pick is never second-guessed this way, so this is true
-/// only for a target the default preference chose, and only before this
-/// session has ever shown anything, since ending outright is not a dead end
-/// once there is already a picture up.
-public enum StartTargetHostScreenRefusalFallback {
-    public static func shouldFallBackToVirtualDisplay(isDefaultChosen: Bool, hasBeenLive: Bool) -> Bool {
-        isDefaultChosen && !hasBeenLive
     }
 }
 

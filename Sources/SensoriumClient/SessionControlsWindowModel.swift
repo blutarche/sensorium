@@ -66,6 +66,9 @@ public struct SessionControlsSection: Equatable, Sendable {
 public struct SessionControlsWindowModel: Equatable, Sendable {
     public var hostScreens: [HostScreenListEntry] = []
     public var selectedScreenToken: Data?
+    /// Whether the host opens a session canvas; `false` hides every
+    /// Virtual display row.
+    public var canvasAvailable = true
     public var hostScreenModes: [HostScreenModeEntry] = []
     public var currentHostScreenModeID: String?
     public var isHostScreenSession = false
@@ -90,13 +93,16 @@ public struct SessionControlsWindowModel: Equatable, Sendable {
         let startWith = ScreenMenuPlan.startWithMenu(
             preference: startTargetPreference,
             offeredHostScreens: hostScreens,
-            isHostScreenSessionLive: isHostScreenSession
+            isHostScreenSessionLive: isHostScreenSession,
+            canvasAvailable: canvasAvailable
         )
         return [
             SessionControlsSection(
                 title: "Screen",
                 isEnabled: true,
-                rows: ScreenMenuPlan.items(displays: hostScreens, selectedToken: selectedScreenToken).map {
+                rows: ScreenMenuPlan.items(
+                    displays: hostScreens, selectedToken: selectedScreenToken, canvasAvailable: canvasAvailable
+                ).map {
                     SessionControlsRow(
                         title: $0.title,
                         isSelected: $0.isSelected,

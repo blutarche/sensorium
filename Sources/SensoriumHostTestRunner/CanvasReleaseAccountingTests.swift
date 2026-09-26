@@ -108,7 +108,8 @@ func runCanvasReleaseAccountingTests() async {
         let coordinator = HostSessionCoordinator(
             controller: HostSessionController(
                 sessions: surfaceZeroOnly(refusedSession),
-                keyConfinement: .unconfined
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
             ),
             media: onlyOnSurfaceZero(FakeCanvasMedia()),
             videoSink: FakeVideoSink(),

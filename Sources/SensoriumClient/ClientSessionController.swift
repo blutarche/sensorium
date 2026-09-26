@@ -47,6 +47,11 @@ public enum ClientSessionError: Error, Equatable {
 public enum SessionTarget: Equatable, Sendable {
     case sessionCanvas
     case hostScreen(displayIdentity: String)
+    /// Whichever host screen this connect's own offer holds: the one named
+    /// here when the offer has exactly one entry with that identity,
+    /// otherwise the first offered. An offer with no screen in it ends the
+    /// connect; it never becomes a session canvas.
+    case offeredHostScreen(preferredDisplayIdentity: String?)
 }
 
 /// What `connect()` returns -- the two targets' replies carry nothing in
@@ -149,6 +154,26 @@ public actor ClientSessionController {
     /// from a host that predates the field or has none configured; the
     /// window title falls back to the address either way.
     public private(set) var hostMachineName: String?
+    /// Whether the host's latest offer said it will open a session canvas.
+    /// `false` until proven otherwise: a `hostScreenList` naming
+    /// `canvasAvailable` (`true` for a host that predates the field), or a
+    /// session canvas this same connect actually opened. A `hostScreenRefused`
+    /// that arrives before any offer says nothing about canvas availability
+    /// at all, so it leaves this at its unproven default rather than
+    /// claiming a canvas the host never named.
+    public private(set) var hostOffersCanvas = false
+    /// Whether this connect ever actually read an offer or opened a canvas
+    /// -- `hostOffersCanvas`'s own default is a guess a caller must not
+    /// mistake for a proven answer. A connect that throws before reaching
+    /// any of `hostOffersCanvas`'s three write sites (an unauthenticated
+    /// connect reads no offer at all, and a transport failure can land
+    /// before one arrives) leaves this `false`, so a redialling caller
+    /// knows to keep an earlier attempt's proven answer rather than
+    /// overwrite it with this attempt's unproven default.
+    public private(set) var hostOffersCanvasIsKnown = false
+    /// The display a host-screen connect chose from its offer, set once the
+    /// request for it is sent.
+    public private(set) var hostScreenDisplayIdentity: String?
     /// Whether the second canvas was actually opened this session — false
     /// whenever `requestSecondCanvas` is false, or the host turned out not
     /// to support `surfaceID` at all.
@@ -224,7 +249,9 @@ public actor ClientSessionController {
     }
 
     /// Races the handshake against a deadline so a host that never answers
-    /// surfaces as a timeout instead of an indefinite wait. `target` names
+    /// surfaces as a timeout instead of an indefinite wait. Any failure
+    /// closes the transport, so a refused or broken connect never leaves the
+    /// link open behind it. `target` names
     /// which of the two a session streams: the target is named explicitly
     /// when the session is set up; `.sessionCanvas` is the default.
     ///
@@ -258,9 +285,7 @@ public actor ClientSessionController {
                 return outcome
             } catch {
                 group.cancelAll()
-                if error is ClientSessionError, case ClientSessionError.timedOut = error {
-                    await transport.close()
-                }
+                await transport.close()
                 throw error
             }
         }
@@ -270,7 +295,7 @@ public actor ClientSessionController {
         switch target {
         case .sessionCanvas:
             return timeouts.canvasCreation
-        case .hostScreen:
+        case .hostScreen, .offeredHostScreen:
             return timeouts.hostScreenGrant
         }
     }
@@ -304,7 +329,27 @@ public actor ClientSessionController {
             let (displayID, hostScreenOffer) = try await performCanvasConnect()
             return .canvas(displayID: displayID, hostScreenOffer: hostScreenOffer)
         case let .hostScreen(displayIdentity):
-            return try await performHostScreenConnect(displayIdentity: displayIdentity, presentedTicket: resumeTicket)
+            return try await performHostScreenConnect(presentedTicket: resumeTicket) { displays in
+                // A duplicate identity is refused the same way a missing one
+                // is: which of two identically-named entries was meant is not
+                // this viewer's to guess at.
+                let matchingEntries = displays.filter { $0.displayIdentity == displayIdentity }
+                guard matchingEntries.count == 1, let entry = matchingEntries.first else {
+                    throw ClientSessionError.hostScreenRefused("host-screen-display-unavailable")
+                }
+                return entry
+            }
+        case let .offeredHostScreen(preferredDisplayIdentity):
+            return try await performHostScreenConnect(presentedTicket: resumeTicket) { displays in
+                let preferred = displays.filter { $0.displayIdentity == preferredDisplayIdentity }
+                if preferred.count == 1, let entry = preferred.first {
+                    return entry
+                }
+                guard let first = displays.first else {
+                    throw ClientSessionError.hostScreenRefused(HostScreenRefusalCopy.noneAvailableReason)
+                }
+                return first
+            }
         }
     }
 
@@ -312,25 +357,25 @@ public actor ClientSessionController {
     /// screen, and `HostSessionController`'s own one-shape-per-connection
     /// gate means a connection that ever sends one can no longer become
     /// this.
-    private func performHostScreenConnect(displayIdentity: String, presentedTicket: Data?) async throws -> ConnectOutcome {
+    private func performHostScreenConnect(
+        presentedTicket: Data?,
+        choose: ([HostScreenListEntry]) throws -> HostScreenListEntry
+    ) async throws -> ConnectOutcome {
         let offer = try await transport.receive()
         if case let .hostScreenRefused(reason) = offer {
             throw ClientSessionError.hostScreenRefused(reason)
         }
-        guard case let .hostScreenList(displays) = offer else {
+        guard case let .hostScreenList(displays, canvasAvailable) = offer else {
             throw ClientSessionError.unexpectedMessage
         }
+        hostOffersCanvas = canvasAvailable
+        hostOffersCanvasIsKnown = true
         // The list is per connection, minted fresh by this connect's own
         // `hostScreenList` -- never the token from an earlier offer, which
         // `displayIdentity` (the display's stable identity, unlike `opaqueToken`)
-        // exists specifically so a caller never has to carry forward. A
-        // duplicate identity is refused the same way a missing one is: which
-        // of two identically-named entries was meant is not this viewer's to
-        // guess at, so `first(where:)` never silently picks one.
-        let matchingEntries = displays.filter { $0.displayIdentity == displayIdentity }
-        guard matchingEntries.count == 1, let entry = matchingEntries.first else {
-            throw ClientSessionError.hostScreenRefused("host-screen-display-unavailable")
-        }
+        // exists specifically so a caller never has to carry forward.
+        let entry = try choose(displays)
+        hostScreenDisplayIdentity = entry.displayIdentity
         // A held ticket says this is the same host-screen session resuming
         // after a transport interruption, so the host neither ends it nor
         // asks again. Without one this is a new session, and the host
@@ -372,8 +417,10 @@ public actor ClientSessionController {
         if identity != nil {
             let offer = try await transport.receive()
             switch offer {
-            case let .hostScreenList(displays):
+            case let .hostScreenList(displays, canvasAvailable):
                 hostScreenOffer = displays
+                hostOffersCanvas = canvasAvailable
+                hostOffersCanvasIsKnown = true
             case .hostScreenRefused:
                 hostScreenOffer = []
             default:
@@ -412,6 +459,13 @@ public actor ClientSessionController {
         )
         canvasDisplayID = displayID
         hostMachineName = hostName
+        // Proof by its own success: a session canvas that just opened is a
+        // canvas the host offers, whatever the offer read earlier on this
+        // same connect said (an unauthenticated connect reads no offer at
+        // all, and a `hostScreenRefused` push names no canvas availability
+        // either way).
+        hostOffersCanvas = true
+        hostOffersCanvasIsKnown = true
         // Restores the session-canvas preset before the gate opens -- the
         // same ordering `performHostScreenConnect` needs, for a window
         // whose mapper a prior host-screen connect on this same session

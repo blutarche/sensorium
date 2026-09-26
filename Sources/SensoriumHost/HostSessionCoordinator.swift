@@ -358,6 +358,13 @@ public final class HostSessionCoordinator {
     /// waking this machine's displays. A second silence after that is not a
     /// sleeping display any more, whatever the display list says.
     private var didWakeSleepingDisplaysForSilentCapture = CanvasSurfaceSlots { _ in false }
+    /// Which canvas capture a stopped-on-its-own signal belongs to, as
+    /// `hostScreenCaptureGeneration` is for a host screen: bumped at every
+    /// start and stop, so a signal from a capture already stopped is ignored.
+    private var canvasCaptureGeneration = CanvasSurfaceSlots { _ in 0 }
+    /// Whether this surface's canvas capture has already been rebuilt once
+    /// after stopping on its own. A second stop ends the session.
+    private var didRebuildStoppedCanvasCapture = CanvasSurfaceSlots { _ in false }
     /// Whether this session holds the machine's displays awake. Its own, not
     /// the process's: the hold is counted, and this is what makes this
     /// session's share of it exactly one.
@@ -1796,6 +1803,46 @@ public final class HostSessionCoordinator {
         onStreamUnrecoverable?(GoodbyeReason.captureUnavailable)
     }
 
+    /// A session canvas's capture stopped on its own. Rebuilt once at the
+    /// scale it was streaming; if that fails, or the rebuilt capture stops
+    /// too, the session ends so the viewer is told instead of left on a
+    /// picture that no longer updates. Kept apart from the host-screen
+    /// recovery below: a canvas is this host's own display, with no
+    /// sleeping or disconnected monitor to wait out.
+    private func canvasCaptureStoppedOnItsOwn(on surface: CanvasSurfaceID, generation: Int) async {
+        guard !hasEnded, isStreaming[surface], !isHostScreenSurface(surface),
+              generation == canvasCaptureGeneration[surface] else {
+            return
+        }
+        guard !didRebuildStoppedCanvasCapture[surface] else {
+            onEvent?(surfaceLogName(surface) + " capture stopped on its own again after being built again")
+            await endSessionForStoppedCanvasCapture()
+            return
+        }
+        didRebuildStoppedCanvasCapture[surface] = true
+        onEvent?(surfaceLogName(surface) + " capture stopped on its own; building it again once")
+        do {
+            try await media[surface].reconfigure(streamScale: streamScale[surface].appliedScale)
+        } catch CanvasMediaReconfigurationError.recoveredToPreviousScale {
+            // Still streaming, at the scale it already had.
+        } catch {
+            guard !hasEnded else {
+                return
+            }
+            onEvent?(surfaceLogName(surface) + " could not rebuild its capture. \(HostOperatorLog.describe(error))")
+            await endSessionForStoppedCanvasCapture()
+            return
+        }
+        fidelity[surface].beginWarmUp()
+    }
+
+    private func endSessionForStoppedCanvasCapture() async {
+        hasEnded = true
+        await tearDownSurfaces()
+        _ = try? controller.handle(.goodbye(reason: GoodbyeReason.captureUnavailable))
+        onStreamUnrecoverable?(GoodbyeReason.captureUnavailable)
+    }
+
     /// `CanvasMediaStreaming.setCaptureStoppedHandler`'s own signal: capture
     /// stopped on its own, distinct from the tick-driven silence machinery
     /// above, which reads what a stream delivers rather than whether the
@@ -2281,6 +2328,15 @@ public final class HostSessionCoordinator {
         let onEvent = onEvent
         let producedBytes = producedBytes
         let startedAt = Date()
+        // Wired before `start`, so a capture that stops the instant it comes
+        // up is still caught.
+        canvasCaptureGeneration[surface] += 1
+        let generation = canvasCaptureGeneration[surface]
+        media[surface].setCaptureStoppedHandler { [weak self] in
+            Task { @MainActor [weak self] in
+                await self?.canvasCaptureStoppedOnItsOwn(on: surface, generation: generation)
+            }
+        }
         try await media[surface].start(canvasDisplayID: canvasDisplayID) { packet in
             // The focused canvas's frames are preferred on the shared wire.
             // With no focus reported this is `.normal` for every surface,
@@ -2340,6 +2396,7 @@ public final class HostSessionCoordinator {
         var stopped: [CanvasSurfaceID] = []
         for surface in surfacesToStop where isStreaming[surface] && !isHostScreenSurface(surface) {
             isStreaming[surface] = false
+            canvasCaptureGeneration[surface] += 1
             await media[surface].stop()
             stopped.append(surface)
         }
@@ -2378,6 +2435,7 @@ public final class HostSessionCoordinator {
                 captureDeliveryBaseline[surface] = nil
                 silentCaptureReports[surface] = 0
                 didRebuildSilentCapture[surface] = false
+                didRebuildStoppedCanvasCapture[surface] = false
             } else {
                 fidelity[surface].clearCeilings()
             }

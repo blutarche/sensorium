@@ -120,11 +120,17 @@ public enum ScreenMenuPlan {
     /// to see a host screen." `displays` is empty for every machine that has
     /// never received a `hostScreenList` offer, in which case Virtual
     /// display is the only row -- there is nothing else to offer, not a
-    /// permission this menu can guess at.
-    public static func items(displays: [HostScreenListEntry], selectedToken: Data?) -> [ScreenMenuItem] {
-        var result = [
-            ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: selectedToken == nil)
-        ]
+    /// permission this menu can guess at. `canvasAvailable` false, when the
+    /// host said it opens no session canvas, drops the Virtual display row.
+    public static func items(
+        displays: [HostScreenListEntry],
+        selectedToken: Data?,
+        canvasAvailable: Bool = true
+    ) -> [ScreenMenuItem] {
+        var result: [ScreenMenuItem] = []
+        if canvasAvailable {
+            result.append(ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: selectedToken == nil))
+        }
         for display in displays {
             result.append(ScreenMenuItem(
                 token: display.opaqueToken,
@@ -177,7 +183,8 @@ public enum ScreenMenuPlan {
     public static func startWithMenu(
         preference: StartTarget,
         offeredHostScreens: [HostScreenListEntry],
-        isHostScreenSessionLive: Bool
+        isHostScreenSessionLive: Bool,
+        canvasAvailable: Bool = true
     ) -> StartWithMenuState {
         var items = [
             StartWithMenuItem(
@@ -185,14 +192,16 @@ public enum ScreenMenuPlan {
                 title: "Host Screen When Offered",
                 isSelected: preference == .hostScreenWhenOffered,
                 isEnabled: !isHostScreenSessionLive
-            ),
-            StartWithMenuItem(
+            )
+        ]
+        if canvasAvailable {
+            items.append(StartWithMenuItem(
                 target: .virtualDisplay,
                 title: "Virtual Display",
                 isSelected: preference == .virtualDisplay,
                 isEnabled: !isHostScreenSessionLive
-            )
-        ]
+            ))
+        }
         for display in offeredHostScreens {
             items.append(StartWithMenuItem(
                 target: .hostScreen(displayIdentity: display.displayIdentity, label: display.label),

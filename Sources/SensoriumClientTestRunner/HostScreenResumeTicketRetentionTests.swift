@@ -116,6 +116,14 @@ func testHostScreenResumeTicketRetentionTests() async {
             ),
             "a session-canvas target needs no ticket at all, so there is nothing to stop"
         )
+        expect(
+            HostScreenResumeTicketRetention.mustStopWithoutTicket(
+                target: .offeredHostScreen(preferredDisplayIdentity: nil),
+                ticketToPresent: nil,
+                isPersonInitiated: false
+            ),
+            "an offered-host-screen automatic redial holding no ticket stops exactly like a named .hostScreen target"
+        )
         print("PASS: an automatic redial stops without a ticket, and a person's own attempt does not")
     }
 

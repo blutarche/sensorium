@@ -17,6 +17,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let onRetryIdentityRead: @MainActor () -> Void
     private let autoLoginStatus: @MainActor () -> HostAutoLoginStatus
     private let onToggleAutoLogin: @MainActor (Bool) -> Void
+    private let offersPrivateDesktop: @MainActor () -> Bool
+    private let onTogglePrivateDesktop: @MainActor (Bool) -> Void
     /// The clock this window reads, so a test can hold time still.
     private let now: @MainActor () -> Date
     /// Looked up fresh on every `refresh()`, never cached across it: whether
@@ -52,6 +54,13 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// it takes effect, and `.notFound` means the platform will not do this
     /// at all -- neither reads as the checkbox simply being off.
     private let autoLoginStatusLabel = NSTextField(labelWithString: "")
+    /// Whether a viewer may open a session canvas on this host instead of one
+    /// of its own screens. Reflects the stored setting, which is off unless
+    /// the person here turned it on.
+    private let privateDesktopCheckbox = NSButton(checkboxWithTitle: "Offer a private desktop", target: nil, action: nil)
+    private let privateDesktopExplanationLabel = NSTextField(
+        labelWithString: "Lets a viewer open a separate desktop that isn\u{2019}t shown on this Mac\u{2019}s screens."
+    )
     private var status: HostOperatorStatus
     /// Tailscale's app when installed, its download page when not; `nil`
     /// only while the button is hidden.
@@ -92,6 +101,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         // System Settings directly while the window is open.
         autoLoginStatus: @escaping @MainActor () -> HostAutoLoginStatus = { .notRegistered },
         onToggleAutoLogin: @escaping @MainActor (Bool) -> Void = { _ in },
+        offersPrivateDesktop: @escaping @MainActor () -> Bool = { false },
+        onTogglePrivateDesktop: @escaping @MainActor (Bool) -> Void = { _ in },
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.onRevealPairingCode = onRevealPairingCode
@@ -104,6 +115,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         self.onRetryIdentityRead = onRetryIdentityRead
         self.autoLoginStatus = autoLoginStatus
         self.onToggleAutoLogin = onToggleAutoLogin
+        self.offersPrivateDesktop = offersPrivateDesktop
+        self.onTogglePrivateDesktop = onTogglePrivateDesktop
         self.now = now
         self.status = status
         pairedMachines.onToggleSharing = onToggleSharing
@@ -252,10 +265,29 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         autoLoginStatusLabel.maximumNumberOfLines = 0
         autoLoginStatusLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        privateDesktopCheckbox.font = CanvasDesign.font(.primary, size: 13)
+        (privateDesktopCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
+            string: "Offer a private desktop",
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 13),
+                .foregroundColor: CanvasDesign.ink.nsColor
+            ]
+        )
+        privateDesktopCheckbox.target = self
+        privateDesktopCheckbox.action = #selector(privateDesktopToggled)
+        privateDesktopCheckbox.translatesAutoresizingMaskIntoConstraints = false
+
+        privateDesktopExplanationLabel.font = CanvasDesign.font(.primary, size: 12)
+        privateDesktopExplanationLabel.textColor = CanvasDesign.muted.nsColor
+        privateDesktopExplanationLabel.lineBreakMode = .byWordWrapping
+        privateDesktopExplanationLabel.maximumNumberOfLines = 0
+        privateDesktopExplanationLabel.translatesAutoresizingMaskIntoConstraints = false
+
         let groups: [NSView] = [
             panel, stopButton, permissionButton, tailscaleButton,
             retryIdentityButton, replaceIdentityButton, revealButton, pairingCodeView, hideCodeButton,
-            autoLoginCheckbox, autoLoginStatusLabel, pairedMachines
+            autoLoginCheckbox, autoLoginStatusLabel, privateDesktopCheckbox, privateDesktopExplanationLabel,
+            pairedMachines
         ]
         for view in groups {
             root.addArrangedSubview(view)
@@ -271,6 +303,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.setCustomSpacing(CanvasDesign.Space.lg, after: hideCodeButton)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: autoLoginCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: autoLoginStatusLabel)
+        root.setCustomSpacing(CanvasDesign.Space.xs, after: privateDesktopCheckbox)
+        root.setCustomSpacing(CanvasDesign.Space.lg, after: privateDesktopExplanationLabel)
 
         let inset = CanvasDesign.Space.xl
         NSLayoutConstraint.activate([
@@ -382,6 +416,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             autoLoginStatusLabel.stringValue = "Not available on this Mac."
             autoLoginStatusLabel.isHidden = false
         }
+
+        privateDesktopCheckbox.state = offersPrivateDesktop() ? .on : .off
 
         refreshPairingSection(presentation)
 
@@ -495,6 +531,11 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
     @objc private func autoLoginToggled() {
         onToggleAutoLogin(autoLoginCheckbox.state == .on)
+        refresh()
+    }
+
+    @objc private func privateDesktopToggled() {
+        onTogglePrivateDesktop(privateDesktopCheckbox.state == .on)
         refresh()
     }
 

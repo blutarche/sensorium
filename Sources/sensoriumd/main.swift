@@ -99,7 +99,7 @@ private final class HostApplicationDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// This connection's own record of who is on it, so the terminal can name the
+/// Every connection's record of who is on it, so the terminal can name the
 /// machine that left as well as the one that arrived. Written and read only from
 /// the main actor, the same discipline as `HostWorkspaceBox`.
 private final class PeerLogBox: @unchecked Sendable {
@@ -324,6 +324,13 @@ struct sensoriumd {
             .appendingPathComponent("host-screen-sessions.log")
     }
 
+    private static func privateDesktopSettingFileURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base
+            .appendingPathComponent("Sensorium", isDirectory: true)
+            .appendingPathComponent("private-desktop.json")
+    }
+
     private static func autoLoginDefaultAppliedFileURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base
@@ -391,7 +398,10 @@ struct sensoriumd {
         // The GUI's own, shared with its arming coordinator so removing a
         // paired device ends every connection it has. `nil` for the CLI
         // verbs, which build one here.
-        deviceConnectionRegistry sharedDeviceConnectionRegistry: HostDeviceConnectionRegistry? = nil
+        deviceConnectionRegistry sharedDeviceConnectionRegistry: HostDeviceConnectionRegistry? = nil,
+        // The GUI reads the host's own "Offer a private desktop" setting. The
+        // CLI verbs are run by hand at this machine and always offer one.
+        privateDesktopOffered: @escaping () -> Bool = { true }
     ) throws -> HostPairingService {
         // Never asks macOS to present its approval UI. Approval is the
         // user's to give in System Settings; a host without it still serves
@@ -627,7 +637,8 @@ struct sensoriumd {
             hostScreenPresenceActivitySignal: hostScreenActivitySignals.presence,
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
-            displayWake: displayWake
+            displayWake: displayWake,
+            privateDesktopOffered: privateDesktopOffered
         )
 
         if verb == "pair" {
@@ -654,6 +665,7 @@ struct sensoriumd {
             hostTrace = nil
         }
 
+        let peerLog = PeerLogBox()
         let serveChannel: @Sendable (any HostByteChannel) -> Void = { channel in
             Task { @MainActor in
                 // Filled in below, once `controller` itself exists to be
@@ -679,7 +691,6 @@ struct sensoriumd {
                 // sessions long gone. Filled in below, once there is a
                 // coordinator and a session to tear down.
                 let quit = QuitRegistrationBox()
-                let peerLog = PeerLogBox()
                 // This connection's own session, named so that the end of
                 // this connection can be told apart from the end of any
                 // other. Filled in below, from the same `let` that fills
@@ -725,7 +736,7 @@ struct sensoriumd {
                             // The terminal is the record of what happened
                             // while nobody was at this machine; the menu bar
                             // below only shows what is happening now.
-                            if let line = peerLog.log.line(for: peer) {
+                            if let line = peerLog.log.line(for: peer, from: connectionToken) {
                                 print("Sensorium host: \(line)")
                             }
                             operatorBox.status.apply(peer, from: connectionToken)
@@ -1020,17 +1031,19 @@ struct sensoriumd {
         // is gone.
         let sessionLog = HostScreenSessionLogStore(url: hostScreenSessionLogFileURL())
         sessionLog.reconcileAbandonedSessionsAtLaunch()
+        let privateDesktopSettingStore = HostPrivateDesktopSettingStore(url: privateDesktopSettingFileURL())
 
         // A machine that cannot create a canvas, find its tailnet address,
         // or read its identity must say so on screen instead of listening.
         // Called at launch and after an identity replacement, so both paths
         // start hosting the same way.
         func startHosting() {
-            switch HostVirtualDisplayCapability.probe(
+            switch HostVirtualDisplayCapability.startupCheck(
+                offersPrivateDesktop: privateDesktopSettingStore.load().offersPrivateDesktop,
                 log: { print("Sensorium host: \($0)") },
                 shutdown: operatorBox.canvas
             ) {
-            case .supported:
+            case .supported, .notOffered:
                 switch TailnetAddressEnumerator.autoSelect() {
                 case let .single(address):
                     do {
@@ -1060,7 +1073,8 @@ struct sensoriumd {
                             currentSession: currentSession,
                             hostScreenSessionLog: sessionLog,
                             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
-                            deviceConnectionRegistry: deviceConnectionRegistry
+                            deviceConnectionRegistry: deviceConnectionRegistry,
+                            privateDesktopOffered: { privateDesktopSettingStore.load().offersPrivateDesktop }
                         )
                     } catch is HostStartupError {
                         print("Sensorium host failed to start: the file holding this machine\u{2019}s own key could not be read.")
@@ -1149,6 +1163,19 @@ struct sensoriumd {
                     let alert = NSAlert()
                     alert.alertStyle = .warning
                     alert.messageText = isOn ? "Could not turn on Open at Login" : "Could not turn off Open at Login"
+                    alert.informativeText = HostOperatorLog.describe(error)
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
+            },
+            offersPrivateDesktop: { privateDesktopSettingStore.load().offersPrivateDesktop },
+            onTogglePrivateDesktop: { isOn in
+                do {
+                    try privateDesktopSettingStore.save(HostPrivateDesktopSetting(offersPrivateDesktop: isOn))
+                } catch {
+                    let alert = NSAlert()
+                    alert.alertStyle = .warning
+                    alert.messageText = isOn ? "Could not turn on the private desktop" : "Could not turn off the private desktop"
                     alert.informativeText = HostOperatorLog.describe(error)
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
@@ -1271,7 +1298,11 @@ struct sensoriumd {
                 onDeviceApproved: { approval in
                     operatorBox.status.recordPairingApproved(deviceName: approval.deviceName)
                 },
-                currentSession: currentSession
+                currentSession: currentSession,
+                // This machine's own operator is running the verb by hand;
+                // always offer a private desktop, the same as this
+                // parameter's own default above.
+                privateDesktopOffered: { true }
             )
             // Only `serve` opens the session workspace window, so only `serve`
             // needs AppKit's real event loop to deliver keyboard/pointer
