@@ -16,6 +16,7 @@ This repository will be published as open source. Write every comment, document 
 - Do NOT call private display APIs, third-party display tools, `displayplacer`, `screencapture`, `system_profiler`, System Settings, `launchctl`, `defaults`, PF, `sudo`, network/firewall commands, or write outside this repository unless the task explicitly says it is an approved opt-in macOS integration test.
 - Do NOT install packages, Xcode, Homebrew formulae, applications, services, agents, launch daemons, login items, or permissions on a development machine. Shipping code may register the host app as its own login item (Open at login) through `SMAppService`; installing a build on the owner's machines happens only when the owner asks.
 - Do NOT read keychains, credentials, shell histories, or files outside the repository.
+- Never put a real address, hostname, device name, account, path or other identifying detail of the owner's machines into any file, fixture, render, commit or commit message. Samples use invented values only: `100.64.1.x`, `*.tail1234.ts.net`, `mini.local`. Before every commit, run `python3 Scripts/audit-public-repo.py`, and grep the staged diff and every unpushed commit for each real address seen during the session. An audit exemption never covers a real value.
 - Do NOT open network listeners, perform network calls, or access external websites.
 - Do NOT commit, push, create branches/worktrees, or change Git configuration unless explicitly assigned.
 
