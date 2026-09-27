@@ -365,6 +365,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     }
 
     private func renderStep() {
+        window.makeFirstResponder(nil)
         for view in contentContainer.subviews {
             view.removeFromSuperview()
         }

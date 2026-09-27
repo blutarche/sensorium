@@ -35,10 +35,12 @@ func runHostMenuBarPingTitleColorTests() async {
     }
 
     expect(!button.attributedTitle.string.isEmpty, "the title still names the connected peer")
+    let titleColor = button.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
     expect(
-        button.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) != nil,
-        "AppKit's own synthesised text colour must survive -- a hand-built attributedTitle with no "
-            + "foregroundColor renders fixed black in a dark menu bar or the highlighted state"
+        titleColor?.type == .catalog,
+        "AppKit's own synthesised text colour must survive -- a hand-built attributedTitle renders a fixed "
+            + "colour, not the named system colour that follows a dark menu bar or the highlighted state; got "
+            + "\(String(describing: titleColor))"
     )
     expect(
         button.font == NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),

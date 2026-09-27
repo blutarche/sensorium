@@ -926,4 +926,89 @@ func testViewerPairingFieldSelectionColoursTests() {
 
     print("PASS: the viewer's fields draw selected text and the caret in the design tokens")
 }
+
+/// VoiceOver reads a field's placeholder through its accessibility API, so
+/// the placeholder the cell holds while a field is being edited is still the
+/// one reported for the focused, empty field.
+@MainActor
+func testViewerPairingFieldAccessibilityPlaceholderTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    for (name, placeholder) in [("codeField", "000 000"), ("addressField", "mini.local"), ("nameField", "Studio")] {
+        let field = storedValue(name, of: controller, as: NSTextField.self)
+        field.window?.makeFirstResponder(field)
+        expect(field.currentEditor() != nil, "\(name) is being edited once it has focus")
+        expect(
+            field.accessibilityPlaceholderValue() == placeholder,
+            "the focused, empty \(name) still reports \(placeholder) as its placeholder -- got "
+                + "\(String(describing: field.accessibilityPlaceholderValue()))"
+        )
+    }
+
+    print("PASS: a pairing field reports its placeholder to VoiceOver while it is being edited")
+}
+
+/// A field's placeholder comes back once its editing is over, even when the
+/// view it sat in was taken down mid-edit or editing ended without the cell
+/// being told.
+@MainActor
+func testViewerPairingFieldPlaceholderSurvivesTeardownTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+    codeField.window?.makeFirstResponder(codeField)
+    expect(codeField.currentEditor() != nil, "the code field is being edited once it has focus")
+    controller.showList()
+    expect(codeField.currentEditor() == nil, "leaving the code step ends editing the code field")
+    expect(
+        codeField.placeholderAttributedString?.string == "000 000",
+        "the code field has its placeholder back at rest -- got "
+            + "\(String(describing: codeField.placeholderAttributedString?.string))"
+    )
+    expect(
+        codeField.accessibilityPlaceholderValue() == "000 000",
+        "and still reports it to VoiceOver -- got \(String(describing: codeField.accessibilityPlaceholderValue()))"
+    )
+
+    guard let cellType = codeField.cell.map({ type(of: $0) }) as? NSTextFieldCell.Type else {
+        expect(false, "the code field has a text field cell")
+        return
+    }
+    let cell = cellType.init(textCell: "")
+    let field = NSTextField()
+    field.cell = cell
+    cell.placeholderAttributedString = NSAttributedString(string: "000 000")
+    cell.edit(withFrame: field.bounds, in: field, editor: NSTextView(), delegate: nil, event: nil)
+    expect(
+        cell.placeholderAttributedString?.string == "000 000",
+        "a field no longer being edited has its placeholder back even though endEditing never ran -- got "
+            + "\(String(describing: cell.placeholderAttributedString?.string))"
+    )
+
+    print("PASS: a pairing field gets its placeholder back when its editing is cut short")
+}
+
+/// The observer a cell registers while its field is edited goes with the cell.
+@MainActor
+func testViewerPairingFieldObserverLifetimeTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+    guard let cellType = codeField.cell.map({ type(of: $0) }) as? NSTextFieldCell.Type else {
+        expect(false, "the code field has a text field cell")
+        return
+    }
+    weak var observer: AnyObject?
+    autoreleasepool {
+        let cell = cellType.init(textCell: "")
+        let field = NSTextField()
+        field.cell = cell
+        cell.edit(withFrame: field.bounds, in: field, editor: NSTextView(), delegate: nil, event: nil)
+        observer = storedValue("editorTextObserver", of: cell, as: NSObjectProtocol?.self) as AnyObject?
+        expect(observer != nil, "a cell being edited observes its field editor")
+    }
+    expect(observer == nil, "the field editor observer is removed when its cell goes away")
+
+    print("PASS: a pairing field cell's editor observer never outlives the cell")
+}
 #endif

@@ -242,12 +242,39 @@ final class ViewerPairingFieldCell: NSTextFieldCell {
     /// this cell holds the placeholder and draws it in the same place until
     /// the first character is typed.
     private var heldPlaceholder: NSAttributedString?
-    private var editorTextObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var editorTextObserver: NSObjectProtocol?
+
+    deinit {
+        if let editorTextObserver { NotificationCenter.default.removeObserver(editorTextObserver) }
+    }
+
+    /// Gives a held placeholder back once its field is no longer being
+    /// edited, even when editing ended without `endEditing` reaching this cell.
+    override var placeholderAttributedString: NSAttributedString? {
+        get {
+            if heldPlaceholder != nil, (controlView as? NSTextField)?.currentEditor() == nil {
+                releaseHeldPlaceholder()
+            }
+            return super.placeholderAttributedString
+        }
+        set { super.placeholderAttributedString = newValue }
+    }
+
+    private func releaseHeldPlaceholder() {
+        if let editorTextObserver { NotificationCenter.default.removeObserver(editorTextObserver) }
+        editorTextObserver = nil
+        if let heldPlaceholder {
+            placeholderAttributedString = heldPlaceholder
+            self.heldPlaceholder = nil
+        }
+    }
 
     private func holdPlaceholder(editor: NSText, controlView: NSView) {
         if let placeholder = placeholderAttributedString {
             heldPlaceholder = placeholder
             placeholderAttributedString = nil
+            // VoiceOver reads the placeholder from the field, which has none while it is held.
+            controlView.setAccessibilityPlaceholderValue(placeholder.string)
         }
         if let editorTextObserver { NotificationCenter.default.removeObserver(editorTextObserver) }
         editorTextObserver = NotificationCenter.default.addObserver(
@@ -259,12 +286,7 @@ final class ViewerPairingFieldCell: NSTextFieldCell {
 
     override func endEditing(_ textObj: NSText) {
         super.endEditing(textObj)
-        if let editorTextObserver { NotificationCenter.default.removeObserver(editorTextObserver) }
-        editorTextObserver = nil
-        if let heldPlaceholder {
-            placeholderAttributedString = heldPlaceholder
-            self.heldPlaceholder = nil
-        }
+        releaseHeldPlaceholder()
     }
 
     override func edit(

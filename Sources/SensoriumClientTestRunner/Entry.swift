@@ -15,6 +15,7 @@ struct SensoriumClientTestRunner {
         // -- see `GLibMainLoop`.
         testGLibMainLoopTests()
         testGtkApplicationIdentityTests()
+        testGtkActivityPulseTests()
         testEvdevKeycodeTableTests()
         testWaylandPointerButtonMapTests()
         testWaylandScrollFrameTests()

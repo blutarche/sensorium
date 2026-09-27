@@ -65,8 +65,8 @@ public final class GtkSessionControlsWindow: SessionControlsWindowPresenting {
     /// before anyone asked for this window should not make one appear.
     public func update(model: SessionControlsWindowModel) {
         guard isPresented || rowCallbacks.isEmpty else { return }
-        rowCallbacks = []
         GtkWidgets.removeAllChildren(of: body)
+        rowCallbacks = []
         for section in model.sections {
             let group = GtkWidgets.box(vertical: true, spacing: 2)
             let title = GtkWidgets.label(section.title.uppercased(), cssClass: GtkViewerStyle.Class.eyebrow)

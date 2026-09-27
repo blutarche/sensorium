@@ -40,7 +40,7 @@ SEARCH_DIR="$ROOT/Sources/SensoriumClient/Gtk"
 # view, the literal is what must appear. Swift spells the ellipsis \u{2026},
 # so no pattern carries one. No pattern carries a parenthesis either: this
 # list is a heredoc inside a command substitution, and an unbalanced one ends
-# the substitution early.
+# the substitution early. A match inside a comment does not count.
 #
 # The status panel's own buttons are named by `ViewerSessionStateMachine` and
 # never written out in the window, so what is checked is the chain that
@@ -53,7 +53,7 @@ Empty-list sentence|YourMachinesWindowModel.emptySentence
 Row detail line|row.detail
 Row reachability dot|row.dot
 Per-row Cancel|row.offersCancel
-Pair again|Pair again
+Pair Again|Pair Again
 Forget|Forget
 Connect with a Virtual Display|Connect with a Virtual Display
 Look Again|Look Again
@@ -88,7 +88,8 @@ IFS='
 for entry in $CAPABILITIES; do
   label=${entry%%|*}
   pattern=${entry#*|}
-  if grep -rqF -- "$pattern" "$SEARCH_DIR" "$ROOT"/Sources/SensoriumClient/WaylandSessionWindow*.swift; then
+  if grep -rhF -- "$pattern" "$SEARCH_DIR" "$ROOT"/Sources/SensoriumClient/WaylandSessionWindow*.swift \
+    | grep -vqE '^[[:space:]]*//'; then
     if is_allowed_missing "$label"; then
       found_unexpectedly="$found_unexpectedly
   $label"
