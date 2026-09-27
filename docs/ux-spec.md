@@ -47,7 +47,7 @@ An unmissable badge sits on the display being streamed, naming the connected mac
 
 ### Your machines
 
-Launching opens one window, the only one until a picture arrives. It shows the heading *Your Machines*, every paired machine, and **Add a machine…**.
+Launching opens one window, the only one until a picture arrives. It shows the heading *Your Machines*, every paired machine, and **Add a Machine**.
 
 Each machine row shows:
 
@@ -57,7 +57,7 @@ Each machine row shows:
 | Address | The paired address |
 | State | *online* or *offline* |
 
-Rows are ordered most recently connected first. With nothing paired yet, the list is replaced by *No machine is paired with this one yet.*, and **Add a machine…** is the only action.
+Rows are ordered most recently connected first. With nothing paired yet, the list is replaced by *No machine is paired with this one yet.*, and **Add a Machine** is the only action.
 
 Nothing is dialled until a row is clicked. One click connects. Return connects the selected row. While an attempt is out, the row appends *connecting…* or *stopping…* with a pulsing dot and offers **Cancel**. Other rows stay clickable, and clicking one stops the attempt already out. A failed attempt keeps a short reason, with the full explanation in the status panel.
 
@@ -69,7 +69,7 @@ There is no Quit button here. Command-Q quits, and closing the window is the sam
 
 Two steps, in that same window, with a **Back** link returning from each:
 
-1. **Pick a machine.** Every machine on the tailnet, online first, this one excluded. *Enter address manually* is one click away, never shown first.
+1. **Pick a machine.** Every machine on the tailnet, online first, this one excluded. *Enter Address Manually* is one click away, never shown first.
 2. **Code.** *Type the Code Shown on `<name>`*, six digits hinted by where that machine shows them, plus an optional rename field. A failure appears under the field.
 
 Pairing succeeds, the new machine joins the list, and Sensorium connects to it. **Pair again** on a row goes straight to the code step.

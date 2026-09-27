@@ -53,34 +53,15 @@ public final class GtkViewerPrompts: ViewerPrompts {
 
     public func showStartupFailure(_ prompt: ViewerStartupFailurePrompt) async -> ViewerStartupFailureChoice {
         dismissStartupFailure()
-        let window = gtkRef(gtk_window_new())
-        gtk_window_set_title(sensorium_gtk_window(window), prompt.headline)
-        gtk_window_set_default_size(sensorium_gtk_window(window), 460, -1)
-        gtk_window_set_resizable(sensorium_gtk_window(window), 0)
-        gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
-
+        let window = Self.messageWindow()
         let screen = StartupFailureScreen(window: window)
         startupFailure = screen
 
-        let body = GtkWidgets.box(vertical: true, spacing: 0)
-        gtk_widget_set_margin_start(sensorium_gtk_widget(body), 24)
-        gtk_widget_set_margin_end(sensorium_gtk_widget(body), 24)
-        gtk_widget_set_margin_top(sensorium_gtk_widget(body), 24)
-        gtk_widget_set_margin_bottom(sensorium_gtk_widget(body), 24)
-        let eyebrowLabel = GtkWidgets.label(prompt.eyebrow, cssClass: GtkViewerStyle.Class.eyebrow)
-        GtkWidgets.append(eyebrowLabel, to: body)
-        let headlineLabel = GtkWidgets.label(prompt.headline, cssClass: GtkViewerStyle.Class.heading)
-        GtkWidgets.applyMessagePromptSpacing(after: .eyebrow, to: headlineLabel)
-        GtkWidgets.append(headlineLabel, to: body)
-        let detailLabel = GtkWidgets.label(prompt.detail, cssClass: GtkViewerStyle.Class.muted)
-        GtkWidgets.applyMessagePromptSpacing(after: .headline, to: detailLabel)
-        GtkWidgets.append(detailLabel, to: body)
-
-        let buttons = GtkWidgets.box(vertical: false, spacing: 16)
-        GtkWidgets.applyMessagePromptSpacing(after: .detail, to: buttons)
-        // Trying again is never destructive, so it takes the accent and the
-        // default; only replacing this machine's identity is, and Return must
-        // not fire that by accident.
+        let body = Self.messageBody(eyebrow: prompt.eyebrow, headline: prompt.headline, detail: prompt.detail)
+        let buttons = Self.messageButtons()
+        // Trying again is never destructive, so it takes the accent, the
+        // default and the top slot; only replacing this machine's identity
+        // is, and Return must not fire that by accident.
         appendChoice(prompt.tryAgainTitle, .tryAgain, to: buttons, on: screen, isPrimary: true)
         appendChoice(prompt.replaceTitle, .replaceIdentity, to: buttons, on: screen, isPrimary: false)
         appendChoice(prompt.quitTitle, .quit, to: buttons, on: screen, isPrimary: false)
@@ -109,7 +90,10 @@ public final class GtkViewerPrompts: ViewerPrompts {
         on screen: StartupFailureScreen,
         isPrimary: Bool
     ) {
-        let button = GtkWidgets.button(title, cssClass: isPrimary ? GtkViewerStyle.Class.primary : GtkViewerStyle.Class.secondary)
+        let button = GtkWidgets.button(
+            title, cssClass: isPrimary ? GtkViewerStyle.Class.primary : GtkViewerStyle.Class.messageSecondary
+        )
+        gtk_widget_set_halign(sensorium_gtk_widget(button), GTK_ALIGN_FILL)
         let callback = GtkCallback { [weak self] in self?.finishStartupFailure(with: choice) }
         screen.callbacks.append(callback)
         gtkConnect(button, "clicked", gtkClickedHandler, Unmanaged.passUnretained(callback).toOpaque())
@@ -141,26 +125,12 @@ public final class GtkViewerPrompts: ViewerPrompts {
     /// read as the same app; unlike that screen it decides nothing, and the
     /// window behind it is already usable while it is up.
     public func showNotice(_ notice: ViewerNotice) async {
-        let window = gtkRef(gtk_window_new())
-        gtk_window_set_title(sensorium_gtk_window(window), notice.headline)
-        gtk_window_set_default_size(sensorium_gtk_window(window), 460, -1)
-        gtk_window_set_resizable(sensorium_gtk_window(window), 0)
-        gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
-
-        let body = GtkWidgets.box(vertical: true, spacing: 0)
-        gtk_widget_set_margin_start(sensorium_gtk_widget(body), 24)
-        gtk_widget_set_margin_end(sensorium_gtk_widget(body), 24)
-        gtk_widget_set_margin_top(sensorium_gtk_widget(body), 24)
-        gtk_widget_set_margin_bottom(sensorium_gtk_widget(body), 24)
-        GtkWidgets.append(
-            GtkWidgets.label(notice.headline, cssClass: GtkViewerStyle.Class.heading), to: body
-        )
-        let detailLabel = GtkWidgets.label(notice.detail, cssClass: GtkViewerStyle.Class.muted)
-        GtkWidgets.applyMessagePromptSpacing(after: .headline, to: detailLabel)
-        GtkWidgets.append(detailLabel, to: body)
+        let window = Self.messageWindow()
+        let body = Self.messageBody(eyebrow: nil, headline: notice.headline, detail: notice.detail)
 
         let screen = NoticeScreen(window: window)
         let button = GtkWidgets.button(notice.continueTitle, cssClass: GtkViewerStyle.Class.primary)
+        gtk_widget_set_halign(sensorium_gtk_widget(button), GTK_ALIGN_FILL)
         GtkWidgets.applyMessagePromptSpacing(after: .detail, to: button)
         let clicked = GtkCallback { [weak self] in self?.finishNotice(screen) }
         screen.callbacks.append(clicked)
@@ -186,6 +156,44 @@ public final class GtkViewerPrompts: ViewerPrompts {
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             screen.continuation = continuation
         }
+    }
+
+    /// The window a message is shown in, titled and sized as
+    /// `ViewerMessageWindowController`'s is.
+    private static func messageWindow() -> GtkRef {
+        let window = gtkRef(gtk_window_new())
+        gtk_window_set_title(sensorium_gtk_window(window), ViewerApplicationIdentity.applicationName)
+        gtk_window_set_default_size(sensorium_gtk_window(window), messageWindowWidth, -1)
+        gtk_window_set_resizable(sensorium_gtk_window(window), 0)
+        gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
+        return window
+    }
+
+    private static let messageWindowWidth: Int32 = 460
+
+    /// The eyebrow where there is one, the headline and the detail, spaced
+    /// as `MessagePromptSpacing` says.
+    private static func messageBody(eyebrow: String?, headline: String, detail: String) -> GtkRef {
+        let body = GtkWidgets.column(
+            width: messageWindowWidth - Int32(ViewerChromeMetrics.Space.xl) * 2, spacing: 0
+        )
+        let headlineLabel = GtkWidgets.label(headline, cssClass: GtkViewerStyle.Class.heading)
+        if let eyebrow {
+            GtkWidgets.append(GtkWidgets.label(eyebrow, cssClass: GtkViewerStyle.Class.eyebrow), to: body)
+            GtkWidgets.applyMessagePromptSpacing(after: .eyebrow, to: headlineLabel)
+        }
+        GtkWidgets.append(headlineLabel, to: body)
+        let detailLabel = GtkWidgets.label(detail, cssClass: GtkViewerStyle.Class.detail)
+        GtkWidgets.applyMessagePromptSpacing(after: .headline, to: detailLabel)
+        GtkWidgets.append(detailLabel, to: body)
+        return body
+    }
+
+    /// Stacked, each as wide as the message, the default on top.
+    private static func messageButtons() -> GtkRef {
+        let buttons = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.sm))
+        GtkWidgets.applyMessagePromptSpacing(after: .detail, to: buttons)
+        return buttons
     }
 
     private func finishNotice(_ screen: NoticeScreen) {

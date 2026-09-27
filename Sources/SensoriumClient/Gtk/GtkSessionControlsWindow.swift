@@ -24,6 +24,8 @@ public final class GtkSessionControlsWindow: SessionControlsWindowPresenting {
     private var windowCallbacks: [AnyObject] = []
     private var isPresented = false
 
+    package var toplevel: UnsafeMutableRawPointer { window }
+
     public init(activate: @escaping (SessionControlsActivation) -> Void) {
         self.activate = activate
         GtkToolkit.start()
@@ -33,10 +35,10 @@ public final class GtkSessionControlsWindow: SessionControlsWindowPresenting {
         gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
 
         let scroller = gtkRef(gtk_scrolled_window_new())
-        body = GtkWidgets.box(vertical: true, spacing: 16)
+        body = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.lg))
         for edge in [gtk_widget_set_margin_start, gtk_widget_set_margin_end,
                      gtk_widget_set_margin_top, gtk_widget_set_margin_bottom] {
-            edge(sensorium_gtk_widget(body), 20)
+            edge(sensorium_gtk_widget(body), Int32(ViewerChromeMetrics.Space.xl))
         }
         gtk_scrolled_window_set_child(sensorium_gtk_scrolled_window(scroller), sensorium_gtk_widget(body))
         gtk_window_set_child(sensorium_gtk_window(window), sensorium_gtk_widget(scroller))
@@ -66,11 +68,10 @@ public final class GtkSessionControlsWindow: SessionControlsWindowPresenting {
         rowCallbacks = []
         GtkWidgets.removeAllChildren(of: body)
         for section in model.sections {
-            let group = GtkWidgets.box(vertical: true, spacing: 8)
-            GtkWidgets.append(
-                GtkWidgets.label(section.title.uppercased(), cssClass: GtkViewerStyle.Class.eyebrow),
-                to: group
-            )
+            let group = GtkWidgets.box(vertical: true, spacing: 2)
+            let title = GtkWidgets.label(section.title.uppercased(), cssClass: GtkViewerStyle.Class.eyebrow)
+            gtk_widget_set_margin_bottom(sensorium_gtk_widget(title), Int32(ViewerChromeMetrics.Space.xxs))
+            GtkWidgets.append(title, to: group)
             if section.rows.isEmpty {
                 GtkWidgets.append(
                     GtkWidgets.label(Self.nothingToOffer, cssClass: GtkViewerStyle.Class.muted),
@@ -92,13 +93,23 @@ public final class GtkSessionControlsWindow: SessionControlsWindowPresenting {
         gtk_widget_set_visible(sensorium_gtk_widget(window), 0)
     }
 
+    /// A menu item's shape, since these are the choices macOS puts in its
+    /// menus: the checkmark in a gutter of its own ahead of the title, so
+    /// every title starts at the same edge whether it is the current choice
+    /// or not.
     private func button(for row: SessionControlsRow) -> GtkRef {
-        // The checkmark is part of the title rather than a separate widget:
-        // a row that is the current choice reads as one line either way, and
-        // one line is what a person scanning a list reads.
-        let title = (row.isSelected ? "\u{2713} " : "   ") + row.title
-        let button = GtkWidgets.button(title, cssClass: row.isSelected ? GtkViewerStyle.Class.primary : nil)
+        let button = gtkRef(gtk_button_new())
+        gtk_widget_add_css_class(sensorium_gtk_widget(button), GtkViewerStyle.Class.settingsRow)
         gtk_widget_set_halign(sensorium_gtk_widget(button), GTK_ALIGN_FILL)
+        let content = GtkWidgets.box(vertical: false, spacing: 0)
+        let check = gtkRef(gtk_label_new(row.isSelected ? "\u{2713}" : ""))
+        gtk_widget_set_size_request(sensorium_gtk_widget(check), Int32(ViewerChromeMetrics.Space.lg), -1)
+        gtk_label_set_xalign(sensorium_gtk_label(check), 0)
+        GtkWidgets.append(check, to: content)
+        let title = gtkRef(gtk_label_new(row.title))
+        gtk_label_set_xalign(sensorium_gtk_label(title), 0)
+        GtkWidgets.append(title, to: content)
+        gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
         GtkWidgets.setEnabled(row.isEnabled, on: button)
         let activation = row.activation
         let callback = GtkCallback { [weak self] in self?.activate(activation) }

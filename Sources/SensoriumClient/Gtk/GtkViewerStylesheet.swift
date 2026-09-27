@@ -40,81 +40,190 @@ public enum GtkViewerStyle {
         public static let link = "sensorium-link"
         public static let code = "sensorium-code"
         public static let eyebrow = "sensorium-eyebrow"
+        /// A message window's outlined button, filled `bg4` where a form's
+        /// `secondary` is filled `chromeBg2` -- the two fills
+        /// `ViewerMessageWindowController` and `ViewerFormControls.style`
+        /// each draw on macOS.
+        public static let messageSecondary = "sensorium-message-secondary"
+        /// One choice in the session settings window: flat, like a menu item.
+        public static let settingsRow = "sensorium-settings-row"
+        /// A one-line message's own headline: ink, or `bad` beside it.
+        public static let headline = "sensorium-headline"
+        /// The smaller muted line under a headline.
+        public static let detail = "sensorium-detail"
+        /// Added beside `muted` or `bad` on the line under a field, which is
+        /// smaller than a sentence.
+        public static let hint = "sensorium-hint"
+        public static let deviceSubtitle = "sensorium-device-subtitle"
+        /// A tailnet device that is not online, drawn dimmer.
+        public static let offline = "sensorium-offline"
+        /// A field whose text cannot be edited while a pairing is out.
+        public static let readOnly = "sensorium-read-only"
+        public static let monoField = "sensorium-mono-field"
     }
 
     public static var stylesheet: String {
         let palette = ViewerPalette.self
         let space = ViewerChromeMetrics.Space.self
-        let radius = ViewerChromeMetrics.Radius.self
+        let radius = Int(ViewerChromeMetrics.Radius.base)
+        let ink = palette.ink.hexString
+        let muted = palette.muted.hexString
+        let muted2 = palette.muted2.hexString
+        let accent = palette.accent.hexString
+        let line = palette.line.hexString
+        let chromeBg = palette.chromeBg.hexString
+        let chromeBg2 = palette.chromeBg2.hexString
+        let bg4 = palette.bg4.hexString
+        let mono = "font-family: \"JetBrains Mono\", monospace"
+        // Lines 1.2 times the size apart, the system font's own spacing on
+        // macOS. Pango reads a bare number as a multiple of the font's own
+        // line height, which most Linux UI fonts set wider, so it is a length.
+        func text(_ size: Int) -> String {
+            "line-height: \(String(format: "%g", Double(size) * 1.2))px; font-size: \(size)px"
+        }
+        // What macOS draws medium. Noto Sans Medium, the sans most Linux
+        // desktops resolve to, is barely heavier than its Regular, so medium
+        // text is drawn SemiBold, the nearest face visibly heavier.
+        let medium = 600
+        func tracking(_ size: Double) -> String {
+            String(format: "%g", Double(ViewerChromeMetrics.Tracking.widest) * size)
+        }
         // A row's own online/offline/activity dot: 6x6, radius 3, the same
         // fixed square `SavedMachineRowButton.dot` draws on macOS. Not
         // `ViewerChromeMetrics.StatusDot` -- that is the status panel's own
         // tone indicator, a different dot at a different size.
         let rowDotSize = 6
         let rowDotRadius = 3
+        // GTK's min-width and min-height size the content box, inside border
+        // and padding; macOS gives each control's outer frame. A form button
+        // is 96x32 outside, a field 32 tall and the code field 44, each with
+        // a 1px border.
+        let border = 1
+        let buttonPadding = Int(space.md)
+        let buttonMinWidth = 96 - 2 * buttonPadding - 2 * border
+        let buttonMinHeight = 32 - 2 * border
+        let fieldMinHeight = 32 - 2 * border
+        let codeMinHeight = 44 - 2 * border
+        // Every button this viewer draws, including the inner button a
+        // `menubutton` wraps. A desktop theme styles each of these nodes, and
+        // this provider's priority wins only for the properties it sets --
+        // whatever it leaves unset, in any state, the theme still draws.
+        let buttons = [
+            ".\(Class.row)", ".\(Class.primary)", ".\(Class.secondary)", ".\(Class.messageSecondary)",
+            ".\(Class.rowAction)", ".\(Class.link)", ".\(Class.settingsRow)",
+            "menubutton.\(Class.iconButton) > button"
+        ]
         return """
         window.sensorium, window.sensorium > * {
-            background-color: \(palette.chromeBg.hexString);
+            background-color: \(chromeBg);
+            color: \(ink);
             font-family: Inter, sans-serif;
         }
-        window.sensorium label { color: \(palette.ink.hexString); }
-        .\(Class.heading) { font-size: 20px; font-weight: 500; color: \(palette.ink.hexString); }
-        .\(Class.eyebrow) { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: 2px; color: \(palette.muted.hexString); }
-        .\(Class.sentence) { font-size: 13px; color: \(palette.ink.hexString); }
-        .\(Class.muted) { font-size: 13px; color: \(palette.muted.hexString); }
-        .\(Class.bad) { font-size: 13px; color: \(palette.bad.hexString); }
-        .\(Class.rowName) { font-size: 14px; font-weight: 500; color: \(palette.ink.hexString); }
-        .\(Class.rowDetail) { font-size: 12px; color: \(palette.muted.hexString); }
+        \(buttons.joined(separator: ",\n"))
+        {
+            background-image: none;
+            background-color: transparent;
+            border: none;
+            border-radius: \(radius)px;
+            box-shadow: none;
+            text-shadow: none;
+            -gtk-icon-shadow: none;
+            outline: none;
+            min-height: 0;
+            min-width: 0;
+            padding: 0;
+            margin: 0;
+            opacity: 1;
+            transition: none;
+            color: \(ink);
+        }
+        \(buttons.map { $0 + ":focus-visible" }.joined(separator: ",\n"))
+        {
+            outline: 3px solid alpha(\(accent), 0.5);
+            outline-offset: 1px;
+        }
+        .\(Class.heading) { \(text(20)); font-weight: \(medium); color: \(ink); }
+        .\(Class.eyebrow) { \(mono); \(text(12)); font-weight: \(medium); letter-spacing: \(tracking(12))px; color: \(muted2); }
+        .\(Class.sentence) { \(text(13)); color: \(ink); }
+        .\(Class.headline) { \(text(13)); font-weight: \(medium); }
+        .\(Class.muted) { \(text(13)); color: \(muted); }
+        .\(Class.bad) { \(text(13)); color: \(palette.bad.hexString); }
+        .\(Class.detail) { \(text(12)); color: \(muted); }
+        .\(Class.hint) { \(text(12)); }
+        .\(Class.rowName) { \(text(14)); font-weight: \(medium); color: \(ink); }
+        .\(Class.rowName).\(Class.offline) { color: \(muted); }
+        .\(Class.rowDetail) { \(text(12)); color: \(muted); }
+        .\(Class.deviceSubtitle) { \(mono); \(text(11)); color: \(muted); }
+        .\(Class.deviceSubtitle).\(Class.offline) { color: \(muted2); }
         .\(Class.row) {
-            background-color: \(palette.chromeBg2.hexString);
+            background-color: \(chromeBg2);
             border: 1px solid \(palette.chromeBorder2.hexString);
-            border-radius: \(Int(radius.base))px;
             padding: \(Int(space.sm))px \(Int(space.md))px;
         }
-        .\(Class.row).\(Class.rowSelected) { border-color: \(palette.accent.hexString); }
+        .\(Class.row).\(Class.rowSelected) { border-color: \(accent); }
         .\(Class.dotOnline), .\(Class.dotOffline), .\(Class.dotActivity) {
             border-radius: \(rowDotRadius)px;
             min-width: \(rowDotSize)px;
             min-height: \(rowDotSize)px;
         }
         .\(Class.dotOnline) { background-color: \(palette.ok.hexString); }
-        .\(Class.dotOffline) { background-color: \(palette.muted2.hexString); }
-        .\(Class.dotActivity) { background-color: \(palette.warn.hexString); }
-        .\(Class.primary), .\(Class.secondary) {
-            min-height: 32px;
-            min-width: 96px;
-            padding: 0 \(Int(space.md))px;
-            border-radius: \(Int(radius.base))px;
-            font-size: 13px;
-            font-weight: 500;
+        .\(Class.dotOffline) { background-color: \(palette.bad.hexString); }
+        .\(Class.dotActivity) { background-color: \(palette.warn.hexString); animation: sensorium-pulse 0.7s ease-in-out infinite alternate; }
+        @keyframes sensorium-pulse { from { opacity: 1; } to { opacity: 0.35; } }
+        .\(Class.primary), .\(Class.secondary), .\(Class.messageSecondary) {
+            min-height: \(buttonMinHeight)px;
+            min-width: \(buttonMinWidth)px;
+            padding: 0 \(buttonPadding)px;
+            border-radius: \(radius)px;
+            \(text(13));
+            font-weight: \(medium);
         }
-        .\(Class.primary) { background-image: none; background-color: \(palette.accent.hexString); color: \(palette.chromeBg.hexString); border: none; }
-        .\(Class.secondary) { background-image: none; background-color: \(palette.chromeBg2.hexString); color: \(palette.ink.hexString); border: 1px solid \(palette.line.hexString); }
+        .\(Class.primary) { background-color: \(accent); border: \(border)px solid \(accent); color: \(chromeBg); }
+        .\(Class.primary):disabled { background-color: \(chromeBg2); border: \(border)px solid \(line); color: \(muted2); }
+        .\(Class.secondary) { background-color: \(chromeBg2); border: \(border)px solid \(line); }
+        .\(Class.messageSecondary) { background-color: \(bg4); border: \(border)px solid \(line); }
         .\(Class.rowAction) {
-            background-image: none;
-            background-color: \(palette.chromeBg2.hexString);
-            color: \(palette.ink.hexString);
-            border: 1px solid \(palette.line.hexString);
-            border-radius: \(Int(radius.base))px;
+            background-color: transparent;
+            border: none;
             min-height: 24px;
             min-width: 64px;
-            padding: 0 \(Int(space.xs))px;
-            font-size: 13px;
-            font-weight: 500;
+            \(text(13));
+            font-weight: \(medium);
         }
-        .\(Class.iconButton) {
-            background-image: none;
-            background: none;
-            border: none;
-            color: \(palette.muted.hexString);
+        menubutton.\(Class.iconButton) > button {
+            background-color: transparent;
             min-width: 24px;
             min-height: 24px;
-            padding: 0;
+            \(text(16));
+            font-weight: \(medium);
+            color: \(muted);
         }
-        .\(Class.link) { background: none; border: none; color: \(palette.accent.hexString); font-size: 13px; padding: 2px 0; }
-        entry { background-image: none; background-color: \(palette.bg4.hexString); color: \(palette.ink.hexString); border: 1px solid \(palette.line.hexString); border-radius: 2px; }
-        entry:focus-within { border-color: \(palette.accent.hexString); }
-        .\(Class.code) { font-family: "JetBrains Mono", monospace; font-size: 20px; letter-spacing: 4px; }
+        .\(Class.link) { \(text(13)); color: \(accent); }
+        .\(Class.settingsRow) {
+            min-height: 28px;
+            padding: 0 \(Int(space.xs))px;
+            \(text(13));
+        }
+        .\(Class.settingsRow):hover { background-color: \(bg4); }
+        .\(Class.settingsRow):disabled { color: \(muted2); }
+        window.sensorium entry {
+            background-image: none;
+            background-color: \(bg4);
+            color: \(ink);
+            border: \(border)px solid \(line);
+            border-radius: \(radius)px;
+            box-shadow: none;
+            outline: none;
+            min-height: \(fieldMinHeight)px;
+            padding: 0 \(Int(space.sm))px;
+            \(text(14));
+            caret-color: \(ink);
+        }
+        window.sensorium entry > text > placeholder { color: \(muted2); }
+        window.sensorium entry > text > selection { background-color: alpha(\(accent), 0.4); color: \(ink); }
+        window.sensorium entry.\(Class.readOnly) { color: \(muted); }
+        .\(Class.monoField) { \(mono); }
+        window.sensorium entry.\(Class.code) { \(mono); \(text(20)); min-height: \(codeMinHeight)px; }
         """
     }
 }

@@ -81,12 +81,12 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
     case malformedStatus
 
     /// How a machine with a Tailscale application of its own says to get it.
-    public static let defaultInstallHint = "Install Tailscale and sign in, then choose Look again."
+    public static let defaultInstallHint = "Install Tailscale and sign in, then choose Look Again."
     /// How a machine where Tailscale is a daemon and nothing else says it.
     /// Which distribution, and how it installs things, is the person's own
     /// business, so this names neither.
     public static let linuxInstallHint =
-        "Install Tailscale for Linux from your distribution, sign in, then choose Look again."
+        "Install Tailscale for Linux from your distribution, sign in, then choose Look Again."
 
     public var reason: String { reason(installHint: Self.defaultInstallHint) }
 
@@ -98,7 +98,7 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
         switch self {
         case .tailscaledUnreachable:
             return "Tailscale doesn\u{2019}t seem to be running on this machine. "
-                + "Make sure Tailscale says Connected, then choose Look again."
+                + "Make sure Tailscale says Connected, then choose Look Again."
         case .tailscaleNotInstalled:
             return "Tailscale doesn\u{2019}t seem to be installed on this machine. " + installHint
         case .malformedStatus:

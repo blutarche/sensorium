@@ -55,24 +55,29 @@ public struct YourMachinesRow: Equatable, Sendable {
     /// keeps the address and appends a short reason -- the full explanation
     /// belongs to the status panel, not this row. A long reason wraps, and
     /// the row grows with it rather than truncating what went wrong.
+    ///
+    /// A machine paired without a name is titled by its address, so its line
+    /// is the status alone, and empty when there is none.
     public var detail: String {
+        let status: String?
         switch activity {
         case .idle:
             switch isOnline {
-            case .none:
-                return address
-            case .some(true):
-                return "\(address) \u{2014} online"
-            case .some(false):
-                return "\(address) \u{2014} offline"
+            case .none: status = nil
+            case .some(true): status = "online"
+            case .some(false): status = "offline"
             }
         case .connecting:
-            return "\(address) \u{2014} connecting\u{2026}"
+            status = "connecting\u{2026}"
         case .stopping:
-            return "\(address) \u{2014} stopping\u{2026}"
+            status = "stopping\u{2026}"
         case let .failed(_, reason), let .stopped(_, reason):
-            return "\(address) \u{2014} \(reason)"
+            status = reason
         }
+        if name == address {
+            return status ?? ""
+        }
+        return status.map { "\(address) \u{2014} \($0)" } ?? address
     }
 
     /// The dot beside the detail line, or none where nothing is worth
@@ -136,7 +141,7 @@ public struct YourMachinesWindowModel: Equatable, Sendable {
     /// An empty state says what is empty; the button beside it says what to
     /// do about it, so this sentence does not have to.
     public static let emptySentence = "No machine is paired with this one yet."
-    public static let addTitle = "Add a machine"
+    public static let addTitle = "Add a Machine"
 
     public private(set) var rows: [YourMachinesRow]
     /// The machine currently being dialled, or `nil` when nothing is.

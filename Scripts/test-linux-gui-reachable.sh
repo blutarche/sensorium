@@ -48,16 +48,16 @@ SEARCH_DIR="$ROOT/Sources/SensoriumClient/Gtk"
 # a press finding one, and the action going back out.
 CAPABILITIES=$(cat <<'EOF'
 Your Machines heading|YourMachinesWindowModel.heading
-Add a machine button|YourMachinesWindowModel.addTitle
+Add a Machine button|YourMachinesWindowModel.addTitle
 Empty-list sentence|YourMachinesWindowModel.emptySentence
 Row detail line|row.detail
 Row reachability dot|row.dot
 Per-row Cancel|row.offersCancel
 Pair again|Pair again
 Forget|Forget
-Connect with a virtual display|Connect with a virtual display
-Look again|Look again
-Enter address manually|Enter address manually
+Connect with a Virtual Display|Connect with a Virtual Display
+Look Again|Look Again
+Enter Address Manually|Enter Address Manually
 Code step headline|Type the Code Shown on
 Status panel words|status: ViewerSessionStatus
 Status panel buttons drawn|SessionChromePainter.drawStatusPanel

@@ -1,4 +1,5 @@
 #if canImport(CGtk4)
+import CCairo
 import CGtk4
 import Foundation
 
@@ -166,10 +167,62 @@ enum GtkWidgets {
         let label = gtkRef(gtk_label_new(text))
         gtk_label_set_xalign(sensorium_gtk_label(label), 0)
         gtk_label_set_wrap(sensorium_gtk_label(label), wraps ? 1 : 0)
-        gtk_label_set_max_width_chars(sensorium_gtk_label(label), 52)
-        gtk_widget_set_halign(sensorium_gtk_widget(label), GTK_ALIGN_START)
+        if wraps {
+            // Wraps at the width its column is given, as a macOS label wraps
+            // at its `preferredMaxLayoutWidth`, instead of asking for a
+            // width of its own that would widen the window.
+            gtk_label_set_wrap_mode(sensorium_gtk_label(label), PANGO_WRAP_WORD_CHAR)
+            gtk_label_set_max_width_chars(sensorium_gtk_label(label), 1)
+            gtk_widget_set_halign(sensorium_gtk_widget(label), GTK_ALIGN_FILL)
+            gtk_widget_set_hexpand(sensorium_gtk_widget(label), 1)
+        } else {
+            gtk_widget_set_halign(sensorium_gtk_widget(label), GTK_ALIGN_START)
+        }
         gtk_widget_add_css_class(sensorium_gtk_widget(label), cssClass)
         return label
+    }
+
+    /// A column of fixed width, the width every macOS window of this viewer
+    /// lays its content out at, inset from the window's edges by
+    /// `Space.xl`.
+    static func column(width: Int32, spacing: Int32) -> GtkRef {
+        let column = box(vertical: true, spacing: spacing)
+        gtk_widget_set_size_request(sensorium_gtk_widget(column), width, -1)
+        let inset = Int32(ViewerChromeMetrics.Space.xl)
+        gtk_widget_set_margin_start(sensorium_gtk_widget(column), inset)
+        gtk_widget_set_margin_end(sensorium_gtk_widget(column), inset)
+        gtk_widget_set_margin_top(sensorium_gtk_widget(column), inset)
+        gtk_widget_set_margin_bottom(sensorium_gtk_widget(column), inset)
+        return column
+    }
+
+    /// A word that acts, drawn as text: the way back, the way to look again,
+    /// the way to type an address instead -- `ViewerFormControls.linkButton`
+    /// on macOS. `icon` names the freedesktop symbolic icon standing in for
+    /// the SF Symbol macOS draws ahead of the title.
+    static func link(_ title: String, icon: String?) -> GtkRef {
+        let button = gtkRef(gtk_button_new())
+        gtk_widget_set_halign(sensorium_gtk_widget(button), GTK_ALIGN_START)
+        gtk_widget_add_css_class(sensorium_gtk_widget(button), GtkViewerStyle.Class.link)
+        let content = box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.xxs))
+        if let icon {
+            let image = gtkRef(gtk_image_new_from_icon_name(icon))
+            gtk_image_set_pixel_size(sensorium_gtk_image(image), 12)
+            append(image, to: content)
+        }
+        append(gtkRef(gtk_label_new(title)), to: content)
+        gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
+        return button
+    }
+
+    /// A pulsing warn dot ahead of a muted sentence: the line that says a
+    /// fetch is in flight, as `YourMachinesWindowController.loadingSentence`
+    /// draws it.
+    static func loadingSentence(_ text: String) -> GtkRef {
+        let row = box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.xxs))
+        append(dot(cssClass: GtkViewerStyle.Class.dotActivity), to: row)
+        append(label(text, cssClass: GtkViewerStyle.Class.muted), to: row)
+        return row
     }
 
     /// A tone indicator drawn as a real 6x6 widget, the way `SavedMachineRowButton.dot`
@@ -201,6 +254,13 @@ enum GtkWidgets {
             gtk_widget_add_css_class(sensorium_gtk_widget(entry), cssClass)
         }
         return entry
+    }
+
+    /// The spoken name of a control whose visible label says too little on
+    /// its own, like a bare "\u{2026}".
+    static func setAccessibleLabel(_ label: String, on widget: GtkRef) {
+        gtk_widget_set_tooltip_text(sensorium_gtk_widget(widget), label)
+        sensorium_accessible_set_label(widget, label)
     }
 
     static func text(of entry: GtkRef) -> String {

@@ -95,7 +95,7 @@ private func testTailscaleInstallHintIsPlatformNeutral() {
     expect(
         TailnetDevicePickerFetchError.tailscaleNotInstalled.reason
             == "Tailscale doesn\u{2019}t seem to be installed on this machine. Install Tailscale and sign in, "
-                + "then choose Look again.",
+                + "then choose Look Again.",
         "the default sentence is the one the macOS viewer already showed -- got: "
             + "\(TailnetDevicePickerFetchError.tailscaleNotInstalled.reason)"
     )
@@ -104,7 +104,7 @@ private func testTailscaleInstallHintIsPlatformNeutral() {
     )
     expect(
         linux == "Tailscale doesn\u{2019}t seem to be installed on this machine. Install Tailscale for Linux "
-            + "from your distribution, sign in, then choose Look again.",
+            + "from your distribution, sign in, then choose Look Again.",
         "and a platform with no application to open says how that platform installs it -- got: \(linux)"
     )
     expect(

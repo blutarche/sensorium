@@ -241,6 +241,6 @@ public struct ViewerStartupFailurePrompt: Equatable, Sendable {
 public enum ViewerNewKeyConfirmation {
     public static let question = "Make a new key?"
     public static let detail = "The host will ask for a pairing code again."
-    public static let confirmTitle = "Make a new key"
+    public static let confirmTitle = "Make a New Key"
     public static let cancelTitle = "Cancel"
 }

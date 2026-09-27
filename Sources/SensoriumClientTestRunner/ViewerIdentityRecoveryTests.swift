@@ -191,12 +191,12 @@ func testViewerIdentityRecoveryTests() async {
             eyebrow: "CANNOT START",
             headline: "headline",
             detail: "detail",
-            actionTitle: "Make a new key",
+            actionTitle: "Make a New Key",
             actionIsDefault: false,
             dismissTitle: "Quit Sensorium"
         )
         expect(
-            buttonOrder(of: replaceFirstMessage) == ["Quit Sensorium", "Make a new key"],
+            buttonOrder(of: replaceFirstMessage) == ["Quit Sensorium", "Make a New Key"],
             "the default button (Quit Sensorium) sits above the non-default one -- got \(buttonOrder(of: replaceFirstMessage))"
         )
 

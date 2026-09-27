@@ -242,7 +242,9 @@ enum ViewerProbe {
 // `main.swift` runs top-level statements, so there is no `@main` type here.
 // The window verbs go first: they need this process before it has awaited.
 // `render-chrome` needs no window and no event loop, so it runs and exits
-// before either.
+// before either. `render-gtk` takes the event loop over the way the window
+// verbs do.
 RenderChromeVerb.runIfRequested()
+RenderGtkVerb.runIfRequested()
 ViewVerbs.dispatchIfRequested()
 await ViewerProbe.run()

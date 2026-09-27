@@ -46,6 +46,15 @@ func testYourMachinesWindowModelTests() {
             "the heading is the window's own title, got \(YourMachinesWindowModel.heading)"
         )
 
+        expect(
+            YourMachinesWindowModel.addTitle == "Add a Machine",
+            "the add button is Title Case like every other button, got \(YourMachinesWindowModel.addTitle)"
+        )
+        expect(
+            ViewerNewKeyConfirmation.confirmTitle == "Make a New Key",
+            "the confirm button names the same action the startup window's button does, got \(ViewerNewKeyConfirmation.confirmTitle)"
+        )
+
         print("PASS: the launch window lists saved machines, or says plainly that none is paired")
     }
 
@@ -93,6 +102,30 @@ func testYourMachinesWindowModelTests() {
         )
 
         print("PASS: a row says online or offline only where the tailnet actually answered for that machine")
+    }
+
+    do {
+        // A machine paired without a name is titled by its address, so the
+        // line under it does not say the address a second time.
+        let unnamed = savedMachineRow("100.64.1.9", key: 4, host: "100.64.1.9")
+        let unknown = YourMachinesWindowModel(hosts: [unnamed])
+        expect(unknown.rows[0].name == "100.64.1.9", "an unnamed machine is titled by its address, got \(unknown.rows[0].name)")
+        expect(unknown.rows[0].detail.isEmpty, "with nothing known, it has no line under the title, got \(unknown.rows[0].detail)")
+
+        let online = YourMachinesWindowModel(hosts: [unnamed], reachability: [unnamed.hostPublicKey: true])
+        expect(online.rows[0].detail == "online", "its line is the status alone, got \(online.rows[0].detail)")
+        expect(online.rows[0].dot == .online, "beside the online dot, got \(String(describing: online.rows[0].dot))")
+        let offline = YourMachinesWindowModel(hosts: [unnamed], reachability: [unnamed.hostPublicKey: false])
+        expect(offline.rows[0].detail == "offline", "its line is the status alone, got \(offline.rows[0].detail)")
+
+        var dialling = YourMachinesWindowModel(hosts: [unnamed])
+        dialling.connectRequested(hostPublicKey: unnamed.hostPublicKey)
+        expect(
+            dialling.rows[0].detail == "connecting\u{2026}",
+            "an attempt says what it is doing without the address, got \(dialling.rows[0].detail)"
+        )
+
+        print("PASS: a machine paired without a name shows its address once, as its title")
     }
 
     do {

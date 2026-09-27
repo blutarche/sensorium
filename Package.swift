@@ -163,7 +163,8 @@ let package = Package(
             dependencies: [
                 "SensoriumClient",
                 "SensoriumCore",
-                .target(name: "CCairo", condition: .when(platforms: [.linux]))
+                .target(name: "CCairo", condition: .when(platforms: [.linux])),
+                .target(name: "CGtk4", condition: .when(platforms: [.linux]))
             ]
         )
     ]

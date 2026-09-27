@@ -16,7 +16,7 @@ import SensoriumCore
 public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, NSWindowDelegate, NSTextFieldDelegate {
     /// Which of the three screens this one window is showing. Adding a machine is
     /// two steps inside this window rather than windows of its own: a person
-    /// who has just clicked "Add a machine" is still in the same place they
+    /// who has just clicked "Add a Machine" is still in the same place they
     /// started, and the way back is a link rather than a close button.
     private enum Step: Equatable {
         case list
@@ -566,7 +566,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         reloadFromStore()
     }
 
-    // MARK: - Add a machine, step one: which machine
+    // MARK: - Add a Machine, step one: which machine
 
     /// The first of the two add steps. Public so callers -- and the runners,
     /// and the preview renderer -- can reach every step of this window without
@@ -611,7 +611,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             views.append(loadingSentence("Looking for machines on your tailnet\u{2026}"))
         case let .unreachable(reason):
             views.append(sentence(reason, color: ViewerDesign.bad))
-            // An "Open Tailscale" button beside Look again, but only when
+            // An "Open Tailscale" button beside Look Again, but only when
             // Tailscale is actually installed and only for a tailscaled that
             // could not be asked: an empty tailnet is answered fine and is not
             // a reason to suggest opening another app.
@@ -620,7 +620,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
                 let open = ViewerFormControls.linkButton("Open Tailscale", symbol: "arrow.up.forward.app")
                 open.target = self
                 open.action = #selector(openTailscale)
-                let button = ViewerFormControls.linkButton("Look again", symbol: "arrow.clockwise")
+                let button = ViewerFormControls.linkButton("Look Again", symbol: "arrow.clockwise")
                 button.target = self
                 button.action = #selector(lookAgain)
                 views.append(leadingRow([button, open]))
@@ -631,7 +631,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         case .noOtherDevices:
             views.append(sentence(
                 "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
-                    + "on, then choose Look again."
+                    + "on, then choose Look Again."
             ))
             views.append(lookAgainLink())
         case let .devices(rows):
@@ -647,7 +647,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             views.append(lookAgainLink())
         }
 
-        let manual = ViewerFormControls.linkButton("Enter address manually\u{2026}", symbol: "keyboard")
+        let manual = ViewerFormControls.linkButton("Enter Address Manually\u{2026}", symbol: "keyboard")
         manual.target = self
         manual.action = #selector(enterAddressManually)
         let back = ViewerFormControls.linkButton("Back", symbol: "chevron.left")
@@ -668,7 +668,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     /// row takes the width; the link keeps its own and stays at the left edge,
     /// where every other link on this step starts.
     private func lookAgainLink() -> NSView {
-        let button = ViewerFormControls.linkButton("Look again", symbol: "arrow.clockwise")
+        let button = ViewerFormControls.linkButton("Look Again", symbol: "arrow.clockwise")
         button.target = self
         button.action = #selector(lookAgain)
         return leadingRow([button])
@@ -707,7 +707,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         showList()
     }
 
-    // MARK: - Add a machine, step two: the code
+    // MARK: - Add a Machine, step two: the code
 
     private func enterCodeStep(device: ViewerPairingDevice?, isPairingAgain: Bool) {
         step = .typeCode(device: device, isPairingAgain: isPairingAgain)
@@ -1058,7 +1058,7 @@ final class SavedMachineRowButton: NSButton {
             detailRow = detail
         }
 
-        let text = NSStackView(views: [name, detailRow])
+        let text = NSStackView(views: row.detail.isEmpty ? [name] : [name, detailRow])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = ViewerDesign.Space.xxs

@@ -47,7 +47,7 @@ See [macOS permissions](macos-permissions.md) for what each permission is for, a
 ## Pair the two apps
 
 1. On the host machine, in `Sensorium Host.app`, click **Show pairing code**. It shows a temporary six-digit code.
-2. On the machine you work from, open `Sensorium.app`. Pick the host from the tailnet list, or click **Enter address manually…** if it is not listed.
+2. On the machine you work from, open `Sensorium.app`. Pick the host from the tailnet list, or click **Enter Address Manually…** if it is not listed.
 3. Type the six-digit code shown on the host.
 
 ## Start a session

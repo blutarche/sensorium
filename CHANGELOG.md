@@ -56,6 +56,11 @@ once it reaches 1.0.
   shortcut strip, notices, diagnostics panel and windows use the same
   sizes, colours and spacing, and the strip shows the desktop's own
   icons. A gear on the strip opens Session Settings.
+- The Linux viewer's windows (Your Machines, pairing, messages and
+  Session Settings) are drawn like the Mac's, with the same surfaces,
+  sizes and labels, instead of the desktop theme's buttons and fields.
+- A machine paired without a name shows its address once, with only its
+  status on the line below.
 - The Linux viewer shows the Sensorium icon in the taskbar and the
   window switcher.
 - The shortcut strip is 40 points high on the Mac, and every button

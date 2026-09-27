@@ -1050,7 +1050,7 @@ MainActor.assumeIsolated {
     write(
         render(machinesContent(noMachines)),
         named: "viewer-machines-1-empty.png",
-        state: "YourMachinesWindowController with nothing paired yet — one sentence and the accent Add a machine;"
+        state: "YourMachinesWindowController with nothing paired yet — one sentence and the accent Add a Machine;"
             + " 460pt wide at the height the content asks for; no stream pass"
     )
 
@@ -1089,6 +1089,53 @@ MainActor.assumeIsolated {
         named: "viewer-machines-4-failed.png",
         state: "YourMachinesWindowController after an attempt failed and the retry policy is about to dial"
             + " again — the row names the attempt and why it did not connect"
+    )
+
+    // The same three fixtures `SensoriumViewerProbe render-gtk` draws on
+    // Linux, so each GTK render has a macOS one to be laid beside.
+    let unnamedHost = SavedHost(
+        displayName: "100.64.1.9",
+        host: "100.64.1.9",
+        port: 7777,
+        hostPublicKey: Data([3]),
+        tlsCertificateHash: Data([3, 3]),
+        lastConnectedAt: Date(timeIntervalSince1970: 500)
+    )
+    let oneUnnamed = machinesWindow(hosts: [unnamedHost])
+    write(
+        render(machinesContent(oneUnnamed)),
+        named: "viewer-machines-5-one-unnamed.png",
+        state: "YourMachinesWindowController with one machine paired without a name — the address stands in"
+            + " for the name, and tailscale status has said nothing about it"
+    )
+
+    let several = machinesWindow(hosts: [miniHost, studioHost, unnamedHost])
+    several.loadTailnet = { .devices(tailnetRows) }
+    several.showAddAMachine()
+    pumpUntil(
+        { stored("reachability", of: several, as: [Data: Bool].self).isEmpty == false },
+        description: "the tailnet answer behind the online/offline notes"
+    )
+    several.showList()
+    several.select(hostPublicKey: studioHost.hostPublicKey)
+    write(
+        render(machinesContent(several)),
+        named: "viewer-machines-6-several-selected.png",
+        state: "YourMachinesWindowController listing three machines with the second one selected"
+    )
+
+    let longNamed = machinesWindow(hosts: [SavedHost(
+        displayName: "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max",
+        host: "alexandria-whitfield-sinclairs-laptop.tail1234.ts.net",
+        port: 7777,
+        hostPublicKey: Data([4]),
+        tlsCertificateHash: Data([4, 4]),
+        lastConnectedAt: Date(timeIntervalSince1970: 500)
+    )])
+    write(
+        render(machinesContent(longNamed)),
+        named: "viewer-machines-7-long-name.png",
+        state: "YourMachinesWindowController with one machine whose name and address are longer than the row"
     )
 
     // The add step's first screen, and every state the tailnet answer can put
@@ -1321,8 +1368,7 @@ MainActor.assumeIsolated {
         }
         let status = endedMachine.handle(
             .hostScreenConnectEnded(
-                reasonLine: HostScreenRefusalCopy.line(reason: reason),
-                offersPairAgain: HostScreenRefusalCopy.offersPairAgain(reason: reason)
+                reasonLine: HostScreenRefusalCopy.line(reason: reason)
             )
         )
         viewerStates.append((
@@ -1345,8 +1391,7 @@ MainActor.assumeIsolated {
         var endedMachine = ViewerSessionStateMachine(hostName: longHostName)
         let status = endedMachine.handle(
             .hostScreenConnectEnded(
-                reasonLine: HostScreenRefusalCopy.line(reason: reason),
-                offersPairAgain: HostScreenRefusalCopy.offersPairAgain(reason: reason)
+                reasonLine: HostScreenRefusalCopy.line(reason: reason)
             )
         )
         viewerStates.append((
@@ -1942,8 +1987,11 @@ let build = repositoryRoot.appendingPathComponent(".build/debug")
 /// have a source file are taken.
 func objects(target: String, sourceExtension: String, objectSuffix: String) -> [String] {
     let sources = repositoryRoot.appendingPathComponent("Sources/\(target)")
-    let names = ((try? FileManager.default.contentsOfDirectory(atPath: sources.path)) ?? [])
+    // SwiftPM names each object after its source file alone, wherever in the
+    // target's tree that file sits.
+    let names = ((try? FileManager.default.subpathsOfDirectory(atPath: sources.path)) ?? [])
         .filter { $0.hasSuffix(sourceExtension) }
+        .map { URL(fileURLWithPath: $0).lastPathComponent }
         .sorted()
     let found = names.compactMap { name -> String? in
         let object = build.appendingPathComponent("\(target).build/\(name)\(objectSuffix)").path

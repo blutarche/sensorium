@@ -1,4 +1,5 @@
 #if canImport(CGtk4)
+import CCairo
 import CGtk4
 import Foundation
 import SensoriumCore
@@ -25,6 +26,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     }
 
     private static let windowWidth: Int32 = 460
+    private static let contentWidth = windowWidth - Int32(ViewerChromeMetrics.Space.xl) * 2
 
     private static let addressHintText = "Tailscale address, or a name like mini.local."
     private static let codeHintText =
@@ -79,7 +81,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
     /// This window itself, for a modal ask that has to be centred on it and
     /// hold it while it is up.
-    var toplevel: GtkRef { window }
+    package var toplevel: UnsafeMutableRawPointer { window }
 
     private var addressEntry: GtkRef?
     private var codeEntry: GtkRef?
@@ -95,21 +97,18 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         self.store = store
         window = gtkRef(gtk_window_new())
         stack = gtkRef(gtk_stack_new())
-        listPage = GtkWidgets.box(vertical: true, spacing: 16)
-        pickerPage = GtkWidgets.box(vertical: true, spacing: 16)
-        codePage = GtkWidgets.box(vertical: true, spacing: 16)
+        let spacing = Int32(ViewerChromeMetrics.Space.md)
+        listPage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
+        pickerPage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
+        codePage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
 
-        gtk_window_set_title(sensorium_gtk_window(window), YourMachinesWindowModel.heading)
+        // The window is Sensorium; the heading inside it says which list
+        // this is, as the macOS window does.
+        gtk_window_set_title(sensorium_gtk_window(window), ViewerApplicationIdentity.applicationName)
         gtk_window_set_default_size(sensorium_gtk_window(window), Self.windowWidth, -1)
         gtk_window_set_resizable(sensorium_gtk_window(window), 0)
         gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
 
-        for page in [listPage, pickerPage, codePage] {
-            gtk_widget_set_margin_start(sensorium_gtk_widget(page), 24)
-            gtk_widget_set_margin_end(sensorium_gtk_widget(page), 24)
-            gtk_widget_set_margin_top(sensorium_gtk_widget(page), 24)
-            gtk_widget_set_margin_bottom(sensorium_gtk_widget(page), 24)
-        }
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(listPage), "list")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(pickerPage), "picker")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(codePage), "code")
@@ -296,7 +295,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
         let addButton = GtkWidgets.button(
             YourMachinesWindowModel.addTitle,
-            cssClass: model.addIsPrimary ? GtkViewerStyle.Class.primary : nil
+            cssClass: model.addIsPrimary ? GtkViewerStyle.Class.primary : GtkViewerStyle.Class.secondary
         )
         onClick(addButton) { [weak self] in self?.showAddAMachine() }
 
@@ -328,54 +327,74 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         }
     }
 
+    /// One saved machine, drawn as `SavedMachineRowButton` draws it: the row
+    /// itself is the button that connects, and its Cancel and "\u{2026}" sit
+    /// on top of it rather than beside it, inside the same bordered surface.
     private func buildRow(_ row: YourMachinesRow, index: Int, defaultButton: inout GtkRef?) -> GtkRef {
-        let rowBox = GtkWidgets.box(vertical: false, spacing: 8)
-        gtk_widget_add_css_class(sensorium_gtk_widget(rowBox), GtkViewerStyle.Class.row)
+        let space = ViewerChromeMetrics.Space.self
+        let rowButton = gtkRef(gtk_button_new())
+        gtk_widget_add_css_class(sensorium_gtk_widget(rowButton), GtkViewerStyle.Class.row)
         let isSelected = row.hostPublicKey == selectedHostPublicKey
         if isSelected {
-            gtk_widget_add_css_class(sensorium_gtk_widget(rowBox), GtkViewerStyle.Class.rowSelected)
+            gtk_widget_add_css_class(sensorium_gtk_widget(rowButton), GtkViewerStyle.Class.rowSelected)
         }
 
-        // `Space.xxs`, matching the vertical gap `SavedMachineRowButton.text`
-        // and the horizontal gap `SavedMachineRowButton.detailStack` both use
-        // on macOS -- the name and its detail line share one gap value here.
-        let nameToDetailGap = Int32(ViewerChromeMetrics.Space.xxs)
+        let nameToDetailGap = Int32(space.xxs)
         let content = GtkWidgets.box(vertical: true, spacing: nameToDetailGap)
-        GtkWidgets.append(GtkWidgets.label(row.name, cssClass: GtkViewerStyle.Class.rowName), to: content)
-        let detailRow = GtkWidgets.box(vertical: false, spacing: nameToDetailGap)
-        if let dotClass = Self.cssClass(for: row.dot) {
-            GtkWidgets.append(GtkWidgets.dot(cssClass: dotClass), to: detailRow)
+        // The text stops short of where Cancel and the "\u{2026}" sit, shown
+        // or not, as on macOS: 8 from the edge, 24 for the "\u{2026}", 8, 64
+        // for Cancel, 8 -- less the 16 the row's own padding already gives.
+        let controlsWidth = space.xs + 24 + space.xs + 64 + space.xs
+        gtk_widget_set_margin_end(sensorium_gtk_widget(content), Int32(controlsWidth - space.md))
+        let name = GtkWidgets.label(row.name, cssClass: GtkViewerStyle.Class.rowName, wraps: false)
+        gtk_label_set_ellipsize(sensorium_gtk_label(name), PANGO_ELLIPSIZE_END)
+        gtk_widget_set_halign(sensorium_gtk_widget(name), GTK_ALIGN_FILL)
+        GtkWidgets.append(name, to: content)
+        if !row.detail.isEmpty {
+            let detailRow = GtkWidgets.box(vertical: false, spacing: nameToDetailGap)
+            if let dotClass = Self.cssClass(for: row.dot) {
+                GtkWidgets.append(GtkWidgets.dot(cssClass: dotClass), to: detailRow)
+            }
+            GtkWidgets.append(GtkWidgets.label(row.detail, cssClass: GtkViewerStyle.Class.rowDetail), to: detailRow)
+            GtkWidgets.append(detailRow, to: content)
         }
-        GtkWidgets.append(GtkWidgets.label(row.detail, cssClass: GtkViewerStyle.Class.rowDetail), to: detailRow)
-        GtkWidgets.append(detailRow, to: content)
-
-        let rowButton = gtkRef(gtk_button_new())
         gtk_button_set_child(sensorium_gtk_button(rowButton), sensorium_gtk_widget(content))
         gtk_widget_set_hexpand(sensorium_gtk_widget(rowButton), 1)
         gtk_widget_set_receives_default(sensorium_gtk_widget(rowButton), 1)
         let hostPublicKey = row.hostPublicKey
         onClick(rowButton) { [weak self] in self?.rowClicked(hostPublicKey: hostPublicKey) }
-        GtkWidgets.append(rowButton, to: rowBox)
-
         if isSelected {
             defaultButton = rowButton
         }
 
-        if row.offersCancel {
-            let cancel = GtkWidgets.button("Cancel", cssClass: GtkViewerStyle.Class.rowAction)
-            onClick(cancel) { [weak self] in self?.cancelConnecting() }
-            GtkWidgets.append(cancel, to: rowBox)
-        }
+        let overlay = gtkRef(gtk_overlay_new())
+        gtk_overlay_set_child(sensorium_gtk_overlay(overlay), sensorium_gtk_widget(rowButton))
 
         let menuButton = gtkRef(gtk_menu_button_new())
         gtk_widget_add_css_class(sensorium_gtk_widget(menuButton), GtkViewerStyle.Class.iconButton)
-        gtk_menu_button_set_label(sensorium_gtk_menu_button(menuButton), "\u{2026}")
+        // A child rather than a label: a labelled menu button adds a
+        // disclosure arrow the macOS "\u{2026}" does not have.
+        gtk_menu_button_set_child(sensorium_gtk_menu_button(menuButton), gtk_label_new("\u{2026}"))
+        GtkWidgets.setAccessibleLabel("More actions for \(row.name)", on: menuButton)
         let menu = rowMenu(for: row, index: index)
         gtk_menu_button_set_menu_model(sensorium_gtk_menu_button(menuButton), sensorium_g_menu_model(menu))
         g_object_unref(menu)
-        GtkWidgets.append(menuButton, to: rowBox)
+        placeOnRow(menuButton, endInset: space.xs, in: overlay)
+
+        if row.offersCancel {
+            let cancel = GtkWidgets.button("Cancel", cssClass: GtkViewerStyle.Class.rowAction)
+            onClick(cancel) { [weak self] in self?.cancelConnecting() }
+            placeOnRow(cancel, endInset: space.xs + 24 + space.xs, in: overlay)
+        }
         attachRightClick(to: rowButton, opening: menuButton)
-        return rowBox
+        return overlay
+    }
+
+    private func placeOnRow(_ control: GtkRef, endInset: CGFloat, in overlay: GtkRef) {
+        gtk_widget_set_halign(sensorium_gtk_widget(control), GTK_ALIGN_END)
+        gtk_widget_set_valign(sensorium_gtk_widget(control), GTK_ALIGN_CENTER)
+        gtk_widget_set_margin_end(sensorium_gtk_widget(control), Int32(endInset))
+        gtk_overlay_add_overlay(sensorium_gtk_overlay(overlay), sensorium_gtk_widget(control))
     }
 
     /// The same two actions a right-click offers, and the third only a failed
@@ -497,7 +516,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         reloadFromStore()
     }
 
-    // MARK: - Add a machine, step one: which machine
+    // MARK: - Add a Machine, step one: which machine
 
     public func showAddAMachine() {
         step = .chooseDevice
@@ -534,10 +553,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
         switch pickerState {
         case .loading:
-            GtkWidgets.append(
-                GtkWidgets.label("Looking for machines on your tailnet\u{2026}", cssClass: GtkViewerStyle.Class.muted),
-                to: pickerPage
-            )
+            GtkWidgets.append(GtkWidgets.loadingSentence("Looking for machines on your tailnet\u{2026}"), to: pickerPage)
         case let .unreachable(reason):
             // No "Open Tailscale" here: this platform has no app to open, and
             // a button that cannot do anything is worse than none.
@@ -547,14 +563,14 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             GtkWidgets.append(
                 GtkWidgets.label(
                     "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
-                        + "on, then choose Look again.",
+                        + "on, then choose Look Again.",
                     cssClass: GtkViewerStyle.Class.muted
                 ),
                 to: pickerPage
             )
             appendLookAgain(to: pickerPage)
         case let .devices(rows):
-            let list = GtkWidgets.box(vertical: true, spacing: 8)
+            let list = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.xs))
             for row in rows {
                 GtkWidgets.append(buildDeviceRow(row), to: list)
             }
@@ -562,25 +578,32 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             appendLookAgain(to: pickerPage)
         }
 
-        let manual = GtkWidgets.button("Enter address manually\u{2026}", cssClass: GtkViewerStyle.Class.link)
+        let manual = GtkWidgets.link("Enter Address Manually\u{2026}", icon: "input-keyboard-symbolic")
         onClick(manual) { [weak self] in self?.enterCodeStep(device: nil, isPairingAgain: false) }
         GtkWidgets.append(manual, to: pickerPage)
 
-        let back = GtkWidgets.button("Back", cssClass: GtkViewerStyle.Class.link)
+        let back = GtkWidgets.link("Back", icon: "go-previous-symbolic")
         onClick(back) { [weak self] in self?.showList() }
         GtkWidgets.append(back, to: pickerPage)
     }
 
     private func appendLookAgain(to page: GtkRef) {
-        let button = GtkWidgets.button("Look again", cssClass: GtkViewerStyle.Class.link)
+        let button = GtkWidgets.link("Look Again", icon: "view-refresh-symbolic")
         onClick(button) { [weak self] in self?.reloadTailnet() }
         GtkWidgets.append(button, to: page)
     }
 
+    /// One tailnet device, drawn as `TailnetDeviceRowButton` draws it.
     private func buildDeviceRow(_ row: TailnetDevicePickerRow) -> GtkRef {
-        let content = GtkWidgets.box(vertical: true, spacing: 2)
-        GtkWidgets.append(GtkWidgets.label(row.title, cssClass: GtkViewerStyle.Class.rowName), to: content)
-        GtkWidgets.append(GtkWidgets.label(row.subtitle, cssClass: GtkViewerStyle.Class.rowDetail), to: content)
+        let content = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.xxs))
+        let title = GtkWidgets.label(row.title, cssClass: GtkViewerStyle.Class.rowName, wraps: false)
+        let subtitle = GtkWidgets.label(row.subtitle, cssClass: GtkViewerStyle.Class.deviceSubtitle, wraps: false)
+        if !row.peer.isOnline {
+            gtk_widget_add_css_class(sensorium_gtk_widget(title), GtkViewerStyle.Class.offline)
+            gtk_widget_add_css_class(sensorium_gtk_widget(subtitle), GtkViewerStyle.Class.offline)
+        }
+        GtkWidgets.append(title, to: content)
+        GtkWidgets.append(subtitle, to: content)
         let button = gtkRef(gtk_button_new())
         gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
         gtk_widget_add_css_class(sensorium_gtk_widget(button), GtkViewerStyle.Class.row)
@@ -589,7 +612,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         return button
     }
 
-    // MARK: - Add a machine, step two: the code
+    // MARK: - Add a Machine, step two: the code
 
     private func enterCodeStep(device: ViewerPairingDevice?, isPairingAgain: Bool) {
         step = .typeCode(device: device, isPairingAgain: isPairingAgain)
@@ -620,31 +643,28 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             )
         }
         if device == nil {
-            let entry = GtkWidgets.entry(placeholder: "mini.local", cssClass: nil)
+            let entry = GtkWidgets.entry(placeholder: "mini.local", cssClass: GtkViewerStyle.Class.monoField)
             GtkWidgets.setText(form.address, on: entry)
-            let hint = GtkWidgets.label(Self.addressHintText, cssClass: GtkViewerStyle.Class.muted)
+            let hint = Self.hint(Self.addressHintText)
             addressEntry = entry
             addressHint = hint
             onChanged(entry) { [weak self] in self?.formDidChange() }
             GtkWidgets.append(
-                GtkWidgets.label("The address of the machine you want to add", cssClass: GtkViewerStyle.Class.sentence),
+                Self.fieldGroup(label: "The address of the machine you want to add", field: entry, hint: hint),
                 to: codePage
             )
-            GtkWidgets.append(entry, to: codePage)
-            GtkWidgets.append(hint, to: codePage)
         }
 
         let code = GtkWidgets.entry(placeholder: "000 000", cssClass: GtkViewerStyle.Class.code)
         GtkWidgets.setText(ViewerPairingForm.groupedCodeDisplay(form.code), on: code)
-        let codeHintLabel = GtkWidgets.label(Self.codeHintText, cssClass: GtkViewerStyle.Class.muted)
+        let codeHintLabel = Self.hint(Self.codeHintText)
         codeEntry = code
         codeHint = codeHintLabel
         onChanged(code) { [weak self] in self?.formDidChange() }
-        GtkWidgets.append(code, to: codePage)
-        GtkWidgets.append(codeHintLabel, to: codePage)
+        GtkWidgets.append(Self.fieldGroup(label: nil, field: code, hint: codeHintLabel), to: codePage)
 
-        let headline = GtkWidgets.label("", cssClass: GtkViewerStyle.Class.bad)
-        let detail = GtkWidgets.label("", cssClass: GtkViewerStyle.Class.muted)
+        let headline = GtkWidgets.label("", cssClass: GtkViewerStyle.Class.headline)
+        let detail = GtkWidgets.label("", cssClass: GtkViewerStyle.Class.detail)
         messageHeadline = headline
         messageDetail = detail
         gtk_widget_set_visible(sensorium_gtk_widget(headline), 0)
@@ -656,18 +676,16 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         GtkWidgets.setText(form.name, on: name)
         nameEntry = name
         onChanged(name) { [weak self] in self?.formDidChange() }
-        GtkWidgets.append(
-            GtkWidgets.label("Name (optional)", cssClass: GtkViewerStyle.Class.sentence), to: codePage
-        )
-        GtkWidgets.append(name, to: codePage)
+        GtkWidgets.append(Self.fieldGroup(label: "Name (optional)", field: name, hint: nil), to: codePage)
 
-        let buttons = GtkWidgets.box(vertical: false, spacing: 16)
+        let buttons = GtkWidgets.box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.md))
         let pair = GtkWidgets.button("Pair", cssClass: GtkViewerStyle.Class.primary)
         pairButton = pair
         gtk_widget_set_receives_default(sensorium_gtk_widget(pair), 1)
         onClick(pair) { [weak self] in self?.submit() }
         GtkWidgets.append(pair, to: buttons)
-        let back = GtkWidgets.button("Back", cssClass: GtkViewerStyle.Class.link)
+        let back = GtkWidgets.link("Back", icon: "go-previous-symbolic")
+        gtk_widget_set_valign(sensorium_gtk_widget(back), GTK_ALIGN_CENTER)
         onClick(back) { [weak self] in
             self?.onCodeStepAbandoned?()
             self?.showList()
@@ -681,6 +699,27 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         refresh()
     }
 
+    private static func hint(_ text: String) -> GtkRef {
+        let hint = GtkWidgets.label(text, cssClass: GtkViewerStyle.Class.muted)
+        gtk_widget_add_css_class(sensorium_gtk_widget(hint), GtkViewerStyle.Class.hint)
+        return hint
+    }
+
+    /// A field, its sentence label where it has one, and the hint or error
+    /// that belongs under it, closer to each other than to the rest of the
+    /// step -- `YourMachinesWindowController.fieldGroup`.
+    private static func fieldGroup(label: String?, field: GtkRef, hint: GtkRef?) -> GtkRef {
+        let group = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.xxs))
+        if let label {
+            GtkWidgets.append(GtkWidgets.label(label, cssClass: GtkViewerStyle.Class.muted), to: group)
+        }
+        GtkWidgets.append(field, to: group)
+        if let hint {
+            GtkWidgets.append(hint, to: group)
+        }
+        return group
+    }
+
     /// Only a machine picked from the list, or one being paired again, has an
     /// address known before a code is typed. Typing one by hand has nothing to
     /// announce until a valid address exists, which the submission itself
@@ -692,7 +731,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             guard case let .failed(outcome) = await sendPairIntent(device) else { return }
             guard case let .typeCode(current, _) = self.step, current == device else { return }
             let copy = ViewerPairingFailureCopy.copy(for: outcome, hostLabel: device.label)
-            self.showMessage(headline: copy.headline, detail: copy.detail)
+            self.showMessage(headline: copy.headline, detail: copy.detail, tone: .bad)
         }
     }
 
@@ -756,9 +795,14 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         )
     }
 
-    private func showMessage(headline: String, detail: String) {
+    private func showMessage(headline: String, detail: String, tone: ViewerStatusTone) {
         if let messageHeadline {
             gtk_label_set_text(sensorium_gtk_label(messageHeadline), headline)
+            if tone == .bad {
+                gtk_widget_add_css_class(sensorium_gtk_widget(messageHeadline), GtkViewerStyle.Class.bad)
+            } else {
+                gtk_widget_remove_css_class(sensorium_gtk_widget(messageHeadline), GtkViewerStyle.Class.bad)
+            }
             gtk_widget_set_visible(sensorium_gtk_widget(messageHeadline), headline.isEmpty ? 0 : 1)
         }
         if let messageDetail {
@@ -770,6 +814,11 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private func setFieldsEditable(_ editable: Bool) {
         for entry in [addressEntry, codeEntry, nameEntry].compactMap({ $0 }) {
             gtk_editable_set_editable(sensorium_gtk_editable(entry), editable ? 1 : 0)
+            if editable {
+                gtk_widget_remove_css_class(sensorium_gtk_widget(entry), GtkViewerStyle.Class.readOnly)
+            } else {
+                gtk_widget_add_css_class(sensorium_gtk_widget(entry), GtkViewerStyle.Class.readOnly)
+            }
         }
     }
 
@@ -785,7 +834,8 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         showMessage(
             headline: "Asking \(submission.displayName) to accept this machine\u{2026}",
             detail: "This takes a moment. Leave the code on \(submission.displayName)\u{2019}s screen "
-                + "until this finishes."
+                + "until this finishes.",
+            tone: .info
         )
 
         Task { @MainActor in
@@ -810,7 +860,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
                     GtkWidgets.setText("", on: codeEntry)
                 }
                 self.formDidChange()
-                self.showMessage(headline: copy.headline, detail: copy.detail)
+                self.showMessage(headline: copy.headline, detail: copy.detail, tone: .bad)
                 if let focus = self.entry(for: copy.focus) {
                     gtk_widget_grab_focus(sensorium_gtk_widget(focus))
                 }

@@ -12,7 +12,7 @@ required_readme = [
 ]
 required_install = [
     "Show pairing code",
-    "Enter address manually",
+    "Enter Address Manually",
     "## Linux",
 ]
 for text in required_readme:

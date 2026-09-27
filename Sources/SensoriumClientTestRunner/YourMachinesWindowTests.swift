@@ -142,7 +142,7 @@ func testYourMachinesWindowTests() async {
             "the empty state says what is empty"
         )
         expect(
-            button(titled: "Add a machine", in: content(of: empty)) != nil,
+            button(titled: "Add a Machine", in: content(of: empty)) != nil,
             "and offers the only thing that changes it"
         )
         expect(
@@ -245,7 +245,7 @@ func testYourMachinesWindowTests() async {
     }
 
     do {
-        // Add a machine is two steps inside this same window: the tailnet
+        // Add a Machine is two steps inside this same window: the tailnet
         // list, then the code. Neither opens a window of its own, and
         // Back returns to the list from either.
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini]))
@@ -264,10 +264,10 @@ func testYourMachinesWindowTests() async {
             "the subtitle excludes this machine by name, since the list right below it does too"
         )
         expect(
-            button(titled: "Enter address manually\u{2026}", in: content(of: controller)) != nil,
+            button(titled: "Enter Address Manually\u{2026}", in: content(of: controller)) != nil,
             "typing an address by hand is one click away, and never the first thing shown"
         )
-        expect(button(titled: "Look again", in: content(of: controller)) != nil, "a device list can be re-checked")
+        expect(button(titled: "Look Again", in: content(of: controller)) != nil, "a device list can be re-checked")
         expect(!hasLabel("Your Machines", in: content(of: controller)), "the list is replaced, not stacked beside")
 
         guard let back = button(titled: "Back", in: content(of: controller)) else {
@@ -556,7 +556,7 @@ func testYourMachinesWindowTests() async {
         expect(
             hasLabel(
                 "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
-                    + "on, then choose Look again.",
+                    + "on, then choose Look Again.",
                 in: content(of: emptyTailnet)
             ),
             "an empty tailnet points at the actual fix -- getting the other machine onto the tailnet"
@@ -660,21 +660,21 @@ func testYourMachinesWindowTests() async {
 
     do {
         // Every link on the add step starts at the same left edge.
-        // Look again was stretched the full width of the window and
+        // Look Again was stretched the full width of the window and
         // drew centred, which read as a heading rather than as one of
         // the three things that can be done there.
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
         controller.apply(deviceList: .noOtherDevices)
         let window = storedValue("window", of: controller, as: NSWindow.self)
         window.contentView?.layoutSubtreeIfNeeded()
-        guard let lookAgain = button(titled: "Look again", in: content(of: controller)),
+        guard let lookAgain = button(titled: "Look Again", in: content(of: controller)),
               let back = button(titled: "Back", in: content(of: controller)) else {
-            print("FAIL: the add step no longer offers both Look again and Back")
+            print("FAIL: the add step no longer offers both Look Again and Back")
             Foundation.exit(1)
         }
         expect(
             abs(lookAgain.frame.minX - back.frame.minX) < 0.5,
-            "Look again starts where every other link on the step does, got \(lookAgain.frame.minX) against \(back.frame.minX)"
+            "Look Again starts where every other link on the step does, got \(lookAgain.frame.minX) against \(back.frame.minX)"
         )
         expect(
             lookAgain.frame.width < content(of: controller).frame.width / 2,

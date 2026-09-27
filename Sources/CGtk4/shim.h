@@ -63,6 +63,20 @@ static inline GtkPopover *sensorium_gtk_popover(gpointer object) {
     return GTK_POPOVER(object);
 }
 
+static inline GtkImage *sensorium_gtk_image(gpointer object) {
+    return GTK_IMAGE(object);
+}
+
+static inline GtkOverlay *sensorium_gtk_overlay(gpointer object) {
+    return GTK_OVERLAY(object);
+}
+
+// `gtk_accessible_update_property` takes its property/value pairs as
+// varargs, which Swift cannot call.
+static inline void sensorium_accessible_set_label(gpointer object, const char *label) {
+    gtk_accessible_update_property(GTK_ACCESSIBLE(object), GTK_ACCESSIBLE_PROPERTY_LABEL, label, -1);
+}
+
 static inline GtkGestureSingle *sensorium_gtk_gesture_single(gpointer object) {
     return GTK_GESTURE_SINGLE(object);
 }
@@ -176,6 +190,75 @@ static inline void sensorium_prefer_dark_theme(void) {
     if (settings != NULL) {
         g_object_set(settings, "gtk-application-prefer-dark-theme", TRUE, NULL);
     }
+}
+
+// Draws what `window` currently shows inside its content -- the child's own
+// box plus its margins, over the window's own background, without the title
+// bar or any client-side shadow -- at the scale the window's surface has, and
+// writes it to `path` as a PNG. Returns that scale, or 0 when the window has
+// not been laid out or the file could not be written.
+static inline int sensorium_window_content_write_png(gpointer object, const char *path) {
+    GtkWidget *window = GTK_WIDGET(object);
+    GtkWidget *content = gtk_window_get_child(GTK_WINDOW(object));
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(object));
+    if (content == NULL || surface == NULL) {
+        return 0;
+    }
+    graphene_rect_t bounds;
+    if (!gtk_widget_compute_bounds(content, window, &bounds)) {
+        return 0;
+    }
+    double scale = gdk_surface_get_scale(surface);
+    float x = bounds.origin.x - gtk_widget_get_margin_start(content);
+    float y = bounds.origin.y - gtk_widget_get_margin_top(content);
+    float width = bounds.size.width + gtk_widget_get_margin_start(content) + gtk_widget_get_margin_end(content);
+    float height = bounds.size.height + gtk_widget_get_margin_top(content) + gtk_widget_get_margin_bottom(content);
+    if (width <= 0 || height <= 0) {
+        return 0;
+    }
+
+    GdkPaintable *paintable = gtk_widget_paintable_new(window);
+    GtkSnapshot *snapshot = gtk_snapshot_new();
+    gdk_paintable_snapshot(
+        paintable, GDK_SNAPSHOT(snapshot),
+        gtk_widget_get_width(window) * scale, gtk_widget_get_height(window) * scale
+    );
+    GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+    g_object_unref(paintable);
+    if (node == NULL) {
+        return 0;
+    }
+    graphene_rect_t viewport = GRAPHENE_RECT_INIT(x * scale, y * scale, width * scale, height * scale);
+    GdkTexture *texture = gsk_renderer_render_texture(gtk_native_get_renderer(GTK_NATIVE(object)), node, &viewport);
+    gsk_render_node_unref(node);
+    gboolean written = gdk_texture_save_to_png(texture, path);
+    g_object_unref(texture);
+    return written ? (int)scale : 0;
+}
+
+// The colour at one pixel of a PNG, as 0xRRGGBB, or -1 when the file cannot
+// be read or the point lies outside it.
+static inline gint64 sensorium_png_pixel(const char *path, int x, int y) {
+    GdkTexture *texture = gdk_texture_new_from_filename(path, NULL);
+    if (texture == NULL) {
+        return -1;
+    }
+    int width = gdk_texture_get_width(texture);
+    int height = gdk_texture_get_height(texture);
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+        g_object_unref(texture);
+        return -1;
+    }
+    gsize stride = (gsize)width * 4;
+    guchar *pixels = g_malloc(stride * height);
+    // Premultiplied BGRA on little-endian, which is what an opaque render
+    // comes back as.
+    gdk_texture_download(texture, pixels, stride);
+    guchar *pixel = pixels + (gsize)y * stride + (gsize)x * 4;
+    gint64 rgb = ((gint64)pixel[2] << 16) | ((gint64)pixel[1] << 8) | (gint64)pixel[0];
+    g_free(pixels);
+    g_object_unref(texture);
+    return rgb;
 }
 
 #endif

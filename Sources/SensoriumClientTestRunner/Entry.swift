@@ -68,6 +68,7 @@ struct SensoriumClientTestRunner {
         testHUDFooterKeyChordsNeverSplitTests()
         testScrimOpaqueBeforeFirstFrameTests()
         testGtkViewerStylesheetTests()
+        testGtkViewerStylesheetOverridesTheThemeTests()
         testSessionControlsWindowOpeningTests()
         testSessionControlsWindowModelTests()
         testSessionChromeStateTests()
