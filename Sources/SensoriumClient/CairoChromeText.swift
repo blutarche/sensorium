@@ -226,7 +226,7 @@ enum CairoChromeText {
     /// parsed string: `pango_font_description_set_size` takes Pango units, the
     /// same fractional-point conversion `sensorium_pango_units_from_points`
     /// already gives the rest of this file, so a caller is never rounded to a
-    /// whole point the way a string like `"Inter 12"` would round it.
+    /// whole point the way a string like `"Sans 12"` would round it.
     ///
     /// A "point" here means the same thing it does on macOS -- one logical
     /// pixel before the backing scale. Pango's own default reads a size in
@@ -262,7 +262,7 @@ enum CairoChromeText {
         cairo_font_options_destroy(fontOptions)
         pango_context_set_round_glyph_positions(layoutContext, 0)
         let description = pango_font_description_new()
-        pango_font_description_set_family(description, mono ? "JetBrains Mono" : "Inter")
+        pango_font_description_set_family(description, mono ? "JetBrains Mono" : "sans-serif")
         pango_font_description_set_weight(description, weight.pangoWeight)
         pango_font_description_set_size(description, sensorium_pango_units_from_points(pointSize))
         pango_layout_set_font_description(layout, description)

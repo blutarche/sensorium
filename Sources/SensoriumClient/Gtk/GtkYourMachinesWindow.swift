@@ -131,6 +131,11 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             reloadFromStore()
         }
         gtk_window_present(sensorium_gtk_window(window))
+        // A focus given before the window was on screen does not survive
+        // its being mapped.
+        if case .list = step {
+            focusSelectedRow()
+        }
         reloadTailnet()
     }
 
@@ -267,12 +272,22 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         case .list:
             buildListPage()
             gtk_stack_set_visible_child_name(sensorium_gtk_stack(stack), "list")
+            focusSelectedRow()
         case .chooseDevice:
             buildPickerPage()
             gtk_stack_set_visible_child_name(sensorium_gtk_stack(stack), "picker")
         case let .typeCode(device, isPairingAgain):
             buildCodePage(device: device, isPairingAgain: isPairingAgain)
             gtk_stack_set_visible_child_name(sensorium_gtk_stack(stack), "code")
+        }
+    }
+
+    /// Focus starts on the row Return connects, whose focus looks like its
+    /// selected border and nothing more. A focus given before the window is
+    /// mapped does not survive mapping, so this runs again once it is.
+    private func focusSelectedRow() {
+        if let row = gtk_window_get_default_widget(sensorium_gtk_window(window)) {
+            gtk_widget_grab_focus(row)
         }
     }
 
@@ -337,6 +352,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         let isSelected = row.hostPublicKey == selectedHostPublicKey
         if isSelected {
             gtk_widget_add_css_class(sensorium_gtk_widget(rowButton), GtkViewerStyle.Class.rowSelected)
+        } else {
+            // Focus stays on the row Return connects, so Tab never gives a
+            // second row the selected border.
+            GtkWidgets.takesNoKeyboardFocus(rowButton)
         }
 
         let nameToDetailGap = Int32(space.xxs)
@@ -371,6 +390,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_overlay_set_child(sensorium_gtk_overlay(overlay), sensorium_gtk_widget(rowButton))
 
         let menuButton = gtkRef(gtk_menu_button_new())
+        GtkWidgets.takesNoKeyboardFocus(menuButton)
         gtk_widget_add_css_class(sensorium_gtk_widget(menuButton), GtkViewerStyle.Class.iconButton)
         // A child rather than a label: a labelled menu button adds a
         // disclosure arrow the macOS "\u{2026}" does not have.
@@ -578,17 +598,17 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             appendLookAgain(to: pickerPage)
         }
 
-        let manual = GtkWidgets.link("Enter Address Manually\u{2026}", icon: "input-keyboard-symbolic")
+        let manual = GtkWidgets.link("Enter Address Manually\u{2026}", icon: .enterManually)
         onClick(manual) { [weak self] in self?.enterCodeStep(device: nil, isPairingAgain: false) }
         GtkWidgets.append(manual, to: pickerPage)
 
-        let back = GtkWidgets.link("Back", icon: "go-previous-symbolic")
+        let back = GtkWidgets.link("Back", icon: .back)
         onClick(back) { [weak self] in self?.showList() }
         GtkWidgets.append(back, to: pickerPage)
     }
 
     private func appendLookAgain(to page: GtkRef) {
-        let button = GtkWidgets.link("Look Again", icon: "view-refresh-symbolic")
+        let button = GtkWidgets.link("Look Again", icon: .lookAgain)
         onClick(button) { [weak self] in self?.reloadTailnet() }
         GtkWidgets.append(button, to: page)
     }
@@ -605,6 +625,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         GtkWidgets.append(title, to: content)
         GtkWidgets.append(subtitle, to: content)
         let button = gtkRef(gtk_button_new())
+        GtkWidgets.takesNoKeyboardFocus(button)
         gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
         gtk_widget_add_css_class(sensorium_gtk_widget(button), GtkViewerStyle.Class.row)
         let device = ViewerPairingDevice(address: row.peer.dialAddress, name: row.peer.displayName)
@@ -684,7 +705,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_widget_set_receives_default(sensorium_gtk_widget(pair), 1)
         onClick(pair) { [weak self] in self?.submit() }
         GtkWidgets.append(pair, to: buttons)
-        let back = GtkWidgets.link("Back", icon: "go-previous-symbolic")
+        let back = GtkWidgets.link("Back", icon: .back)
         gtk_widget_set_valign(sensorium_gtk_widget(back), GTK_ALIGN_CENTER)
         onClick(back) { [weak self] in
             self?.onCodeStepAbandoned?()

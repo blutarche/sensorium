@@ -71,6 +71,14 @@ static inline GtkOverlay *sensorium_gtk_overlay(gpointer object) {
     return GTK_OVERLAY(object);
 }
 
+static inline GtkDrawingArea *sensorium_gtk_drawing_area(gpointer object) {
+    return GTK_DRAWING_AREA(object);
+}
+
+static inline int sensorium_is_drawing_area(gpointer object) {
+    return GTK_IS_DRAWING_AREA(object);
+}
+
 // `gtk_accessible_update_property` takes its property/value pairs as
 // varargs, which Swift cannot call.
 static inline void sensorium_accessible_set_label(gpointer object, const char *label) {

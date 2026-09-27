@@ -30,7 +30,9 @@ public enum ViewerDesign {
     public static let muted2 = ViewerPalette.muted2
 
     public static let accent = ViewerPalette.accent
+    public static let accentHi = ViewerPalette.accentHi
     public static let accent2 = ViewerPalette.accent2
+    public static let selection = ViewerPalette.selection
 
     public static let ok = ViewerPalette.ok
     public static let bad = ViewerPalette.bad

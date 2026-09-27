@@ -212,10 +212,59 @@ final class ViewerPairingFieldCell: NSTextFieldCell {
     /// `titleRect` computed still hold; nothing here constrains the width,
     /// same as `NSTextFieldCell`'s own unclipped single-line drawing.
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
-        guard (controlView as? NSTextField)?.currentEditor() == nil else { return }
+        if let editor = (controlView as? NSTextField)?.currentEditor() {
+            if editor.string.isEmpty, let heldPlaceholder {
+                heldPlaceholder.draw(at: titleRect(forBounds: cellFrame).origin)
+            }
+            return
+        }
         let rect = titleRect(forBounds: cellFrame)
         let toDraw = stringValue.isEmpty ? (placeholderAttributedString ?? attributedStringValue) : attributedStringValue
         toDraw.draw(at: rect.origin)
+    }
+
+    /// The design tokens rather than the system highlight, the same selection
+    /// and caret the Linux viewer draws.
+    override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
+        let editor = super.setUpFieldEditorAttributes(textObj)
+        if let textView = editor as? NSTextView {
+            textView.insertionPointColor = ViewerDesign.accentHi.nsColor
+            textView.selectedTextAttributes = [
+                .backgroundColor: ViewerDesign.selection.nsColor,
+                .foregroundColor: ViewerDesign.ink.nsColor
+            ]
+        }
+        return editor
+    }
+
+    /// The field editor draws a placeholder of its own while editing, several
+    /// points above where `drawInterior` draws it at rest. It is handed none;
+    /// this cell holds the placeholder and draws it in the same place until
+    /// the first character is typed.
+    private var heldPlaceholder: NSAttributedString?
+    private var editorTextObserver: NSObjectProtocol?
+
+    private func holdPlaceholder(editor: NSText, controlView: NSView) {
+        if let placeholder = placeholderAttributedString {
+            heldPlaceholder = placeholder
+            placeholderAttributedString = nil
+        }
+        if let editorTextObserver { NotificationCenter.default.removeObserver(editorTextObserver) }
+        editorTextObserver = NotificationCenter.default.addObserver(
+            forName: NSText.didChangeNotification, object: editor, queue: nil
+        ) { [weak controlView] _ in
+            MainActor.assumeIsolated { controlView?.needsDisplay = true }
+        }
+    }
+
+    override func endEditing(_ textObj: NSText) {
+        super.endEditing(textObj)
+        if let editorTextObserver { NotificationCenter.default.removeObserver(editorTextObserver) }
+        editorTextObserver = nil
+        if let heldPlaceholder {
+            placeholderAttributedString = heldPlaceholder
+            self.heldPlaceholder = nil
+        }
     }
 
     override func edit(
@@ -225,6 +274,7 @@ final class ViewerPairingFieldCell: NSTextFieldCell {
         delegate: Any?,
         event: NSEvent?
     ) {
+        holdPlaceholder(editor: editor, controlView: controlView)
         super.edit(
             withFrame: titleRect(forBounds: rect),
             in: controlView,
@@ -242,6 +292,7 @@ final class ViewerPairingFieldCell: NSTextFieldCell {
         start: Int,
         length: Int
     ) {
+        holdPlaceholder(editor: editor, controlView: controlView)
         super.select(
             withFrame: titleRect(forBounds: rect),
             in: controlView,

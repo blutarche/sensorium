@@ -198,21 +198,70 @@ enum GtkWidgets {
 
     /// A word that acts, drawn as text: the way back, the way to look again,
     /// the way to type an address instead -- `ViewerFormControls.linkButton`
-    /// on macOS. `icon` names the freedesktop symbolic icon standing in for
-    /// the SF Symbol macOS draws ahead of the title.
-    static func link(_ title: String, icon: String?) -> GtkRef {
+    /// on macOS. `icon` stands in for the SF Symbol macOS draws ahead of the
+    /// title.
+    static func link(_ title: String, icon: GtkViewerStyle.LinkIcon?) -> GtkRef {
         let button = gtkRef(gtk_button_new())
+        takesNoKeyboardFocus(button)
         gtk_widget_set_halign(sensorium_gtk_widget(button), GTK_ALIGN_START)
         gtk_widget_add_css_class(sensorium_gtk_widget(button), GtkViewerStyle.Class.link)
-        let content = box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.xxs))
+        let content = box(vertical: false, spacing: 0)
         if let icon {
-            let image = gtkRef(gtk_image_new_from_icon_name(icon))
-            gtk_image_set_pixel_size(sensorium_gtk_image(image), 12)
-            append(image, to: content)
+            let area = gtkRef(gtk_drawing_area_new())
+            gtk_widget_set_size_request(sensorium_gtk_widget(area), Int32(icon.titleOffset.rounded(.up)), -1)
+            gtk_drawing_area_set_draw_func(
+                sensorium_gtk_drawing_area(area),
+                { area, context, _, _, data in
+                    guard let area, let context,
+                        let icon = GtkViewerStyle.LinkIcon(rawValue: Int(bitPattern: data)) else { return }
+                    var color = GdkRGBA()
+                    gtk_widget_get_color(sensorium_gtk_widget(area), &color)
+                    GtkWidgets.drawLinkIcon(icon, in: context, color: color)
+                },
+                UnsafeMutableRawPointer(bitPattern: icon.rawValue),
+                nil
+            )
+            append(area, to: content)
         }
         append(gtkRef(gtk_label_new(title)), to: content)
         gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
         return button
+    }
+
+    /// Draws in the colour GTK resolves for the link itself, so the icon
+    /// dims with its title.
+    fileprivate static func drawLinkIcon(_ icon: GtkViewerStyle.LinkIcon, in context: OpaquePointer, color: GdkRGBA) {
+        cairo_set_source_rgba(context, Double(color.red), Double(color.green), Double(color.blue), Double(color.alpha))
+        cairo_set_line_cap(context, CAIRO_LINE_CAP_ROUND)
+        cairo_set_line_join(context, CAIRO_LINE_JOIN_ROUND)
+        for shape in icon.shapes {
+            switch shape {
+            case let .polyline(points, width):
+                guard let first = points.first else { continue }
+                cairo_new_path(context)
+                cairo_move_to(context, first.x, first.y)
+                for point in points.dropFirst() { cairo_line_to(context, point.x, point.y) }
+                cairo_set_line_width(context, width)
+                cairo_stroke(context)
+            case let .arc(x, y, radius, from, to, width):
+                cairo_new_path(context)
+                cairo_arc(context, x, y, radius, from, to)
+                cairo_set_line_width(context, width)
+                cairo_stroke(context)
+            case let .roundedRect(x, y, width, height, radius, lineWidth):
+                cairo_new_path(context)
+                cairo_arc(context, x + width - radius, y + radius, radius, -.pi / 2, 0)
+                cairo_arc(context, x + width - radius, y + height - radius, radius, 0, .pi / 2)
+                cairo_arc(context, x + radius, y + height - radius, radius, .pi / 2, .pi)
+                cairo_arc(context, x + radius, y + radius, radius, .pi, 1.5 * .pi)
+                cairo_close_path(context)
+                cairo_set_line_width(context, lineWidth)
+                cairo_stroke(context)
+            case let .fill(x, y, width, height):
+                cairo_rectangle(context, x, y, width, height)
+                cairo_fill(context)
+            }
+        }
     }
 
     /// A pulsing warn dot ahead of a muted sentence: the line that says a
@@ -239,11 +288,19 @@ enum GtkWidgets {
 
     static func button(_ title: String, cssClass: String?) -> GtkRef {
         let button = gtkRef(gtk_button_new_with_label(title))
+        takesNoKeyboardFocus(button)
         gtk_widget_set_halign(sensorium_gtk_widget(button), GTK_ALIGN_START)
         if let cssClass {
             gtk_widget_add_css_class(sensorium_gtk_widget(button), cssClass)
         }
         return button
+    }
+
+    /// As on macOS, where with Full Keyboard Access off -- as it ships -- a
+    /// button never takes keyboard focus: Tab moves between fields, and
+    /// Return reaches the window's default button wherever focus is.
+    static func takesNoKeyboardFocus(_ widget: GtkRef) {
+        gtk_widget_set_can_focus(sensorium_gtk_widget(widget), 0)
     }
 
     static func entry(placeholder: String, cssClass: String?) -> GtkRef {

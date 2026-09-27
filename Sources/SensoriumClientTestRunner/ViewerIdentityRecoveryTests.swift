@@ -127,8 +127,9 @@ func testViewerIdentityRecoveryTests() async {
             "the first thing to try is repeating the read that just failed -- got \(copy.retryButtonTitle)"
         )
         expect(
-            copy.detail.contains("the stored key is malformed"),
-            "the detail carries the reason the read gave, so the screen is a real defect report -- got \(copy.detail)"
+            copy.detail.hasPrefix("The stored key is malformed. "),
+            "the detail opens with the reason the read gave, as a sentence of its own starting with a capital, "
+                + "so the screen is a real defect report -- got \(copy.detail)"
         )
 
         print("PASS: the viewer's startup copy offers Try Again first, then Make a New Key with its consequence stated")

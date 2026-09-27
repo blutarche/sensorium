@@ -9,7 +9,11 @@ import SensoriumClient
 func testGtkViewerStylesheetTests() {
     let css = GtkViewerStyle.stylesheet
 
-    expect(css.contains("font-family: Inter, sans-serif"), "body text asks for Inter before falling back, matching ViewerDesignTokens.font")
+    expect(!css.contains("Inter"), "body text names no font of its own: the system sans GTK resolves is the one it draws in")
+    expect(
+        !cssRule("window.sensorium", in: css).contains("font-family"),
+        "the window leaves its font family to GTK's own setting"
+    )
     expect(
         css.contains("\"JetBrains Mono\", monospace"),
         "mono text asks for JetBrains Mono before falling back, the same as the mono case of ViewerDesignTokens.font"
@@ -18,10 +22,6 @@ func testGtkViewerStylesheetTests() {
     expect(
         css.contains("font-size: 14px; font-weight: 600"),
         "a row's own name is 14pt medium, drawn SemiBold, matching TailnetDeviceRow's and SavedMachineRowButton's own title font"
-    )
-    expect(
-        css.contains("padding: 12px 16px"),
-        "a row's own padding is 12 vertical, 16 horizontal, matching TailnetDeviceRow's own Space.sm/Space.md inset"
     )
     expect(
         !css.contains(".\(GtkViewerStyle.Class.row):hover"),
@@ -44,6 +44,69 @@ func testGtkViewerStylesheetTests() {
     )
 
     print("PASS: the GTK stylesheet's exact values match the metrics macOS itself draws from")
+}
+
+/// Each text role takes the token macOS draws it in: ink for primary text,
+/// `muted` for secondary, `muted2` for tertiary, and the dimmed colours an
+/// offline device's name and address take in `TailnetDeviceRow`.
+func testGtkTextRoleColoursMatchMacOSTests() {
+    let css = GtkViewerStyle.stylesheet
+    typealias Class = GtkViewerStyle.Class
+    let palette = ViewerPalette.self
+    let roles: [(String, ViewerColor, String)] = [
+        (".\(Class.heading)", palette.ink, "primary: a window's heading"),
+        (".\(Class.sentence)", palette.ink, "primary: a sentence"),
+        (".\(Class.rowName)", palette.ink, "primary: a row's name"),
+        (".\(Class.muted)", palette.muted, "secondary: body text, a field's label and hint"),
+        (".\(Class.detail)", palette.muted, "secondary: the line under a headline"),
+        (".\(Class.rowDetail)", palette.muted, "secondary: a saved machine's address"),
+        (".\(Class.deviceSubtitle)", palette.muted, "secondary: a device's mono address"),
+        (".\(Class.eyebrow)", palette.muted2, "tertiary: an eyebrow"),
+        ("window.sensorium entry > text > placeholder", palette.muted2, "tertiary: a placeholder"),
+        (".\(Class.rowName).\(Class.offline)", palette.muted, "dimmed: an offline device's name"),
+        (".\(Class.deviceSubtitle).\(Class.offline)", palette.muted2, "dimmed: an offline device's address")
+    ]
+    for (selector, token, role) in roles {
+        let colour = cssValue("color", in: cssRule(selector, in: css))
+        expect(colour == token.hexString, "\(role) is \(token.hexString), as on macOS -- got \(colour ?? "none")")
+    }
+
+    print("PASS: every text role is drawn in the colour token macOS draws it in")
+}
+
+/// A link's icon on Linux is drawn from shapes held in this source, never
+/// looked up in an icon theme, so its size and stroke are the ones set here.
+/// Each expectation is measured on the macOS previews at 2x, in points from
+/// where the GTK link's box starts: where the title starts, and the box the
+/// SF Symbol's ink fills.
+func testGtkLinkIconMatchesMacOSGlyphBoxTests() {
+    typealias Box = (minX: Double, minY: Double, maxX: Double, maxY: Double)
+    let macOS: [(GtkViewerStyle.LinkIcon, String, titleOffset: Double, ink: Box)] = [
+        (.lookAgain, "arrow.clockwise", 19, (3.0, 2.67, 12.0, 13.67)),
+        (.enterManually, "keyboard", 24, (3.5, 4.17, 16.25, 12.17)),
+        (.back, "chevron.left", 16, (2.5, 3.67, 7.5, 12.67))
+    ]
+    expect(
+        GtkViewerStyle.LinkIcon.allCases == macOS.map(\.0),
+        "every link icon is checked here"
+    )
+    for (icon, symbol, titleOffset, box) in macOS {
+        expect(
+            icon.titleOffset == titleOffset,
+            "the title after the icon standing in for \(symbol) starts \(titleOffset)pt in -- got \(icon.titleOffset)"
+        )
+        expect(!icon.shapes.isEmpty, "\(symbol)'s stand-in draws something of its own")
+        let ink = icon.inkBounds
+        let tolerance = 0.25
+        expect(
+            abs(ink.minX - box.minX) <= tolerance && abs(ink.minY - box.minY) <= tolerance
+                && abs(ink.maxX - box.maxX) <= tolerance && abs(ink.maxY - box.maxY) <= tolerance,
+            "\(symbol)'s stand-in fills the box macOS inks, \(box) -- got \(ink)"
+        )
+        expect(ink.maxX < titleOffset, "\(symbol)'s stand-in ends before its title starts")
+    }
+
+    print("PASS: each link's embedded icon fills the box its SF Symbol inks on macOS and puts the title where macOS does")
 }
 
 /// A desktop theme styles every `button`, `entry` and `menubutton > button`
@@ -136,6 +199,16 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         !css.contains("entry:focus"),
         "a focused field draws no ring or border of its own, as ViewerFormControls.textField sets focusRingType none"
     )
+    let selection = cssRule("window.sensorium entry > text > selection", in: css)
+    check(
+        cssValue("background-color", in: selection) == "rgba(124, 112, 245, 0.32)"
+            && cssValue("color", in: selection) == palette.ink.hexString,
+        "selected text is ink on the selection token, as the macOS field editor draws it; got \(selection)"
+    )
+    check(
+        cssValue("caret-color", in: cssRule("window.sensorium entry", in: css)) == palette.accentHi.hexString,
+        "the caret is accentHi, as the macOS field editor's insertion point"
+    )
 
     // GTK's min-width and min-height size the content box, inside the border
     // and padding; macOS states each control's size as its outer frame.
@@ -164,18 +237,47 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
     check(outer(["window.sensorium entry"]).height == 32, "a text field's frame is 32 tall; got \(outer(["window.sensorium entry"]).height)")
     let codeHeight = outer(["window.sensorium entry", "window.sensorium entry.\(Class.code)"]).height
     check(codeHeight == 44, "the code field's frame is 44 tall; got \(codeHeight)")
+    let rowInset = outer([".\(Class.row)"])
+    check(
+        rowInset.width == 2 * 16 && rowInset.height == 2 * 12,
+        "a row's text sits 16 from its outer left edge and 12 from its top, border included, as a layer border draws inside SavedMachineRowButton's frame; got \(rowInset)"
+    )
     // Pango reads a bare number as a multiple of the font's own line height,
     // which varies by font; only a length pins it.
-    for match in css.matches(of: /font-size: (\d+)px/) {
-        let size = Double(match.1)!
-        let expected = "line-height: \(String(format: "%g", size * 1.2))px; \(match.0)"
-        let everyOne = css.components(separatedBy: expected).count == css.components(separatedBy: String(match.0)).count
-        check(everyOne, "\(match.0) text is set on lines 1.2 times its size, the system font's own spacing on macOS")
+    let sized = css.matches(of: /(font-family: "JetBrains Mono", monospace; )?line-height: ([\d.]+)px; font-size: (\d+)px/)
+    check(
+        sized.count == css.matches(of: /font-size:/).count,
+        "every font size comes with a line height in pixels"
+    )
+    // An AppKit label's line in Inter and in JetBrains Mono, the fonts the
+    // macOS viewer asks for, measured from NSTextField at each size used.
+    let appKitLine: [Double: Double] = [11: 14, 12: 15, 13: 16, 14: 17, 16: 20, 20: 24]
+    let appKitMonoLine: [Double: Double] = [11: 14, 12: 16, 13: 17, 14: 18, 16: 21, 20: 26]
+    for match in sized {
+        let size = Double(match.3)!, lineHeight = Double(match.2)!
+        let expected = (match.1 == nil ? appKitLine : appKitMonoLine)[size]
+        check(
+            lineHeight == expected,
+            "\(match.3)px\(match.1 == nil ? "" : " mono") text is set on \(expected.map { "\($0)" } ?? "?")px lines, as AppKit sets a label's; got \(lineHeight)"
+        )
     }
 
+    // macOS draws no focus ring and no hover on any of these controls: the
+    // form buttons and the row's "\u{2026}" never take keyboard focus there,
+    // and a row shows focus only as its selected border.
+    let outlines = css.matches(of: /outline: ([^;]+);/).map { String($0.1) }
+    check(outlines.allSatisfy { $0 == "none" }, "no rule draws an outline, got \(outlines)")
+    check(!css.contains(":hover"), "nothing changes under the pointer, as on macOS")
+    let focusSelectors = css.matches(of: /([^\s,{}]+):focus-visible/).map { String($0.1) }
     check(
-        cssRule(".\(Class.row):focus-visible", in: css).contains("outline"),
-        "a row shows a focus ring when it has keyboard focus"
+        focusSelectors == [".\(Class.row)"],
+        "only a row changes with keyboard focus, got \(focusSelectors)"
+    )
+    let rowFocus = cssRule(".\(Class.row):focus-visible", in: css)
+        .split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    check(
+        rowFocus == ["border-color: \(palette.accent.hexString)"],
+        "a focused row draws the selected row's accent border and nothing else, got \(rowFocus)"
     )
 
     expect(failures.isEmpty, failures.joined(separator: "\nFAIL: "))

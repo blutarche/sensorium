@@ -1,3 +1,5 @@
+import Foundation
+
 /// The viewer's own palette and metrics, as one GTK stylesheet. Generated
 /// from `ViewerPalette` and `ViewerChromeMetrics`, which every platform
 /// reads, so the colours and sizes in a GTK window and an AppKit one are the
@@ -62,6 +64,97 @@ public enum GtkViewerStyle {
         public static let monoField = "sensorium-mono-field"
     }
 
+    /// The icon a link draws ahead of its title, where macOS draws an SF
+    /// Symbol: plain strokes and fills held here, in points from the top
+    /// left of the space before the title, so no icon theme decides its
+    /// shape, size or weight. Drawn in the link's own text colour.
+    public enum LinkIcon: Int, CaseIterable, Sendable {
+        case lookAgain = 1
+        case enterManually
+        case back
+
+        public enum Shape: Sendable {
+            case polyline([(x: Double, y: Double)], width: Double)
+            /// Clockwise from `from` to `to`, in radians, 0 pointing right.
+            case arc(x: Double, y: Double, radius: Double, from: Double, to: Double, width: Double)
+            case roundedRect(x: Double, y: Double, width: Double, height: Double, radius: Double, lineWidth: Double)
+            case fill(x: Double, y: Double, width: Double, height: Double)
+        }
+
+        /// Points from the link's leading edge to where its title starts.
+        public var titleOffset: Double {
+            switch self {
+            case .lookAgain: 19
+            case .enterManually: 24
+            case .back: 16
+            }
+        }
+
+        // Strokes as heavy as a small SF Symbol's beside 13pt text.
+        private static let stroke = 1.1
+        private static let outline = 1.0
+        private static let key = 0.9
+
+        public var shapes: [Shape] {
+            switch self {
+            case .lookAgain:
+                // A circle open at the top right, with an open head at its
+                // end pointing on round, clockwise.
+                let centre = (x: 7.5, y: 9.17)
+                let radius = 3.95
+                let top = centre.y - radius
+                return [
+                    .arc(x: centre.x, y: centre.y, radius: radius, from: 0, to: 1.5 * .pi, width: Self.stroke),
+                    .polyline([(centre.x, top), (9.6, top)], width: Self.stroke),
+                    .polyline([(7.6, top - 2), (9.6, top), (7.6, top + 2)], width: Self.stroke)
+                ]
+            case .enterManually:
+                // A keyboard: an outline, two rows of keys, and a row with a
+                // space bar between two keys.
+                let columns = (0..<6).map { 5.875 + 1.6 * Double($0) }
+                let half = Self.key / 2
+                func keys(_ y: Double, _ indices: [Int]) -> [Shape] {
+                    indices.map { .fill(x: columns[$0] - half, y: y - half, width: Self.key, height: Self.key) }
+                }
+                return [.roundedRect(x: 4.0, y: 4.67, width: 11.75, height: 6.9, radius: 1.5, lineWidth: Self.outline)]
+                    + keys(6.4, Array(0..<6))
+                    + keys(8.0, Array(0..<6))
+                    + keys(9.6, [0, 5])
+                    + [.fill(x: columns[1] - half, y: 9.6 - half, width: columns[4] - columns[1] + Self.key, height: Self.key)]
+            case .back:
+                let tip = (x: 3.05, y: 8.17)
+                let reach = 3.95
+                return [.polyline([(tip.x + reach, tip.y - reach), tip, (tip.x + reach, tip.y + reach)], width: Self.stroke)]
+            }
+        }
+
+        /// The box the shapes ink, strokes included.
+        public var inkBounds: (minX: Double, minY: Double, maxX: Double, maxY: Double) {
+            var box = (minX: Double.infinity, minY: Double.infinity, maxX: -Double.infinity, maxY: -Double.infinity)
+            func add(_ x: Double, _ y: Double, _ pad: Double) {
+                box = (min(box.minX, x - pad), min(box.minY, y - pad), max(box.maxX, x + pad), max(box.maxY, y + pad))
+            }
+            for shape in shapes {
+                switch shape {
+                case let .polyline(points, width):
+                    for point in points { add(point.x, point.y, width / 2) }
+                case let .arc(x, y, radius, from, to, width):
+                    for step in 0...64 {
+                        let angle = from + (to - from) * Double(step) / 64
+                        add(x + radius * cos(angle), y + radius * sin(angle), width / 2)
+                    }
+                case let .roundedRect(x, y, width, height, _, lineWidth):
+                    add(x, y, lineWidth / 2)
+                    add(x + width, y + height, lineWidth / 2)
+                case let .fill(x, y, width, height):
+                    add(x, y, 0)
+                    add(x + width, y + height, 0)
+                }
+            }
+            return box
+        }
+    }
+
     public static var stylesheet: String {
         let palette = ViewerPalette.self
         let space = ViewerChromeMetrics.Space.self
@@ -75,11 +168,25 @@ public enum GtkViewerStyle {
         let chromeBg2 = palette.chromeBg2.hexString
         let bg4 = palette.bg4.hexString
         let mono = "font-family: \"JetBrains Mono\", monospace"
-        // Lines 1.2 times the size apart, the system font's own spacing on
-        // macOS. Pango reads a bare number as a multiple of the font's own
-        // line height, which most Linux UI fonts set wider, so it is a length.
+        let selection = palette.selection
+        let selectionBg = String(
+            format: "rgba(%d, %d, %d, %g)",
+            Int((selection.red * 255).rounded()), Int((selection.green * 255).rounded()),
+            Int((selection.blue * 255).rounded()), selection.alpha
+        )
+        // Lines as tall as AppKit sets a label's: the font's ascent and its
+        // descent, each rounded to a whole point, in Inter and JetBrains
+        // Mono, the fonts the macOS viewer asks for. Pango reads a bare
+        // number as a multiple of the font's own line height, which most
+        // Linux UI fonts set wider, so it is a length.
+        func lineHeight(_ size: Int, ascent: Double, descent: Double) -> Int {
+            Int((ascent * Double(size)).rounded() + (descent * Double(size)).rounded())
+        }
         func text(_ size: Int) -> String {
-            "line-height: \(String(format: "%g", Double(size) * 1.2))px; font-size: \(size)px"
+            "line-height: \(lineHeight(size, ascent: 1984.0 / 2048, descent: 494.0 / 2048))px; font-size: \(size)px"
+        }
+        func monoText(_ size: Int) -> String {
+            "\(mono); line-height: \(lineHeight(size, ascent: 1.02, descent: 0.3))px; font-size: \(size)px"
         }
         // What macOS draws medium. Noto Sans Medium, the sans most Linux
         // desktops resolve to, is barely heavier than its Regular, so medium
@@ -97,7 +204,8 @@ public enum GtkViewerStyle {
         // GTK's min-width and min-height size the content box, inside border
         // and padding; macOS gives each control's outer frame. A form button
         // is 96x32 outside, a field 32 tall and the code field 44, each with
-        // a 1px border.
+        // a 1px border. A row's text sits 12 and 16 in from its outer edge,
+        // border included: a layer border on macOS draws inside the frame.
         let border = 1
         let buttonPadding = Int(space.md)
         let buttonMinWidth = 96 - 2 * buttonPadding - 2 * border
@@ -117,7 +225,6 @@ public enum GtkViewerStyle {
         window.sensorium, window.sensorium > * {
             background-color: \(chromeBg);
             color: \(ink);
-            font-family: Inter, sans-serif;
         }
         \(buttons.joined(separator: ",\n"))
         {
@@ -137,13 +244,8 @@ public enum GtkViewerStyle {
             transition: none;
             color: \(ink);
         }
-        \(buttons.map { $0 + ":focus-visible" }.joined(separator: ",\n"))
-        {
-            outline: 3px solid alpha(\(accent), 0.5);
-            outline-offset: 1px;
-        }
         .\(Class.heading) { \(text(20)); font-weight: \(medium); color: \(ink); }
-        .\(Class.eyebrow) { \(mono); \(text(12)); font-weight: \(medium); letter-spacing: \(tracking(12))px; color: \(muted2); }
+        .\(Class.eyebrow) { \(monoText(12)); font-weight: \(medium); letter-spacing: \(tracking(12))px; color: \(muted2); }
         .\(Class.sentence) { \(text(13)); color: \(ink); }
         .\(Class.headline) { \(text(13)); font-weight: \(medium); }
         .\(Class.muted) { \(text(13)); color: \(muted); }
@@ -153,14 +255,15 @@ public enum GtkViewerStyle {
         .\(Class.rowName) { \(text(14)); font-weight: \(medium); color: \(ink); }
         .\(Class.rowName).\(Class.offline) { color: \(muted); }
         .\(Class.rowDetail) { \(text(12)); color: \(muted); }
-        .\(Class.deviceSubtitle) { \(mono); \(text(11)); color: \(muted); }
+        .\(Class.deviceSubtitle) { \(monoText(11)); color: \(muted); }
         .\(Class.deviceSubtitle).\(Class.offline) { color: \(muted2); }
         .\(Class.row) {
             background-color: \(chromeBg2);
-            border: 1px solid \(palette.chromeBorder2.hexString);
-            padding: \(Int(space.sm))px \(Int(space.md))px;
+            border: \(border)px solid \(palette.chromeBorder2.hexString);
+            padding: \(Int(space.sm) - border)px \(Int(space.md) - border)px;
         }
         .\(Class.row).\(Class.rowSelected) { border-color: \(accent); }
+        .\(Class.row):focus-visible { border-color: \(accent); }
         .\(Class.dotOnline), .\(Class.dotOffline), .\(Class.dotActivity) {
             border-radius: \(rowDotRadius)px;
             min-width: \(rowDotSize)px;
@@ -204,7 +307,6 @@ public enum GtkViewerStyle {
             padding: 0 \(Int(space.xs))px;
             \(text(13));
         }
-        .\(Class.settingsRow):hover { background-color: \(bg4); }
         .\(Class.settingsRow):disabled { color: \(muted2); }
         window.sensorium entry {
             background-image: none;
@@ -217,13 +319,13 @@ public enum GtkViewerStyle {
             min-height: \(fieldMinHeight)px;
             padding: 0 \(Int(space.sm))px;
             \(text(14));
-            caret-color: \(ink);
+            caret-color: \(palette.accentHi.hexString);
         }
         window.sensorium entry > text > placeholder { color: \(muted2); }
-        window.sensorium entry > text > selection { background-color: alpha(\(accent), 0.4); color: \(ink); }
+        window.sensorium entry > text > selection { background-color: \(selectionBg); color: \(ink); }
         window.sensorium entry.\(Class.readOnly) { color: \(muted); }
         .\(Class.monoField) { \(mono); }
-        window.sensorium entry.\(Class.code) { \(mono); \(text(20)); min-height: \(codeMinHeight)px; }
+        window.sensorium entry.\(Class.code) { \(monoText(20)); min-height: \(codeMinHeight)px; }
         """
     }
 }

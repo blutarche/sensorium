@@ -2300,7 +2300,7 @@ func testDualCanvasReconnectAndUITests() async {
             "the consequence says plainly, before the tap, that the other machine will ask for a pairing code again"
         )
         expect(
-            identityCopy.detail.contains("the stored key is malformed"),
+            identityCopy.detail.localizedCaseInsensitiveContains("the stored key is malformed"),
             "the loader's own reason is carried through rather than replaced with a guess"
         )
         expect(

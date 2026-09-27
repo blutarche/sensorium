@@ -262,35 +262,94 @@ enum RenderGtkVerb {
                 shown.dismiss()
                 continue
             }
-            let staging = directory.appendingPathComponent("\(fixture.name).staging.png").path
-            let scale = sensorium_window_content_write_png(shown.window, staging)
+            // As it opens, then after one Tab: what a Tab press does, moving
+            // focus to the next control and turning on the focus GTK draws
+            // only once a key has been pressed.
+            if !write(shown.window, name: fixture.name, into: directory) {
+                failures += 1
+            }
+            gtk_window_set_focus_visible(sensorium_gtk_window(shown.window), 1)
+            _ = gtk_widget_child_focus(sensorium_gtk_widget(shown.window), GTK_DIR_TAB_FORWARD)
+            await pause(milliseconds: 300)
+            if !write(shown.window, name: fixture.name + "-tab", into: directory) {
+                failures += 1
+            }
             shown.dismiss()
-            guard scale > 0 else {
-                say("FAILED \(fixture.name): nothing was drawn")
-                failures += 1
-                continue
-            }
-            let path = directory.appendingPathComponent("\(fixture.name)@\(scale)x.png").path
-            try? FileManager.default.removeItem(atPath: path)
-            do {
-                try FileManager.default.moveItem(atPath: staging, toPath: path)
-            } catch {
-                say("FAILED \(fixture.name): \(error)")
-                failures += 1
-                continue
-            }
-            // The one colour every window here is drawn on. A corner in any
-            // other colour is a theme surface showing through.
-            let corner = sensorium_png_pixel(path, 1, 1)
-            let background = Int64(hexValue(ViewerPalette.chromeBg))
-            if corner != background {
-                say("FAILED \(fixture.name): the corner is \(String(format: "#%06X", corner)), not the window background")
-                failures += 1
-                continue
-            }
-            say("wrote \(path)")
         }
         return failures == 0 ? 0 : 1
+    }
+
+    /// Draws `window` to `<name>@<scale>x.png` and checks its corner is the
+    /// window background -- a corner in any other colour is a theme surface
+    /// showing through.
+    private static func write(_ window: UnsafeMutableRawPointer, name: String, into directory: URL) -> Bool {
+        let staging = directory.appendingPathComponent("\(name).staging.png").path
+        let scale = sensorium_window_content_write_png(window, staging)
+        guard scale > 0 else {
+            say("FAILED \(name): nothing was drawn")
+            return false
+        }
+        let path = directory.appendingPathComponent("\(name)@\(scale)x.png").path
+        try? FileManager.default.removeItem(atPath: path)
+        do {
+            try FileManager.default.moveItem(atPath: staging, toPath: path)
+        } catch {
+            say("FAILED \(name): \(error)")
+            return false
+        }
+        let corner = sensorium_png_pixel(path, 1, 1)
+        let background = Int64(hexValue(ViewerPalette.chromeBg))
+        if corner != background {
+            say("FAILED \(name): the corner is \(String(format: "#%06X", corner)), not the window background")
+            return false
+        }
+        say("wrote \(path), focus on \(focusDescription(window))")
+        if let wrong = focusMacOSWouldNotGive(window) {
+            say("FAILED \(name): focus is on \(wrong)")
+            return false
+        }
+        if let wrong = linkIconNotEmbedded(window) {
+            say("FAILED \(name): \(wrong)")
+            return false
+        }
+        return true
+    }
+
+    /// Every link draws the icon held in source, never an icon theme's.
+    private static func linkIconNotEmbedded(_ window: UnsafeMutableRawPointer) -> String? {
+        var links: [UnsafeMutableRawPointer] = []
+        _ = descendant(of: window) { widget in
+            if gtk_widget_has_css_class(sensorium_gtk_widget(widget), GtkViewerStyle.Class.link) != 0 {
+                links.append(widget)
+            }
+            return false
+        }
+        for link in links {
+            if descendant(of: link, where: { String(cString: gtk_widget_get_css_name(sensorium_gtk_widget($0))) == "image" }) != nil {
+                return "a link draws a theme icon"
+            }
+            if descendant(of: link, where: { sensorium_is_drawing_area($0) != 0 }) == nil {
+                return "a link has no icon of its own"
+            }
+        }
+        return nil
+    }
+
+    /// With Full Keyboard Access off, as macOS ships, a button never takes
+    /// keyboard focus and Return reaches the default one. Only a field a
+    /// person can type into holds focus there, or here the selected machine,
+    /// whose focus draws exactly its selected border.
+    private static func focusMacOSWouldNotGive(_ window: UnsafeMutableRawPointer) -> String? {
+        guard let focus = gtk_window_get_focus(sensorium_gtk_window(window)) else { return nil }
+        let name = String(cString: gtk_widget_get_css_name(focus))
+        if name == "text" {
+            return gtk_editable_get_editable(sensorium_gtk_editable(focus)) != 0 ? nil : "a field that cannot be typed into"
+        }
+        if gtk_widget_has_css_class(focus, GtkViewerStyle.Class.rowSelected) != 0
+            || gtk_widget_has_css_class(focus, GtkViewerStyle.Class.settingsRow) != 0 {
+            return nil
+        }
+        return focusDescription(window)
     }
 
     private static func hexValue(_ color: ViewerColor) -> UInt32 {
@@ -353,6 +412,30 @@ enum RenderGtkVerb {
             child = gtk_widget_get_next_sibling(current)
         }
         return nil
+    }
+
+    /// The widget that has keyboard focus, named by its CSS node and classes.
+    private static func focusDescription(_ window: UnsafeMutableRawPointer) -> String {
+        guard let focus = gtk_window_get_focus(sensorium_gtk_window(window)) else { return "nothing" }
+        var parts = [String(cString: gtk_widget_get_css_name(focus))]
+        if let classes = gtk_widget_get_css_classes(focus) {
+            var index = 0
+            while let name = classes[index] {
+                parts.append("." + String(cString: name))
+                index += 1
+            }
+            g_strfreev(classes)
+        }
+        if let parent = gtk_widget_get_parent(focus), gtk_widget_has_css_class(parent, GtkViewerStyle.Class.iconButton) != 0 {
+            parts.append(" inside the row's \u{2026}")
+        }
+        if parts[0] == "text", let entry = gtk_widget_get_parent(focus) {
+            parts.append(" inside " + String(cString: gtk_widget_get_css_name(entry)))
+            if let placeholder = gtk_entry_get_placeholder_text(sensorium_gtk_entry(entry)) {
+                parts.append(" \"" + String(cString: placeholder) + "\"")
+            }
+        }
+        return parts.joined()
     }
 
     private static func hasClass(_ widget: UnsafeMutableRawPointer, _ name: String) -> Bool {

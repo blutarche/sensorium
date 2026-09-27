@@ -287,11 +287,11 @@ func testViewerUXFixTests() async {
                 "every explicit step StreamScalePolicy allows is offered, got: \(items.map(\.scale))"
             )
             expect(
-                items.first { $0.scale == 1.0 }?.title == "1.00x (1920 x 1200)",
-                "1.00x streams the canvas's own logical size"
+                items.first { $0.scale == 1.0 }?.title == "1.00x (1920 \u{00D7} 1200)",
+                "1.00x streams the canvas's own logical size, its size written with the multiplication sign as the Screen menu writes one"
             )
             expect(
-                items.first { $0.scale == 2.0 }?.title == "2.00x (3840 x 2400)",
+                items.first { $0.scale == 2.0 }?.title == "2.00x (3840 \u{00D7} 2400)",
                 "2.00x streams the canvas's full native pixels"
             )
             expect(

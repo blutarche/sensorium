@@ -52,7 +52,7 @@ public enum DisplayScaleMenuPlan {
             let height = Int((canvasLogicalHeight * step).rounded())
             result.append(DisplayScaleMenuItem(
                 scale: step,
-                title: "\(scaleText(step)) (\(width) x \(height))",
+                title: "\(scaleText(step)) (\(width) \u{00D7} \(height))",
                 isSelected: selectedPreference == .fixed(step)
             ))
         }

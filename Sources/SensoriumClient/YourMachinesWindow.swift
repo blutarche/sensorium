@@ -1037,6 +1037,7 @@ final class SavedMachineRowButton: NSButton {
         let name = NSTextField(labelWithString: row.name)
         name.font = ViewerDesign.font(mono: false, size: 14, weight: .medium)
         name.textColor = ViewerDesign.ink.nsColor
+        name.lineBreakMode = .byTruncatingTail
         name.translatesAutoresizingMaskIntoConstraints = false
 
         let detail = NSTextField(labelWithString: row.detail)

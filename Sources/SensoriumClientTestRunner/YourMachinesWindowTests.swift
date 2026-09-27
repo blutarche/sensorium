@@ -161,6 +161,10 @@ func testYourMachinesWindowTests() async {
             !hasLabel("No machine is paired with this one yet.", in: content(of: listed)),
             "the empty sentence is gone once there is a list"
         )
+        expect(
+            label(containing: "Loft", in: content(of: listed))?.lineBreakMode == .byTruncatingTail,
+            "a name too long for its row ends in an ellipsis rather than being cut through a letter"
+        )
 
         print("PASS: the launch window lists the saved machines, or says plainly that none is paired")
     }
@@ -828,5 +832,98 @@ func testViewerPairingFieldCellCenteringTests() {
     }
 
     print("PASS: the pairing field cell centres its title box, tall enough not to clip a mono digit")
+}
+
+/// The code field's placeholder stays where it was when the field takes
+/// focus: the field editor that draws it while editing is given the same
+/// box the cell draws it in.
+@MainActor
+func testViewerPairingFieldPlaceholderStaysPutWhileEditingTests() {
+    // The rows and the rightmost column the field's text inks, in points.
+    func ink(_ field: NSTextField) -> (midY: CGFloat, maxX: CGFloat)? {
+        field.displayIfNeeded()
+        guard let rep = field.bitmapImageRepForCachingDisplay(in: field.bounds) else { return nil }
+        field.cacheDisplay(in: field.bounds, to: rep)
+        let scale = CGFloat(rep.pixelsHigh) / field.bounds.height
+        // Past the caret, which stands at the start of an empty field, and
+        // inside the border, which turns accent while editing.
+        let firstColumn = Int(16 * scale)
+        let border = Int(3 * scale)
+        var rows: [Int] = []
+        var maxX = 0
+        for y in border..<(rep.pixelsHigh - border) {
+            for x in firstColumn..<(rep.pixelsWide - border) {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if color.brightnessComponent > 0.3 {
+                    if rows.last != y { rows.append(y) }
+                    maxX = max(maxX, x)
+                }
+            }
+        }
+        guard let top = rows.first, let bottom = rows.last else { return nil }
+        return (CGFloat(top + bottom) / 2 / scale, CGFloat(maxX) / scale)
+    }
+    func placeholderMidY(_ field: NSTextField) -> CGFloat? { ink(field)?.midY }
+
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+    expect(codeField.currentEditor() == nil, "the code field is not being edited while the address field has focus")
+    guard let resting = placeholderMidY(codeField) else {
+        expect(false, "the resting code field draws its placeholder")
+        return
+    }
+    codeField.window?.makeFirstResponder(codeField)
+    expect(codeField.currentEditor() != nil, "the code field is being edited once it has focus")
+    guard let editing = placeholderMidY(codeField) else {
+        expect(false, "the focused, empty code field still draws its placeholder")
+        return
+    }
+    expect(
+        abs(editing - resting) <= 1,
+        "the placeholder stays put when the field takes focus: \(resting)pt from the top at rest, \(editing)pt while editing"
+    )
+
+    guard let restingWidth = ink(codeField)?.maxX else { return }
+    (codeField.currentEditor() as? NSTextView)?.insertText("4", replacementRange: NSRange(location: 0, length: 0))
+    let typedWidth = ink(codeField)?.maxX ?? 0
+    expect(
+        typedWidth < restingWidth / 2,
+        "the placeholder goes once a digit is typed: ink reaches \(typedWidth)pt, the placeholder \(restingWidth)pt"
+    )
+    codeField.window?.makeFirstResponder(nil)
+    codeField.stringValue = ""
+    expect(
+        codeField.placeholderAttributedString?.string == "000 000",
+        "the field has its placeholder back once editing ends"
+    )
+
+    print("PASS: the code field's placeholder does not move when the field takes focus")
+}
+
+/// Selected text and the caret in the viewer's fields take the design
+/// tokens, the same ones the Linux viewer and the host's canvas editor use,
+/// not the system highlight.
+@MainActor
+func testViewerPairingFieldSelectionColoursTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+    codeField.window?.makeFirstResponder(codeField)
+    guard let editor = codeField.currentEditor() as? NSTextView else {
+        expect(false, "the focused code field has a field editor")
+        return
+    }
+    expect(
+        editor.insertionPointColor == ViewerDesign.accentHi.nsColor,
+        "the caret is accentHi -- got \(editor.insertionPointColor)"
+    )
+    expect(
+        editor.selectedTextAttributes[.backgroundColor] as? NSColor == ViewerDesign.selection.nsColor
+            && editor.selectedTextAttributes[.foregroundColor] as? NSColor == ViewerDesign.ink.nsColor,
+        "selected text is ink on the selection token -- got \(editor.selectedTextAttributes)"
+    )
+
+    print("PASS: the viewer's fields draw selected text and the caret in the design tokens")
 }
 #endif

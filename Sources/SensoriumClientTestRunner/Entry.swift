@@ -69,6 +69,8 @@ struct SensoriumClientTestRunner {
         testScrimOpaqueBeforeFirstFrameTests()
         testGtkViewerStylesheetTests()
         testGtkViewerStylesheetOverridesTheThemeTests()
+        testGtkLinkIconMatchesMacOSGlyphBoxTests()
+        testGtkTextRoleColoursMatchMacOSTests()
         testSessionControlsWindowOpeningTests()
         testSessionControlsWindowModelTests()
         testSessionChromeStateTests()

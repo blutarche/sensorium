@@ -56,6 +56,8 @@ func runDarwinClientTests() async {
     testViewerFormActionButtonPaddingTests()
     testViewerFormControlsButtonFontSizeTests()
     testViewerPairingFieldCellCenteringTests()
+    testViewerPairingFieldPlaceholderStaysPutWhileEditingTests()
+    testViewerPairingFieldSelectionColoursTests()
     runSessionHUDSparklineAndAddressTests()
     testAboutPanelCreditTests()
     await testHostScreenUnlockClientTests()

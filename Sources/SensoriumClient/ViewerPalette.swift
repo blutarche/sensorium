@@ -59,7 +59,10 @@ public enum ViewerPalette {
     /// Sparingly: selection, focus, active. In the viewer's own chrome that is
     /// the focused field's border and the one button that commits.
     public static let accent = ViewerColor(hex: 0x7C70F5)
+    public static let accentHi = ViewerColor(hex: 0x9088F8)
     public static let accent2 = ViewerColor(hex: 0xF0A8D0)
+    /// Behind selected text, under `ink`; the caret is `accentHi`.
+    public static let selection = accent.withAlpha(0.32)
 
     /// Behind the status panel once a picture exists to mark as stale --
     /// the same colour and opacity `ViewerSessionStatusOverlay` fills its own

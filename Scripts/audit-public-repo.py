@@ -103,6 +103,10 @@ def main() -> int:
                 # Picker-preview fixture addresses, not a real machine on
                 # any tailnet.
                 continue
+            if relative == "Sources/SensoriumViewerProbe/RenderGtkVerb.swift" and category == "exact private or tailnet address":
+                # GTK render fixture addresses, not a real machine on any
+                # tailnet.
+                continue
             if pattern.search(text):
                 findings.append((relative, category))
 

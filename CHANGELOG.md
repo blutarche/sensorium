@@ -59,6 +59,16 @@ once it reaches 1.0.
 - The Linux viewer's windows (Your Machines, pairing, messages and
   Session Settings) are drawn like the Mac's, with the same surfaces,
   sizes and labels, instead of the desktop theme's buttons and fields.
+  They draw no focus ring or hover look the Mac does not, Tab moves
+  between fields as on the Mac, and the Look Again, Enter Address
+  Manually and Back links carry the same icons on every desktop theme.
+- Selected text and the text cursor in the viewer's fields use
+  Sensorium's own colours on both platforms, not the system highlight.
+- A long machine name ends in "…" on the Mac as it does on Linux.
+- The pairing code placeholder stays centred in its field while the
+  field is being typed into on the Mac.
+- Scale choices in Session Settings read "1.00x (1920 × 1200)".
+- The reason a viewer cannot start begins with a capital letter.
 - A machine paired without a name shows its address once, with only its
   status on the line below.
 - The Linux viewer shows the Sensorium icon in the taskbar and the

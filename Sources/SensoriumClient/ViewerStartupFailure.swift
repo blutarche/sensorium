@@ -48,9 +48,11 @@ public struct ViewerStartupFailureCopy: Equatable, Sendable {
     public static func copy(for failure: ViewerIdentityFailure) -> ViewerStartupFailureCopy {
         switch failure {
         case let .unreadable(reason):
+            // The reason opens a sentence, but a loader may word it as a clause.
+            let sentence = reason.prefix(1).uppercased() + reason.dropFirst()
             return ViewerStartupFailureCopy(
                 headline: "Sensorium could not read this machine\u{2019}s key.",
-                detail: "\(reason). Without it there is nothing to prove which machine this is, so no "
+                detail: "\(sentence). Without it there is nothing to prove which machine this is, so no "
                     + "session can start.",
                 replaceButtonTitle: "Make a New Key",
                 replaceConsequence: "Make a New Key replaces the key that identifies this machine. The host "
