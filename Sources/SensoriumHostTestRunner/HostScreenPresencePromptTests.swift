@@ -21,8 +21,9 @@ func runHostScreenPresencePromptTests() async {
 
     do {
         // Eyebrow: names which app is asking, and asks for a real
-        // screen -- "Screen Sharing Request" collides with macOS's
-        // own Screen Sharing feature, which this is not.
+        // screen -- "Allow Seeing and Controlling This Screen?" (the
+        // window's own title, checked below) avoids colliding with
+        // macOS's own Screen Sharing feature, which this is not.
         let eyebrow = CanvasHostTestHooks.presencePromptEyebrowText(
             content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
@@ -348,7 +349,7 @@ func runHostScreenPresencePromptTests() async {
         controller.hide()
 
         expect(
-            onScreenTitles.contains("Screen Sharing Request"),
+            onScreenTitles.contains("Allow Seeing and Controlling This Screen?"),
             "the presence prompt reaches the window server without this process ever becoming the active app -- "
                 + "got on-screen window titles: \(onScreenTitles)"
         )
@@ -406,5 +407,19 @@ func runHostScreenPresencePromptTests() async {
         controller.hide()
 
         print("PASS: the collapsed badge reaches the window server at under 40pt tall, and its Stop button still exists and fires")
+    }
+
+    do {
+        // Asking first is the one moment a person at this machine must
+        // see and answer before a session can start. The host draws a
+        // main menu, so Cmd-H must not be able to take this prompt down
+        // while it waits for an answer.
+        let controller = HostScreenPresencePromptWindowController(
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
+        )
+        let window = field("window", of: controller, as: NSPanel.self)
+        expect(!window.canHide, "the presence prompt is exempt from Hide -- an app-wide Cmd-H must not take it down while it waits for an answer")
+
+        print("PASS: the presence prompt cannot be hidden by the app's own Hide")
     }
 }

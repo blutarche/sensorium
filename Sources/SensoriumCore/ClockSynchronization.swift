@@ -76,11 +76,22 @@ public struct SessionClockSynchronizer: Sendable {
 
     private var outstanding: [Int64] = []
     private var estimator = HostClockOffsetEstimator()
+    /// The most recently accepted sample's own round trip, independent of
+    /// `estimator`'s lowest-ever selection: `roundTripNanoseconds` below is
+    /// the best clock-offset evidence this session has ever seen, which is
+    /// exactly the wrong number for a live ping display -- a link that has
+    /// since gotten worse would show its best moment forever. This is
+    /// updated on every accepted reply, better or worse.
+    private var latestSample: Int64?
 
     public init() {}
 
     public var offsetNanoseconds: Int64? { estimator.offsetNanoseconds }
     public var roundTripNanoseconds: Int64? { estimator.roundTripNanoseconds }
+    /// This session's most recent round trip, for a display that must track
+    /// the link as it is now. See `latestSample`'s own doc comment for why
+    /// this is not `roundTripNanoseconds`.
+    public var latestRoundTripNanoseconds: Int64? { latestSample }
     public var outstandingRequestCount: Int { outstanding.count }
 
     public mutating func makeRequest(atNanoseconds now: Int64) -> SensoriumMessage {
@@ -101,11 +112,15 @@ public struct SessionClockSynchronizer: Sendable {
             return false
         }
         outstanding.remove(at: index)
-        return estimator.record(ClockOffsetSample(
+        let sample = ClockOffsetSample(
             clientSentNanoseconds: clientTimeNanoseconds,
             hostRepliedNanoseconds: hostTimeNanoseconds,
             clientReceivedNanoseconds: receivedAtNanoseconds
-        ))
+        )
+        if sample.roundTripNanoseconds >= 0 {
+            latestSample = sample.roundTripNanoseconds
+        }
+        return estimator.record(sample)
     }
 
     public func clientTimeNanoseconds(forHostTimeNanoseconds hostTime: Int64) -> Int64? {

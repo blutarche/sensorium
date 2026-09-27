@@ -16,47 +16,66 @@ public enum HostScreenRefusalCopy {
     /// screen, and a session never falls back to a canvas on its own.
     public static let noneAvailableReason = "host-screen-none-available"
 
+    /// Where a person picks a host screen, named for whichever platform this
+    /// is: macOS's own Screen menu, or `SessionSettingsNaming.title` on
+    /// Linux, which has no native menu bar.
+    public static let screenControlName: String = {
+        #if os(macOS)
+        "the Screen menu"
+        #else
+        SessionSettingsNaming.title
+        #endif
+    }()
+
+    // Nothing below names a specific recovery path -- "connect with a
+    // virtual display", say -- since a session canvas is opt-in and off by
+    // default (`HostPrivateDesktopSetting`): a machine that refuses a host
+    // screen may well refuse a canvas too. Every recovery here happens
+    // through whichever button `ViewerSessionStateMachine` actually puts on
+    // screen for this refusal, which already reflects what that machine
+    // offers -- these lines only ever state the fact.
     public static func line(reason: String) -> String {
         switch reason {
         case noneAvailableReason:
             return "This Mac has no screen available to share right now."
         case "canvas-session-active":
-            return "That machine was already showing this machine a virtual display. That session has ended. "
-                + "Connect with a virtual display, then choose a host screen from the Screen menu."
+            return "That machine was already showing this machine a virtual display. That session has ended."
         case "host-screen-not-allowed":
             return "Sensorium Host on that machine has host screen turned off for this machine."
         case "host-screen-presence-declined":
-            return "The person at that machine chose not to share its screen this time. Connect with a "
-                + "virtual display, then choose a host screen from the Screen menu \u{2014} they will be "
-                + "asked again."
+            return "The person at that machine chose not to share its screen this time. "
+                + "They will be asked again when you connect from Your Machines."
         case "host-screen-presence-unanswered":
-            return "No one at that machine answered the request within thirty seconds. Connect with a "
-                + "virtual display, then choose a host screen from the Screen menu to ask again."
+            return "No one at that machine answered the request within thirty seconds."
         case "host-screen-presence-check-required":
-            return "That machine needed to ask and could not. Connect with a virtual "
-                + "display, then choose a host screen from the Screen menu to try again."
+            return "That machine needed to ask and could not."
         case "host-screen-display-unavailable":
-            return "The screen you chose is no longer available there. Connect with a virtual display, "
-                + "then choose another host screen from the Screen menu."
+            return "The screen you chose is no longer available there."
         case "host-screen-retry-needs-person":
             // Minted here rather than sent by the host: an automatic redial
             // holding no resume ticket never reaches that machine at all.
             return "The connection dropped, and showing a host screen again needs someone at this machine "
-                + "to ask for it. Connect with a virtual display, then choose a host screen from the Screen menu."
+                + "to ask for it."
         case "host-screen-resume-refused":
-            return "The connection was interrupted and could not resume. Connect with a virtual display, "
-                + "then choose a host screen from the Screen menu."
+            return "The connection was interrupted and could not resume."
         case "host-screen-session-active":
-            return "That machine was already showing this machine a host screen. That session has ended. "
-                + "Connect with a virtual display, then choose a host screen from the Screen menu."
+            return "That machine was already showing this machine a host screen. That session has ended."
         case "host-screen-already-live":
-            return "That machine still counts a host-screen session from this machine as live. If another "
-                + "window here is showing its screen, use that one. Otherwise wait about thirty seconds for "
-                + "that machine to notice the old connection is gone, then connect with a virtual display "
-                + "and choose the host screen again from the Screen menu."
+            // "Another window here" is a real cause, not a hypothetical one:
+            // `HostScreenLiveSessionRegistry.admit` keys its one-live-session
+            // claim on the device's public key alone, so a second window or
+            // launch under the same paired identity trips this exactly as a
+            // genuinely stale entry does. Thirty seconds matches the
+            // viewer's own `ClientControlDialing.defaultHostSilenceTimeout`,
+            // which redials by then, and the host's own, shorter
+            // `HostNetworkSession.defaultViewerSilenceTimeout` has already
+            // freed the slot before that redial lands.
+            return "That machine still shows an earlier session as live. If another "
+                + "window here is showing its screen, use that one. Otherwise it clears within thirty "
+                + "seconds \u{2014} connect again from Your Machines then."
         default:
             return "That machine gave a reason this version of Sensorium does not know: "
-                + "\u{201C}\(nonBreaking(reason)).\u{201D} Update both apps, then connect with a virtual display."
+                + "\u{201C}\(nonBreaking(reason)).\u{201D} Update both apps."
         }
     }
 
@@ -71,8 +90,8 @@ public enum HostScreenRefusalCopy {
         case HostScreenModeRefusalReason.failed:
             return "\(hostLabel) could not change its screen\u{2019}s resolution. It is back to what it was."
         case HostScreenModeRefusalReason.unknown:
-            return "\(hostLabel) no longer offers that resolution for its screen. Choose another from the "
-                + "Screen menu."
+            return "\(hostLabel) no longer offers that resolution for its screen. Choose another from "
+                + "\(screenControlName)."
         case HostScreenModeRefusalReason.notLive:
             return "\(hostLabel) is no longer showing this machine its screen, so its resolution did not change."
         default:

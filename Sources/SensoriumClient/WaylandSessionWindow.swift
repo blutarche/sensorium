@@ -275,7 +275,7 @@ public final class WaylandSessionWindow:
         }
         xdgToplevel = toplevel
         xdg_toplevel_add_listener(toplevel, xdgToplevelListener, opaqueSelf)
-        xdg_toplevel_set_app_id(toplevel, Self.applicationIdentifier)
+        xdg_toplevel_set_app_id(toplevel, ViewerApplicationIdentity.applicationID)
         xdg_toplevel_set_title(toplevel, title)
 
         // The window's frame is the desktop's own, so it looks and behaves
@@ -1342,10 +1342,6 @@ public final class WaylandSessionWindow:
         guard let router else { return }
         Task { await router.route(event) }
     }
-
-    /// The identifier a desktop matches this window to its own launcher entry
-    /// by.
-    private static let applicationIdentifier = "com.sensorium.viewer"
 }
 
 // MARK: - Listeners

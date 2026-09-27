@@ -103,6 +103,28 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     /// The single item `menuNeedsUpdate` checks on, found once the same way
     /// `pointerCaptureItem` is.
     private var clipboardSharingItem: NSMenuItem?
+    /// The single item `menuNeedsUpdate` retitles and enables/disables to
+    /// match the key window's actual full-screen state, found once the same
+    /// way `pointerCaptureItem` is. Explicit rather than automatic: the View
+    /// menu keeps `autoenablesItems = false`, like every menu but Edit.
+    private var fullScreenItem: NSMenuItem?
+    /// The three items `menuNeedsUpdate` enables or disables to match
+    /// whichever window it reads its traits from -- found once at build
+    /// time, the same way `fullScreenItem` is.
+    private var minimizeItem: NSMenuItem?
+    private var zoomItem: NSMenuItem?
+    private var bringAllToFrontItem: NSMenuItem?
+    /// Found once at build time, the same way `displayMenu` below is --
+    /// `menuNeedsUpdate` matches on it to refresh the three items above.
+    private var windowMenu: NSMenu?
+    /// The window `menuNeedsUpdate` reads Minimize and Zoom's traits from.
+    /// A test cannot make a real window key or main without a full run loop
+    /// and an active app, so this is overridable; every real caller leaves
+    /// the default, which is the actual key window, or the main window if
+    /// none is key.
+    public var windowMenuTargetWindow: () -> NSWindow? = {
+        NSApplication.shared.keyWindow ?? NSApplication.shared.mainWindow
+    }
     private var displayMenu: NSMenu?
     private var displayCountMenu: NSMenu?
     private var screenMenu: NSMenu?
@@ -163,16 +185,37 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
             let built = submenu(for: menu)
             holder.submenu = built
             bar.addItem(holder)
-            if menu.title == "View" {
+            switch menu.title {
+            case "View":
                 pointerCaptureItem = built.items.first { $0.action == #selector(togglePointerCapture(_:)) }
                 clipboardSharingItem = built.items.first { $0.action == #selector(toggleClipboardSharing(_:)) }
+                fullScreenItem = built.items.first { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
                 built.delegate = self
+                // Session-controls -- Displays, Resolution, Screen -- sit
+                // between View and Window, the same order docs/ux-spec.md's
+                // own controls read in; Window and Help stay macOS's own
+                // last two menus.
+                bar.addItem(displayCountMenuHolder())
+                bar.addItem(displayMenuHolder())
+                bar.addItem(screenMenuHolder())
+            case "Window":
+                windowMenu = built
+                minimizeItem = built.items.first { $0.action == #selector(minimizeKeyWindow(_:)) }
+                zoomItem = built.items.first { $0.action == #selector(NSWindow.performZoom(_:)) }
+                bringAllToFrontItem = built.items.first { $0.action == #selector(NSApplication.arrangeInFront(_:)) }
+                built.delegate = self
+            case "Help":
+                application.helpMenu = built
+            default:
+                break
             }
         }
-        bar.addItem(displayCountMenuHolder())
-        bar.addItem(displayMenuHolder())
-        bar.addItem(screenMenuHolder())
         application.mainMenu = bar
+        if let windowMenu {
+            // macOS appends the live window list below these, and keeps it
+            // current with no further code here.
+            application.windowsMenu = windowMenu
+        }
     }
 
     private func displayMenuHolder() -> NSMenuItem {
@@ -216,10 +259,11 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
 
     private func submenu(for menu: ViewerMenu) -> NSMenu {
         let result = NSMenu(title: menu.title)
-        // Enablement is the plan's decision, not AppKit's: the escape-gesture
-        // line is a stated fact and stays disabled, and everything else is
-        // always available.
-        result.autoenablesItems = false
+        // Enablement is the plan's decision, not AppKit's, for every menu but
+        // Edit: the escape-gesture line is a stated fact and stays disabled,
+        // and everything else is always available -- see
+        // `ViewerMenu.autoenablesItems`.
+        result.autoenablesItems = menu.autoenablesItems
         for item in menu.items {
             result.addItem(menuItem(for: item))
         }
@@ -244,11 +288,26 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         case .about: #selector(showAbout(_:))
         case .hide: #selector(NSApplication.hide(_:))
         case .hideOthers: #selector(NSApplication.hideOtherApplications(_:))
+        case .showAll: #selector(NSApplication.unhideAllApplications(_:))
         case .quit: #selector(quitSession(_:))
         case .showYourMachines: #selector(showYourMachines(_:))
-        // Left to the responder chain so it lands on whichever window is key,
-        // which is also what makes it a no-op when none is.
+        // Nil-target standard editing selectors, resolved by the responder
+        // chain -- AppKit implements none of these on `NSResponder` itself,
+        // which is exactly what leaves them disabled while a session canvas,
+        // which implements none of them either, is key.
+        case .undo: NSSelectorFromString("undo:")
+        case .redo: NSSelectorFromString("redo:")
+        case .cut: NSSelectorFromString("cut:")
+        case .copy: NSSelectorFromString("copy:")
+        case .paste: NSSelectorFromString("paste:")
+        case .selectAll: NSSelectorFromString("selectAll:")
+        // Left to the responder chain so each lands on whichever window is
+        // key, which is also what makes it a no-op when none is.
         case .toggleFullScreen: #selector(NSWindow.toggleFullScreen(_:))
+        // See `minimizeKeyWindow` for why this isn't `performMiniaturize:` itself.
+        case .minimize: #selector(minimizeKeyWindow(_:))
+        case .zoom: #selector(NSWindow.performZoom(_:))
+        case .bringAllToFront: #selector(NSApplication.arrangeInFront(_:))
         case .toggleTelemetryOverlay: #selector(toggleTelemetryOverlay(_:))
         case .togglePointerCapture: #selector(togglePointerCapture(_:))
         case .toggleClipboardSharing: #selector(toggleClipboardSharing(_:))
@@ -258,9 +317,15 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
 
     private func target(for command: ViewerMenuCommand) -> AnyObject? {
         switch command {
-        case .hide, .hideOthers: NSApplication.shared
-        case .about, .quit, .showYourMachines, .toggleTelemetryOverlay, .togglePointerCapture, .toggleClipboardSharing: self
-        case .toggleFullScreen, .setStreamScale, .streamScaleClampNotice, .escapeGestureHint, .separator: nil
+        case .hide, .hideOthers, .showAll, .bringAllToFront: NSApplication.shared
+        case .about, .quit, .showYourMachines, .toggleTelemetryOverlay, .togglePointerCapture,
+             .toggleClipboardSharing, .minimize: self
+        // Nil: found by the responder chain, starting at the key window's
+        // first responder -- the pairing form's own text fields for the six
+        // editing commands, whichever window is key for full screen and zoom.
+        case .undo, .redo, .cut, .copy, .paste, .selectAll,
+             .toggleFullScreen, .zoom,
+             .setStreamScale, .streamScaleClampNotice, .escapeGestureHint, .separator: nil
         }
     }
 
@@ -288,6 +353,14 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
 
     @objc private func toggleClipboardSharing(_ sender: Any?) {
         focusedTarget?.toggleClipboardSharing()
+    }
+
+    /// Minimizes the key window, exactly as `NSWindow.performMiniaturize(_:)`
+    /// itself would -- routed through this selector of its own, not that one
+    /// directly, so the item's action is never the literal `performMiniaturize:`
+    /// AppKit reformats to Cmd-M once its menu becomes `NSApp.windowsMenu`.
+    @objc private func minimizeKeyWindow(_ sender: Any?) {
+        NSApplication.shared.keyWindow?.performMiniaturize(sender)
     }
 
     /// The scale a Display menu row selects rides along as `representedObject`
@@ -352,6 +425,38 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         if let clipboardSharingItem, menu.items.contains(where: { $0 === clipboardSharingItem }) {
             let isEnabled = focusedTarget?.isClipboardSharingEnabled ?? ClipboardSyncEngine.sharingEnabledByDefault
             clipboardSharingItem.state = isEnabled ? .on : .off
+        }
+        // Also in the View menu, alongside the two items above -- not an
+        // `else if` for the same reason. AppKit calls `menuNeedsUpdate`
+        // before matching a key equivalent as well as before showing a menu
+        // (this delegate implements no `menuHasKeyEquivalent(_:for:target:action:)`
+        // to skip that), so Ctrl-Cmd-F reads a title and an enabled state
+        // that are already current.
+        if let fullScreenItem, menu.items.contains(where: { $0 === fullScreenItem }) {
+            // No registered target at all -- the launch window, say, is key
+            // instead -- means no window this menu knows about can go full
+            // screen: it is not resizable, and never offers the item.
+            let (title, isEnabled) = ViewerMenuPlan.fullScreenItem(
+                isFullscreen: focusedTarget?.viewerWindowState.isFullscreen ?? false,
+                canFullScreen: focusedTarget != nil
+            )
+            fullScreenItem.title = title
+            fullScreenItem.isEnabled = isEnabled
+        }
+        // AppKit calls `menuNeedsUpdate` on `NSApp.windowsMenu` too, before
+        // showing it and before matching Cmd-M or Cmd-` against the window
+        // list it appends below these three items.
+        if menu === windowMenu {
+            let target = windowMenuTargetWindow()
+            let state = ViewerMenuPlan.windowMenuState(
+                canMiniaturize: target?.styleMask.contains(.miniaturizable) ?? false,
+                isMiniaturized: target?.isMiniaturized ?? false,
+                canZoom: target?.styleMask.contains(.resizable) ?? false,
+                hasVisibleWindow: NSApplication.shared.windows.contains { $0.isVisible }
+            )
+            minimizeItem?.isEnabled = state.minimizeEnabled
+            zoomItem?.isEnabled = state.zoomEnabled
+            bringAllToFrontItem?.isEnabled = state.bringAllToFrontEnabled
         }
         if menu === displayMenu {
             rebuild(menu, from: focusedTarget?.streamScaleMenuState ?? Self.defaultStreamScaleMenuState)

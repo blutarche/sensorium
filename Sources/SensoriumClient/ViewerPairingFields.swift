@@ -152,7 +152,8 @@ enum ViewerFormControls {
         button.attributedTitle = NSAttributedString(
             string: title,
             attributes: [
-                .font: ViewerDesign.font(mono: false, size: 14, weight: .medium),
+                // Matches the status panel's own buttons (`ViewerActionButton.titleFont`).
+                .font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
                 .foregroundColor: color.nsColor
             ]
         )

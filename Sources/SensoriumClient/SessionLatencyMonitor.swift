@@ -93,6 +93,12 @@ public actor SessionLatencyMonitor {
         recorder.metrics
     }
 
+    /// This session's most recent clock-sync round trip, for the host's
+    /// menu-bar ping display -- see `SessionLatencyRecorder.latestClockRoundTripNanoseconds`.
+    public func latestRoundTripNanoseconds() -> Int64? {
+        recorder.latestClockRoundTripNanoseconds
+    }
+
     /// A running total, not an increment: the windows' own counters are
     /// cumulative, so a tick that read the same number twice must not report
     /// it twice.

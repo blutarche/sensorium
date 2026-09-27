@@ -48,7 +48,7 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         )
         super.init()
 
-        window.title = "Screen Sharing Request"
+        window.title = "Allow Seeing and Controlling This Screen?"
         // A genuine question, not a passive status indicator like the
         // badge: above every ordinary window, including a full-screen one,
         // so it cannot go unseen behind whatever the person at this machine
@@ -67,6 +67,10 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         // without activating this app, so a click on either button never
         // steals the keyboard focus the person at this machine already had.
         window.hidesOnDeactivate = false
+        // The person at this machine must be able to see and answer this
+        // prompt -- the app's own Hide (Cmd-H) must not be able to take it
+        // down while it waits.
+        window.canHide = false
 
         buildContent(content: content)
     }
@@ -129,8 +133,9 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         let textWidth = Self.panelWidth - inset * 2
 
         // Names the app asking, since this panel appears over whatever the
-        // person was doing. Not "Screen Sharing Request": macOS has its own
-        // Screen Sharing feature, and this prompt is not that.
+        // person was doing. The window title (set above) avoids "Screen
+        // Sharing Request": macOS has its own Screen Sharing feature, and
+        // this prompt is not that.
         eyebrow.attributedStringValue = CanvasDesign.eyebrow("Sensorium Host \u{00B7} Host Screen Request")
         headline.stringValue = "\(content.deviceName) wants to see and control a display of this machine"
         headline.font = CanvasDesign.font(.primary, size: 15, weight: .semibold)

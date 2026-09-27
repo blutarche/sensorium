@@ -96,7 +96,7 @@ func testWaylandPasteboardTests() {
         let io = FakeWaylandDataDeviceIO()
         let pasteboard = WaylandPasteboard(io: io) { nil }
         let engine = ClipboardSyncEngine(pasteboard: pasteboard, isEnabled: true)
-        let oversize = String(repeating: "a", count: ClipboardPolicy.maximumContentBytes + 1)
+        let oversize = String(decoding: [UInt8](repeating: 0x61, count: ClipboardPolicy.maximumContentBytes + 1), as: UTF8.self)
         io.currentOfferMimeTypes = ["text/plain", "image/png"]
         io.receiveResults = ["text/plain": Data(oversize.utf8), "image/png": Data([1, 2, 3])]
         io.changeCount = 1
@@ -148,7 +148,7 @@ func testWaylandPasteboardTests() {
         let io = FakeWaylandDataDeviceIO()
         let pasteboard = WaylandPasteboard(io: io) { nil }
         let engine = ClipboardSyncEngine(pasteboard: pasteboard, isEnabled: true)
-        let oversize = String(repeating: "a", count: ClipboardPolicy.maximumContentBytes + 1)
+        let oversize = String(decoding: [UInt8](repeating: 0x61, count: ClipboardPolicy.maximumContentBytes + 1), as: UTF8.self)
         io.currentOfferMimeTypes = ["text/plain"]
         io.receiveResults = ["text/plain": Data(oversize.utf8)]
         io.changeCount = 1

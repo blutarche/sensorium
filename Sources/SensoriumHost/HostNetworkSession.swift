@@ -226,6 +226,13 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// observation: the host's menu-bar item is the only thing that reads it,
     /// and nothing on this path behaves differently when it is nil.
     private let onPeerPresence: (@Sendable (HostPeerPresence) -> Void)?
+    /// Ticks once a second while this session is authenticated and
+    /// streaming, at the same cadence `startTelemetryPolling()` already runs
+    /// on -- `nil` on a tick that carried no fresh clock-sync sample from the
+    /// viewer, never a zero. Pure observation, like `onPeerPresence`: the
+    /// host's menu bar is the only thing that reads it, and nothing here
+    /// behaves differently for what it reports.
+    private let onViewerPing: (@Sendable (Int64?) -> Void)?
     private let queue = DispatchQueue(label: "com.sensorium.host-session")
     /// Frames arrive from the encoder's own thread, so the queues are
     /// lock-guarded rather than actor-isolated: an await here would reintroduce
@@ -286,7 +293,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         clipboard: ClipboardSyncSession? = nil,
         viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
         onEvent: (@Sendable (String) -> Void)? = nil,
-        onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil
+        onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil,
+        onViewerPing: (@Sendable (Int64?) -> Void)? = nil
     ) {
         self.connection = connection
         self.controller = controller
@@ -297,6 +305,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         self.viewerSilenceTimeoutNanoseconds = Self.nanoseconds(for: viewerSilenceTimeout)
         self.onEvent = onEvent
         self.onPeerPresence = onPeerPresence
+        self.onViewerPing = onViewerPing
     }
 
     public convenience init(
@@ -307,7 +316,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         clipboard: ClipboardSyncSession? = nil,
         viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
         onEvent: (@Sendable (String) -> Void)? = nil,
-        onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil
+        onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil,
+        onViewerPing: (@Sendable (Int64?) -> Void)? = nil
     ) {
         self.init(
             connection: NWByteChannel(connection: connection),
@@ -317,7 +327,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             clipboard: clipboard,
             viewerSilenceTimeout: viewerSilenceTimeout,
             onEvent: onEvent,
-            onPeerPresence: onPeerPresence
+            onPeerPresence: onPeerPresence,
+            onViewerPing: onViewerPing
         )
     }
 
@@ -499,12 +510,25 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 guard let self else {
                     return
                 }
-                let isAuthenticatedAndStreaming = await MainActor.run { [controller = self.controller] in
-                    controller.isSessionAuthenticatedAndStreaming
+                let nowSeconds = Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
+                let (isAuthenticatedAndStreaming, pingRoundTripNanoseconds) = await MainActor.run {
+                    [controller = self.controller] in
+                    (
+                        controller.isSessionAuthenticatedAndStreaming,
+                        controller.latestViewerTelemetry(
+                            for: CanvasSurfaceID.allCases[0],
+                            atSeconds: nowSeconds
+                        )?.roundTripNanoseconds
+                    )
                 }
                 guard isAuthenticatedAndStreaming else {
                     continue
                 }
+                // Reported at the same one-per-second cadence this loop
+                // already ticks on, whether or not this particular tick
+                // carried a fresh sample -- see `onViewerPing`'s own doc
+                // comment for why an absent one still has to be told.
+                self.onViewerPing?(pingRoundTripNanoseconds)
                 // One tick of adaptive fidelity per telemetry tick, ahead of
                 // the snapshot below rather than on a timer of its own: the
                 // numbers the viewer is shown are then the ones this

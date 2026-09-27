@@ -131,7 +131,7 @@ func testStartTargetTests() {
             offeredHostScreens: [office, lounge],
             isHostScreenSessionLive: false
         )
-        expect(menu.title == "Start With", "the submenu is named what a person is choosing")
+        expect(menu.title == "Start with", "the submenu is named what a person is choosing")
         expect(
             menu.items.map(\.title) == ["Host Screen When Offered", "Virtual Display", "Office", "Lounge"],
             "the two fixed rows come first, then every offered screen by its own label -- got \(menu.items.map(\.title))"

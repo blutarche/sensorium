@@ -501,6 +501,7 @@ public final class ClientSessionRunner {
         // cost a message a second and tell the host nothing it does not
         // already know from the absence of one.
         let surfaceIDs: [UInt32] = secondaryWindow == nil ? [0] : [0, Self.secondarySurfaceID]
+        let roundTripNanoseconds = await latency.latestRoundTripNanoseconds()
         for surfaceID in surfaceIDs {
             let metrics = await latency.metrics(forSurfaceID: surfaceID)
             let sample = viewerTelemetry.sample(
@@ -511,7 +512,8 @@ public final class ClientSessionRunner {
                 // count is how many frames this canvas has actually put on
                 // screen -- the builder turns two of them into a rate.
                 presentedFrameCount: metrics.samples(for: .present).count,
-                atNanoseconds: nowNanoseconds
+                atNanoseconds: nowNanoseconds,
+                roundTripNanoseconds: roundTripNanoseconds
             )
             try? await connection.send(.control(.viewerTelemetry(sample)))
         }

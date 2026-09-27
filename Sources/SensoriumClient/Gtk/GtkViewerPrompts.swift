@@ -62,22 +62,22 @@ public final class GtkViewerPrompts: ViewerPrompts {
         let screen = StartupFailureScreen(window: window)
         startupFailure = screen
 
-        let body = GtkWidgets.box(vertical: true, spacing: 16)
+        let body = GtkWidgets.box(vertical: true, spacing: 0)
         gtk_widget_set_margin_start(sensorium_gtk_widget(body), 24)
         gtk_widget_set_margin_end(sensorium_gtk_widget(body), 24)
         gtk_widget_set_margin_top(sensorium_gtk_widget(body), 24)
         gtk_widget_set_margin_bottom(sensorium_gtk_widget(body), 24)
-        GtkWidgets.append(
-            GtkWidgets.label(prompt.eyebrow, cssClass: GtkViewerStyle.Class.eyebrow), to: body
-        )
-        GtkWidgets.append(
-            GtkWidgets.label(prompt.headline, cssClass: GtkViewerStyle.Class.heading), to: body
-        )
-        GtkWidgets.append(
-            GtkWidgets.label(prompt.detail, cssClass: GtkViewerStyle.Class.muted), to: body
-        )
+        let eyebrowLabel = GtkWidgets.label(prompt.eyebrow, cssClass: GtkViewerStyle.Class.eyebrow)
+        GtkWidgets.append(eyebrowLabel, to: body)
+        let headlineLabel = GtkWidgets.label(prompt.headline, cssClass: GtkViewerStyle.Class.heading)
+        GtkWidgets.applyMessagePromptSpacing(after: .eyebrow, to: headlineLabel)
+        GtkWidgets.append(headlineLabel, to: body)
+        let detailLabel = GtkWidgets.label(prompt.detail, cssClass: GtkViewerStyle.Class.muted)
+        GtkWidgets.applyMessagePromptSpacing(after: .headline, to: detailLabel)
+        GtkWidgets.append(detailLabel, to: body)
 
         let buttons = GtkWidgets.box(vertical: false, spacing: 16)
+        GtkWidgets.applyMessagePromptSpacing(after: .detail, to: buttons)
         // Trying again is never destructive, so it takes the accent and the
         // default; only replacing this machine's identity is, and Return must
         // not fire that by accident.
@@ -109,7 +109,7 @@ public final class GtkViewerPrompts: ViewerPrompts {
         on screen: StartupFailureScreen,
         isPrimary: Bool
     ) {
-        let button = GtkWidgets.button(title, cssClass: isPrimary ? GtkViewerStyle.Class.primary : nil)
+        let button = GtkWidgets.button(title, cssClass: isPrimary ? GtkViewerStyle.Class.primary : GtkViewerStyle.Class.secondary)
         let callback = GtkCallback { [weak self] in self?.finishStartupFailure(with: choice) }
         screen.callbacks.append(callback)
         gtkConnect(button, "clicked", gtkClickedHandler, Unmanaged.passUnretained(callback).toOpaque())
@@ -147,7 +147,7 @@ public final class GtkViewerPrompts: ViewerPrompts {
         gtk_window_set_resizable(sensorium_gtk_window(window), 0)
         gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
 
-        let body = GtkWidgets.box(vertical: true, spacing: 16)
+        let body = GtkWidgets.box(vertical: true, spacing: 0)
         gtk_widget_set_margin_start(sensorium_gtk_widget(body), 24)
         gtk_widget_set_margin_end(sensorium_gtk_widget(body), 24)
         gtk_widget_set_margin_top(sensorium_gtk_widget(body), 24)
@@ -155,12 +155,13 @@ public final class GtkViewerPrompts: ViewerPrompts {
         GtkWidgets.append(
             GtkWidgets.label(notice.headline, cssClass: GtkViewerStyle.Class.heading), to: body
         )
-        GtkWidgets.append(
-            GtkWidgets.label(notice.detail, cssClass: GtkViewerStyle.Class.muted), to: body
-        )
+        let detailLabel = GtkWidgets.label(notice.detail, cssClass: GtkViewerStyle.Class.muted)
+        GtkWidgets.applyMessagePromptSpacing(after: .headline, to: detailLabel)
+        GtkWidgets.append(detailLabel, to: body)
 
         let screen = NoticeScreen(window: window)
         let button = GtkWidgets.button(notice.continueTitle, cssClass: GtkViewerStyle.Class.primary)
+        GtkWidgets.applyMessagePromptSpacing(after: .detail, to: button)
         let clicked = GtkCallback { [weak self] in self?.finishNotice(screen) }
         screen.callbacks.append(clicked)
         gtkConnect(button, "clicked", gtkClickedHandler, Unmanaged.passUnretained(clicked).toOpaque())

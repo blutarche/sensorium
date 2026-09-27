@@ -406,6 +406,10 @@ public final class HostScreenBadgeWindowController: NSObject {
         window.level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.overlayWindow)))
         window.becomesKeyOnlyIfNeeded = true
         window.hidesOnDeactivate = false
+        // The invariant requires a continuous, unmissable indication for
+        // the whole session -- the app's own Hide (Cmd-H) must not be able
+        // to take this window down.
+        window.canHide = false
         window.backgroundColor = CanvasDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
 
@@ -624,9 +628,10 @@ public final class HostScreenBadgeWindowController: NSObject {
             string: "Stop",
             attributes: [
                 .font: CanvasDesign.font(.primary, size: metrics.stopSize, weight: .semibold),
-                .foregroundColor: NSColor.white
+                .foregroundColor: CanvasDesign.chromeBg.nsColor
             ]
         )
+        stopButton.setAccessibilityLabel("Stop sharing with \(state.content.deviceName)")
 
         applyShared(metrics)
     }
@@ -650,9 +655,10 @@ public final class HostScreenBadgeWindowController: NSObject {
             string: "Stop",
             attributes: [
                 .font: CanvasDesign.font(.primary, size: metrics.stopSize, weight: .semibold),
-                .foregroundColor: NSColor.white
+                .foregroundColor: CanvasDesign.chromeBg.nsColor
             ]
         )
+        stopButton.setAccessibilityLabel("Stop sharing with \(state.content.deviceName)")
 
         applyShared(metrics)
     }

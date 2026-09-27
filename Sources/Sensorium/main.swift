@@ -203,6 +203,10 @@ final class AppKitViewerPrompts: ViewerPrompts {
 @main
 @MainActor
 struct Sensorium {
+    // `NSApplication.delegate` does not retain its delegate, and nothing
+    // else in this run holds one either.
+    private static var applicationDelegate: ViewerApplicationDelegate?
+
     static func main() async {
         setvbuf(stdout, nil, _IOLBF, 0)
         let environment = AppKitViewerEnvironment()
@@ -234,6 +238,12 @@ struct Sensorium {
                 }
             )
             menu.install(into: application)
+            let delegate = ViewerApplicationDelegate(onReopenWithNoWindows: {
+                launch.showList()
+                launch.show()
+            })
+            applicationDelegate = delegate
+            application.delegate = delegate
             return ViewerGUI(
                 launch: launch,
                 prompts: AppKitViewerPrompts(),

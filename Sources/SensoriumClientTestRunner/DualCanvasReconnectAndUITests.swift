@@ -1616,19 +1616,18 @@ func testDualCanvasReconnectAndUITests() async {
             "the frozen frame stays dimmed while reconnecting"
         )
         expect(
-            firstRedial.detail == "Attempt 1 to reach it. The picture behind this is frozen from before the drop.",
-            "the first reconnect attempt describes the frozen frame as behind the panel, not \"below\", and "
-                + "never repeats the host the headline just named -- got: \(firstRedial.detail)"
+            firstRedial.detail == "The picture is paused from before the connection dropped.",
+            "the first reconnect attempt describes the paused frame without an attempt count, since nothing "
+                + "has failed yet to count -- got: \(firstRedial.detail)"
         )
 
         let secondRedial = viewerState.handle(.connectStarted)
         expect(
-            secondRedial.detail.contains("Attempt 2"),
-            "a repeated attempt says which attempt it is on, got: \(secondRedial.detail)"
+            !secondRedial.detail.contains("Attempt"),
+            "a repeated attempt carries no visible count -- got: \(secondRedial.detail)"
         )
         expect(
-            secondRedial.detail == "Attempt 2 to reach it. If it does not come back, check that it is awake "
-                + "and on the same network.",
+            secondRedial.detail == "If it does not come back, check that it is awake and on the same network.",
             "a reconnect that keeps failing names the remedy without repeating the host the headline "
                 + "names, got: \(secondRedial.detail)"
         )
@@ -1636,8 +1635,9 @@ func testDualCanvasReconnectAndUITests() async {
         let recovered = viewerState.handle(.canvasReady)
         expect(recovered.phase == .live, "a reconnected canvas returns to live")
         expect(
-            viewerState.handle(.connectStarted).detail.contains("Attempt 2") == false,
-            "the attempt count restarts after a session comes back, so the next outage does not inherit it"
+            viewerState.handle(.connectStarted).detail == "The picture is paused from before the connection dropped.",
+            "a session that comes back and drops again reads exactly like a fresh drop's first attempt, so "
+                + "no leftover count from before it recovered is showing"
         )
 
         var abandoned = ViewerSessionStateMachine(hostName: "Studio")
@@ -1647,7 +1647,7 @@ func testDualCanvasReconnectAndUITests() async {
         expect(gaveUp.phase == .lost, "giving up leaves the viewer in the lost state")
         expect(
             gaveUp.detail == "Sensorium has stopped retrying. Check that it is awake and that Tailscale is "
-                + "connected on both machines, then choose Try again.",
+                + "connected on both machines, then choose Try Again.",
             "giving up names what the user can actually do about it, without repeating the host the "
                 + "headline names, got: \(gaveUp.detail)"
         )
@@ -1674,18 +1674,24 @@ func testDualCanvasReconnectAndUITests() async {
             "the headline never orphans the host's name on its own line, got: \(refused.headline)"
         )
         expect(
-            refused.buttons.map(\.title) == ["Your machines", "Connect with a virtual display"],
-            "the filled button only ever reconnects with a virtual display, so it is titled for what it "
-                + "does rather than reading as a retry of the refusal, and the list sits beside it so a "
-                + "refusal is never a dead end, got: \(refused.buttons.map(\.title))"
+            refused.buttons.map(\.title) == ["Connect with a Virtual Display", "Your Machines"],
+            "the list sits beside the virtual-display offer so a refusal is never a dead end, got: "
+                + "\(refused.buttons.map(\.title))"
         )
         expect(
-            refused.buttons.map(\.action) == [.yourMachines, .connectAsVirtualDisplay],
-            "the way to another machine comes first, the filled default rightmost, got: \(refused.buttons.map(\.action))"
+            refused.buttons.map(\.action) == [.connectAsVirtualDisplay, .yourMachines],
+            "the way to another machine is the filled default, rightmost, got: \(refused.buttons.map(\.action))"
         )
         expect(
             refused.buttons.map(\.isPrimary) == [false, true],
-            "exactly one primary action, the one that restores a session, got: \(refused.buttons.map(\.isPrimary))"
+            "Your Machines is the one primary action here -- the private desktop is opt-in, so a stray "
+                + "Return must never start one, got: \(refused.buttons.map(\.isPrimary))"
+        )
+        expect(
+            ViewerFocusPolicy.chosenIndex(among: refused.buttons.map { (action: $0.action, isPrimary: $0.isPrimary) })
+                .map { refused.buttons[$0].action } == .yourMachines,
+            "a stray Return on the host-screen ended panel goes to Your Machines, never to starting a "
+                + "private desktop the person never asked for"
         )
 
         // A host-screen connect that ends after the session was already live
@@ -1727,7 +1733,7 @@ func testDualCanvasReconnectAndUITests() async {
                 + "ends an indefinite wait, got: \(reconnect.buttons.map(\.title))"
         )
         expect(
-            reconnect.buttons.map(\.title) == ["Quit Sensorium", "Stop trying"],
+            reconnect.buttons.map(\.title) == ["Quit Sensorium", "Stop Trying"],
             "the reconnect buttons carry the same titles the other panels use, got: \(reconnect.buttons.map(\.title))"
         )
         expect(
@@ -1739,8 +1745,9 @@ func testDualCanvasReconnectAndUITests() async {
             "the reconnect headline names the machine it is redialling, got: \(reconnect.headline)"
         )
         expect(
-            reconnect.detail.contains("Attempt 1"),
-            "the first redial says which attempt it is on, so the wait is legible from the start, got: \(reconnect.detail)"
+            reconnect.detail == "The picture is paused from before the connection dropped.",
+            "the first redial says what is on screen, with no attempt count -- the pulsing indicator already "
+                + "says a redial is under way, got: \(reconnect.detail)"
         )
         expect(
             reconnect.headline.contains("studio-mini") && !reconnect.headline.contains("studio\u{2011}mini"),
@@ -1761,7 +1768,7 @@ func testDualCanvasReconnectAndUITests() async {
                 + "\(stopped.buttons.map(\.title))"
         )
         expect(
-            stopped.buttons.map(\.title) == ["Quit Sensorium", "Your machines", "Try again"],
+            stopped.buttons.map(\.title) == ["Quit Sensorium", "Your Machines", "Try Again"],
             "the buttons say what they do -- Quit sits beside Try again, so it must say it quits the whole "
                 + "app rather than reading as a way to close just the session, got: \(stopped.buttons.map(\.title))"
         )
@@ -1776,8 +1783,9 @@ func testDualCanvasReconnectAndUITests() async {
             "asking to try again puts the viewer back in the reconnecting state, got: \(resumed.phase)"
         )
         expect(
-            resumed.detail.contains("Attempt 1"),
-            "a retry the user asked for starts its count over, got: \(resumed.detail)"
+            resumed.detail == "The picture is paused from before the connection dropped.",
+            "a retry the user asked for starts its count over, reading like a fresh drop's first attempt, "
+                + "got: \(resumed.detail)"
         )
 
         // The copy defect: it told the user to open the application they were
@@ -1792,7 +1800,7 @@ func testDualCanvasReconnectAndUITests() async {
             "a running app never tells the user to open it, got: \(unreachable.detail)"
         )
         expect(
-            unreachable.detail.contains("Try again"),
+            unreachable.detail.contains("Try Again"),
             "it names the button that is on screen instead, got: \(unreachable.detail)"
         )
         expect(

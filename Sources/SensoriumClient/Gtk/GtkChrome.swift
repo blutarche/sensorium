@@ -95,55 +95,11 @@ let gtkActionActivateHandler: @convention(c) (GtkRef?, OpaquePointer?, GtkRef?) 
     gtkRunIndexedCallback(data, g_variant_get_int32(parameter))
 }
 
-/// The viewer's own palette, as one stylesheet. Generated from
-/// `ViewerPalette`, which both platforms read, so the colours in a GTK window
-/// and the colours in an AppKit one are the same values and not two lists that
-/// drift.
-enum GtkViewerStyle {
-    /// Class names the window layer puts on widgets. Named here so a rule and
-    /// the widget it styles cannot disagree about spelling.
-    enum Class {
-        static let heading = "sensorium-heading"
-        static let sentence = "sensorium-sentence"
-        static let muted = "sensorium-muted"
-        static let bad = "sensorium-bad"
-        static let rowName = "sensorium-row-name"
-        static let rowDetail = "sensorium-row-detail"
-        static let row = "sensorium-row"
-        static let dotOnline = "sensorium-dot-online"
-        static let dotOffline = "sensorium-dot-offline"
-        static let dotActivity = "sensorium-dot-activity"
-        static let primary = "sensorium-primary"
-        static let link = "sensorium-link"
-        static let code = "sensorium-code"
-        static let eyebrow = "sensorium-eyebrow"
-    }
-
-    static var stylesheet: String {
-        let palette = ViewerPalette.self
-        return """
-        window.sensorium, window.sensorium > * { background-color: \(palette.chromeBg.hexString); }
-        window.sensorium label { color: \(palette.ink.hexString); }
-        .\(Class.heading) { font-size: 20px; font-weight: 500; color: \(palette.ink.hexString); }
-        .\(Class.eyebrow) { font-family: monospace; font-size: 11px; letter-spacing: 2px; color: \(palette.muted.hexString); }
-        .\(Class.sentence) { font-size: 13px; color: \(palette.ink.hexString); }
-        .\(Class.muted) { font-size: 13px; color: \(palette.muted.hexString); }
-        .\(Class.bad) { font-size: 13px; color: \(palette.bad.hexString); }
-        .\(Class.rowName) { font-size: 14px; color: \(palette.ink.hexString); }
-        .\(Class.rowDetail) { font-size: 12px; color: \(palette.muted.hexString); }
-        .\(Class.row) { background-color: \(palette.chromeBg2.hexString); border: 1px solid \(palette.chromeBorder2.hexString); border-radius: 4px; padding: 8px; }
-        .\(Class.row):hover { border-color: \(palette.accent.hexString); }
-        .\(Class.dotOnline) { color: \(palette.ok.hexString); }
-        .\(Class.dotOffline) { color: \(palette.muted2.hexString); }
-        .\(Class.dotActivity) { color: \(palette.warn.hexString); }
-        .\(Class.primary) { background-image: none; background-color: \(palette.accent.hexString); color: \(palette.chromeBg.hexString); border: none; }
-        .\(Class.link) { background: none; border: none; color: \(palette.accent.hexString); padding: 2px 0; }
-        entry { background-image: none; background-color: \(palette.bg4.hexString); color: \(palette.ink.hexString); border: 1px solid \(palette.line.hexString); border-radius: 2px; }
-        entry:focus-within { border-color: \(palette.accent.hexString); }
-        .\(Class.code) { font-family: monospace; font-size: 20px; letter-spacing: 4px; }
-        """
-    }
-
+/// The half of `GtkViewerStyle` that actually talks to GTK. The stylesheet
+/// string itself, and the class names it defines, are declared in
+/// `GtkViewerStylesheet.swift`, ungated, so a typo in the CSS this builds is
+/// a compile-and-test-time error rather than one only a Linux box can catch.
+extension GtkViewerStyle {
     /// Installed once per process, on the display GTK opened. A second install
     /// would stack a second copy of every rule.
     private nonisolated(unsafe) static var isInstalled = false
@@ -178,6 +134,28 @@ enum GtkWidgets {
         gtk_box_append(sensorium_gtk_box(parent), sensorium_gtk_widget(child))
     }
 
+    /// One gap in a message prompt's own vertical chain -- see
+    /// `MessagePromptSpacing`.
+    enum MessagePromptGapAfter {
+        case eyebrow
+        case headline
+        case detail
+    }
+
+    /// Sets `widget`'s own top margin to the gap that belongs above it in a
+    /// message prompt -- a per-child margin rather than the box's own
+    /// uniform `spacing`, since GTK's box has no per-gap override the way
+    /// `NSStackView.setCustomSpacing` does.
+    static func applyMessagePromptSpacing(after gap: MessagePromptGapAfter, to widget: GtkRef) {
+        let margin: Double
+        switch gap {
+        case .eyebrow: margin = MessagePromptSpacing.afterEyebrow
+        case .headline: margin = MessagePromptSpacing.afterHeadline
+        case .detail: margin = MessagePromptSpacing.afterDetail
+        }
+        gtk_widget_set_margin_top(sensorium_gtk_widget(widget), Int32(margin))
+    }
+
     static func removeAllChildren(of parent: GtkRef) {
         while let child = gtk_widget_get_first_child(sensorium_gtk_widget(parent)) {
             gtk_box_remove(sensorium_gtk_box(parent), child)
@@ -192,6 +170,18 @@ enum GtkWidgets {
         gtk_widget_set_halign(sensorium_gtk_widget(label), GTK_ALIGN_START)
         gtk_widget_add_css_class(sensorium_gtk_widget(label), cssClass)
         return label
+    }
+
+    /// A tone indicator drawn as a real 6x6 widget, the way `SavedMachineRowButton.dot`
+    /// draws it on macOS -- a plain filled, rounded box, not a "\u{25CF}" glyph a
+    /// fallback font could substitute or resize.
+    static func dot(cssClass: String) -> GtkRef {
+        let dot = box(vertical: false, spacing: 0)
+        gtk_widget_set_size_request(sensorium_gtk_widget(dot), 6, 6)
+        gtk_widget_set_halign(sensorium_gtk_widget(dot), GTK_ALIGN_START)
+        gtk_widget_set_valign(sensorium_gtk_widget(dot), GTK_ALIGN_CENTER)
+        gtk_widget_add_css_class(sensorium_gtk_widget(dot), cssClass)
+        return dot
     }
 
     static func button(_ title: String, cssClass: String?) -> GtkRef {

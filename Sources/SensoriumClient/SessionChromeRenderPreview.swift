@@ -19,7 +19,7 @@ public enum SessionChromeRenderPreview {
     public enum Overlay {
         case statusPanel(ViewerSessionStatus)
         case notice(String)
-        case diagnostics(blocks: [SessionHUDBlock])
+        case diagnostics(blocks: [SessionHUDBlock], isFlagged: Bool)
         case stripHandle
         case strip(visibility: ShortcutStripVisibility, hostName: String, isPinned: Bool)
     }
@@ -31,6 +31,19 @@ public enum SessionChromeRenderPreview {
         let size = measuredSize(of: overlay)
         return renderToPNG(logicalWidth: size.width, logicalHeight: size.height, scale: scale, to: url) { context in
             draw(overlay, in: context, bounds: ViewerChromeRect(x: 0, y: 0, width: size.width, height: size.height))
+        }
+    }
+
+    /// Renders one overlay at `width` rather than the width it would measure
+    /// itself at -- a real session window's own width, so a render check
+    /// sees the strip's clusters actually centred, and its confirm row
+    /// actually centred across the bar, rather than packed to their own
+    /// tight content width with no room to move.
+    @discardableResult
+    public static func renderOverlay(_ overlay: Overlay, scale: Double, width: Double, to url: URL) -> Bool {
+        let height = measuredSize(of: overlay).height
+        return renderToPNG(logicalWidth: width, logicalHeight: height, scale: scale, to: url) { context in
+            draw(overlay, in: context, bounds: ViewerChromeRect(x: 0, y: 0, width: width, height: height))
         }
     }
 
@@ -61,6 +74,12 @@ public enum SessionChromeRenderPreview {
             cairo_rectangle(context, 0, 0, windowWidth, windowHeight)
             cairo_fill(context)
 
+            if state.isScrimVisible {
+                let rect = WaylandOverlayLayout.canvasScrim(windowWidth: windowWidth, windowHeight: windowHeight)
+                drawAt(rect, in: context) { bounds in
+                    SessionChromePainter.drawScrim(in: context, bounds: bounds, opaque: state.isScrimOpaque)
+                }
+            }
             if let status = state.status, state.isStatusPanelVisible {
                 let measured = SessionChromePainter.statusPanelSize(status: status)
                 let rect = WaylandOverlayLayout.statusPanel(
@@ -89,7 +108,6 @@ public enum SessionChromeRenderPreview {
                 let measured = SessionChromePainter.stripSize(visibility: visibility, hostName: hostName)
                 let rect = WaylandOverlayLayout.shortcutStrip(
                     windowWidth: windowWidth,
-                    contentWidth: measured.width,
                     contentHeight: measured.height
                 )
                 drawAt(rect, in: context) { bounds in
@@ -111,10 +129,11 @@ public enum SessionChromeRenderPreview {
                 }
             }
             // Placed exactly where `WaylandSessionWindow.relayoutChrome()`
-            // places the real diagnostics panel: top right, below the same
+            // places the real diagnostics panel: top left, below the same
             // pinned-strip band the notice moved down by.
             if state.isDiagnosticsVisible {
                 let blocks = state.diagnosticsBlocks
+                let isFlagged = state.telemetry?.isAttentionWorthy ?? false
                 let measured = SessionChromePainter.diagnosticsSize(blocks: blocks)
                 let rect = WaylandOverlayLayout.diagnosticsHUD(
                     windowWidth: windowWidth,
@@ -123,10 +142,25 @@ public enum SessionChromeRenderPreview {
                     topInset: topInset
                 )
                 drawAt(rect, in: context) { bounds in
-                    SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds)
+                    SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
                 }
             }
         }
+    }
+
+    /// Every button on a shown (not confirming) strip, at `width` -- the real
+    /// bar width a session window gives it, or, left `nil`, `stripSize`'s own
+    /// natural content width, exactly as `renderOverlay(.strip)` draws it
+    /// either way. The public seam a test outside this module needs to check
+    /// a button's own ink or rect without reaching `SessionChromePainter`,
+    /// which is internal.
+    public static func stripButtonRects(
+        hostName: String, width: Double? = nil
+    ) -> [(title: String, x: Double, y: Double, width: Double, height: Double)] {
+        let barWidth = width ?? SessionChromePainter.stripSize(visibility: .shown, hostName: hostName).width
+        return SessionChromePainter.stripLayout(
+            visibility: .shown, hostName: hostName, originX: 0, originY: 0, width: barWidth
+        ).map { (title: $0.title, x: $0.rect.x, y: $0.rect.y, width: $0.rect.width, height: $0.rect.height) }
     }
 
     // MARK: - Measuring and drawing one overlay
@@ -137,7 +171,7 @@ public enum SessionChromeRenderPreview {
             SessionChromePainter.statusPanelSize(status: status)
         case let .notice(line):
             SessionChromePainter.noticeSize(line: line)
-        case let .diagnostics(blocks):
+        case let .diagnostics(blocks, _):
             SessionChromePainter.diagnosticsSize(blocks: blocks)
         case .stripHandle:
             (SessionChromePainter.handleWidth, SessionChromePainter.handleHeight)
@@ -152,8 +186,8 @@ public enum SessionChromeRenderPreview {
             SessionChromePainter.drawStatusPanel(status: status, in: context, bounds: bounds)
         case let .notice(line):
             SessionChromePainter.drawNotice(line: line, in: context, bounds: bounds)
-        case let .diagnostics(blocks):
-            SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds)
+        case let .diagnostics(blocks, isFlagged):
+            SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
         case .stripHandle:
             SessionChromePainter.drawHandle(in: context, bounds: bounds)
         case let .strip(visibility, hostName, isPinned):
@@ -171,6 +205,39 @@ public enum SessionChromeRenderPreview {
         cairo_translate(context, rect.x, rect.y)
         body(ViewerChromeRect(x: 0, y: 0, width: rect.width, height: rect.height))
         cairo_restore(context)
+    }
+
+    /// `CairoChromeText.measure`'s own answer for `text`, against a fresh
+    /// context carrying `scale` as its own `cairo_scale` -- the same
+    /// transform a real overlay draws through at that backing scale, so a
+    /// test outside this module can prove a string measures the same logical
+    /// width whether or not the context it is measured on already carries
+    /// one. `CairoChromeText` is internal, so this is the seam that reaches
+    /// it.
+    public static func measureChromeText(
+        _ text: String, pointSize: Double, mono: Bool, scale: Double
+    ) -> Double {
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return 0 }
+        defer { cairo_surface_destroy(surface) }
+        guard let context = cairo_create(surface) else { return 0 }
+        defer { cairo_destroy(context) }
+        cairo_scale(context, scale, scale)
+        return CairoChromeText.measure(text, pointSize: pointSize, mono: mono, on: context).width
+    }
+
+    /// `CairoChromeText.measure`'s own drawn height for `text` at `maxWidth`,
+    /// `ellipsize` true forcing it to one line -- the same call
+    /// `SessionChromePainter`'s own footer makes. A test outside this module
+    /// checks a real chord sentence's own single-line height against this,
+    /// to prove a render that should be exactly that many lines drew no more.
+    public static func measureChromeTextHeight(
+        _ text: String, pointSize: Double, maxWidth: Double, ellipsize: Bool
+    ) -> Double {
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return 0 }
+        defer { cairo_surface_destroy(surface) }
+        guard let context = cairo_create(surface) else { return 0 }
+        defer { cairo_destroy(context) }
+        return CairoChromeText.measure(text, pointSize: pointSize, maxWidth: maxWidth, ellipsize: ellipsize, on: context).height
     }
 
     // MARK: - Cairo plumbing

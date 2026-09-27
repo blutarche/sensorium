@@ -16,6 +16,15 @@ public enum ViewerStatusPanelMetrics {
     public static let buttonSpacing: Double = Double(ViewerChromeMetrics.Space.xs)
     public static let panelInset: Double = Double(ViewerChromeMetrics.Space.lg)
 
+    /// The tone dot beside the eyebrow: a small square, not a circle.
+    public static let dotSize: Double = Double(ViewerChromeMetrics.StatusDot.size)
+    public static let dotRadius: Double = Double(ViewerChromeMetrics.StatusDot.radius)
+    /// Eyebrow-to-title, title-to-detail, and detail-to-buttons, in the
+    /// order `ViewerSessionStatusOverlay`'s own constraints lay them out.
+    public static let eyebrowToTitleGap: Double = Double(ViewerChromeMetrics.Space.sm)
+    public static let titleToDetailGap: Double = Double(ViewerChromeMetrics.Space.xs)
+    public static let detailToButtonsGap: Double = Double(ViewerChromeMetrics.Space.md)
+
     /// One title's button, at its own intrinsic width: the measured text plus
     /// equal insets, never below the minimum a two-word label needs to stay
     /// tappable.
@@ -57,10 +66,12 @@ public struct ViewerStatusPanelButtonLayout: Equatable, Sendable {
 
 /// Which button a press on the status panel landed on.
 ///
-/// The row is laid out from the right, because the action that restores the
-/// session is the row's last member on both platforms -- the way macOS itself
-/// places a default button in a horizontal row. Holds no view, so every
-/// button's rect and every gap between them is checked without a window.
+/// The row is laid out from the left, in model order: `ViewerActionButton`s
+/// sit in an `NSStackView` pinned only at its leading edge on macOS, so the
+/// first button in `ViewerSessionStatus.buttons` is the leftmost one drawn,
+/// and the row's own width -- not the panel's -- decides where the last one
+/// ends. Holds no view, so every button's rect and every gap between them is
+/// checked without a window.
 public enum ViewerStatusPanelHitTest {
     public static func buttonRow(
         buttons: [ViewerSessionButton],
@@ -69,22 +80,22 @@ public enum ViewerStatusPanelHitTest {
     ) -> [ViewerStatusPanelButtonLayout] {
         let bottom = panel.y + panel.height - ViewerStatusPanelMetrics.panelInset
         let top = bottom - ViewerStatusPanelMetrics.buttonHeight
-        var right = panel.x + panel.width - ViewerStatusPanelMetrics.panelInset
+        var left = panel.x + ViewerStatusPanelMetrics.panelInset
         var layouts: [ViewerStatusPanelButtonLayout] = []
-        for button in buttons.reversed() {
+        for button in buttons {
             let width = ViewerStatusPanelMetrics.buttonWidth(button.title, measure: measure)
             layouts.append(ViewerStatusPanelButtonLayout(
                 action: button.action,
                 rect: ViewerChromeRect(
-                    x: right - width,
+                    x: left,
                     y: top,
                     width: width,
                     height: ViewerStatusPanelMetrics.buttonHeight
                 )
             ))
-            right -= width + ViewerStatusPanelMetrics.buttonSpacing
+            left += width + ViewerStatusPanelMetrics.buttonSpacing
         }
-        return layouts.reversed()
+        return layouts
     }
 
     public static func action(

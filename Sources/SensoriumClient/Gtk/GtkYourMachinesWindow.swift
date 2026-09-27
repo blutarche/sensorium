@@ -331,12 +331,20 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private func buildRow(_ row: YourMachinesRow, index: Int, defaultButton: inout GtkRef?) -> GtkRef {
         let rowBox = GtkWidgets.box(vertical: false, spacing: 8)
         gtk_widget_add_css_class(sensorium_gtk_widget(rowBox), GtkViewerStyle.Class.row)
+        let isSelected = row.hostPublicKey == selectedHostPublicKey
+        if isSelected {
+            gtk_widget_add_css_class(sensorium_gtk_widget(rowBox), GtkViewerStyle.Class.rowSelected)
+        }
 
-        let content = GtkWidgets.box(vertical: true, spacing: 2)
+        // `Space.xxs`, matching the vertical gap `SavedMachineRowButton.text`
+        // and the horizontal gap `SavedMachineRowButton.detailStack` both use
+        // on macOS -- the name and its detail line share one gap value here.
+        let nameToDetailGap = Int32(ViewerChromeMetrics.Space.xxs)
+        let content = GtkWidgets.box(vertical: true, spacing: nameToDetailGap)
         GtkWidgets.append(GtkWidgets.label(row.name, cssClass: GtkViewerStyle.Class.rowName), to: content)
-        let detailRow = GtkWidgets.box(vertical: false, spacing: 6)
+        let detailRow = GtkWidgets.box(vertical: false, spacing: nameToDetailGap)
         if let dotClass = Self.cssClass(for: row.dot) {
-            GtkWidgets.append(GtkWidgets.label("\u{25CF}", cssClass: dotClass, wraps: false), to: detailRow)
+            GtkWidgets.append(GtkWidgets.dot(cssClass: dotClass), to: detailRow)
         }
         GtkWidgets.append(GtkWidgets.label(row.detail, cssClass: GtkViewerStyle.Class.rowDetail), to: detailRow)
         GtkWidgets.append(detailRow, to: content)
@@ -349,17 +357,18 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         onClick(rowButton) { [weak self] in self?.rowClicked(hostPublicKey: hostPublicKey) }
         GtkWidgets.append(rowButton, to: rowBox)
 
-        if row.hostPublicKey == selectedHostPublicKey {
+        if isSelected {
             defaultButton = rowButton
         }
 
         if row.offersCancel {
-            let cancel = GtkWidgets.button("Cancel", cssClass: nil)
+            let cancel = GtkWidgets.button("Cancel", cssClass: GtkViewerStyle.Class.rowAction)
             onClick(cancel) { [weak self] in self?.cancelConnecting() }
             GtkWidgets.append(cancel, to: rowBox)
         }
 
         let menuButton = gtkRef(gtk_menu_button_new())
+        gtk_widget_add_css_class(sensorium_gtk_widget(menuButton), GtkViewerStyle.Class.iconButton)
         gtk_menu_button_set_label(sensorium_gtk_menu_button(menuButton), "\u{2026}")
         let menu = rowMenu(for: row, index: index)
         gtk_menu_button_set_menu_model(sensorium_gtk_menu_button(menuButton), sensorium_g_menu_model(menu))
@@ -375,7 +384,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     /// carries an integer, and the number indexes the rows this render drew.
     private func rowMenu(for row: YourMachinesRow, index: Int) -> GtkRef {
         let menu = gtkRef(g_menu_new())
-        g_menu_append(sensorium_g_menu(menu), "Pair again", "machine.pair-again(\(index))")
+        g_menu_append(sensorium_g_menu(menu), "Pair Again", "machine.pair-again(\(index))")
         g_menu_append(sensorium_g_menu(menu), "Forget", "machine.forget(\(index))")
         if row.offersConnectAsVirtualDisplayFallback {
             // The same title `ViewerSessionAction.connectAsVirtualDisplay`
@@ -383,7 +392,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             // action, reached from whichever ending is on screen.
             g_menu_append(
                 sensorium_g_menu(menu),
-                "Connect with a virtual display",
+                "Connect with a Virtual Display",
                 "machine.connect-virtual-display(\(index))"
             )
         }

@@ -40,10 +40,7 @@ public enum ViewerDesign {
     public typealias Radius = ViewerChromeMetrics.Radius
     public typealias Space = ViewerChromeMetrics.Space
 
-    public enum Tracking {
-        public static let snug: CGFloat = -0.015
-        public static let widest: CGFloat = 0.22
-    }
+    public typealias Tracking = ViewerChromeMetrics.Tracking
 
     public static func kern(_ tracking: CGFloat, size: CGFloat) -> CGFloat {
         tracking * size

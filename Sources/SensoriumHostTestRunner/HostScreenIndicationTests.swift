@@ -330,6 +330,26 @@ func runHostScreenIndicationTests() async {
     }
 
     do {
+        // The invariant requires a continuous, unmissable indication for
+        // the whole session -- the app's own Hide (Cmd-H, which the
+        // host's main menu offers) must not be able to take it down.
+        func field<T>(_ name: String, of object: Any, as type: T.Type) -> T {
+            for child in Mirror(reflecting: object).children {
+                if child.label == name, let value = child.value as? T {
+                    return value
+                }
+            }
+            fatalError("no stored property named \(name) of type \(T.self)")
+        }
+        let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
+        let controller = HostScreenBadgeWindowController(state: state)
+        let window: NSPanel = field("window", of: controller, as: NSPanel.self)
+        expect(!window.canHide, "the badge window is exempt from Hide -- an app-wide Cmd-H must not take it down mid-session")
+
+        print("PASS: the badge window cannot be hidden by the app's own Hide")
+    }
+
+    do {
         // Shrunk keeps every element -- device name, display, Stop --
         // at smaller type and tighter insets, so the window is
         // visibly smaller yet still names what the invariant requires.
@@ -859,5 +879,50 @@ func runHostScreenIndicationTests() async {
         )
 
         print("PASS: the border gradient rotates and the collapsed pill's fill pulses unless Reduce Motion is on, in which case both hold still")
+    }
+
+    do {
+        // Stop's own visible text already says what it does; its
+        // accessibility label adds what a sighted person reads from the
+        // rest of the badge alongside it -- which device this would stop
+        // sharing with -- so VoiceOver names the same fact.
+        func findButton(in view: NSView) -> NSButton? {
+            for subview in view.subviews {
+                if let button = subview as? NSButton { return button }
+                if let found = findButton(in: subview) { return found }
+            }
+            return nil
+        }
+        let expandedState = HostScreenBadgeState(
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
+            startsExpanded: true
+        )
+        let expandedController = HostScreenBadgeWindowController(state: expandedState, restoresPersistedLayout: false)
+        guard let expandedContent = CanvasHostTestHooks.hostScreenBadgeWindow(expandedController).contentView,
+              let expandedStop = findButton(in: expandedContent) else {
+            expect(false, "the expanded badge has a Stop button")
+            return
+        }
+        expect(
+            expandedStop.accessibilityLabel() == "Stop sharing with Kestrel Laptop Pro",
+            "Stop's accessibility label names the device it would stop sharing with, got \(expandedStop.accessibilityLabel() ?? "nil")"
+        )
+
+        let collapsedState = HostScreenBadgeState(
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
+            startsCollapsed: true
+        )
+        let collapsedController = HostScreenBadgeWindowController(state: collapsedState, restoresPersistedLayout: false)
+        guard let collapsedContent = CanvasHostTestHooks.hostScreenBadgeWindow(collapsedController).contentView,
+              let collapsedStop = findButton(in: collapsedContent) else {
+            expect(false, "the collapsed pill has a Stop button")
+            return
+        }
+        expect(
+            collapsedStop.accessibilityLabel() == "Stop sharing with Kestrel Laptop Pro",
+            "the collapsed pill's Stop button carries the same accessibility label"
+        )
+
+        print("PASS: the badge's Stop button carries an accessibility label naming the connected device, expanded or collapsed")
     }
 }

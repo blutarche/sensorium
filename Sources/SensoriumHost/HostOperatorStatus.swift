@@ -119,6 +119,13 @@ public struct HostOperatorStatus: Equatable {
     /// window must go on saying so rather than returning to a status that
     /// implies a machine ready to serve.
     public var captureUnavailable: Bool = false
+    /// The viewer's own reported round trip for the live session, already
+    /// smoothed and staleness-checked by `HostPingDisplay` -- `nil` whenever
+    /// there is no session to measure or none has reported a usable sample
+    /// recently. Set only by `HostOperatorStatusStore.recordPing`, never by
+    /// this initializer: a status this package hands out never starts life
+    /// claiming a ping nothing has actually measured.
+    public var pingRoundTripNanoseconds: Int64?
 
     public init(
         connection: HostConnectionState,
@@ -225,11 +232,12 @@ extension HostOperatorStatus {
         var isUrgent = false
         var indicator: HostOperatorIndicator
         // `nil` everywhere but `.servingHostScreen`: every other case either
-        // shows no menu-bar title (`.serving`'s deliberately quiet one) or
-        // shows the pairing code itself, already carried by `code` below.
-        // Kept separate from `code` rather than reusing it, since `code`
-        // also feeds `pairingCode` -- a host-screen machine's name is not a
-        // pairing code and must never appear where one is read from.
+        // shows no menu-bar title (`.serving`'s deliberately quiet one, until
+        // a ping arrives -- see below) or shows the pairing code itself,
+        // already carried by `code` below. Kept separate from `code` rather
+        // than reusing it, since `code` also feeds `pairingCode` -- a
+        // host-screen machine's name is not a pairing code and must never
+        // appear where one is read from.
         var menuBarTitle: String?
 
         switch connection {
@@ -289,6 +297,25 @@ extension HostOperatorStatus {
             detail = "It sees and controls \(displayName) \u{2014} this machine’s own screen, not a virtual display."
             menuBarTitle = peerName
             indicator = .servingHostScreen
+        }
+
+        // A live ping outranks both the peer name above and the pairing code
+        // below: while any session is live, the person at this machine reads
+        // the round trip to whoever is connected rather than who they are --
+        // the badge and the menu still name the device. Before the first
+        // sample arrives, `.servingHostScreen` keeps its peer-name fallback
+        // and `.serving` stays exactly as quiet as it always was. Gated on
+        // `connection` here too, not only by whoever calls `recordPing`: a
+        // reading a caller left behind from a session already ended must
+        // never surface just because this struct still carries it.
+        switch connection {
+        case .serving, .servingHostScreen:
+            if let pingRoundTripNanoseconds,
+               let pingTitle = HostPingDisplay.title(forMilliseconds: Double(pingRoundTripNanoseconds) / 1_000_000) {
+                menuBarTitle = pingTitle
+            }
+        case .notHosting, .hosting, .pairingApproved:
+            break
         }
 
         // The pairing section, read after the connection above and never
@@ -455,6 +482,12 @@ public final class HostOperatorStatusStore {
     /// it. `weak`: this is an identity to compare a later close against, never
     /// something to keep alive.
     private weak var servingConnection: HostConnectionToken?
+    /// The one instance this store folds every `recordPing` tick through --
+    /// see `HostPingDisplay`'s own doc comment for the smoothing and
+    /// staleness rules it owns. Reset alongside `status.pingRoundTripNanoseconds`
+    /// whenever `setConnection` leaves a live session, so a later session
+    /// never inherits a reading from one that already ended.
+    private var pingDisplay = HostPingDisplay()
 
     public init(permissions: HostPermissionRequestResult) {
         status = HostOperatorStatus(
@@ -469,6 +502,44 @@ public final class HostOperatorStatusStore {
 
     public func setConnection(_ connection: HostConnectionState) {
         status.connection = connection
+        switch connection {
+        case .serving, .servingHostScreen:
+            break
+        case .notHosting, .hosting, .pairingApproved:
+            // No session is live to have a ping about. A later session
+            // starts this fresh, never picking up where one that already
+            // ended left off.
+            pingDisplay = HostPingDisplay()
+            status.pingRoundTripNanoseconds = nil
+        }
+        notify()
+    }
+
+    /// One tick of the viewer's own reported round trip for the live
+    /// session -- `nil` when this tick carried no fresh sample. Folded
+    /// through `HostPingDisplay`'s smoothing and staleness before it ever
+    /// reaches `status`, so a caller here never has to reimplement either.
+    /// `atSeconds` is the caller's own monotonic clock; nothing here needs it
+    /// to relate to any other machine's.
+    ///
+    /// Dropped outright unless a session is actually live and `connection` is
+    /// the one currently serving it: a sample can arrive after that
+    /// connection has already ended, in a task racing `setConnection`
+    /// unordered against it, and must never resurrect a ping display for a
+    /// session already off screen -- see `apply(_:from:)`'s own reasoning for
+    /// the identical race on peer presence.
+    public func recordPing(roundTripNanoseconds: Int64?, atSeconds now: Double, from connection: HostConnectionToken) {
+        switch status.connection {
+        case .serving, .servingHostScreen:
+            break
+        case .notHosting, .hosting, .pairingApproved:
+            return
+        }
+        if let servingConnection, servingConnection !== connection {
+            return
+        }
+        pingDisplay.record(roundTripNanoseconds: roundTripNanoseconds, atSeconds: now)
+        status.pingRoundTripNanoseconds = pingDisplay.currentRoundTripNanoseconds(atSeconds: now)
         notify()
     }
 

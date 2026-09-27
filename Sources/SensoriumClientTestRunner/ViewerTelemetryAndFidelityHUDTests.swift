@@ -6,6 +6,7 @@ import SensoriumCore
 /// says once the host reports what it applied and why.
 func runViewerTelemetryAndFidelityHUDTests() {
     viewerTelemetryBuilderReportsOnlyWhatWasMeasured()
+    viewerTelemetryBuilderCarriesTheRoundTripWhenGiven()
     fidelitySectionNamesTheFrameRateQualityAndReason()
     streamSectionNamesTheFramesThisViewerGaveUp()
     latencySectionNamesTheHoldThisMachineAdded()
@@ -290,6 +291,41 @@ private func viewerTelemetryBuilderReportsOnlyWhatWasMeasured() {
             && otherSurface.presentedFramesPerSecond == nil
             && otherSurface.decodedFramesPerSecond == nil,
         "a surface's first tick has no earlier tick to measure a rate against, whatever the other surface did"
+    )
+}
+
+/// The one field the builder does not derive from `metrics`/`stream`: the
+/// session's clock-sync round trip, passed in from the caller's own
+/// `SessionLatencyMonitor` rather than measured here -- see
+/// `ClientSessionRunner.sendViewerTelemetry`, the one call site that supplies
+/// it.
+private func viewerTelemetryBuilderCarriesTheRoundTripWhenGiven() {
+    var builder = ViewerTelemetryBuilder()
+    let second: Int64 = 1_000_000_000
+
+    let noRoundTripYet = builder.sample(
+        surfaceID: 0,
+        metrics: SessionMetrics(),
+        stream: ClientStreamReading(pixelWidth: nil, pixelHeight: nil, bitsPerSecond: nil),
+        presentedFrameCount: 0,
+        atNanoseconds: 10 * second
+    )
+    expect(
+        noRoundTripYet.roundTripNanoseconds == nil,
+        "a session that has not synchronised its clock yet sends no round trip, not a zero"
+    )
+
+    let withRoundTrip = builder.sample(
+        surfaceID: 0,
+        metrics: SessionMetrics(),
+        stream: ClientStreamReading(pixelWidth: nil, pixelHeight: nil, bitsPerSecond: nil),
+        presentedFrameCount: 0,
+        atNanoseconds: 11 * second,
+        roundTripNanoseconds: 8_400_000
+    )
+    expect(
+        withRoundTrip.roundTripNanoseconds == 8_400_000,
+        "the caller's own reading travels on the sample unchanged"
     )
 }
 

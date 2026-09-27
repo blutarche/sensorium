@@ -9,7 +9,7 @@ import SensoriumCore
 /// `replaceWithFreshIdentity()`, so a test drives `replace(using:)` against
 /// a fake and never writes a real key.
 public enum ViewerIdentityRecovery {
-    /// The read this app makes at launch and on every "Try again".
+    /// The read this app makes at launch and on every "Try Again".
     public static func load(
         using provider: any DeviceIdentityProviding
     ) -> Result<DeviceIdentity, ViewerIdentityFailure> {
@@ -33,7 +33,7 @@ public enum ViewerIdentityRecovery {
         }
     }
 
-    /// "Make a new key". `.success` is the state machine's "normal first
+    /// "Make a New Key". `.success` is the state machine's "normal first
     /// run" step: there is nothing saved for a brand new device key to
     /// reuse, so the caller proceeds exactly as it would have if the very
     /// first load had simply succeeded.

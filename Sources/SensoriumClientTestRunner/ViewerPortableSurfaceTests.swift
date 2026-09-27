@@ -56,11 +56,11 @@ func testViewerKeyNamesTests() {
 func testShortcutStripIconNameTests() {
     for action in ShortcutStripAction.allCases {
         expect(!action.symbolName.isEmpty, "\(action.title) has an SF Symbol name")
-        expect(!action.freedesktopIconName.isEmpty, "\(action.title) has a freedesktop icon name")
+        expect(!action.freedesktopIconNames.isEmpty, "\(action.title) has a freedesktop icon name")
     }
     expect(
-        Set(ShortcutStripAction.allCases.map(\.freedesktopIconName)).count == ShortcutStripAction.allCases.count,
-        "and no two buttons draw the same icon"
+        Set(ShortcutStripAction.allCases.map { $0.freedesktopIconNames[0] }).count == ShortcutStripAction.allCases.count,
+        "and no two buttons' first-choice icon names collide"
     )
     print("PASS: every shortcut strip action names an icon in both vocabularies")
 }

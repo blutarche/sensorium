@@ -32,12 +32,16 @@ public struct ViewerTelemetryBuilder: Sendable {
     /// The input round trip is deliberately not among them. The viewer
     /// measures it and shows it, but nothing a host does about a stream it is
     /// producing follows from how long a keystroke took to come back.
+    /// `roundTripNanoseconds` rides along for a different reason: it feeds no
+    /// encoder decision either, but the host's own menu bar has no other way
+    /// to show a live ping -- see `ViewerTelemetrySample.roundTripNanoseconds`.
     public mutating func sample(
         surfaceID: UInt32,
         metrics: SessionMetrics,
         stream: ClientStreamReading,
         presentedFrameCount: Int,
-        atNanoseconds now: Int64
+        atNanoseconds now: Int64,
+        roundTripNanoseconds: Int64? = nil
     ) -> ViewerTelemetrySample {
         let sample = ViewerTelemetrySample(
             surfaceID: surfaceID,
@@ -56,7 +60,11 @@ public struct ViewerTelemetryBuilder: Sendable {
                 atNanoseconds: now,
                 since: \.decodedFrameCount
             ),
-            receivedBitsPerSecond: stream.bitsPerSecond
+            receivedBitsPerSecond: stream.bitsPerSecond,
+            // Session-wide, not this surface's own -- the host's menu-bar
+            // ping display reads whichever surface's tick arrives, since
+            // every surface reports the same session's one clock sync.
+            roundTripNanoseconds: roundTripNanoseconds
         )
         if let index = Self.index(for: surfaceID) {
             lastTick[index] = Tick(

@@ -1,10 +1,36 @@
 import Foundation
 import SensoriumClient
 
+/// `ViewerChromeRect.contains` is what tells a press on the transient
+/// notice's own ✕ apart from a press anywhere else on the banner -- the same
+/// rule a real `NSButton` gives that control for free on macOS. Checked
+/// directly, since the Linux window that calls it needs a compositor to
+/// build at all.
+func testViewerChromeRectContainsTests() {
+    let banner = ViewerChromeRect(x: 0, y: 0, width: 360, height: 40)
+    let dismiss = ViewerChromeRect(x: 328, y: 8, width: 24, height: 24)
+
+    expect(dismiss.contains(x: 340, y: 20), "a press inside the ✕ itself counts as a dismiss")
+    expect(
+        banner.contains(x: 100, y: 20) && !dismiss.contains(x: 100, y: 20),
+        "a press elsewhere on the banner is on the banner but not on its own dismiss control"
+    )
+    expect(!dismiss.contains(x: dismiss.x + dismiss.width, y: dismiss.y), "the far edge belongs to whatever sits past it, not this rect")
+    expect(dismiss.contains(x: dismiss.x, y: dismiss.y), "the near edge belongs to this rect")
+
+    print("PASS: a rect's own bounds tell a press on it apart from a press beside it")
+}
+
 /// Where each of the four pieces of session chrome sits inside a window of a
 /// given logical size, and what that is in real pixels once the compositor's
 /// fractional scale is applied. Pure geometry: no compositor, no cairo.
 func testWaylandOverlayLayoutTests() {
+    let scrim = WaylandOverlayLayout.canvasScrim(windowWidth: 1280, windowHeight: 800)
+    expect(
+        scrim.x == 0 && scrim.y == 0 && scrim.width == 1280 && scrim.height == 800,
+        "the scrim always spans the whole window, behind wherever the status panel itself lands"
+    )
+
     let panel = WaylandOverlayLayout.statusPanel(
         windowWidth: 1280, windowHeight: 800, contentWidth: 400, contentHeight: 200
     )
@@ -33,22 +59,31 @@ func testWaylandOverlayLayoutTests() {
         windowWidth: 1280, contentWidth: 320, contentHeight: 500
     )
     expect(
-        hud.x == 1280 - 320 - WaylandOverlayLayout.edgeMargin,
-        "the diagnostics panel hangs off the right edge, one margin in"
+        hud.x == WaylandOverlayLayout.diagnosticsMargin,
+        "the diagnostics panel sits at the top-left, one margin in, the way SessionHUDView is pinned on macOS"
     )
-    expect(hud.y == WaylandOverlayLayout.edgeMargin, "the diagnostics panel starts one margin below the top edge")
+    expect(
+        hud.y == WaylandOverlayLayout.diagnosticsMargin,
+        "the diagnostics panel starts one margin below the top edge"
+    )
 
     let strip = WaylandOverlayLayout.shortcutStrip(
-        windowWidth: 1280, contentWidth: 600, contentHeight: 44
+        windowWidth: 1280, contentHeight: 40
     )
-    expect(strip.x == 340, "the shortcut strip is centred across the window")
-    expect(strip.y == 0, "the shortcut strip hangs from the top edge of the session window")
+    expect(strip.x == 0 && strip.width == 1280, "the shortcut strip's bar spans the full width of the window")
+    expect(
+        strip.y == WaylandOverlayLayout.topClearance,
+        "the bar sits below the same 6pt band macOS reserves above ShortcutStripView, even with no menu bar to reveal"
+    )
 
     let handle = WaylandOverlayLayout.stripHandle(
         windowWidth: 1280, contentWidth: 60, contentHeight: 8
     )
     expect(handle.x == 610, "the handle tab is centred across the window")
-    expect(handle.y == 0, "the handle tab is flush with the top edge, under the strip it opens")
+    expect(
+        handle.y == WaylandOverlayLayout.topClearance,
+        "the handle sits 6pt below the window top, as it does on macOS"
+    )
 
     expect(WaylandOverlayLayout.pixelSize(logical: 400, scale: 1) == 400, "at scale 1 a logical size is its pixel size")
     expect(WaylandOverlayLayout.pixelSize(logical: 400, scale: 1.5) == 600, "a fractional scale multiplies the pixels")
@@ -66,7 +101,7 @@ func testWaylandOverlayLayoutTests() {
 /// below it, so neither is covered. An unpinned strip opened by a hover or
 /// the chord floats over the picture and takes nothing.
 func testShortcutStripBandTests() {
-    let stripHeight = 44.0
+    let stripHeight = Double(ViewerChromeMetrics.Strip.barHeight)
 
     expect(
         WaylandOverlayLayout.topInset(isPinned: false, isStripOpen: true, stripHeight: stripHeight) == 0,
@@ -77,7 +112,10 @@ func testShortcutStripBandTests() {
         "and neither does a pinned strip that is closed"
     )
     let inset = WaylandOverlayLayout.topInset(isPinned: true, isStripOpen: true, stripHeight: stripHeight)
-    expect(inset == stripHeight, "a pinned, open strip claims exactly its own height")
+    expect(
+        inset == stripHeight + WaylandOverlayLayout.topClearance,
+        "a pinned, open strip claims its own height plus the 6pt band above it -- 46 in all"
+    )
 
     let floatingNotice = WaylandOverlayLayout.transientNotice(
         windowWidth: 1280, contentWidth: 400, contentHeight: 60, topInset: 0
@@ -101,7 +139,7 @@ func testShortcutStripBandTests() {
         pushed.y == floating.y + inset,
         "the diagnostics panel moves down by the band, so the strip never covers it"
     )
-    expect(pushed.x == floating.x, "and stays on the right edge where it was")
+    expect(pushed.x == floating.x, "and stays on the left edge where it was")
 
     // Pixel units: what the EGL presenter draws into, with the band taken off
     // the top of the drawable rather than off the window's logical size.
@@ -176,8 +214,9 @@ func testViewerStatusPanelMetricsTests() {
 }
 
 /// Which button a click on the status panel landed on. The row is laid out
-/// right to left, the way the primary action sits rightmost on both
-/// platforms, and a point between two buttons belongs to neither.
+/// left to right in model order, the way `ViewerActionButton`'s own
+/// `NSStackView` -- pinned only at its leading edge -- actually paints it,
+/// and a point between two buttons belongs to neither.
 func testViewerStatusPanelHitTestTests() {
     let measure: (String) -> Double = { _ in 100 }
     let panel = ViewerChromeRect(x: 200, y: 100, width: 500, height: 220)
@@ -188,20 +227,19 @@ func testViewerStatusPanelHitTestTests() {
     let layouts = ViewerStatusPanelHitTest.buttonRow(buttons: buttons, panel: panel, measure: measure)
     expect(layouts.count == 2, "one rect per button")
     expect(
-        layouts.map(\.action) == [.yourMachines, .connectAsVirtualDisplay],
+        layouts.map(\.action) == [.connectAsVirtualDisplay, .yourMachines],
         "the rects come back in the order the status named them"
     )
 
-    let buttonWidth = ViewerStatusPanelMetrics.buttonWidth(buttons[1].title, measure: measure)
-    let rightEdge = panel.x + panel.width - ViewerStatusPanelMetrics.panelInset
+    let buttonWidth = ViewerStatusPanelMetrics.buttonWidth(buttons[0].title, measure: measure)
+    let leftEdge = panel.x + ViewerStatusPanelMetrics.panelInset
     expect(
-        layouts[1].rect.x + layouts[1].rect.width == rightEdge,
-        "the last button's right edge is the panel's own inset edge"
+        layouts[0].rect.x == leftEdge,
+        "the first button's left edge is the panel's own inset edge"
     )
     expect(
-        layouts[0].rect.x + layouts[0].rect.width
-            == rightEdge - buttonWidth - ViewerStatusPanelMetrics.buttonSpacing,
-        "the button before it is one spacing further left"
+        layouts[1].rect.x == leftEdge + buttonWidth + ViewerStatusPanelMetrics.buttonSpacing,
+        "the button after it is one spacing further right"
     )
     expect(
         layouts[0].rect.y + layouts[0].rect.height
@@ -213,8 +251,8 @@ func testViewerStatusPanelHitTestTests() {
         ViewerStatusPanelHitTest.action(atX: x, y: y, in: layouts)
     }
     let middle = layouts[0].rect.y + layouts[0].rect.height / 2
-    expect(hit(layouts[0].rect.x + 5, middle) == .yourMachines, "a point inside the first button is that button's action")
-    expect(hit(layouts[1].rect.x + 5, middle) == .connectAsVirtualDisplay, "a point inside the second button is that button's action")
+    expect(hit(layouts[0].rect.x + 5, middle) == .connectAsVirtualDisplay, "a point inside the first button is that button's action")
+    expect(hit(layouts[1].rect.x + 5, middle) == .yourMachines, "a point inside the second button is that button's action")
     expect(
         hit(layouts[0].rect.x + layouts[0].rect.width + 2, middle) == nil,
         "a point in the gap between two buttons is no action at all"
@@ -222,4 +260,55 @@ func testViewerStatusPanelHitTestTests() {
     expect(hit(panel.x + 2, panel.y + 2) == nil, "a point on the panel but off every button is no action at all")
 
     print("PASS: a click on the status panel maps to the button it landed on, and to nothing in the gaps")
+}
+
+/// The shared numbers `SessionChromePainter`'s Linux drawing and macOS's own
+/// views are both built from, pinned so neither platform can drift off them
+/// without a failing test to show it. `SessionChromePainter` itself is
+/// Linux-only (`#if canImport(CCairo)`) and unreachable from this portable
+/// runner, so this is the closest a macOS build gets to checking its numbers.
+func testViewerChromeMetricsPinnedValuesTests() {
+    expect(ViewerChromeMetrics.Strip.barHeight == 40, "the shortcut strip is 40 tall on both platforms")
+    expect(ViewerChromeMetrics.Strip.handleWidth == 36, "the strip's handle tab is 36 wide")
+    expect(ViewerChromeMetrics.Strip.handleHeight == 8, "the strip's handle tab is 8 tall")
+    expect(
+        ViewerChromeMetrics.Strip.actionButtonHeight == 28,
+        "an action button is 28 tall, `ShortcutStripIconButton`'s own cluster height"
+    )
+    expect(
+        ViewerChromeMetrics.Strip.actionIconSize == 18,
+        "an action button's icon is 18, `ShortcutStripIconButton`'s own icon point size"
+    )
+    expect(
+        ViewerChromeMetrics.Strip.confirmButtonHeight == 24,
+        "confirm and cancel are 24 tall, `ShortcutStripButton`'s own height"
+    )
+
+    expect(ViewerChromeMetrics.Diagnostics.width == 320, "the diagnostics panel is 320 wide")
+    expect(
+        ViewerChromeMetrics.Diagnostics.edgeInset == 8,
+        "the diagnostics panel sits one 8pt margin off the window's edges"
+    )
+    expect(ViewerChromeMetrics.Diagnostics.groupGap == 16, "one group ends 16 above the next")
+    expect(ViewerChromeMetrics.Diagnostics.rowGap == 4, "one row ends 4 above the next, inside a group")
+
+    expect(ViewerStatusPanelMetrics.dotSize == 8, "the status panel's tone dot is an 8pt square")
+    expect(ViewerStatusPanelMetrics.dotRadius == 2, "the tone dot's corners are radius 2, not a circle")
+    expect(ViewerStatusPanelMetrics.eyebrowToTitleGap == 12, "eyebrow to title is 12")
+    expect(ViewerStatusPanelMetrics.titleToDetailGap == 8, "title to detail is 8")
+    expect(ViewerStatusPanelMetrics.detailToButtonsGap == 16, "detail to the button row is 16")
+
+    print("PASS: the shortcut strip, diagnostics and status panel share the numbers the design system records")
+}
+
+/// The gaps a Linux message prompt (`GtkViewerPrompts`) applies as per-child
+/// margins match `ViewerMessageWindow`'s own chain on macOS exactly --
+/// `root.spacing` and its two `setCustomSpacing` overrides at
+/// `ViewerMessageWindow.swift:180-183`.
+func testMessagePromptSpacingTests() {
+    expect(MessagePromptSpacing.afterEyebrow == 12, "eyebrow to headline is 12, ViewerMessageWindow's own root.spacing")
+    expect(MessagePromptSpacing.afterHeadline == 8, "headline to detail is 8, ViewerMessageWindow's own custom spacing there")
+    expect(MessagePromptSpacing.afterDetail == 20, "detail to the button row is 20, ViewerMessageWindow's own custom spacing there")
+
+    print("PASS: a Linux message prompt's own vertical gaps match ViewerMessageWindow's chain on macOS")
 }

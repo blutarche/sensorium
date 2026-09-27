@@ -11,11 +11,27 @@ public enum ViewerMenuCommand: Equatable, Sendable {
     case about
     case hide
     case hideOthers
+    /// Standard `unhideAllApplications:` -- grouped with Hide and Hide
+    /// Others rather than off on its own, the same grouping every macOS app
+    /// menu uses.
+    case showAll
     case quit
     /// Brings the launch window -- the list of machines this one has paired with
     /// -- to the front, whether or not a session is running. It is the only
     /// way to reach a different machine from inside a live session.
     case showYourMachines
+    /// The six standard text-editing commands, routed to the responder chain
+    /// by nil target -- see `ViewerMenu.autoenablesItems`.
+    case undo
+    case redo
+    case cut
+    case copy
+    case paste
+    case selectAll
+    /// Standard window-management commands, sent to whichever window is key.
+    case minimize
+    case zoom
+    case bringAllToFront
     case toggleFullScreen
     case toggleTelemetryOverlay
     case togglePointerCapture
@@ -86,7 +102,21 @@ public struct ViewerMenuItem: Equatable, Sendable {
 
 public struct ViewerMenu: Equatable, Sendable {
     public let title: String
+    /// `false` for every menu but Edit: those enable and disable their items
+    /// explicitly (the escape-gesture line, the pointer-capture and full
+    /// screen titles), and automatic enabling would fight that. Edit's items
+    /// are nil-target standard editing selectors, so AppKit's own responder-
+    /// chain check is what disables them while a session canvas -- which
+    /// implements none of them -- is key, and enables them for the pairing
+    /// form's text fields, which do.
+    public let autoenablesItems: Bool
     public let items: [ViewerMenuItem]
+
+    public init(title: String, autoenablesItems: Bool = false, items: [ViewerMenuItem]) {
+        self.title = title
+        self.autoenablesItems = autoenablesItems
+        self.items = items
+    }
 }
 
 public enum ViewerMenuPlan {
@@ -108,8 +138,22 @@ public enum ViewerMenuPlan {
             .separator,
             ViewerMenuItem(title: "Hide \(appName)", command: .hide, keyEquivalent: "h", modifiers: [.command]),
             ViewerMenuItem(title: "Hide Others", command: .hideOthers, keyEquivalent: "h", modifiers: [.command, .option]),
+            ViewerMenuItem(title: "Show All", command: .showAll),
             .separator,
             ViewerMenuItem(title: "Quit \(appName)", command: .quit, keyEquivalent: "q", modifiers: [.command])
+        ]),
+        // `SystemShortcutRouter.claimsKeyEquivalent` admits these same six
+        // chords alongside `SystemShortcutCatalog`'s own entries, so the
+        // canvas claims them before this menu can, exactly as it
+        // does for Cmd-Q/W/H/M -- see that method's own doc comment.
+        ViewerMenu(title: "Edit", autoenablesItems: true, items: [
+            ViewerMenuItem(title: "Undo", command: .undo, keyEquivalent: "z", modifiers: [.command]),
+            ViewerMenuItem(title: "Redo", command: .redo, keyEquivalent: "z", modifiers: [.command, .shift]),
+            .separator,
+            ViewerMenuItem(title: "Cut", command: .cut, keyEquivalent: "x", modifiers: [.command]),
+            ViewerMenuItem(title: "Copy", command: .copy, keyEquivalent: "c", modifiers: [.command]),
+            ViewerMenuItem(title: "Paste", command: .paste, keyEquivalent: "v", modifiers: [.command]),
+            ViewerMenuItem(title: "Select All", command: .selectAll, keyEquivalent: "a", modifiers: [.command])
         ]),
         ViewerMenu(title: "View", items: [
             ViewerMenuItem(
@@ -147,6 +191,16 @@ public enum ViewerMenuPlan {
                 isSelected: ClipboardSyncEngine.sharingEnabledByDefault
             )
         ]),
+        // Set as `NSApp.windowsMenu` by `ViewerMainMenuController.install(into:)`,
+        // so macOS appends the live window list below these; installed with
+        // no Cmd-M, the same reason the app menu carries no Cmd-W -- both are
+        // `SystemShortcutCatalog` entries the viewer forwards to the host.
+        ViewerMenu(title: "Window", items: [
+            ViewerMenuItem(title: "Minimize", command: .minimize),
+            ViewerMenuItem(title: "Zoom", command: .zoom),
+            .separator,
+            ViewerMenuItem(title: "Bring All to Front", command: .bringAllToFront)
+        ]),
         ViewerMenu(title: "Help", items: [
             ViewerMenuItem(
                 title: "Escape back to this machine: \(ViewerKeyNames.escapeGesture)",
@@ -162,6 +216,33 @@ public enum ViewerMenuPlan {
     /// the mode rather than only offering a toggle.
     public static func pointerCaptureTitle(isCaptured: Bool) -> String {
         isCaptured ? "Release Captured Pointer" : "Capture Pointer"
+    }
+
+    /// What the full screen item says and whether it can be clicked, so its
+    /// title always names the key window's actual state rather than only
+    /// offering a toggle -- the same reasoning `pointerCaptureTitle` follows.
+    /// `canFullScreen` is false when no window this menu knows about is key
+    /// -- the launch window included, which is not resizable and cannot
+    /// enter full screen at all.
+    public static func fullScreenItem(isFullscreen: Bool, canFullScreen: Bool) -> (title: String, isEnabled: Bool) {
+        (isFullscreen ? "Exit Full Screen" : "Enter Full Screen", canFullScreen)
+    }
+
+    /// Whether the Window menu's Minimize, Zoom and Bring All to Front items
+    /// can be clicked, computed from the traits of whichever window
+    /// `ViewerMainMenuController.menuNeedsUpdate` currently reads them from
+    /// -- the key window, or the main window if none is key -- and whether
+    /// any window of the app is visible at all. A window like the launch
+    /// window's own `[.titled, .closable]` carries neither `.miniaturizable`
+    /// nor `.resizable`, so both `canMiniaturize` and `canZoom` are false
+    /// for it.
+    public static func windowMenuState(
+        canMiniaturize: Bool,
+        isMiniaturized: Bool,
+        canZoom: Bool,
+        hasVisibleWindow: Bool
+    ) -> (minimizeEnabled: Bool, zoomEnabled: Bool, bringAllToFrontEnabled: Bool) {
+        (canMiniaturize && !isMiniaturized, canZoom, hasVisibleWindow)
     }
 }
 

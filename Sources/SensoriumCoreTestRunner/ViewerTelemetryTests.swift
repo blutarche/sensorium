@@ -86,6 +86,62 @@ func testViewerTelemetryRoundTripsAndIsSkippableByAnOldHost() {
     )
 }
 
+/// The host's own menu-bar ping display's one field on the wire: session-wide,
+/// carried on the same per-second message every other viewer telemetry rides
+/// on, and skippable by a host that predates it.
+func testViewerTelemetryRoundTripRoundTripsThePingFieldAndIsSkippableByAnOldHost() {
+    let withPing = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil,
+            roundTripNanoseconds: 8_400_000
+        )
+    )
+    expect(
+        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withPing)) == withPing,
+        "the round trip field round-trips unchanged"
+    )
+
+    // An old host reads this exact frame with no such field in its own
+    // decoded value; a new viewer talking to an old host would otherwise
+    // have no way to know the field is silently dropped, which is the same
+    // guarantee `testTelemetryCarriesTheAppliedFrameRateQualityAndLimit`
+    // already checks in the other direction.
+    let oldFormatFrame = viewerTelemetryFrame([
+        "type": "viewerTelemetry",
+        "viewerTelemetry": ["surfaceID": 0]
+    ])
+    guard case let .viewerTelemetry(oldSample) = try! SensoriumFrameCodec.decode(oldFormatFrame) else {
+        expect(false, "an old-format viewer telemetry message still decodes as one")
+        return
+    }
+    expect(oldSample.roundTripNanoseconds == nil, "a message that predates the field reports no ping")
+
+    let withPingJSON = String(decoding: try! SensoriumFrameCodec.encode(withPing), as: UTF8.self)
+    expect(withPingJSON.contains("roundTripNanoseconds"), "a viewer that measured a round trip sends it")
+
+    let withoutPing = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil
+        )
+    )
+    expect(
+        !String(decoding: try! SensoriumFrameCodec.encode(withoutPing), as: UTF8.self).contains("roundTripNanoseconds"),
+        "a viewer with no clock sync yet omits the field rather than sending a null"
+    )
+}
+
 /// The other half of the same conversation: what the host applied, and why it
 /// is below what the viewer asked for. Absent from a host that predates the
 /// fields, which the viewer must read as "unknown" rather than as a limit.
@@ -240,7 +296,8 @@ func testViewerTelemetryStoreRefusesImpossibleNumbers() {
         presentedFramesPerSecond: Double? = 30,
         decodedFramesPerSecond: Double? = 60,
         receivedBitsPerSecond: Double? = 41_800_000,
-        endToEnd: StageLatencySample? = StageLatencySample(p50Nanoseconds: 21_000_000, p95Nanoseconds: 34_000_000)
+        endToEnd: StageLatencySample? = StageLatencySample(p50Nanoseconds: 21_000_000, p95Nanoseconds: 34_000_000),
+        roundTripNanoseconds: Int64? = nil
     ) -> ViewerTelemetrySample {
         ViewerTelemetrySample(
             surfaceID: 0,
@@ -249,7 +306,8 @@ func testViewerTelemetryStoreRefusesImpossibleNumbers() {
             decode: nil,
             presentedFramesPerSecond: presentedFramesPerSecond,
             decodedFramesPerSecond: decodedFramesPerSecond,
-            receivedBitsPerSecond: receivedBitsPerSecond
+            receivedBitsPerSecond: receivedBitsPerSecond,
+            roundTripNanoseconds: roundTripNanoseconds
         )
     }
 
@@ -272,6 +330,10 @@ func testViewerTelemetryStoreRefusesImpossibleNumbers() {
         (
             "a p95 that ran backwards",
             reading(endToEnd: StageLatencySample(p50Nanoseconds: 21_000_000, p95Nanoseconds: -34_000_000))
+        ),
+        (
+            "a round trip that ran backwards",
+            reading(roundTripNanoseconds: -1)
         )
     ]
     for (label, sample) in impossible {

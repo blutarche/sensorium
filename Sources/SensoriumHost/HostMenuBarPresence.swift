@@ -27,6 +27,7 @@ public final class HostMenuBarPresence: NSObject {
     /// be able to end it without opening a window first.
     private let onTurnOffSharing: (@MainActor (Data) -> Void)?
     private let quit: () -> Void
+    private let activate: () -> Void
     private let panel = HostOperatorPanelView()
     private var statusItem: NSStatusItem?
     private var status: HostOperatorStatus
@@ -51,7 +52,8 @@ public final class HostMenuBarPresence: NSObject {
         openSetup: (@MainActor () -> Void)? = nil,
         onStop: (@MainActor () -> Void)? = nil,
         onTurnOffSharing: (@MainActor (Data) -> Void)? = nil,
-        quit: @escaping () -> Void
+        quit: @escaping () -> Void,
+        activate: @escaping () -> Void = { NSApplication.shared.activate(ignoringOtherApps: true) }
     ) {
         self.status = status
         self.openSettings = openSettings
@@ -59,6 +61,7 @@ public final class HostMenuBarPresence: NSObject {
         self.onStop = onStop
         self.onTurnOffSharing = onTurnOffSharing
         self.quit = quit
+        self.activate = activate
     }
 
     /// Visible whenever anything is armed, independent of whether a
@@ -102,10 +105,14 @@ public final class HostMenuBarPresence: NSObject {
         rendered = presentation
         if let button = statusItem?.button {
             button.image = Self.icon(for: presentation.indicator)
-            // The menu bar's own text, not the canvas: left in the system
-            // font and colour so it follows a light or dark menu bar, which a
-            // fixed palette colour could not.
+            // Plain `title`, never a hand-built `attributedTitle`: AppKit
+            // synthesises `attributedTitle` from `title` and `font` on its
+            // own, including the adaptive control-text colour a light or
+            // dark menu bar needs. Only the font is set explicitly, to
+            // monospaced digits, so a live ping's changing digit count never
+            // jitters the item's width.
             button.title = presentation.menuBarTitle.map { " \($0)" } ?? ""
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             button.toolTip = presentation.headline
         }
         panel.presentation = presentation
@@ -220,6 +227,7 @@ public final class HostMenuBarPresence: NSObject {
 
     @objc
     private func openAboutPanel() {
+        activate()
         NSApplication.shared.orderFrontStandardAboutPanel(options: SensoriumCredit.standardAboutPanelOptions)
     }
 

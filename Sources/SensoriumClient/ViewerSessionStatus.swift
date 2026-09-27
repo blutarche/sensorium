@@ -238,7 +238,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "STOPPED",
                 headline: "Stopped trying to reach \(hostName).",
-                detail: "Nothing is being retried now. Choose Try again when that machine is awake, or quit.",
+                detail: "Nothing is being retried now. Choose Try Again when that machine is awake, or quit.",
                 buttons: Self.recoveryButtons
             )
         case .retryRequested:
@@ -254,7 +254,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 eyebrow: "SESSION LOST",
                 headline: "Cannot reach \(hostName).",
                 detail: "Sensorium has stopped retrying. Check that it is awake and that Tailscale "
-                    + "is connected on both machines, then choose Try again.",
+                    + "is connected on both machines, then choose Try Again.",
                 buttons: Self.recoveryButtons
             )
         case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay):
@@ -289,36 +289,38 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     /// to leave.
     private static let recoveryButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: false),
-        ViewerSessionButton(action: .tryAgain, title: "Try again", isPrimary: true)
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false),
+        ViewerSessionButton(action: .tryAgain, title: "Try Again", isPrimary: true)
     ]
 
     private static let connectingButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: false)
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false)
     ]
 
-    /// `Stop trying` is what makes a reconnect wait finite -- the retry
+    /// `Stop Trying` is what makes a reconnect wait finite -- the retry
     /// policy itself has no attempt limit.
     private static let reconnectingButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .stopTrying, title: "Stop trying", isPrimary: false)
+        ViewerSessionButton(action: .stopTrying, title: "Stop Trying", isPrimary: false)
     ]
 
     /// A refusal is a dead end without the list beside it: the machine that
-    /// refused may stay that way all night. The filled default sits
-    /// rightmost, the way macOS itself places a default button in a
-    /// horizontal row.
+    /// refused may stay that way all night, so Your Machines is the filled
+    /// default -- it sits rightmost, the way macOS itself places a default
+    /// button in a horizontal row. The private desktop is opt-in and starts
+    /// only when named, so Connect with a Virtual Display must never be
+    /// what a stray Return fires.
     private static let endedButtons = [
-        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: false),
         ViewerSessionButton(
-            action: .connectAsVirtualDisplay, title: "Connect with a virtual display", isPrimary: true
-        )
+            action: .connectAsVirtualDisplay, title: "Connect with a Virtual Display", isPrimary: false
+        ),
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
     ]
 
     private static let endedWithoutVirtualDisplayButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: true)
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
     ]
 
     /// A certificate pin or host key mismatch is security-relevant and
@@ -327,8 +329,8 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     /// and pairing again is the only one here that can.
     private static let unverifiedHostButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .yourMachines, title: "Your machines", isPrimary: false),
-        ViewerSessionButton(action: .pairAgain, title: "Pair again", isPrimary: true)
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false),
+        ViewerSessionButton(action: .pairAgain, title: "Pair Again", isPrimary: true)
     ]
 
     /// Every button row a status can carry, by title. The status panel is
@@ -363,18 +365,21 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         )
     }
 
-    /// Always numbered: an unnumbered "trying again" is indistinguishable from
-    /// a wait that is going nowhere. A repeat also says what to go check,
-    /// because by then the answer is on the other machine and not in this
-    /// window. The headline names the host; the detail says "it". Once an
-    /// attempt has failed, its already-translated sentence is appended after
-    /// the usual detail rather than replacing it, so the numbering and the
-    /// standing advice both stay put.
+    /// No attempt count in the body: a person watching this window is not
+    /// counting redials, and the eyebrow's pulsing indicator already says
+    /// one is under way. The first line names what is on screen right now;
+    /// a repeat instead says what to go check, because by then the answer is
+    /// on the other machine and not in this window. The headline names the
+    /// host; the detail says "it". Once an attempt has failed, its
+    /// already-translated sentence is appended after the usual detail rather
+    /// than replacing it, so the standing advice stays put. `attempt` itself
+    /// still counts internally, so the first redial after a drop still reads
+    /// differently from a later one that keeps failing.
     private func reconnecting() -> ViewerSessionStatus {
         let shown = max(attempt, 1)
         var detail = shown <= 1
-            ? "Attempt 1 to reach it. The picture behind this is frozen from before the drop."
-            : "Attempt \(shown) to reach it. If it does not come back, check that it is awake and on the same network."
+            ? "The picture is paused from before the connection dropped."
+            : "If it does not come back, check that it is awake and on the same network."
         if let lastFailureLine {
             detail += " \(lastFailureLine)"
         }

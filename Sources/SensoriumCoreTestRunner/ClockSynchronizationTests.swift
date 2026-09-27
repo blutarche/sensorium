@@ -143,6 +143,21 @@ func testSessionLatencyRecorderNeedsClockSyncBeforeReportingEndToEnd() {
     expect(recorder.metrics.samples(for: .endToEnd).count == 1, "the refused frame added no end-to-end sample")
 }
 
+func testSessionLatencyRecorderExposesTheLatestClockRoundTripSeparatelyFromTheBestOne() {
+    var recorder = SessionLatencyRecorder()
+    expect(recorder.latestClockRoundTripNanoseconds == nil, "an unsynchronised recorder has no ping to show")
+
+    _ = recorder.makeClockRequest(atNanoseconds: 0)
+    recorder.receiveClockReply(clientTimeNanoseconds: 0, hostTimeNanoseconds: 100, receivedAtNanoseconds: 200)
+    expect(recorder.clockRoundTripNanoseconds == 200, "the offset estimate's own best sample")
+    expect(recorder.latestClockRoundTripNanoseconds == 200, "the ping reading matches the first sample")
+
+    _ = recorder.makeClockRequest(atNanoseconds: 1_000)
+    recorder.receiveClockReply(clientTimeNanoseconds: 1_000, hostTimeNanoseconds: 1_900, receivedAtNanoseconds: 2_000)
+    expect(recorder.clockRoundTripNanoseconds == 200, "the offset estimate keeps its better sample")
+    expect(recorder.latestClockRoundTripNanoseconds == 1_000, "the ping reading follows the worse, more recent sample")
+}
+
 func testLatencyTraceWriterAppendsOneJSONLineForEachStage() {
     let url = URL(fileURLWithPath: NSTemporaryDirectory())
         .appendingPathComponent("sensorium-trace-\(UUID().uuidString).jsonl")
@@ -313,5 +328,43 @@ func testClockSynchronizerAcceptsOnlyRepliesToRequestsItSent() {
         ),
         "a request evicted by the cap is no longer answerable"
     )
+}
+
+/// `latestRoundTripNanoseconds` is a live ping display's own reading, and
+/// must track a link that has gotten worse -- unlike `roundTripNanoseconds`,
+/// which keeps the best sample ever seen for the offset estimate it feeds.
+func testSessionClockSynchronizerLatestRoundTripTracksTheMostRecentSampleNotTheBest() {
+    var synchronizer = SessionClockSynchronizer()
+    expect(
+        synchronizer.latestRoundTripNanoseconds == nil,
+        "an unsynchronised session has no ping to show"
+    )
+
+    _ = synchronizer.makeRequest(atNanoseconds: 0)
+    expect(
+        synchronizer.receiveReply(clientTimeNanoseconds: 0, hostTimeNanoseconds: 100, receivedAtNanoseconds: 200),
+        "a well-ordered reply is accepted"
+    )
+    expect(synchronizer.roundTripNanoseconds == 200, "the offset estimate takes this first, best sample")
+    expect(synchronizer.latestRoundTripNanoseconds == 200, "the ping reading starts at the same sample")
+
+    // A slower round trip must not move the offset estimate, but it is the
+    // link's own reading now, so the ping display has to move with it.
+    _ = synchronizer.makeRequest(atNanoseconds: 1_000)
+    expect(
+        synchronizer.receiveReply(clientTimeNanoseconds: 1_000, hostTimeNanoseconds: 1_900, receivedAtNanoseconds: 2_000),
+        "a slower reply is still a valid sample"
+    )
+    expect(synchronizer.roundTripNanoseconds == 200, "the offset estimate keeps its better, earlier sample")
+    expect(synchronizer.latestRoundTripNanoseconds == 1_000, "the ping reading follows the link's worse round trip")
+
+    // A reply that arrives before it was sent is rejected outright, and must
+    // move neither reading.
+    _ = synchronizer.makeRequest(atNanoseconds: 5_000)
+    expect(
+        !synchronizer.receiveReply(clientTimeNanoseconds: 5_000, hostTimeNanoseconds: 5_010, receivedAtNanoseconds: 4_999),
+        "a reply timestamped before its own send is rejected"
+    )
+    expect(synchronizer.latestRoundTripNanoseconds == 1_000, "a rejected reply cannot move the ping reading")
 }
 

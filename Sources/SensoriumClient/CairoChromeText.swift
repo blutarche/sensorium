@@ -9,18 +9,26 @@ import Foundation
 /// which library puts the pixels down. This is that library's side of it:
 /// nothing here decides what to say or how wide a panel is, it only measures
 /// and draws what it is handed.
+
+/// The three weights this design system draws text in. A Pango weight
+/// enum rather than a bold `Bool`, so the status panel and the diagnostics
+/// HUD can ask for `medium` without a caller inventing a fourth boolean.
+enum CairoFontWeight {
+    case regular
+    case medium
+    case bold
+
+    var pangoWeight: PangoWeight {
+        switch self {
+        case .regular: return PANGO_WEIGHT_NORMAL
+        case .medium: return PANGO_WEIGHT_MEDIUM
+        case .bold: return PANGO_WEIGHT_BOLD
+        }
+    }
+}
+
 @MainActor
 enum CairoChromeText {
-    /// The two faces the design system names. Pango falls back to whatever
-    /// this desktop has when neither is installed, which is the right
-    /// behaviour: a missing face should cost the shape of the letters, not
-    /// the text.
-    static func fontDescription(pointSize: Double, mono: Bool, bold: Bool) -> String {
-        let family = mono ? "JetBrains Mono" : "Inter"
-        let weight = bold ? " Bold" : ""
-        return "\(family)\(weight) \(Int(pointSize.rounded()))"
-    }
-
     /// How much room a string needs, wrapped at `maxWidth` when one is given,
     /// or truncated to one line with an ellipsis when `ellipsize` is true --
     /// the two never both apply, since a truncated line never wraps.
@@ -28,19 +36,42 @@ enum CairoChromeText {
         _ text: String,
         pointSize: Double,
         mono: Bool = false,
-        bold: Bool = false,
+        weight: CairoFontWeight = .regular,
         maxWidth: Double? = nil,
         tracking: Double = 0,
+        tabularFigures: Bool = false,
         ellipsize: Bool = false
     ) -> (width: Double, height: Double) {
+        measure(
+            text, pointSize: pointSize, mono: mono, weight: weight, maxWidth: maxWidth,
+            tracking: tracking, tabularFigures: tabularFigures, ellipsize: ellipsize, on: measuringContext
+        )
+    }
+
+    /// The same measurement, against a caller-supplied context rather than
+    /// the always-unscaled `measuringContext` -- what a parity check needs to
+    /// prove a string measures the same whether that context already carries
+    /// a backing-scale `cairo_scale` or not.
+    static func measure(
+        _ text: String,
+        pointSize: Double,
+        mono: Bool = false,
+        weight: CairoFontWeight = .regular,
+        maxWidth: Double? = nil,
+        tracking: Double = 0,
+        tabularFigures: Bool = false,
+        ellipsize: Bool = false,
+        on context: OpaquePointer
+    ) -> (width: Double, height: Double) {
         guard let layout = makeLayout(
-            on: measuringContext,
+            on: context,
             text: text,
             pointSize: pointSize,
             mono: mono,
-            bold: bold,
+            weight: weight,
             maxWidth: maxWidth,
             tracking: tracking,
+            tabularFigures: tabularFigures,
             ellipsize: ellipsize
         ) else {
             return (0, 0)
@@ -64,9 +95,10 @@ enum CairoChromeText {
         pointSize: Double,
         color: ViewerColor,
         mono: Bool = false,
-        bold: Bool = false,
+        weight: CairoFontWeight = .regular,
         maxWidth: Double? = nil,
         tracking: Double = 0,
+        tabularFigures: Bool = false,
         ellipsize: Bool = false
     ) -> Double {
         guard let layout = makeLayout(
@@ -74,9 +106,10 @@ enum CairoChromeText {
             text: text,
             pointSize: pointSize,
             mono: mono,
-            bold: bold,
+            weight: weight,
             maxWidth: maxWidth,
             tracking: tracking,
+            tabularFigures: tabularFigures,
             ellipsize: ellipsize
         ) else {
             return 0
@@ -91,39 +124,6 @@ enum CairoChromeText {
         return Double(height)
     }
 
-    /// Draws `text` right-aligned so its right edge lands on `rightX`. Passing
-    /// `maxWidth` with `ellipsize` truncates a value too long for its column
-    /// to one line with an ellipsis, the way `SessionHUDRowView` truncates a
-    /// value AppKit lays out -- rather than letting it run into the label
-    /// beside it.
-    @discardableResult
-    static func drawRightAligned(
-        _ text: String,
-        in context: OpaquePointer,
-        rightX: Double,
-        y: Double,
-        pointSize: Double,
-        color: ViewerColor,
-        mono: Bool = false,
-        bold: Bool = false,
-        maxWidth: Double? = nil,
-        ellipsize: Bool = false
-    ) -> Double {
-        let size = measure(text, pointSize: pointSize, mono: mono, bold: bold, maxWidth: maxWidth, ellipsize: ellipsize)
-        return draw(
-            text,
-            in: context,
-            x: rightX - size.width,
-            y: y,
-            pointSize: pointSize,
-            color: color,
-            mono: mono,
-            bold: bold,
-            maxWidth: maxWidth,
-            ellipsize: ellipsize
-        )
-    }
-
     /// Draws `text` centred horizontally on `centreX`.
     @discardableResult
     static func drawCentred(
@@ -134,9 +134,9 @@ enum CairoChromeText {
         pointSize: Double,
         color: ViewerColor,
         mono: Bool = false,
-        bold: Bool = false
+        weight: CairoFontWeight = .regular
     ) -> Double {
-        let size = measure(text, pointSize: pointSize, mono: mono, bold: bold)
+        let size = measure(text, pointSize: pointSize, mono: mono, weight: weight)
         return draw(
             text,
             in: context,
@@ -145,7 +145,7 @@ enum CairoChromeText {
             pointSize: pointSize,
             color: color,
             mono: mono,
-            bold: bold
+            weight: weight
         )
     }
 
@@ -200,28 +200,71 @@ enum CairoChromeText {
         cairo_stroke(context)
     }
 
-    /// A filled circle, which is what every tone indicator in this system is.
-    static func fillDot(_ context: OpaquePointer, centreX: Double, centreY: Double, radius: Double, color: ViewerColor) {
-        cairo_new_sub_path(context)
-        cairo_arc(context, centreX, centreY, radius, 0, 2 * Double.pi)
+    /// A plain X, drawn as two crossing strokes rather than a character --
+    /// the transient notice's own dismiss glyph, which some fallback fonts
+    /// substitute a box or a bare letter "X" for when asked to draw "✕".
+    static func strokeCross(
+        _ context: OpaquePointer,
+        centreX: Double,
+        centreY: Double,
+        size: Double,
+        color: ViewerColor,
+        lineWidth: Double = 1.5
+    ) {
+        let half = size / 2
+        cairo_new_path(context)
+        cairo_move_to(context, centreX - half, centreY - half)
+        cairo_line_to(context, centreX + half, centreY + half)
+        cairo_move_to(context, centreX + half, centreY - half)
+        cairo_line_to(context, centreX - half, centreY + half)
         setSource(context, color)
-        cairo_fill(context)
+        cairo_set_line_width(context, lineWidth)
+        cairo_stroke(context)
     }
 
+    /// Built directly through Pango's own description API, rather than a
+    /// parsed string: `pango_font_description_set_size` takes Pango units, the
+    /// same fractional-point conversion `sensorium_pango_units_from_points`
+    /// already gives the rest of this file, so a caller is never rounded to a
+    /// whole point the way a string like `"Inter 12"` would round it.
+    ///
+    /// A "point" here means the same thing it does on macOS -- one logical
+    /// pixel before the backing scale. Pango's own default reads a size in
+    /// points through a 96 dpi font map, so the layout's own context is
+    /// pinned to 72 dpi here, freshly on every call, rather than depending on
+    /// a GTK window having set one first.
+    ///
+    /// Hint metrics and glyph-position rounding are both turned off for the
+    /// same reason: left on, Pango snaps advances to the *device* pixel
+    /// grid, so the same string measures a pixel or two wider once actually
+    /// drawn on a context already carrying a backing-scale `cairo_scale` than
+    /// it measured on the unscaled context `measure` always uses -- a label
+    /// column sized from the one and truncated against the other. Turning
+    /// both off makes a layout's own size depend only on its font and text,
+    /// never on which context or backing scale it happened to be built on.
     private static func makeLayout(
         on context: OpaquePointer,
         text: String,
         pointSize: Double,
         mono: Bool,
-        bold: Bool,
+        weight: CairoFontWeight,
         maxWidth: Double?,
         tracking: Double,
+        tabularFigures: Bool = false,
         ellipsize: Bool = false
     ) -> OpaquePointer? {
         guard let layout = pango_cairo_create_layout(context) else { return nil }
-        let description = pango_font_description_from_string(
-            fontDescription(pointSize: pointSize, mono: mono, bold: bold)
-        )
+        let layoutContext = pango_layout_get_context(layout)
+        pango_cairo_context_set_resolution(layoutContext, 72)
+        let fontOptions = cairo_font_options_create()
+        cairo_font_options_set_hint_metrics(fontOptions, CAIRO_HINT_METRICS_OFF)
+        pango_cairo_context_set_font_options(layoutContext, fontOptions)
+        cairo_font_options_destroy(fontOptions)
+        pango_context_set_round_glyph_positions(layoutContext, 0)
+        let description = pango_font_description_new()
+        pango_font_description_set_family(description, mono ? "JetBrains Mono" : "Inter")
+        pango_font_description_set_weight(description, weight.pangoWeight)
+        pango_font_description_set_size(description, sensorium_pango_units_from_points(pointSize))
         pango_layout_set_font_description(layout, description)
         pango_font_description_free(description)
         pango_layout_set_text(layout, text, -1)
@@ -237,12 +280,20 @@ enum CairoChromeText {
                 pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR)
             }
         }
-        if tracking != 0 {
+        if tracking != 0 || tabularFigures {
             let attributes = pango_attr_list_new()
-            pango_attr_list_insert(
-                attributes,
-                pango_attr_letter_spacing_new(sensorium_pango_units_from_points(tracking))
-            )
+            if tracking != 0 {
+                pango_attr_list_insert(
+                    attributes,
+                    pango_attr_letter_spacing_new(sensorium_pango_units_from_points(tracking))
+                )
+            }
+            if tabularFigures {
+                // The AppKit equivalent of `font-variant-numeric:
+                // tabular-nums`, the same feature `SessionHUDRowView`'s own
+                // tabular figures ask the font for on macOS.
+                pango_attr_list_insert(attributes, pango_attr_font_features_new("tnum=1"))
+            }
             pango_layout_set_attributes(layout, attributes)
             pango_attr_list_unref(attributes)
         }

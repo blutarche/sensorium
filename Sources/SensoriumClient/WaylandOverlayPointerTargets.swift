@@ -7,6 +7,11 @@
 /// that surface against the ones the chrome put up. Nothing here holds a
 /// Wayland object, so the rule can be driven without a compositor.
 public enum WaylandOverlayKind: CaseIterable, Sendable {
+    /// Listed first so it is the first subsurface created and so the lowest
+    /// in the stack: every other overlay is created after it and so draws
+    /// above it, the way a real compositor orders sibling subsurfaces by
+    /// creation order.
+    case canvasScrim
     case statusPanel
     case notice
     case diagnostics

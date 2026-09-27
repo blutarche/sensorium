@@ -35,6 +35,15 @@ public struct SessionChromeState: Equatable, Sendable {
     }
 
     public var isStatusPanelVisible: Bool { status?.isOverlayVisible ?? false }
+    /// Whether a scrim belongs behind the status panel -- shown for every
+    /// phase the panel itself is up for, opaque or translucent alike; see
+    /// `isScrimOpaque`.
+    public var isScrimVisible: Bool { isStatusPanelVisible }
+    /// Whether that scrim is the opaque fill or the translucent one -- the
+    /// same rule `ViewerSessionStatusOverlay` uses on macOS: opaque while
+    /// there is no picture underneath yet, translucent once a frozen picture
+    /// needs marking as stale (`status.dimsCanvas`).
+    public var isScrimOpaque: Bool { isStatusPanelVisible && !(status?.dimsCanvas ?? false) }
     public var isStripVisible: Bool { strip.isVisible }
     public var isHandleVisible: Bool { strip.showsHandle }
     public var isNoticeVisible: Bool { notice != nil }

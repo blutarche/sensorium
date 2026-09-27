@@ -31,11 +31,26 @@ public struct ViewerChromeRect: Equatable, Sendable {
 public enum WaylandOverlayLayout {
     /// How far every overlay stays clear of the window's edges.
     public static let edgeMargin: Double = Double(ViewerChromeMetrics.Space.md)
+    /// The band `ShortcutStripView` reserves above its own bar on macOS, for
+    /// revealing the menu bar. A Wayland window has no menu bar to reveal,
+    /// but the strip's own geometry -- where the handle sits, how tall the
+    /// band a pinned strip claims is -- stays identical anyway.
+    public static let topClearance: Double = Double(ViewerChromeMetrics.Strip.topClearance)
+    /// How far the diagnostics HUD stays clear of the window's edges -- 8pt,
+    /// the way `SessionHUDView` sits `ViewerDesign.Space.xs` inside the
+    /// canvas on macOS, rather than the wider margin every other overlay uses.
+    public static let diagnosticsMargin: Double = Double(ViewerChromeMetrics.Diagnostics.edgeInset)
 
     /// How long a transient notice stays up before it takes itself away.
     /// Long enough to read a full sentence, short enough not to become a
     /// second, permanent status line -- the same span the macOS banner uses.
     public static let noticeAutoDismissSeconds: Double = 6
+
+    /// The whole window: behind the status panel, marking a frozen picture
+    /// as stale, exactly the area `ViewerSessionStatusOverlay` dims on macOS.
+    public static func canvasScrim(windowWidth: Double, windowHeight: Double) -> ViewerChromeRect {
+        ViewerChromeRect(x: 0, y: 0, width: windowWidth, height: windowHeight)
+    }
 
     /// Centred on both axes: the panel is the only thing on screen worth
     /// reading while it is up.
@@ -78,43 +93,41 @@ public enum WaylandOverlayLayout {
         )
     }
 
-    /// Top right, out of the way of the picture's own middle, the way the
-    /// macOS diagnostics panel sits. `topInset` is the band a pinned strip
-    /// has claimed, which this panel moves down by rather than sitting under.
+    /// Top left, the way `SessionHUDView` is pinned inside the canvas on
+    /// macOS (`ViewerDesign.Space.xs` off the leading and top edges).
+    /// `topInset` is the band a pinned strip has claimed, which this panel
+    /// moves down by rather than sitting under.
     public static func diagnosticsHUD(
         windowWidth: Double,
         contentWidth: Double,
         contentHeight: Double,
         topInset: Double = 0
     ) -> ViewerChromeRect {
-        let width = min(contentWidth, max(0, windowWidth - edgeMargin * 2))
+        let width = min(contentWidth, max(0, windowWidth - diagnosticsMargin * 2))
         return ViewerChromeRect(
-            x: max(edgeMargin, windowWidth - width - edgeMargin),
-            y: topInset + edgeMargin,
+            x: diagnosticsMargin,
+            y: topInset + diagnosticsMargin,
             width: width,
             height: contentHeight
         )
     }
 
-    /// Hanging from the top edge, centred. An unpinned strip floats over the
-    /// picture there; a pinned one claims that band and the picture moves
-    /// down below it -- see `topInset`.
+    /// Flush with the top edge and the full width of the window -- the way
+    /// `ShortcutStripView`'s own `bar` is pinned to its superview's leading
+    /// and trailing edges on macOS, rather than floating as a pill sized to
+    /// its content. An unpinned strip floats over the picture there; a
+    /// pinned one claims that band and the picture moves down below it -- see
+    /// `topInset`.
     public static func shortcutStrip(
         windowWidth: Double,
-        contentWidth: Double,
         contentHeight: Double
     ) -> ViewerChromeRect {
-        let width = min(contentWidth, max(0, windowWidth - edgeMargin * 2))
-        return ViewerChromeRect(
-            x: centredX(width, in: windowWidth),
-            y: 0,
-            width: width,
-            height: contentHeight
-        )
+        ViewerChromeRect(x: 0, y: topClearance, width: windowWidth, height: contentHeight)
     }
 
-    /// Flush with the top edge, under the strip it opens: a hover target set
-    /// in from the edge is one the pointer can miss by overshooting.
+    /// Under the strip it opens, and the same `topClearance` below the top
+    /// edge as the bar itself: a hover target set in from the edge is one the
+    /// pointer can miss by overshooting.
     public static func stripHandle(
         windowWidth: Double,
         contentWidth: Double,
@@ -122,7 +135,7 @@ public enum WaylandOverlayLayout {
     ) -> ViewerChromeRect {
         ViewerChromeRect(
             x: centredX(contentWidth, in: windowWidth),
-            y: 0,
+            y: topClearance,
             width: contentWidth,
             height: contentHeight
         )
@@ -134,11 +147,14 @@ public enum WaylandOverlayLayout {
     /// its own video view, so the two platforms cannot drift apart on when a
     /// strip costs the picture height.
     public static func topInset(isPinned: Bool, isStripOpen: Bool, stripHeight: Double) -> Double {
-        Double(ShortcutStripLayoutPolicy.videoTopInset(
+        let claimed = Double(ShortcutStripLayoutPolicy.videoTopInset(
             isPinned: isPinned,
             isStripOpen: isStripOpen,
             stripHeight: CGFloat(stripHeight)
         ))
+        // The band above the bar is only real once the bar itself is: an
+        // unpinned or closed strip claims nothing, clearance included.
+        return claimed > 0 ? claimed + topClearance : 0
     }
 
     /// Where the picture itself sits once a pinned strip has taken its band:

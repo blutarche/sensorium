@@ -20,13 +20,30 @@ public enum GtkToolkit {
     public static func start() {
         guard !hasStarted else { return }
         hasStarted = true
+        applyProcessIdentity()
         guard gtk_init_check() != 0 else {
             FileHandle.standardError.write(Data(
                 "Sensorium could not open a window: this machine has no graphical session to open one in.\n".utf8
             ))
             exit(1)
         }
+        applyDefaultIcon()
         GtkViewerStyle.install()
+    }
+
+    /// GTK derives a Wayland window's `app_id` from the process name where
+    /// nothing else sets it, so this has to land before `gtk_init_check`
+    /// opens the display connection. Plain GLib calls, so nothing here needs
+    /// a display to have succeeded.
+    public static func applyProcessIdentity() {
+        g_set_prgname(ViewerApplicationIdentity.applicationID)
+        g_set_application_name(ViewerApplicationIdentity.applicationName)
+    }
+
+    /// The icon a taskbar shows before any window of this process has one of
+    /// its own.
+    public static func applyDefaultIcon() {
+        gtk_window_set_default_icon_name(ViewerApplicationIdentity.applicationID)
     }
 }
 

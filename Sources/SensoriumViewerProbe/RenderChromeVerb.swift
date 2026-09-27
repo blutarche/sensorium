@@ -90,12 +90,41 @@ enum RenderChromeVerb {
         ))
 
         write("hud", SessionChromeRenderPreview.renderOverlay(
-            .diagnostics(blocks: diagnosticsBlocks()), scale: scale, to: url("hud", scale, directory)
+            .diagnostics(blocks: diagnosticsBlocks(isAttentionWorthy: false), isFlagged: false),
+            scale: scale,
+            to: url("hud", scale, directory)
+        ))
+
+        write("hud-flagged", SessionChromeRenderPreview.renderOverlay(
+            .diagnostics(blocks: diagnosticsBlocks(isAttentionWorthy: true), isFlagged: true),
+            scale: scale,
+            to: url("hud-flagged", scale, directory)
         ))
 
         write("strip-handle", SessionChromeRenderPreview.renderOverlay(
             .stripHandle, scale: scale, to: url("strip-handle", scale, directory)
         ))
+
+        // The strip's own icon-only clusters, gear and pin included, as this
+        // machine's icon theme actually resolves them.
+        write("strip", SessionChromeRenderPreview.renderOverlay(
+            .strip(visibility: .shown, hostName: hostName, isPinned: false),
+            scale: scale,
+            width: windowWidth,
+            to: url("strip", scale, directory)
+        ))
+
+        // The same strip with every icon lookup forced to answer nothing, so
+        // every button -- action, gear and pin alike -- falls back to its
+        // own short text label rather than drawing blank.
+        FreedesktopIconLookup.forceNotFound = true
+        write("strip-no-icons", SessionChromeRenderPreview.renderOverlay(
+            .strip(visibility: .shown, hostName: hostName, isPinned: false),
+            scale: scale,
+            width: windowWidth,
+            to: url("strip-no-icons", scale, directory)
+        ))
+        FreedesktopIconLookup.forceNotFound = false
 
         var confirmingStrip = ShortcutStripModel(phase: .live)
         confirmingStrip.toggleRequested()
@@ -103,6 +132,7 @@ enum RenderChromeVerb {
         write("strip-confirm", SessionChromeRenderPreview.renderOverlay(
             .strip(visibility: confirmingStrip.visibility, hostName: hostName, isPinned: false),
             scale: scale,
+            width: windowWidth,
             to: url("strip-confirm", scale, directory)
         ))
 
@@ -120,6 +150,21 @@ enum RenderChromeVerb {
             windowHeight: windowHeight,
             scale: scale,
             to: url("composite-live", scale, directory)
+        ))
+
+        // A fourth composite: a fresh dial, before a first frame has ever
+        // arrived -- the opaque scrim case, with no frozen picture to mark
+        // stale.
+        var connectingState = SessionChromeState()
+        let connectingMachine = ViewerSessionStateMachine(hostName: hostName)
+        connectingState.apply(status: connectingMachine.status, now: 0)
+        write("composite-connecting", SessionChromeRenderPreview.renderComposite(
+            state: connectingState,
+            hostName: hostName,
+            windowWidth: windowWidth,
+            windowHeight: windowHeight,
+            scale: scale,
+            to: url("composite-connecting", scale, directory)
         ))
 
         var lostState = SessionChromeState()
@@ -159,20 +204,26 @@ enum RenderChromeVerb {
         return failures
     }
 
-    /// The HUD's rows, built from a reading with every field filled in so
-    /// the panel's own warn-toned rows -- a limited fidelity, a captured
-    /// pointer, a stale reading -- are all on screen at once for the render
-    /// check to see.
-    private static func diagnosticsBlocks() -> [SessionHUDBlock] {
+    /// The HUD's rows. `isAttentionWorthy: true` builds a reading with every
+    /// warn-toned field filled in -- dropped frames, a limited fidelity, a
+    /// stale reading -- so the panel's own warn rows are all on screen at
+    /// once; `false` clears the frame drops that `TelemetryAttentionThreshold`
+    /// itself would flag, so an unflagged render never shows a warn-worthy
+    /// drop count inside a plain border, a combination the real HUD never
+    /// draws.
+    private static func diagnosticsBlocks(isAttentionWorthy: Bool) -> [SessionHUDBlock] {
         var machine = ViewerSessionStateMachine(hostName: hostName)
         machine.handle(.canvasReady)
-        return SessionHUDPanel.blocks(telemetry: diagnosticsTelemetry(), session: machine.status)
+        return SessionHUDPanel.blocks(
+            telemetry: diagnosticsTelemetry(isAttentionWorthy: isAttentionWorthy),
+            session: machine.status
+        )
     }
 
     /// The reading itself, kept separate from `diagnosticsBlocks()` so a
     /// composite that carries `SessionChromeState`'s own telemetry, rather
     /// than a bare block list, can build from the same numbers.
-    private static func diagnosticsTelemetry() -> SessionHUDSnapshot {
+    private static func diagnosticsTelemetry(isAttentionWorthy: Bool = true) -> SessionHUDSnapshot {
         var clientMetrics = SessionMetrics()
         clientMetrics.record(stage: .receive, startedAtNanoseconds: 0, endedAtNanoseconds: 3_200_000)
         clientMetrics.record(stage: .decode, startedAtNanoseconds: 0, endedAtNanoseconds: 4_100_000)
@@ -186,9 +237,9 @@ enum RenderChromeVerb {
             encode: StageLatencySample(p50Nanoseconds: 5_400_000, p95Nanoseconds: 9_200_000),
             send: StageLatencySample(p50Nanoseconds: 1_100_000, p95Nanoseconds: 2_000_000),
             framesPerSecond: 58.4,
-            encoderInputDropped: 2,
+            encoderInputDropped: isAttentionWorthy ? 2 : 0,
             globalAdmissionDropped: 0,
-            sendQueueDropped: 1,
+            sendQueueDropped: isAttentionWorthy ? 1 : 0,
             appliedStreamScale: 1.0,
             sustainableScaleCeiling: 1.0,
             clampedFromUserChoice: nil,
@@ -208,7 +259,7 @@ enum RenderChromeVerb {
             requestedDrawablePixelHeight: 1600,
             streamScalePreference: .automatic,
             decoder: .hardwareAccelerated,
-            isAttentionWorthy: true,
+            isAttentionWorthy: isAttentionWorthy,
             isPointerCaptured: true,
             presentCompletionP50Nanoseconds: 4_600_000,
             presentationHoldNanoseconds: 2_300_000,

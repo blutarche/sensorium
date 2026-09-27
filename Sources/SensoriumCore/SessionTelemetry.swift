@@ -175,6 +175,14 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
     /// than taken from the host's send-side figure -- what left the host is
     /// not what arrived.
     public let receivedBitsPerSecond: Double?
+    /// This viewer's own clock-sync round trip, for the host's menu-bar ping
+    /// display only -- see `HostPingDisplay`. Session-wide, not per surface,
+    /// so it repeats unchanged across whichever surfaces this tick reports;
+    /// `nil` from a viewer that predates this field, or one that has not yet
+    /// completed a clock sync. Never read by anything that steers the
+    /// stream: unlike every other field above, an untrusted or wrong value
+    /// here can only mislabel a number on the host's own screen.
+    public let roundTripNanoseconds: Int64?
 
     public init(
         surfaceID: UInt32,
@@ -183,7 +191,8 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         decode: StageLatencySample?,
         presentedFramesPerSecond: Double?,
         decodedFramesPerSecond: Double?,
-        receivedBitsPerSecond: Double?
+        receivedBitsPerSecond: Double?,
+        roundTripNanoseconds: Int64? = nil
     ) {
         self.surfaceID = surfaceID
         self.endToEnd = endToEnd
@@ -192,6 +201,7 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         self.presentedFramesPerSecond = presentedFramesPerSecond
         self.decodedFramesPerSecond = decodedFramesPerSecond
         self.receivedBitsPerSecond = receivedBitsPerSecond
+        self.roundTripNanoseconds = roundTripNanoseconds
     }
 }
 
@@ -257,6 +267,9 @@ public struct ViewerTelemetryStore: Equatable, Sendable {
         for stage in [sample.endToEnd, sample.receive, sample.decode] {
             guard let stage else { continue }
             guard stage.p50Nanoseconds >= 0, stage.p95Nanoseconds >= 0 else { return false }
+        }
+        if let roundTripNanoseconds = sample.roundTripNanoseconds, roundTripNanoseconds < 0 {
+            return false
         }
         return true
     }

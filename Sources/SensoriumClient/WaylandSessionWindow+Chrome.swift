@@ -1,4 +1,4 @@
-#if canImport(CWayland) && canImport(CEGL) && canImport(CAVCodec) && canImport(CCairo)
+#if canImport(CWayland) && canImport(CEGL) && canImport(CAVCodec) && canImport(CCairo) && canImport(CGtk4)
 import CWayland
 import Foundation
 import SensoriumCore
@@ -32,8 +32,9 @@ struct WaylandSessionChrome {
     var overlays: [WaylandOverlayKind: WaylandOverlaySurface] = [:]
     /// The session controls are an ordinary desktop window rather than an
     /// overlay: it takes typing, and a subsurface cannot hold the keyboard
-    /// focus a toplevel already has.
-    var controlsWindow: GtkSessionControlsWindow?
+    /// focus a toplevel already has. Held as the protocol so the
+    /// create-once-reuse-after policy is testable without a real GTK window.
+    var controlsWindow: (any SessionControlsWindowPresenting)?
     /// The band a pinned strip has taken off the top of the window, in the
     /// logical units a pointer position is reported in. The picture and
     /// every pointer position are measured against what is left.
@@ -186,9 +187,11 @@ extension WaylandSessionWindow: SessionWindowChrome {
     /// The viewer's own chord for the session controls. On macOS these are
     /// menu bar menus; here they are a window of their own.
     func openSessionControls() {
-        guard let window = chrome.controlsWindow ?? makeSessionControlsWindow() else { return }
-        chrome.controlsWindow = window
-        window.present(model: chrome.state.controls)
+        chrome.controlsWindow = SessionControlsWindowOpening.openOrReuse(
+            existing: chrome.controlsWindow,
+            model: chrome.state.controls,
+            makeNew: makeSessionControlsWindow
+        )
     }
 
     func applyDiagnostics(_ snapshot: SessionHUDSnapshot) {
@@ -246,6 +249,15 @@ extension WaylandSessionWindow: SessionWindowChrome {
             reportVideoBounds()
         }
 
+        if state.isScrimVisible {
+            let rect = WaylandOverlayLayout.canvasScrim(windowWidth: size.width, windowHeight: size.height)
+            place(.canvasScrim, at: rect, scale: scale) { context, bounds in
+                SessionChromePainter.drawScrim(in: context, bounds: bounds, opaque: state.isScrimOpaque)
+            }
+        } else {
+            chrome.overlays[.canvasScrim]?.hide()
+        }
+
         if let status = state.status, state.isStatusPanelVisible {
             let measured = SessionChromePainter.statusPanelSize(status: status)
             let rect = WaylandOverlayLayout.statusPanel(
@@ -285,8 +297,9 @@ extension WaylandSessionWindow: SessionWindowChrome {
                 contentHeight: measured.height,
                 topInset: topInset
             )
+            let isFlagged = state.telemetry?.isAttentionWorthy ?? false
             place(.diagnostics, at: rect, scale: scale) { context, bounds in
-                SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds)
+                SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
             }
         } else {
             chrome.overlays[.diagnostics]?.hide()
@@ -299,7 +312,6 @@ extension WaylandSessionWindow: SessionWindowChrome {
             let measured = SessionChromePainter.stripSize(visibility: visibility, hostName: hostName)
             let rect = WaylandOverlayLayout.shortcutStrip(
                 windowWidth: size.width,
-                contentWidth: measured.width,
                 contentHeight: measured.height
             )
             place(.shortcutStrip, at: rect, scale: scale) { context, bounds in
@@ -413,11 +425,22 @@ extension WaylandSessionWindow: SessionWindowChrome {
         case .shortcutStrip:
             pressShortcutStrip()
         case .notice:
-            chrome.state.dismissNotice()
-            relayoutChrome()
-        case .diagnostics:
+            pressNotice()
+        case .diagnostics, .canvasScrim:
             break
         }
+    }
+
+    /// Dismisses only when the press lands on the ✕ itself -- the same rule
+    /// a real `NSButton` gives the banner's dismiss control on macOS, rather
+    /// than the whole banner acting as one big dismiss target.
+    private func pressNotice() {
+        guard let rect = chrome.overlays[.notice]?.rect else { return }
+        let local = ViewerChromeRect(x: 0, y: 0, width: rect.width, height: rect.height)
+        let dismissRect = SessionChromePainter.noticeDismissRect(in: local)
+        guard dismissRect.contains(x: chrome.overlayPointerX, y: chrome.overlayPointerY) else { return }
+        chrome.state.dismissNotice()
+        relayoutChrome()
     }
 
     private func pressStatusPanel() {
@@ -439,9 +462,9 @@ extension WaylandSessionWindow: SessionWindowChrome {
             visibility: chrome.state.strip.visibility,
             hostName: chrome.hostName,
             originX: 0,
-            originY: 0
+            originY: 0,
+            width: rect.width
         )
-        _ = rect
         guard let entry = entries.first(where: {
             $0.rect.contains(x: chrome.overlayPointerX, y: chrome.overlayPointerY)
         }) else {
@@ -458,6 +481,8 @@ extension WaylandSessionWindow: SessionWindowChrome {
             }
         case .cancel:
             chrome.state.cancelPendingStripAction()
+        case .gear:
+            openSessionControls()
         case .pin:
             chrome.state.togglePinRequested(now: chromeNow())
         }
@@ -478,7 +503,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             chrome.state.pointerOverHandle(isOver, now: now)
         case .shortcutStrip:
             chrome.state.pointerOverStrip(isOver, now: now)
-        case .statusPanel, .notice, .diagnostics:
+        case .statusPanel, .notice, .diagnostics, .canvasScrim:
             return
         }
         relayoutChrome()

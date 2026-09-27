@@ -100,6 +100,13 @@ func testHostScreenModeMenuTests() async {
             unknown.localizedCaseInsensitiveContains("no longer offers"),
             "a resolution the host has stopped offering is explained as that, not as a failure of this machine"
         )
+        // Named for whichever platform this is -- Linux has no native menu
+        // bar, so it points at the shortcut strip's own gear instead.
+        #if os(macOS)
+        expect(unknown.hasSuffix("from the Screen menu."), "macOS names its own Screen menu, got \(unknown)")
+        #else
+        expect(unknown.hasSuffix("from Session Settings."), "Linux names the gear's own control instead, got \(unknown)")
+        #endif
         let notLive = HostScreenRefusalCopy.modeRefusalLine(
             reason: HostScreenModeRefusalReason.notLive, hostLabel: "studio-mini"
         )

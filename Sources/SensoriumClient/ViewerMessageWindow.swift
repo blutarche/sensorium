@@ -102,7 +102,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
             button.attributedTitle = NSAttributedString(
                 string: actionTitle,
                 attributes: [
-                    .font: ViewerDesign.font(mono: false, size: 14, weight: .medium),
+                    .font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
                     .foregroundColor: (actionIsPrimary ? ViewerDesign.chromeBg : ViewerDesign.ink).nsColor
                 ]
             )
@@ -129,7 +129,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
             button.attributedTitle = NSAttributedString(
                 string: secondaryActionTitle,
                 attributes: [
-                    .font: ViewerDesign.font(mono: false, size: 14, weight: .medium),
+                    .font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
                     .foregroundColor: ViewerDesign.ink.nsColor
                 ]
             )
@@ -155,7 +155,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
         dismissButton.attributedTitle = NSAttributedString(
             string: dismissTitle,
             attributes: [
-                .font: ViewerDesign.font(mono: false, size: 14, weight: .medium),
+                .font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
                 // `.ink`, the same off-white a secondary `ViewerActionButton`
                 // uses (see ClientCanvasWindowController.swift): `.muted2`
                 // here read as a disabled label on this button's `.bg4` fill.

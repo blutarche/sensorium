@@ -756,6 +756,24 @@ func testShortcutStripButtonAppearanceTests() {
     print("PASS: the shortcut strip's buttons are equal width, iconed, and centred as a row")
 }
 
+/// The strip's own overall height and handle size, pinned so a change to
+/// `ViewerChromeMetrics.Strip` -- the numbers `SessionChromePainter`'s Linux
+/// drawing reads too -- cannot silently move this view without a test to
+/// show it.
+@MainActor
+func testShortcutStripMetricsTests() {
+    expect(ShortcutStripView.barHeight == 40, "the bar itself is 40 tall, on both platforms")
+    expect(
+        ShortcutStripView.height == 46,
+        "the clearance above the bar (6) plus the bar (40) is 46, got \(ShortcutStripView.height)"
+    )
+    expect(
+        ShortcutStripView.handleSize == NSSize(width: 36, height: 8),
+        "the handle tab is 36 by 8, got \(ShortcutStripView.handleSize)"
+    )
+    print("PASS: the shortcut strip's own height and handle size are pinned")
+}
+
 /// The pin button lives in its own cluster at the trailing edge, outside the
 /// centred group of action buttons, and its tooltip names what pressing it
 /// does next rather than a fixed label.
@@ -827,6 +845,56 @@ private func collectButtonsWithToolTipPrefix(_ prefix: String) -> (NSView) -> [N
         return found
     }
     return collect
+}
+
+/// Every icon-only button on the strip -- an action, or the pin -- has no
+/// visible text of its own, so VoiceOver has only its accessibility label to
+/// read; this must say the same thing its tooltip already does; a sighted
+/// person and a screen reader learn the same fact about the same button.
+@MainActor
+func testShortcutStripAccessibilityLabelsTests() {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore())
+    container.addSubview(strip)
+    NSLayoutConstraint.activate([
+        strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        strip.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        strip.topAnchor.constraint(equalTo: container.topAnchor)
+    ])
+    strip.phaseChanged(.live)
+    strip.toggleRequested()
+    container.layoutSubtreeIfNeeded()
+
+    func collect(_ view: NSView) -> [NSButton] {
+        var found: [NSButton] = []
+        if let button = view as? NSButton {
+            found.append(button)
+        }
+        for subview in view.subviews {
+            found.append(contentsOf: collect(subview))
+        }
+        return found
+    }
+
+    let actionButtons = collectButtonsWithToolTipPrefix("Sends")(strip)
+    expect(actionButtons.count == ShortcutStripAction.allCases.count, "every action button was found")
+    for button in actionButtons {
+        expect(
+            button.accessibilityLabel() == button.toolTip,
+            "\(button.toolTip ?? "an action button")'s accessibility label matches its tooltip"
+        )
+    }
+
+    guard let pinButton = collect(strip).first(where: { $0.toolTip == "Keep open" || $0.toolTip == "Let close" }) else {
+        expect(false, "the pin button is found by its own tooltip")
+        return
+    }
+    expect(
+        pinButton.accessibilityLabel() == pinButton.toolTip,
+        "the pin button's accessibility label matches its tooltip"
+    )
+
+    print("PASS: every icon-only button on the strip carries an accessibility label matching its tooltip")
 }
 
 /// Every SF Symbol name an action names must actually resolve on this

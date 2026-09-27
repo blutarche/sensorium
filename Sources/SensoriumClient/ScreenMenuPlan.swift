@@ -210,7 +210,7 @@ public enum ScreenMenuPlan {
                 isEnabled: !isHostScreenSessionLive
             ))
         }
-        return StartWithMenuState(title: "Start With", items: items)
+        return StartWithMenuState(title: "Start with", items: items)
     }
 
     private static func isSameHostScreen(_ preference: StartTarget, displayIdentity: String) -> Bool {

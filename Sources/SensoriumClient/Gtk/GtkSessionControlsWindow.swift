@@ -13,7 +13,7 @@ import SensoriumCore
 /// `SessionControlsWindowModel`'s decision; this holds widgets and reports
 /// which row was pressed.
 @MainActor
-public final class GtkSessionControlsWindow {
+public final class GtkSessionControlsWindow: SessionControlsWindowPresenting {
     private let window: GtkRef
     private let body: GtkRef
     private let activate: (SessionControlsActivation) -> Void
@@ -28,7 +28,7 @@ public final class GtkSessionControlsWindow {
         self.activate = activate
         GtkToolkit.start()
         window = gtkRef(gtk_window_new())
-        gtk_window_set_title(sensorium_gtk_window(window), "Session")
+        gtk_window_set_title(sensorium_gtk_window(window), SessionSettingsNaming.title)
         gtk_window_set_default_size(sensorium_gtk_window(window), 380, 560)
         gtk_widget_add_css_class(sensorium_gtk_widget(window), "sensorium")
 

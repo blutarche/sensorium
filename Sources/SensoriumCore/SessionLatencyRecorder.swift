@@ -14,6 +14,11 @@ public struct SessionLatencyRecorder: Sendable {
 
     public var clockOffsetNanoseconds: Int64? { synchronizer.offsetNanoseconds }
     public var clockRoundTripNanoseconds: Int64? { synchronizer.roundTripNanoseconds }
+    /// This session's most recent clock-sync round trip -- see
+    /// `SessionClockSynchronizer.latestRoundTripNanoseconds`'s own doc
+    /// comment for why this, and not `clockRoundTripNanoseconds`, is what a
+    /// live ping display reads.
+    public var latestClockRoundTripNanoseconds: Int64? { synchronizer.latestRoundTripNanoseconds }
 
     public mutating func makeClockRequest(atNanoseconds now: Int64) -> SensoriumMessage {
         synchronizer.makeRequest(atNanoseconds: now)

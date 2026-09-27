@@ -747,6 +747,17 @@ struct sensoriumd {
                                 }
                             }
                         }
+                    },
+                    // The live round-trip ping next to the menu-bar icon,
+                    // display-only -- see `HostOperatorStatusStore.recordPing`.
+                    onViewerPing: { roundTripNanoseconds in
+                        Task { @MainActor in
+                            operatorBox.status.recordPing(
+                                roundTripNanoseconds: roundTripNanoseconds,
+                                atSeconds: Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000,
+                                from: connectionToken
+                            )
+                        }
                     }
                 )
                 thisConnection.session = session
@@ -903,6 +914,8 @@ struct sensoriumd {
     /// stops delivering, and `NSApplication` does not keep its delegate alive.
     private static var terminationSignalSources: [any DispatchSourceSignal] = []
     private static var applicationDelegate: HostApplicationDelegate?
+    /// `NSApplication` does not retain its main menu's controller either.
+    private static var mainMenu: HostMainMenuController?
 
     /// Ends the process the way a quit does when something else asks it to
     /// stop: `SIGTERM` from a system shutdown or a `kill`, `SIGINT` from a
@@ -1201,6 +1214,13 @@ struct sensoriumd {
             }
         )
         application.delegate = applicationDelegate
+        // Guarantees Cmd-Q, Cmd-W, Cmd-H and the six editing chords reach a
+        // key window of this app's own, whether or not `.accessory` draws a
+        // visible bar for it -- see `HostMainMenuController`'s own doc
+        // comment. Its Quit item goes through the same clean-quit path the
+        // status item's own Quit does.
+        mainMenu = HostMainMenuController(quit: { application.terminate(nil) })
+        mainMenu?.install(into: application)
         installTerminationSignalHandlers {
             print("Sensorium host: stopping, and releasing every virtual display this host created")
             currentSession.session?.stop()

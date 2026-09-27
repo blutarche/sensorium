@@ -13,6 +13,8 @@ func testSessionChromeStateTests() {
     chrome.apply(status: machine.handle(.connectStarted), now: 0)
     expect(chrome.isStatusPanelVisible, "a session that is not live shows its status panel")
     expect(!chrome.isHandleVisible, "there is nothing to send a shortcut to before the session is live")
+    expect(chrome.isScrimVisible, "a scrim belongs behind the panel even with no picture underneath yet")
+    expect(chrome.isScrimOpaque, "the first connect has no picture yet, so that scrim is the opaque fill, not the translucent one")
 
     chrome.apply(status: machine.handle(.canvasReady), now: 1)
     expect(!chrome.isStatusPanelVisible, "a live session shows nothing over the picture")
@@ -48,6 +50,8 @@ func testSessionChromeStateTests() {
     chrome.apply(status: machine.handle(.sessionEnded), now: 20)
     expect(chrome.isStatusPanelVisible, "a lost session brings the panel back")
     expect(!chrome.isHandleVisible && !chrome.isStripVisible, "and takes the strip and its handle away with it")
+    expect(chrome.isScrimVisible, "a session that was live leaves a picture behind, so the panel now sits on a scrim")
+    expect(!chrome.isScrimOpaque, "and that scrim is the translucent one, marking the frozen picture behind it as stale")
 
     print("PASS: the session window's chrome shows the panel, the strip, the notice and the diagnostics on the states that ask for them")
 }

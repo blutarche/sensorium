@@ -17,18 +17,20 @@ public final class ShortcutStripView: NSView {
     /// In full screen this is where the menu bar comes back when the pointer
     /// reaches the top of the screen, and anything put here could be aimed at
     /// only by summoning the menu bar over it.
-    public static let topClearance: CGFloat = 6
+    public static let topClearance: CGFloat = ViewerChromeMetrics.Strip.topClearance
     /// The bar itself: one row of icon-only buttons, grouped into a few small
     /// clusters, and the padding around it.
-    public static let barHeight: CGFloat = 38
+    public static let barHeight: CGFloat = ViewerChromeMetrics.Strip.barHeight
     /// Everything, which is the bar below the clearance above it.
     public static let height: CGFloat = topClearance + barHeight
     /// Small enough to be ignorable over a picture, large enough to aim at.
-    public static let handleSize = NSSize(width: 36, height: 8)
+    public static let handleSize = NSSize(
+        width: ViewerChromeMetrics.Strip.handleWidth, height: ViewerChromeMetrics.Strip.handleHeight
+    )
     /// The height of one pill-shaped cluster background, and of every button
     /// inside it. `fileprivate` rather than `private`: `ShortcutStripIconButton`,
     /// declared lower in this same file, sizes itself from it too.
-    fileprivate static let clusterHeight: CGFloat = 28
+    fileprivate static let clusterHeight: CGFloat = ViewerChromeMetrics.Strip.actionButtonHeight
 
     private let bar = NSView()
     private let separator = NSView()
@@ -111,7 +113,9 @@ public final class ShortcutStripView: NSView {
         for cluster in Self.actionClusters {
             let buttons = cluster.map { action -> ShortcutStripIconButton in
                 let button = ShortcutStripIconButton(symbolName: action.symbolName)
-                button.toolTip = action.tooltip(hostName: hostName)
+                let tooltip = action.tooltip(hostName: hostName)
+                button.toolTip = tooltip
+                button.setAccessibilityLabel(tooltip)
                 button.onPress = { [weak self] in self?.press(action) }
                 return button
             }
@@ -312,7 +316,9 @@ public final class ShortcutStripView: NSView {
 
     private func updatePinAppearance() {
         pinButton.setSymbol(model.isPinned ? "pin.fill" : "pin")
-        pinButton.toolTip = model.isPinned ? "Let close" : "Keep open"
+        let label = model.isPinned ? "Let close" : "Keep open"
+        pinButton.toolTip = label
+        pinButton.setAccessibilityLabel(label)
     }
 
     private var isBarOnScreen: Bool {
@@ -524,7 +530,7 @@ private final class ShortcutStripButton: NSButton {
         target = self
         action = #selector(fire)
         setLabel(title)
-        heightAnchor.constraint(equalToConstant: 24).isActive = true
+        heightAnchor.constraint(equalToConstant: ViewerChromeMetrics.Strip.confirmButtonHeight).isActive = true
     }
 
     @available(*, unavailable)
@@ -545,7 +551,10 @@ private final class ShortcutStripButton: NSButton {
 
     /// The horizontal padding a flat button has no bezel to give it.
     override var intrinsicContentSize: NSSize {
-        NSSize(width: ceil(attributedTitle.size().width) + ViewerDesign.Space.sm * 2, height: 24)
+        NSSize(
+            width: ceil(attributedTitle.size().width) + ViewerDesign.Space.sm * 2,
+            height: ViewerChromeMetrics.Strip.confirmButtonHeight
+        )
     }
 
     override var acceptsFirstResponder: Bool { false }
@@ -563,7 +572,7 @@ private final class ShortcutStripButton: NSButton {
 @MainActor
 private final class ShortcutStripIconButton: NSButton {
     static let size: CGFloat = ShortcutStripView.clusterHeight
-    private static let iconPointSize: CGFloat = 18
+    private static let iconPointSize: CGFloat = ViewerChromeMetrics.Strip.actionIconSize
 
     var onPress: (() -> Void)?
 

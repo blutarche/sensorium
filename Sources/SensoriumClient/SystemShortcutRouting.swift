@@ -80,11 +80,16 @@ public enum SystemShortcutCatalog {
     private static let space: UInt16 = 49
     private static let grave: UInt16 = 50
     private static let escape: UInt16 = 53
+    private static let letterA: UInt16 = 0
     private static let letterQ: UInt16 = 12
     private static let letterW: UInt16 = 13
     private static let letterH: UInt16 = 4
     private static let letterK: UInt16 = 40
     private static let letterM: UInt16 = 46
+    private static let letterZ: UInt16 = 6
+    private static let letterX: UInt16 = 7
+    private static let letterC: UInt16 = 8
+    private static let letterV: UInt16 = 9
     private static let arrowLeft: UInt16 = 123
     private static let arrowRight: UInt16 = 124
     private static let arrowDown: UInt16 = 125
@@ -157,6 +162,22 @@ public enum SystemShortcutCatalog {
     public static var escapeGestureIsNeverForwardable: Bool {
         shortcut(for: escapeGesture) == nil
     }
+
+    /// The six standard text-editing chords the viewer's Edit menu offers as
+    /// ordinary key equivalents. Not part of `all`: unlike the shortcuts
+    /// above, forwarding these never depends on `SystemShortcutMode` --
+    /// ordinary typing already forwards them whenever the viewer has focus,
+    /// in every mode. Named here only so `claimsKeyEquivalent` can let the
+    /// canvas claim them ahead of the Edit menu, exactly as it already does
+    /// for the `all` entries above.
+    public static let editChords: [KeyChord] = [
+        KeyChord(keyCode: letterZ, modifiers: [.command]),
+        KeyChord(keyCode: letterZ, modifiers: [.command, .shift]),
+        KeyChord(keyCode: letterX, modifiers: [.command]),
+        KeyChord(keyCode: letterC, modifiers: [.command]),
+        KeyChord(keyCode: letterV, modifiers: [.command]),
+        KeyChord(keyCode: letterA, modifiers: [.command])
+    ]
 }
 
 /// What the viewer window looked like when the key arrived. Pure data, so the
@@ -233,16 +254,21 @@ public struct SystemShortcutRouter: Sendable {
     /// the viewer rather than the app on the remote workstation, which is
     /// backwards once the user has asked for keys to go to the far machine.
     ///
-    /// Only a chord the catalog reserves is taken this way, and only when
-    /// `decide` says forward. Ordinary typing keeps its existing `keyDown`
-    /// path, so the viewer's own chords that no catalog entry claims --
-    /// Cmd-Ctrl-F, the way out of fullscreen -- still reach the menu.
+    /// Only a chord the catalog reserves, or one of `editChords`, is taken
+    /// this way, and only when `decide` says forward -- the Edit menu's own
+    /// Cmd-Z/X/C/V/A/Shift-Z would otherwise swallow the same keystrokes a
+    /// session canvas already forwards as ordinary typing. Everything else
+    /// keeps its existing `keyDown` path, so the viewer's own chords that
+    /// neither claims -- Cmd-Ctrl-F, the way out of fullscreen -- still
+    /// reach the menu.
     public func claimsKeyEquivalent(
         chord: KeyChord,
         viewer: ViewerWindowState,
         accessibilityGranted: Bool
     ) -> Bool {
-        guard SystemShortcutCatalog.shortcut(for: chord) != nil else { return false }
+        guard SystemShortcutCatalog.shortcut(for: chord) != nil
+            || SystemShortcutCatalog.editChords.contains(chord)
+        else { return false }
         return decide(
             chord: chord,
             viewer: viewer,

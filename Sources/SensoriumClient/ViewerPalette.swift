@@ -27,6 +27,19 @@ public struct ViewerColor: Equatable, Sendable {
         }
         return "#" + channel(red) + channel(green) + channel(blue)
     }
+
+    /// The same colour at a different opacity -- a scrim, a translucent bar,
+    /// a dimmed handle -- without a caller reaching for the raw channels.
+    public func withAlpha(_ alpha: Double) -> ViewerColor {
+        ViewerColor(red: red, green: green, blue: blue, alpha: alpha)
+    }
+
+    private init(red: Double, green: Double, blue: Double, alpha: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
 }
 
 /// Every colour the viewer's chrome uses, stated once for both platforms. The
@@ -47,6 +60,12 @@ public enum ViewerPalette {
     /// the focused field's border and the one button that commits.
     public static let accent = ViewerColor(hex: 0x7C70F5)
     public static let accent2 = ViewerColor(hex: 0xF0A8D0)
+
+    /// Behind the status panel once a picture exists to mark as stale --
+    /// the same colour and opacity `ViewerSessionStatusOverlay` fills its own
+    /// full-window background with on macOS, `NSColor(srgbRed: 0, green: 0,
+    /// blue: 0, alpha: 0.66)`.
+    public static let scrim = ViewerColor(hex: 0x000000, alpha: 0.66)
 
     public static let ok = ViewerColor(hex: 0x6FBE83)
     public static let bad = ViewerColor(hex: 0xE26F5C)

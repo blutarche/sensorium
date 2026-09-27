@@ -34,7 +34,7 @@ public struct ViewerStartupFailureCopy: Equatable, Sendable {
     public init(
         headline: String,
         detail: String,
-        retryButtonTitle: String = "Try again",
+        retryButtonTitle: String = "Try Again",
         replaceButtonTitle: String,
         replaceConsequence: String
     ) {
@@ -52,9 +52,9 @@ public struct ViewerStartupFailureCopy: Equatable, Sendable {
                 headline: "Sensorium could not read this machine\u{2019}s key.",
                 detail: "\(reason). Without it there is nothing to prove which machine this is, so no "
                     + "session can start.",
-                replaceButtonTitle: "Make a new key",
-                replaceConsequence: "Make a new key replaces the key that identifies this machine. The host will "
-                    + "then ask for a pairing code again."
+                replaceButtonTitle: "Make a New Key",
+                replaceConsequence: "Make a New Key replaces the key that identifies this machine. The host "
+                    + "will then ask for a pairing code again."
             )
         }
     }

@@ -129,7 +129,7 @@ func runViewerHostStopTests() async {
             "the frozen picture behind it is dimmed under an overlay, exactly as an ended session's is"
         )
         expect(
-            status.buttons.map(\.title) == ["Quit Sensorium", "Your machines", "Try again"],
+            status.buttons.map(\.title) == ["Quit Sensorium", "Your Machines", "Try Again"],
             "with the same actions an ordinary ending offers, so another session still needs a person to ask for one -- got \(status.buttons.map(\.title))"
         )
 

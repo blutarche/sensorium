@@ -48,7 +48,7 @@ func testSessionControlsWindowModelTests() {
     let sections = model.sections
     expect(sections.count == 6, "one section per plan the macOS menu bar draws")
     expect(
-        sections.map(\.title) == ["Screen", "Resolution", "Start With", "Displays", "Scale", "Clipboard"],
+        sections.map(\.title) == ["Screen", "Resolution", "Start with", "Displays", "Scale", "Clipboard"],
         "the sections are titled by the plans they come from, in the order a person reads them"
     )
 

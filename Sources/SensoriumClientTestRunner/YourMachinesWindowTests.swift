@@ -683,6 +683,43 @@ func testYourMachinesWindowTests() async {
 
         print("PASS: every link on the add step starts at the same left edge")
     }
+
+    do {
+        // The Window menu's Minimize and Zoom items act on whichever window
+        // is key; this one must be able to receive them like any other.
+        let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+        let window = storedValue("window", of: controller, as: NSWindow.self)
+        expect(
+            window.styleMask.contains(.miniaturizable),
+            "the Your Machines window can be minimized, got \(window.styleMask)"
+        )
+
+        print("PASS: the Your Machines window can be minimized")
+    }
+}
+
+/// A row's "\u{2026}" button carries no text of its own, so VoiceOver reads
+/// only whatever accessibility label it is given -- the same fact this row's
+/// tooltip already states, and naming the machine, since a list of rows all
+/// reading "More actions" with no machine named would leave a person unable
+/// to tell one row's control from another's.
+@MainActor
+func testYourMachinesWindowMoreButtonAccessibilityLabelTests() {
+    let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini]))
+    guard let more = button(titled: "\u{2026}", in: content(of: controller)) else {
+        print("FAIL: a saved machine's row has no \"\u{2026}\" button")
+        Foundation.exit(1)
+        return
+    }
+    expect(
+        more.accessibilityLabel() == "More actions for Loft",
+        "the \"\u{2026}\" button's accessibility label names the machine it acts on, "
+            + "got \(more.accessibilityLabel() ?? "nil")"
+    )
+    expect(more.toolTip == more.accessibilityLabel(), "and its tooltip says the same thing")
+
+    print("PASS: a saved machine's row's \"\u{2026}\" button carries an accessibility label naming that machine")
 }
 
 /// `ViewerFormControls.actionButton`'s own `>= 96` width floor only pads a
@@ -708,6 +745,29 @@ func testViewerFormActionButtonPaddingTests() {
     )
 
     print("PASS: the add button pads its title rather than hugging the accent fill's own edge")
+}
+
+/// Form buttons share the 13pt medium label with status panel buttons
+/// (`ViewerActionButton.titleFont`).
+@MainActor
+func testViewerFormControlsButtonFontSizeTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    guard let addButton = button(titled: YourMachinesWindowModel.addTitle, in: content(of: controller)) else {
+        print("FAIL: the empty state's add button is missing")
+        Foundation.exit(1)
+        return
+    }
+    guard let font = addButton.attributedTitle.attribute(.font, at: 0, effectiveRange: nil) as? NSFont else {
+        print("FAIL: the add button's title carries no font attribute")
+        Foundation.exit(1)
+        return
+    }
+    expect(
+        font.pointSize == 13,
+        "the add button's title is 13pt, matching the status panel's own buttons, got \(font.pointSize)"
+    )
+
+    print("PASS: ViewerFormControls' own buttons are 13pt, matching the status panel's own buttons")
 }
 
 /// `ViewerPairingFieldCell`'s own title box: centred in the field's bounds,

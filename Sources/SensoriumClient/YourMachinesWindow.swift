@@ -141,7 +141,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         self.onOpenTailscaleApp = onOpenTailscaleApp
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 320),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
@@ -489,14 +489,14 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     private func rowMenu(for row: YourMachinesRow) -> NSMenu {
         let menu = NSMenu()
         var actions = [
-            ("Pair again", #selector(pairAgainFromRow(_:))),
+            ("Pair Again", #selector(pairAgainFromRow(_:))),
             ("Forget", #selector(forgetRow(_:)))
         ]
         if row.offersConnectAsVirtualDisplayFallback {
             // The same title `ViewerSessionAction.connectAsVirtualDisplay`
             // already carries for the live session panel's own button --
             // one action, reached from whichever ending is on screen.
-            actions.append(("Connect with a virtual display", #selector(connectAsVirtualDisplayFromRow(_:))))
+            actions.append(("Connect with a Virtual Display", #selector(connectAsVirtualDisplayFromRow(_:))))
         }
         for (title, action) in actions {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
@@ -1082,6 +1082,9 @@ final class SavedMachineRowButton: NSButton {
                 .foregroundColor: ViewerDesign.muted.nsColor
             ]
         )
+        let moreLabel = "More actions for \(row.name)"
+        moreButton.toolTip = moreLabel
+        moreButton.setAccessibilityLabel(moreLabel)
         addSubview(moreButton)
 
         let inset = ViewerDesign.Space.md

@@ -104,21 +104,26 @@ func testViewerIdentityRecoveryTests() async {
     }
 
     do {
-        // Sentence case, and the two facts a person needs before tapping:
-        // what breaks (the key itself) and what to do about it (pair
-        // again), each its own sentence.
+        // Buttons are Title Case, like every other button. The consequence
+        // sentence names the button verbatim -- see the "names the very
+        // button" check in DualCanvasReconnectAndUITests.swift -- so its
+        // opening words carry the button's own capitalisation rather than
+        // sentence case; nothing else in it does. Two facts a person needs
+        // before tapping: what breaks (the key itself) and what to do about
+        // it (pair again), each its own sentence.
         let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "the stored key is malformed"))
         expect(
-            copy.replaceButtonTitle == "Make a new key",
-            "the button title is sentence case, not Title Case -- got \(copy.replaceButtonTitle)"
+            copy.replaceButtonTitle == "Make a New Key",
+            "the button title is Title Case, like every other button -- got \(copy.replaceButtonTitle)"
         )
         expect(
-            copy.replaceConsequence == "Make a new key replaces the key that identifies this machine. The host "
-                + "will then ask for a pairing code again.",
-            "the consequence states both facts plainly, one sentence each -- got \(copy.replaceConsequence)"
+            copy.replaceConsequence == "Make a New Key replaces the key that identifies this machine. The "
+                + "host will then ask for a pairing code again.",
+            "the consequence states both facts plainly, one sentence each, opening with the button's own "
+                + "title -- got \(copy.replaceConsequence)"
         )
         expect(
-            copy.retryButtonTitle == "Try again",
+            copy.retryButtonTitle == "Try Again",
             "the first thing to try is repeating the read that just failed -- got \(copy.retryButtonTitle)"
         )
         expect(
@@ -126,7 +131,7 @@ func testViewerIdentityRecoveryTests() async {
             "the detail carries the reason the read gave, so the screen is a real defect report -- got \(copy.detail)"
         )
 
-        print("PASS: the viewer's startup copy offers Try again first, then Make a new key with its consequence stated")
+        print("PASS: the viewer's startup copy offers Try Again first, then Make a New Key with its consequence stated")
     }
 
     do {
@@ -263,7 +268,7 @@ func testViewerIdentityFailureButtonsTests() async {
             return stack.arrangedSubviews.compactMap { ($0 as? NSButton)?.attributedTitle.string }
         }
         expect(
-            buttonOrder(of: window()) == ["Try again", "Make a new key", "Quit Sensorium"],
+            buttonOrder(of: window()) == ["Try Again", "Make a New Key", "Quit Sensorium"],
             "the three buttons read first choice, second choice, then the way out -- got \(buttonOrder(of: window()))"
         )
 

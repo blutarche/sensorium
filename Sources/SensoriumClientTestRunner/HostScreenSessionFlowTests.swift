@@ -96,11 +96,10 @@ func testHostScreenSessionFlowTests() async {
         expect(
             HostScreenRefusalCopy.line(reason: "a-future-reason")
                 == "That machine gave a reason this version of Sensorium does not know: "
-                    + "\u{201C}a\u{2011}future\u{2011}reason.\u{201D} Update both apps, then connect with a "
-                    + "virtual display.",
+                    + "\u{201C}a\u{2011}future\u{2011}reason.\u{201D} Update both apps.",
             "an unknown reason's remedy never promises a fresh Host screen pick this build cannot honour, "
-                + "since it does not know what went wrong, and US punctuation puts the period inside the "
-                + "closing quote -- got: "
+                + "since it does not know what went wrong -- a session canvas may not even be offered -- and "
+                + "US punctuation puts the period inside the closing quote -- got: "
                 + "\(HostScreenRefusalCopy.line(reason: "a-future-reason"))"
         )
 
@@ -118,10 +117,9 @@ func testHostScreenSessionFlowTests() async {
         expect(!line.contains("does not know"), "this build minted the reason itself, so it is not an unknown one")
         expect(line.localizedCaseInsensitiveContains("no longer available"), "says plainly that the screen is gone")
         expect(
-            line == "The screen you chose is no longer available there. Connect with a virtual display, then "
-                + "choose another host screen from the Screen menu.",
-            "the one gone screen never rules out a different host screen that may still be available -- "
-                + "got \(line)"
+            line == "The screen you chose is no longer available there.",
+            "the one gone screen never rules out a different host screen that may still be available, and "
+                + "never names a specific recovery path the on-screen button may not offer -- got \(line)"
         )
 
         print("PASS: host-screen-display-unavailable reads as a plain sentence, not the unknown-reason default")
@@ -135,10 +133,9 @@ func testHostScreenSessionFlowTests() async {
         // left waiting on a redial that will never come.
         let line = HostScreenRefusalCopy.line(reason: "host-screen-resume-refused")
         expect(
-            line == "The connection was interrupted and could not resume. Connect with a "
-                + "virtual display, then choose a host screen from the Screen menu.",
-            "host-screen-resume-refused never promises the one button on screen will choose a host screen "
-                + "directly, since it only ever reconnects with a virtual display -- got \(line)"
+            line == "The connection was interrupted and could not resume.",
+            "host-screen-resume-refused states the fact and leaves the recovery path to the on-screen button, "
+                + "which may or may not offer a virtual display -- got \(line)"
         )
 
         print("PASS: host-screen-resume-refused steers the person to a fresh Host screen pick without repeating the host the headline names")
@@ -150,9 +147,10 @@ func testHostScreenSessionFlowTests() async {
         let canvasSessionActive = HostScreenRefusalCopy.line(reason: "canvas-session-active")
         expect(
             canvasSessionActive == "That machine was already showing this machine a virtual display. That session "
-                + "has ended. Connect with a virtual display, then choose a host screen from the Screen menu.",
+                + "has ended.",
             "canvas-session-active must say the connection's own session ended, not just what it could not "
-                + "do -- receiving this reason is what ends it -- got \(canvasSessionActive)"
+                + "do -- receiving this reason is what ends it -- and never names a specific recovery path the "
+                + "on-screen button may not offer -- got \(canvasSessionActive)"
         )
 
         // host-screen-session-active fires only on the same connection a
@@ -164,7 +162,7 @@ func testHostScreenSessionFlowTests() async {
         let hostScreenSessionActive = HostScreenRefusalCopy.line(reason: "host-screen-session-active")
         expect(
             hostScreenSessionActive == "That machine was already showing this machine a host screen. That session "
-                + "has ended. Connect with a virtual display, then choose a host screen from the Screen menu.",
+                + "has ended.",
             "host-screen-session-active mirrors canvas-session-active's own wording in the opposite "
                 + "direction, since both fire on the same connection -- got \(hostScreenSessionActive)"
         )
@@ -179,8 +177,7 @@ func testHostScreenSessionFlowTests() async {
 
         let presenceCheckRequired = HostScreenRefusalCopy.line(reason: "host-screen-presence-check-required")
         expect(
-            presenceCheckRequired == "That machine needed to ask and could not. Connect with "
-                + "a virtual display, then choose a host screen from the Screen menu to try again.",
+            presenceCheckRequired == "That machine needed to ask and could not.",
             "host-screen-presence-check-required must not imply a specific person declined, since the same "
                 + "reason fires when no gate was configured or another prompt was already on screen -- "
                 + "got \(presenceCheckRequired)"
@@ -188,16 +185,15 @@ func testHostScreenSessionFlowTests() async {
 
         let presenceDeclined = HostScreenRefusalCopy.line(reason: "host-screen-presence-declined")
         expect(
-            presenceDeclined == "The person at that machine chose not to share its screen this time. Connect "
-                + "with a virtual display, then choose a host screen from the Screen menu \u{2014} they will "
-                + "be asked again.",
-            "host-screen-presence-declined must say plainly that a person declined -- got \(presenceDeclined)"
+            presenceDeclined == "The person at that machine chose not to share its screen this time. "
+                + "They will be asked again when you connect from Your Machines.",
+            "host-screen-presence-declined must say plainly that a person declined, and point at the real "
+                + "path back rather than an empty promise to retry -- got \(presenceDeclined)"
         )
 
         let presenceUnanswered = HostScreenRefusalCopy.line(reason: "host-screen-presence-unanswered")
         expect(
-            presenceUnanswered == "No one at that machine answered the request within thirty seconds. "
-                + "Connect with a virtual display, then choose a host screen from the Screen menu to ask again.",
+            presenceUnanswered == "No one at that machine answered the request within thirty seconds.",
             "host-screen-presence-unanswered must say the window closed with no answer, not that anyone "
                 + "declined -- got \(presenceUnanswered)"
         )
@@ -205,6 +201,45 @@ func testHostScreenSessionFlowTests() async {
         print("PASS: canvas-session-active, host-screen-session-active, host-screen-not-allowed, "
             + "host-screen-presence-check-required, host-screen-presence-declined and "
             + "host-screen-presence-unanswered read as design specifies")
+    }
+
+    do {
+        // host-screen-already-live fires when this same device's own key
+        // already has a claim the host still counts as live -- another
+        // window here on the same paired identity is a real, not
+        // hypothetical, cause (`HostScreenLiveSessionRegistry.admit` keys
+        // solely on `devicePublicKey`), so that clause stays; naming a
+        // virtual-display detour does not, since it duplicates whatever
+        // button is already on screen and may not even be offered.
+        let alreadyLive = HostScreenRefusalCopy.line(reason: "host-screen-already-live")
+        expect(
+            alreadyLive == "That machine still shows an earlier session as live. If "
+                + "another window here is showing its screen, use that one. Otherwise it clears within "
+                + "thirty seconds \u{2014} connect again from Your Machines then.",
+            "host-screen-already-live states the fact and the one real alternate cause, pointing at the real "
+                + "path back rather than an empty promise to retry -- got \(alreadyLive)"
+        )
+
+        print("PASS: host-screen-already-live names the real alternate cause without a virtual-display detour")
+    }
+
+    do {
+        // Linux has no native menu bar, so a sentence that would say "the
+        // Screen menu" on macOS has to name the shortcut strip's own gear
+        // instead -- `SessionSettingsNaming.title`.
+        #if os(macOS)
+        expect(
+            HostScreenRefusalCopy.screenControlName == "the Screen menu",
+            "macOS names its own Screen menu, got \(HostScreenRefusalCopy.screenControlName)"
+        )
+        #else
+        expect(
+            HostScreenRefusalCopy.screenControlName == "Session Settings",
+            "Linux names the gear's own accessible name instead, got \(HostScreenRefusalCopy.screenControlName)"
+        )
+        #endif
+
+        print("PASS: screenControlName names the platform's own control for choosing a host screen")
     }
 
     do {
@@ -508,20 +543,18 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
-        // Copy that names a button not on screen: the overlay only ever
-        // offers to reconnect with a virtual display here, never a direct
-        // return to a host screen, so the sentence asks for exactly the
-        // two steps that button can start.
+        // States the fact and leaves the recovery path to the on-screen
+        // button, which this build cannot name here -- it may or may not
+        // offer a virtual display.
         let retryNeedsPerson = HostScreenRefusalCopy.line(reason: "host-screen-retry-needs-person")
         expect(
             retryNeedsPerson == "The connection dropped, and showing a host screen again needs someone at "
-                + "this machine to ask for it. Connect with a virtual display, then choose a host screen "
-                + "from the Screen menu.",
+                + "this machine to ask for it.",
             "host-screen-retry-needs-person asks the person at this machine, not the one at the host -- "
                 + "got \(retryNeedsPerson)"
         )
 
-        print("PASS: host-screen-retry-needs-person names the person at this machine and the button that is on screen")
+        print("PASS: host-screen-retry-needs-person names the person at this machine, with no path this build cannot promise")
     }
 
     do {

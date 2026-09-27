@@ -28,6 +28,20 @@ once it reaches 1.0.
   Mac's screens. While it is off, the host creates no virtual display at
   all, refuses a viewer that asks for one, and tells the viewer none is
   available so its menus do not offer one.
+- The menus a Mac app is expected to have. The viewer gets a standard
+  Edit menu (Undo, Redo, Cut, Copy, Paste, Select All) for its pairing
+  fields, a Window menu (Minimize, Zoom, Bring All to Front), Show All in
+  the app menu, a full screen item that reads Enter or Exit Full Screen,
+  and reopens the Your Machines list from the Dock icon when no window
+  is open. Every one of these keys still reaches the remote Mac while a
+  session window is key, exactly as before. Sensorium Host gets the same
+  standard menus for its own Host Setup window, with Quit going through
+  its usual clean shutdown, and its About panel now comes to the front
+  when opened from the menu bar.
+- The host's menu bar shows the live round trip to the connected viewer,
+  such as `8ms`, in place of the device's name while a session is
+  streaming. It updates about once a second, smooths out jitter, and
+  goes quiet again if no fresh reading arrives for a few seconds.
 
 ### Removed
 
@@ -38,6 +52,17 @@ once it reaches 1.0.
 
 ### Changed
 
+- The Linux viewer now looks like the Mac viewer. Its status panels,
+  shortcut strip, notices, diagnostics panel and windows use the same
+  sizes, colours and spacing, and the strip shows the desktop's own
+  icons. A gear on the strip opens Session Settings.
+- The Linux viewer shows the Sensorium icon in the taskbar and the
+  window switcher.
+- The shortcut strip is 40 points high on the Mac, and every button
+  label is 13 points.
+- Viewer messages and buttons use Title Case, and a refused host screen
+  says how to try again. After a host screen session ends, Return picks
+  Your Machines, never the private desktop.
 - Clipboard sharing is on by default. The viewer can still turn it off
   from the View menu, and the host follows the viewer's choice.
 - Clipboards up to about 4 MB are shared, up from 1 MB. A copied TIFF

@@ -485,7 +485,7 @@ func testViewerUXFixTests() async {
             machine.handle(.connectStarted)
             let failed = machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             expect(
-                failed.phase == .connecting && failed.buttons.map(\.title) == ["Quit Sensorium", "Your machines"],
+                failed.phase == .connecting && failed.buttons.map(\.title) == ["Quit Sensorium", "Your Machines"],
                 "a failed first attempt stays on the connecting panel with its own buttons, got \(failed.phase) / \(failed.buttons.map(\.title))"
             )
             expect(
@@ -529,18 +529,20 @@ func testViewerUXFixTests() async {
             let failedReconnect = machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             expect(
                 failedReconnect.phase == .reconnecting
-                    && failedReconnect.detail.contains("Attempt 1")
-                    && failedReconnect.detail.contains("Nothing answered."),
-                "reconnecting keeps its own numbering and appends the failure line, got \"\(failedReconnect.detail)\""
+                    && failedReconnect.detail == "The picture is paused from before the connection dropped. "
+                        + "Nothing answered.",
+                "reconnecting carries no attempt count and appends the failure line, got \"\(failedReconnect.detail)\""
             )
 
             let secondFailedReconnect = machine.handle(.connectStarted)
             expect(
-                secondFailedReconnect.detail.contains("Attempt 2"),
-                "the next reconnect attempt still counts up, got \"\(secondFailedReconnect.detail)\""
+                secondFailedReconnect.detail == "If it does not come back, check that it is awake and on the "
+                    + "same network. Nothing answered.",
+                "the next reconnect attempt drops the picture-is-paused line for the standing advice, still "
+                    + "with no attempt count, got \"\(secondFailedReconnect.detail)\""
             )
 
-            print("PASS: reconnecting keeps numbering attempts and appends the last failure's line")
+            print("PASS: reconnecting carries no attempt count and appends the last failure's line")
         }
 
         do {
@@ -627,7 +629,7 @@ func testViewerUXFixTests() async {
             var machine = ViewerSessionStateMachine(hostName: "studio-mini")
             let connecting = machine.handle(.connectStarted)
             expect(
-                ViewerClientTestHooks.statusOverlayFocusTitle(after: [connecting]) == "Your machines",
+                ViewerClientTestHooks.statusOverlayFocusTitle(after: [connecting]) == "Your Machines",
                 "while it is up, the connecting panel takes the keyboard for its own first non-quit button"
             )
 
@@ -690,7 +692,7 @@ func testViewerUXFixTests() async {
                 "a lost session offers Quit, Your machines, and Try again, got \(lost.buttons.map(\.action))"
             )
             expect(
-                lost.buttons.first { $0.action == .yourMachines }?.title == "Your machines",
+                lost.buttons.first { $0.action == .yourMachines }?.title == "Your Machines",
                 "and the button naming the launch window is called what that window is called"
             )
             expect(
