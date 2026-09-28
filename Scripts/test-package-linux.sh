@@ -95,7 +95,9 @@ installed_version="$(rpm -q --queryformat '%{VERSION}' sensorium)"
 owned="$(rpm -ql sensorium)"
 dnf remove -y sensorium
 for path in $owned; do
-    if [ -e "$path" ]; then
+    # RPM lists shared system directories such as /usr/lib/.build-id too;
+    # removing this package must remove its files and links, not those dirs.
+    if [ ! -d "$path" ] && { [ -e "$path" ] || [ -L "$path" ]; }; then
         fail "removing the package left $path behind"
     fi
 done
