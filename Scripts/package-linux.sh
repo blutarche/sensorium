@@ -35,7 +35,10 @@ tar czf "$TOPDIR/SOURCES/sensorium-$VERSION.tar.gz" \
 
 sed "s/@VERSION@/$VERSION/" Packaging/linux/sensorium.spec.in > "$TOPDIR/SPECS/sensorium.spec"
 
-rpmbuild -ba --define "_topdir $TOPDIR" "$TOPDIR/SPECS/sensorium.spec"
+# SwiftPM puts the system Swift runtime directory before $ORIGIN in RUNPATH.
+# The package installs no libraries beside Sensorium, so allow that ordering
+# while keeping every other RPM runpath check enabled.
+QA_RPATHS=0x0008 rpmbuild -ba --define "_topdir $TOPDIR" "$TOPDIR/SPECS/sensorium.spec"
 
 built="$(find "$TOPDIR/RPMS" -name "sensorium-$VERSION-1.*.rpm" -type f | head -n 1)"
 if [ -z "$built" ]; then
