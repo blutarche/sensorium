@@ -370,6 +370,9 @@ public final class AVCodecVideoDecoder: VideoDecoding, @unchecked Sendable {
             // Presentation times travel in nanoseconds, so a frame comes back
             // keyed by the same number the packet carried in.
             newContext.pointee.pkt_timebase = AVRational(num: 1, den: 1_000_000_000)
+            // Frame threading holds a decoded frame until a later packet
+            // arrives. Slice threading keeps that latency out of a live stream.
+            newContext.pointee.thread_type = Int32(FF_THREAD_SLICE)
             try attachExtradata(extradata, to: newContext)
             if let renderNodePath {
                 try attachHardwareDevice(at: renderNodePath, to: newContext)

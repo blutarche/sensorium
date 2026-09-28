@@ -143,6 +143,8 @@ once it reaches 1.0.
 
 ### Fixed
 
+- The Linux viewer's software decoder no longer holds the newest video
+  frame until another packet arrives.
 - Text in the Linux viewer's machine list and pairing windows stays on
   the same lines across desktop fonts, including Nimbus Sans and FreeSans.
 - The live host-screen badge opens and stays on the display being shared,
