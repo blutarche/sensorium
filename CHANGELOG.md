@@ -141,6 +141,9 @@ once it reaches 1.0.
 
 ### Fixed
 
+- The live host-screen badge opens and stays on the display being shared,
+  including after a drag or display mode change. A remembered badge position
+  is read and saved for that display.
 - A host unlocked from the viewer locks again when the session ends,
   even after the viewer typed or clicked while it was unlocked. That
   input no longer counts as a person at the host.

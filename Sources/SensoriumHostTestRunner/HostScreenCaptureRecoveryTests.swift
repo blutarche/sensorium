@@ -144,7 +144,7 @@ func runHostScreenCaptureRecoveryTests() async {
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onEvent: { events.record($0) },
             onStreamUnrecoverable: { unrecoverable.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 0.2,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -191,7 +191,7 @@ func runHostScreenCaptureRecoveryTests() async {
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onEvent: { events.record($0) },
             onStreamUnrecoverable: { unrecoverable.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             captureAvailability: availability,
             hostScreenCaptureRecoveryBoundSeconds: 0.15,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
@@ -242,7 +242,7 @@ func runHostScreenCaptureRecoveryTests() async {
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onEvent: { events.record($0) },
             onStreamUnrecoverable: { unrecoverable.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             captureAvailability: availability,
             hostScreenCaptureRecoveryBoundSeconds: 0.2,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
@@ -290,7 +290,7 @@ func runHostScreenCaptureRecoveryTests() async {
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenKeepAwakeRedeclareIntervalSeconds: 5
         )
         try! await startRecoveryHostScreenSession(controller: controller, coordinator: coordinator)
@@ -337,7 +337,7 @@ func runHostScreenCaptureRecoveryTests() async {
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenKeepAwakeRedeclareIntervalSeconds: 1
         )
         try! await startRecoveryHostScreenSession(controller: controller, coordinator: coordinator)
@@ -385,7 +385,7 @@ func runHostScreenCaptureRecoveryTests() async {
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -463,7 +463,7 @@ func runHostScreenCaptureRecoveryTests() async {
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -529,7 +529,7 @@ func runHostScreenCaptureRecoveryTests() async {
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -592,7 +592,7 @@ func runHostScreenCaptureRecoveryTests() async {
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -670,7 +670,7 @@ func runHostScreenCaptureRecoveryTests() async {
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onEvent: { events.record($0) },
             onStreamUnrecoverable: { unrecoverable.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -748,7 +748,7 @@ func runHostScreenCaptureRecoveryTests() async {
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             onStreamUnrecoverable: { unrecoverable.record($0) },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 30,
             hostScreenCaptureRecoveryPollSeconds: 1,
             hostScreenCaptureRecoveryWait: { [clock] seconds in clock.advance(seconds) },
@@ -798,7 +798,7 @@ func runHostScreenCaptureRecoveryTests() async {
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }
@@ -897,7 +897,7 @@ func runHostScreenCaptureRecoveryTests() async {
             media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-            hostScreenMediaFactory: { _ in media },
+            hostScreenMediaFactory: { _, _ in media },
             hostScreenCaptureRecoveryBoundSeconds: 5,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in }

@@ -90,7 +90,7 @@ private func makeUnlockFixture(
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: FakeVideoSink(),
         onEvent: onEvent,
-        hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() },
+        hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
         lockStateReader: lockStateReader,
         lockScreenUnlocker: unlocker
     )

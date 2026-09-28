@@ -633,7 +633,7 @@ private func makeLiveHostScreenFixture() async -> LiveHostScreenFixture {
         controller: controller,
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: FakeVideoSink(),
-        hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() },
+        hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
         lockStateReader: FakeScreenLockState(locked: false)
     )
     let channel = FakeHostByteChannel(scriptedMessages: [])

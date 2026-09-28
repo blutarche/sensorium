@@ -255,7 +255,7 @@ func makeWakeHostScreenFixture(
     wake: DisplayWakeController,
     availability: HostCaptureAvailability,
     onStreamUnrecoverable: @escaping @Sendable (String) -> Void,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController, token: Data) {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
@@ -1080,7 +1080,7 @@ func runDisplayWakeTests() async {
             wake: wake,
             availability: availability,
             onStreamUnrecoverable: { unrecoverable.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token,
@@ -1211,7 +1211,7 @@ func runDisplayWakeTests() async {
             wake: wake,
             availability: HostCaptureAvailability(),
             onStreamUnrecoverable: { _ in },
-            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
         )
         _ = try? await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token,
@@ -1340,7 +1340,7 @@ func runDisplayWakeTests() async {
             wake: wake,
             availability: HostCaptureAvailability(),
             onStreamUnrecoverable: { _ in },
-            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
         )
         _ = try? await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: Data(repeating: 0xA5, count: 32),
@@ -1506,7 +1506,7 @@ func runDisplayWakeTests() async {
             wake: wake,
             availability: HostCaptureAvailability(),
             onStreamUnrecoverable: { _ in },
-            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
         )
         guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token, resumeTicket: nil
@@ -1741,7 +1741,7 @@ func runDisplayWakeTests() async {
                 media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
                 videoSink: FakeVideoSink(),
                 workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
-                hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() },
+                hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
                 captureAvailability: HostCaptureAvailability()
             )
             return (coordinator, controller)
@@ -1804,7 +1804,7 @@ func runDisplayWakeTests() async {
             wake: wake,
             availability: HostCaptureAvailability(),
             onStreamUnrecoverable: { _ in },
-            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
         )
         guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token, resumeTicket: nil
@@ -1848,7 +1848,7 @@ func runDisplayWakeTests() async {
             wake: wake,
             availability: HostCaptureAvailability(),
             onStreamUnrecoverable: { _ in },
-            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
         )
         guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
             token: fixture.token, resumeTicket: nil

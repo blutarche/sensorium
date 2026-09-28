@@ -80,7 +80,7 @@ private func makeRelockWiringFixture(
         controller: controller,
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: FakeVideoSink(),
-        hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() },
+        hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
         lockStateReader: lockStateReader,
         lockScreenUnlocker: RelockWiringTestUnlocker(),
         hostScreenRelockPoster: relockPoster,

@@ -280,7 +280,7 @@ func runHostScreenProductionWiringTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
         expect(sessionLog.records().isEmpty, "before makeMedia runs, no log record exists yet")
         expect(media.badgeState == nil, "before makeMedia runs, no badge exists yet")
@@ -322,10 +322,10 @@ func runHostScreenProductionWiringTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
 
-        let produced = media.makeMedia(.remoteDefault)
+        let produced = media.makeMedia(.remoteDefault, displayID: 1)
         expect(
             sessionLog.records().count == 1 && sessionLog.records().first?.outcome == nil,
             "makeMedia writes exactly one open log record before returning media to stream with"
@@ -356,9 +356,9 @@ func runHostScreenProductionWiringTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault)
+        _ = media.makeMedia(.remoteDefault, displayID: 1)
         await media.stop()
 
         expect(
@@ -385,9 +385,9 @@ func runHostScreenProductionWiringTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault)
+        _ = media.makeMedia(.remoteDefault, displayID: 1)
         do {
             try await media.start(canvasDisplayID: 1) { _ in true }
             expect(false, "FailingCanvasMedia.start() always throws")
@@ -420,9 +420,9 @@ func runHostScreenProductionWiringTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: { stopRequestCount += 1 },
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault)
+        _ = media.makeMedia(.remoteDefault, displayID: 1)
 
         media.badgeState?.stopTapped()
         expect(stopRequestCount == 1, "tapping the badge's Stop invokes the caller's teardown immediately, once")
@@ -464,9 +464,9 @@ func runHostScreenProductionWiringTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault)
+        _ = media.makeMedia(.remoteDefault, displayID: 1)
         await media.replaceCapture(with: .remoteDefault, note: "mode changed to 1920x1080")
         await media.replaceCapture(with: .remoteDefault, note: "mode changed to 2560x1440")
 

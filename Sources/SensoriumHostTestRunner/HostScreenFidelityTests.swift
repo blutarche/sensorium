@@ -102,7 +102,7 @@ private func makeFidelityFixture(
     // way to dead would otherwise refuse every canvas request in every group
     // that runs after it.
     captureAvailability: HostCaptureAvailability = HostCaptureAvailability(),
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -205,7 +205,7 @@ func runHostScreenFidelityTests() async {
             display: fidelityTestDisplay(),
             flowReportSeconds: 5,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -247,7 +247,7 @@ func runHostScreenFidelityTests() async {
         let fixture = makeFidelityFixture(
             display: fidelityTestDisplay(),
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -289,7 +289,7 @@ func runHostScreenFidelityTests() async {
             display: fidelityTestDisplay(),
             flowReportSeconds: 5,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -353,12 +353,12 @@ func runHostScreenFidelityTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in FidelityBadgeDisplay() }
+            badgeFactory: { _, _ in FidelityBadgeDisplay() }
         )
         let fixture = makeFidelityFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0) }
+            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
         )
         await startFidelitySession(fixture)
         await fixture.coordinator.tickFidelity(atSeconds: 0)
@@ -457,7 +457,7 @@ func runHostScreenFidelityTests() async {
             videoSink: session,
             workspaces: onlyOnSurfaceZero(FakeCanvasWorkspace()),
             latencyRecorder: latencyRecorder,
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         ))
         session.start()
         // Two send intervals, so a tick has genuinely come round rather than
@@ -501,7 +501,7 @@ func runHostScreenFidelityTests() async {
             onEvent: { events.record($0) },
             onSessionEnded: { ended.record("ended") },
             captureAvailability: availability,
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -554,7 +554,7 @@ func runHostScreenViewerGeometryTests() async {
             display: fidelityTestDisplay(
                 logicalWidth: 1920, logicalHeight: 1080, pixelWidth: 3840, pixelHeight: 2160
             ),
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -585,7 +585,7 @@ func runHostScreenViewerGeometryTests() async {
             display: fidelityTestDisplay(
                 logicalWidth: 1920, logicalHeight: 1080, pixelWidth: 1920, pixelHeight: 1080
             ),
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -610,7 +610,7 @@ func runHostScreenViewerGeometryTests() async {
         let hostScreenMedia = FakeScalableCanvasMedia()
         let fixture = makeFidelityFixture(
             display: fidelityTestDisplay(),
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -636,7 +636,7 @@ func runHostScreenViewerGeometryTests() async {
         let hostScreenMedia = FakeScalableCanvasMedia()
         let fixture = makeFidelityFixture(
             display: fidelityTestDisplay(),
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -665,7 +665,7 @@ func runHostScreenViewerGeometryTests() async {
         let hostScreenMedia = FakeScalableCanvasMedia()
         let fixture = makeFidelityFixture(
             display: fidelityTestDisplay(),
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -688,7 +688,7 @@ func runHostScreenViewerGeometryTests() async {
         let hostScreenMedia = FakeScalableCanvasMedia()
         let fixture = makeFidelityFixture(
             display: fidelityTestDisplay(),
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -760,7 +760,7 @@ func runHostScreenViewerGeometryTests() async {
             ),
             onEvent: { events.record($0) },
             latencyRecorder: latency,
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
         _ = try! await fixture.coordinator.handleWritingResponse(
@@ -850,7 +850,7 @@ func runHostScreenViewerGeometryTests() async {
         let fixture = makeFidelityFixture(
             display: fidelityTestDisplay(),
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 
@@ -895,7 +895,7 @@ func runHostScreenViewerGeometryTests() async {
                 id: 7, logicalWidth: 2048, logicalHeight: 1152, pixelWidth: 4096, pixelHeight: 2304
             ),
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         await startFidelitySession(fixture)
 

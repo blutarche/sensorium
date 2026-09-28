@@ -70,7 +70,7 @@ private func makeHostScreenFixture(
     modeController: FakeHostScreenModeController? = nil,
     localActivitySignal: (any HostLocalActivitySignal)? = nil,
     presenceGate: (any HostScreenPresenceGating)? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -143,13 +143,15 @@ func runHostScreenCoordinatorTests() async {
         // Bring-up: no workspace, encoder sized from real geometry
         let display = hostScreenTestDisplay()
         var capturedConfiguration: VideoEncoderConfiguration?
+        var badgeDisplayID: CGDirectDisplayID?
         let hostScreenMedia = FakeScalableCanvasMedia()
         let events = DiagnosticsRecorder()
         let fixture = makeHostScreenFixture(
             display: display,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { configuration in
+            hostScreenMediaFactory: { configuration, displayID in
                 capturedConfiguration = configuration
+                badgeDisplayID = displayID
                 return hostScreenMedia
             }
         )
@@ -166,6 +168,7 @@ func runHostScreenCoordinatorTests() async {
             hostScreenMedia.startedDisplayIDs == [7],
             "capture actually starts, against the real resolved display ID"
         )
+        expect(badgeDisplayID == 7, "the badge factory receives the same display ID that capture streams")
         expect(
             capturedConfiguration?.width == 2560 && capturedConfiguration?.height == 1440,
             "the encoder's own base dimensions come from the real display's logical size, not the session canvas's 1920x1200"
@@ -201,7 +204,7 @@ func runHostScreenCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: hugeDisplay,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { configuration in
+            hostScreenMediaFactory: { configuration, _ in
                 capturedConfiguration = configuration
                 return hostScreenMedia
             }
@@ -235,7 +238,7 @@ func runHostScreenCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             onSessionEnded: { sessionEnded.record("ended") },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -326,7 +329,7 @@ func runHostScreenCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         // A token this session never minted -- `offerHostScreenList` was
         // never called, so nothing is in `hostScreenMintedTokens` -- refuses
@@ -358,7 +361,7 @@ func runHostScreenCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         let token = offerAndExtractToken(fixture.controller)
         let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
@@ -391,7 +394,7 @@ func runHostScreenCoordinatorTests() async {
             onEvent: { events.record($0) },
             localActivitySignal: NeverIdleSignal(),
             presenceGate: gate,
-            hostScreenMediaFactory: { _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
         )
         let token = offerAndExtractToken(fixture.controller)
         let response = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
@@ -427,7 +430,7 @@ func runHostScreenCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             onEvent: { events.record($0) },
-            hostScreenMediaFactory: { _ in FailingCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FailingCanvasMedia() }
         )
         let token = offerAndExtractToken(fixture.controller)
         do {
@@ -561,7 +564,7 @@ func runHostScreenModeCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { _ in FakeScalableCanvasMedia() }
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handle(.hostScreenRequest(
@@ -605,7 +608,7 @@ func runHostScreenModeCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { configuration in
+            hostScreenMediaFactory: { configuration, _ in
                 configurations.append(configuration)
                 return configurations.count == 1 ? firstMedia : secondMedia
             }
@@ -663,7 +666,7 @@ func runHostScreenModeCoordinatorTests() async {
             display: display,
             onEvent: { events.record($0) },
             modeController: modes,
-            hostScreenMediaFactory: { configuration in
+            hostScreenMediaFactory: { configuration, _ in
                 configurations.append(configuration)
                 switch configurations.count {
                 case 1: return firstMedia
@@ -713,7 +716,7 @@ func runHostScreenModeCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { configuration in
+            hostScreenMediaFactory: { configuration, _ in
                 configurations.append(configuration)
                 captureCount += 1
                 // The first two captures are the session's own and the one
@@ -762,7 +765,7 @@ func runHostScreenModeCoordinatorTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { _ in
+            hostScreenMediaFactory: { _, _ in
                 builtMediaCount += 1
                 return media
             }
@@ -848,12 +851,12 @@ func runHostScreenModeAccountabilityTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0) }
+            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -912,12 +915,12 @@ func runHostScreenModeAccountabilityTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0) }
+            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -971,13 +974,13 @@ func runHostScreenModeAccountabilityTests() async {
             deviceName: { "Kestrel Laptop Pro" },
             displayLabel: { "Built-in Display" },
             onBadgeStop: {},
-            badgeFactory: { _ in badge }
+            badgeFactory: { _, _ in badge }
         )
         let fixture = makeHostScreenFixture(
             display: display,
             onEvent: { events.record($0) },
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0) }
+            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(

@@ -652,6 +652,108 @@ func runHostScreenIndicationTests() async {
     }
 
     do {
+        // The badge always lives on the display the session actually
+        // streams -- never `NSScreen.main`, never wherever AppKit's own
+        // `window.screen` heuristic happens to land. Proven with a display
+        // this machine does not actually have, injected through
+        // `displayGeometry`, so every assertion below is decided by which
+        // display's geometry and identity the controller reaches for, not
+        // by this machine's real monitor arrangement.
+        let targetID: CGDirectDisplayID = 0xF00D_0001
+        let targetFrame = CGRect(x: 5_000, y: 5_000, width: 1_600, height: 900)
+        let targetVisibleFrame = CGRect(x: 5_000, y: 5_050, width: 1_600, height: 850)
+        let targetGeometry: @MainActor @Sendable (CGDirectDisplayID) -> HostScreenBadgeDisplayGeometry? = { id in
+            id == targetID ? HostScreenBadgeDisplayGeometry(frame: targetFrame, visibleFrame: targetVisibleFrame) : nil
+        }
+        let targetIdentity = HostScreenDisplayIdentity(
+            vendorNumber: CGDisplayVendorNumber(targetID), modelNumber: CGDisplayModelNumber(targetID)
+        )
+        func targetContent() -> HostScreenBadgeContent {
+            HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "External Display")
+        }
+
+        // First placement: nothing remembered, so the badge defaults
+        // top-right of the *target's* visible frame.
+        let freshURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-host-screen-badge-position-target-fresh-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: freshURL) }
+        let freshController = HostScreenBadgeWindowController(
+            state: HostScreenBadgeState(content: targetContent()),
+            targetDisplayID: targetID,
+            positionStore: HostScreenBadgePositionStore(url: freshURL),
+            displayGeometry: targetGeometry
+        )
+        let freshWindow = CanvasHostTestHooks.hostScreenBadgeWindow(freshController)
+        let expectedDefault = HostScreenBadgeState.defaultOrigin(windowSize: freshWindow.frame.size, in: targetVisibleFrame, margin: 12)
+        expect(
+            freshWindow.frame.origin == expectedDefault,
+            "a badge with nothing remembered defaults top-right of the streamed display's own visible frame, "
+                + "not NSScreen.main's -- got \(freshWindow.frame.origin), expected \(expectedDefault)"
+        )
+
+        // Remembered-position lookup: seeded under the *target's* own
+        // identity, read back against the *target's* own full frame.
+        let seededURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-host-screen-badge-position-target-seeded-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: seededURL) }
+        let seededStore = HostScreenBadgePositionStore(url: seededURL)
+        seededStore.setPosition(HostScreenBadgePosition(offsetFromFrameOrigin: CGPoint(x: 37, y: 51)), for: targetIdentity)
+        let seededController = HostScreenBadgeWindowController(
+            state: HostScreenBadgeState(content: targetContent()),
+            targetDisplayID: targetID,
+            positionStore: seededStore,
+            displayGeometry: targetGeometry
+        )
+        let seededWindow = CanvasHostTestHooks.hostScreenBadgeWindow(seededController)
+        expect(
+            seededWindow.frame.origin == CGPoint(x: targetFrame.minX + 37, y: targetFrame.minY + 51),
+            "a badge built against a store that remembers a drop for the streamed display starts exactly there, "
+                + "read against that display's own full frame -- got \(seededWindow.frame.origin)"
+        )
+
+        // Drag commit: a drop is clamped onto the *target's* own frame and
+        // stored under the *target's* own identity.
+        let dragURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("sensorium-host-screen-badge-position-target-drag-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: dragURL) }
+        let dragStore = HostScreenBadgePositionStore(url: dragURL)
+        let dragController = HostScreenBadgeWindowController(
+            state: HostScreenBadgeState(content: targetContent()),
+            targetDisplayID: targetID,
+            restoresPersistedLayout: false,
+            positionStore: dragStore,
+            displayGeometry: targetGeometry
+        )
+        let dragWindow = CanvasHostTestHooks.hostScreenBadgeWindow(dragController)
+        let dropped = CGPoint(x: targetFrame.minX + 200, y: targetFrame.minY + 100)
+        dragWindow.setFrameOrigin(dropped)
+        dragController.commitDraggedOrigin()
+        expect(
+            dragStore.position(for: targetIdentity) == HostScreenBadgePosition(offsetFromFrameOrigin: CGPoint(x: 200, y: 100)),
+            "a drag's landing is remembered under the streamed display's own identity, not the main screen's"
+        )
+
+        // Screen-parameters change: re-clamps into the *target's* own
+        // frame, not main's.
+        let driftedState = HostScreenBadgeState(
+            content: targetContent(),
+            origin: CGPoint(x: targetFrame.maxX + 5_000, y: targetFrame.maxY + 5_000)
+        )
+        let driftedController = HostScreenBadgeWindowController(
+            state: driftedState, targetDisplayID: targetID, restoresPersistedLayout: false, displayGeometry: targetGeometry
+        )
+        driftedController.handleScreenParametersChange()
+        let reclamped = driftedState.origin ?? .zero
+        expect(
+            reclamped.x <= targetFrame.maxX && reclamped.x >= targetFrame.minX
+                && reclamped.y <= targetFrame.maxY && reclamped.y >= targetFrame.minY,
+            "a screen-parameters change re-clamps into the streamed display's own frame, not main's -- got \(reclamped)"
+        )
+
+        print("PASS: the badge's first placement, remembered-position lookup, drag commit, and screen-parameters re-clamp all use the display the session actually streams")
+    }
+
+    do {
         // The collapsed pill itself: no eyebrow, no display line,
         // a status dot, the device name, and Stop -- the full second
         // line moves to the window's tooltip instead of vanishing.

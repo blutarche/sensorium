@@ -30,6 +30,20 @@ public struct HostScreenBadgePosition: Codable, Equatable, Sendable {
     }
 }
 
+/// One display's placement geometry, as the badge window needs it: the full
+/// frame a saved or default origin is read and clamped against, and the
+/// visible frame -- menu bar and Dock excluded -- the very first,
+/// nothing-remembered placement anchors to instead.
+public struct HostScreenBadgeDisplayGeometry: Equatable, Sendable {
+    public var frame: CGRect
+    public var visibleFrame: CGRect
+
+    public init(frame: CGRect, visibleFrame: CGRect) {
+        self.frame = frame
+        self.visibleFrame = visibleFrame
+    }
+}
+
 /// Where the host-screen badge was last dropped on each display, at
 /// `~/Library/Application Support/Sensorium/host-screen-badge-position.json`.
 /// Keyed by `HostScreenDisplayIdentity.wireStableIdentifier` -- the same
@@ -300,6 +314,10 @@ public final class HostScreenBadgeWindowController: NSObject {
     private let window: NSPanel
     private let positionStore: HostScreenBadgePositionStore
     private let restoresPersistedLayout: Bool
+    /// The display this badge belongs on: the one the session streams.
+    private let targetDisplayID: CGDirectDisplayID?
+    /// The target's current geometry, resolved on each layout pass.
+    private let displayGeometry: @MainActor (CGDirectDisplayID) -> HostScreenBadgeDisplayGeometry?
     /// Which app is sharing, above the device name: the person at this machine
     /// may never have opened Sensorium Host themselves. Hidden in the
     /// collapsed pill, which has no room for it.
@@ -382,13 +400,17 @@ public final class HostScreenBadgeWindowController: NSObject {
     /// or by whatever an earlier badge in the same process left behind.
     public init(
         state: HostScreenBadgeState,
+        targetDisplayID: CGDirectDisplayID? = nil,
         restoresPersistedLayout: Bool = true,
         positionStore: HostScreenBadgePositionStore = .shared,
+        displayGeometry: @escaping @MainActor (CGDirectDisplayID) -> HostScreenBadgeDisplayGeometry? = HostScreenBadgeWindowController.systemDisplayGeometry,
         prefersReducedMotion: @escaping () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     ) {
         self.state = state
+        self.targetDisplayID = targetDisplayID
         self.restoresPersistedLayout = restoresPersistedLayout
         self.positionStore = positionStore
+        self.displayGeometry = displayGeometry
         self.prefersReducedMotion = prefersReducedMotion
         window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: Metrics.expanded.minimumWidth, height: 0),
@@ -674,6 +696,26 @@ public final class HostScreenBadgeWindowController: NSObject {
         maximumWidthConstraint?.constant = metrics.maximumWidth
     }
 
+    /// The target's geometry, falling back to the main screen while the
+    /// target has no live `NSScreen`. Read on every placement pass.
+    private var currentGeometry: HostScreenBadgeDisplayGeometry? {
+        if let targetDisplayID, let resolved = displayGeometry(targetDisplayID) {
+            return resolved
+        }
+        guard let main = NSScreen.main else { return nil }
+        return HostScreenBadgeDisplayGeometry(frame: main.frame, visibleFrame: main.visibleFrame)
+    }
+
+    /// The target's identity for saved positions, even while it has no
+    /// live `NSScreen`.
+    private var currentIdentity: HostScreenDisplayIdentity? {
+        if let targetDisplayID {
+            return Self.identity(for: targetDisplayID)
+        }
+        guard let main = NSScreen.main, let id = Self.displayID(for: main) else { return nil }
+        return Self.identity(for: id)
+    }
+
     /// Resolves `state.origin` -- restoring a remembered drop or falling
     /// back to the default placement the first time this runs -- then
     /// clamps it into the current screen's full frame and applies it, so
@@ -683,13 +725,12 @@ public final class HostScreenBadgeWindowController: NSObject {
     /// placing the badge drop it anywhere on the display, menu-bar and
     /// Dock strips included.
     private func layoutOrigin() {
-        guard let screen = window.screen ?? NSScreen.main else { return }
-        let screenFrame = screen.frame
+        guard let geometry = currentGeometry else { return }
         let windowSize = window.frame.size
         if state.origin == nil {
-            state.setOrigin(resolvedOrigin(for: screen, screenFrame: screenFrame, windowSize: windowSize))
+            state.setOrigin(resolvedOrigin(geometry: geometry, windowSize: windowSize))
         }
-        let clamped = HostScreenBadgeState.clampedOrigin(state.origin ?? .zero, windowSize: windowSize, in: screenFrame)
+        let clamped = HostScreenBadgeState.clampedOrigin(state.origin ?? .zero, windowSize: windowSize, in: geometry.frame)
         if clamped != state.origin {
             state.setOrigin(clamped)
         }
@@ -697,68 +738,82 @@ public final class HostScreenBadgeWindowController: NSObject {
     }
 
     /// The starting origin for a badge with no `origin` of its own yet:
-    /// this display's remembered drop -- read against `screenFrame`, the
+    /// this display's remembered drop -- read against `geometry.frame`, the
     /// full frame -- when `restoresPersistedLayout` allows looking for one
     /// and there is one, otherwise the default top-right placement, which
     /// stays anchored to `visibleFrame` so a fresh badge still starts below
     /// the menu bar rather than flush with the top of the display.
-    private func resolvedOrigin(for screen: NSScreen, screenFrame: CGRect, windowSize: CGSize) -> CGPoint {
+    private func resolvedOrigin(geometry: HostScreenBadgeDisplayGeometry, windowSize: CGSize) -> CGPoint {
         if restoresPersistedLayout,
-           let identity = Self.displayIdentity(for: screen),
+           let identity = currentIdentity,
            let saved = positionStore.position(for: identity) {
             return CGPoint(
-                x: screenFrame.minX + saved.offsetFromFrameOrigin.x,
-                y: screenFrame.minY + saved.offsetFromFrameOrigin.y
+                x: geometry.frame.minX + saved.offsetFromFrameOrigin.x,
+                y: geometry.frame.minY + saved.offsetFromFrameOrigin.y
             )
         }
-        return HostScreenBadgeState.defaultOrigin(windowSize: windowSize, in: screen.visibleFrame, margin: Self.margin)
+        return HostScreenBadgeState.defaultOrigin(windowSize: windowSize, in: geometry.visibleFrame, margin: Self.margin)
     }
 
     /// Called when a drag on the badge's background ends: clamps where it
-    /// was released into the current screen's full frame, records it on
-    /// `state`, and remembers it for this display so the next session
-    /// starts here too.
-    private func commitDraggedOrigin() {
-        guard let screen = window.screen ?? NSScreen.main else { return }
-        let screenFrame = screen.frame
-        let clamped = HostScreenBadgeState.clampedOrigin(window.frame.origin, windowSize: window.frame.size, in: screenFrame)
+    /// was released into the target display's own full frame, records it on
+    /// `state`, and remembers it for that display so the next session
+    /// starts here too. Not `private`, for the same reason
+    /// `handleScreenParametersChange` isn't: `HostScreenIndicationTests`
+    /// fires this directly, standing in for a real drag's mouse-up.
+    package func commitDraggedOrigin() {
+        guard let geometry = currentGeometry else { return }
+        let clamped = HostScreenBadgeState.clampedOrigin(window.frame.origin, windowSize: window.frame.size, in: geometry.frame)
         state.setOrigin(clamped)
         window.setFrameOrigin(clamped)
-        guard let identity = Self.displayIdentity(for: screen) else { return }
+        guard let identity = currentIdentity else { return }
         positionStore.setPosition(
             HostScreenBadgePosition(
-                offsetFromFrameOrigin: CGPoint(x: clamped.x - screenFrame.minX, y: clamped.y - screenFrame.minY)
+                offsetFromFrameOrigin: CGPoint(x: clamped.x - geometry.frame.minX, y: clamped.y - geometry.frame.minY)
             ),
             for: identity
         )
     }
 
-    /// Re-clamps the badge into whichever display it is on now, whenever
-    /// that display's geometry changes -- including a host-screen mode
-    /// change mid-session -- so the badge never ends up partly or fully off
-    /// the display. Bounds against the full frame, so a deliberate drop
-    /// into the menu-bar or Dock strip survives a geometry change too. Not
+    /// Re-clamps the badge into the target display's own frame, whenever
+    /// its geometry changes -- including a host-screen mode change
+    /// mid-session -- so the badge never ends up partly or fully off it.
+    /// Bounds against the full frame, so a deliberate drop into the
+    /// menu-bar or Dock strip survives a geometry change too. Not
     /// `private`: `HostScreenIndicationTests` fires this directly, standing
     /// in for the real notification a screen or mode change would post.
     @objc package func handleScreenParametersChange() {
-        guard let screen = window.screen ?? NSScreen.main, let origin = state.origin else { return }
-        let screenFrame = screen.frame
-        let clamped = HostScreenBadgeState.clampedOrigin(origin, windowSize: window.frame.size, in: screenFrame)
+        guard let geometry = currentGeometry, let origin = state.origin else { return }
+        let clamped = HostScreenBadgeState.clampedOrigin(origin, windowSize: window.frame.size, in: geometry.frame)
         guard clamped != origin else { return }
         state.setOrigin(clamped)
         window.setFrameOrigin(clamped)
+    }
+
+    /// The real geometry AppKit reports for `id`, matched via the
+    /// `NSScreenNumber` device description key -- the same primitive
+    /// `DisplayInventory` uses to match a screen to a `CGDirectDisplayID`.
+    /// `nil` when no `NSScreen` currently represents that display.
+    public static func systemDisplayGeometry(for id: CGDirectDisplayID) -> HostScreenBadgeDisplayGeometry? {
+        guard let screen = NSScreen.screens.first(where: { displayID(for: $0) == id }) else {
+            return nil
+        }
+        return HostScreenBadgeDisplayGeometry(frame: screen.frame, visibleFrame: screen.visibleFrame)
     }
 
     /// `NSScreen` has no `CGDirectDisplayID` of its own; the only way to
     /// match one to a screen is the `NSScreenNumber` device description key
     /// Apple documents for exactly this purpose -- the same lookup
     /// `DisplayInventory` already does.
-    private static func displayIdentity(for screen: NSScreen) -> HostScreenDisplayIdentity? {
+    private static func displayID(for screen: NSScreen) -> CGDirectDisplayID? {
         guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
             return nil
         }
-        let id = CGDirectDisplayID(number.uint32Value)
-        return HostScreenDisplayIdentity(vendorNumber: CGDisplayVendorNumber(id), modelNumber: CGDisplayModelNumber(id))
+        return CGDirectDisplayID(number.uint32Value)
+    }
+
+    private static func identity(for id: CGDirectDisplayID) -> HostScreenDisplayIdentity {
+        HostScreenDisplayIdentity(vendorNumber: CGDisplayVendorNumber(id), modelNumber: CGDisplayModelNumber(id))
     }
 
     @objc private func stopTapped() {

@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SensoriumCore
 
@@ -241,7 +242,7 @@ public final class HostSessionCoordinator {
     /// (`HostScreenEncoderSizing.resolve(for:)`, computed by this
     /// coordinator) rather than raw geometry, so this factory only ever
     /// has to construct a media object, never decide how big to make it.
-    private let hostScreenMediaFactory: ((VideoEncoderConfiguration) -> any CanvasMediaStreaming)?
+    private let hostScreenMediaFactory: ((VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming)?
     /// Reads whether this machine's screen is locked, so the viewer is told whether
     /// to offer the unlock prompt and so an unlock is confirmed after it types.
     private let lockStateReader: any ScreenLockStateReading
@@ -494,7 +495,7 @@ public final class HostSessionCoordinator {
         onEvent: (@Sendable (String) -> Void)? = nil,
         onSessionEnded: (@Sendable () -> Void)? = nil,
         onStreamUnrecoverable: (@Sendable (String) -> Void)? = nil,
-        hostScreenMediaFactory: ((VideoEncoderConfiguration) -> any CanvasMediaStreaming)? = nil,
+        hostScreenMediaFactory: ((VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming)? = nil,
         captureAvailability: HostCaptureAvailability = .shared,
         lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
         lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker(),
@@ -2505,7 +2506,7 @@ public final class HostSessionCoordinator {
             throw HostScreenBringUpError.displayIDUnavailable
         }
         let sizing = hostScreenEncoderSizing(for: geometry)
-        let media = hostScreenMediaFactory(sizing.configuration)
+        let media = hostScreenMediaFactory(sizing.configuration, displayID)
         hostScreenMedia = media
         isHostScreenStreaming = true
         try await beginHostScreenCapture(media: media, sizing: sizing, displayID: displayID)

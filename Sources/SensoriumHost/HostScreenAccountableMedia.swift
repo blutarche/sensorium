@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SensoriumCore
 
@@ -75,8 +76,9 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     private let onBadgeStop: @MainActor () -> Void
     /// The real `HostScreenBadgeWindowController` by default; a test
     /// supplies a fake that records `show`/`hide` instead of opening a
-    /// real window.
-    private let badgeFactory: (HostScreenBadgeState) -> any HostScreenBadgeDisplaying
+    /// real window. Takes the display the badge belongs on -- the one this
+    /// session streams -- so it is never left to guess.
+    private let badgeFactory: (HostScreenBadgeState, CGDirectDisplayID) -> any HostScreenBadgeDisplaying
 
     private var inner: (any CanvasMediaStreaming)?
     /// Re-applied to `inner` every time `makeMedia` or `replaceCapture`
@@ -103,8 +105,8 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         deviceName: @escaping () -> String,
         displayLabel: @escaping () -> String,
         onBadgeStop: @escaping @MainActor () -> Void,
-        badgeFactory: @escaping (HostScreenBadgeState) -> any HostScreenBadgeDisplaying = {
-            HostScreenBadgeWindowController(state: $0)
+        badgeFactory: @escaping (HostScreenBadgeState, CGDirectDisplayID) -> any HostScreenBadgeDisplaying = {
+            HostScreenBadgeWindowController(state: $0, targetDisplayID: $1)
         }
     ) {
         self.rawFactory = rawFactory
@@ -121,13 +123,13 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     /// actually been admitted -- `HostSessionController.hostScreenDeviceName`/
     /// `hostScreenDisplayLabel` are `nil` until then, and this method only
     /// runs after the request has been admitted.
-    public func makeMedia(_ configuration: VideoEncoderConfiguration) -> any CanvasMediaStreaming {
+    public func makeMedia(_ configuration: VideoEncoderConfiguration, displayID: CGDirectDisplayID) -> any CanvasMediaStreaming {
         let name = deviceName()
         let label = displayLabel()
         recordID = sessionLog.beginSession(deviceName: name, displayLabel: label, startedAt: Date())
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: name, displayLabel: label))
         state.onStop = onBadgeStop
-        let display = badgeFactory(state)
+        let display = badgeFactory(state, displayID)
         display.show()
         badgeState = state
         badgeDisplay = display
