@@ -199,6 +199,12 @@ static inline int sensorium_is_editable(gpointer object) {
     return object != NULL && GTK_IS_EDITABLE(object);
 }
 
+// Keeps `target` shown exactly while `source` is. The binding flags are an
+// enum this module's Swift import does not see.
+static inline void sensorium_bind_visible(gpointer source, gpointer target) {
+    g_object_bind_property(source, "visible", target, "visible", G_BINDING_SYNC_CREATE);
+}
+
 // Dark chrome, asked of the toolkit itself so the widgets this viewer does not
 // restyle -- scrollbars, the text caret, the selection -- are dark too.
 // `g_object_set` is variadic.

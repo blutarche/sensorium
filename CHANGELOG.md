@@ -141,6 +141,8 @@ once it reaches 1.0.
 
 ### Fixed
 
+- Text in the Linux viewer's machine list and pairing windows stays on
+  the same lines across desktop fonts, including Nimbus Sans and FreeSans.
 - The live host-screen badge opens and stays on the display being shared,
   including after a drag or display mode change. A remembered badge position
   is read and saved for that display.

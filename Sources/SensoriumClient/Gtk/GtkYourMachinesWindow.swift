@@ -346,7 +346,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     // MARK: - The list
 
     private func buildListPage() {
-        GtkWidgets.append(GtkWidgets.label(YourMachinesWindowModel.heading, cssClass: GtkViewerStyle.Class.heading), to: listPage)
+        GtkWidgets.append(
+            GtkWidgets.onTextLine(GtkWidgets.label(YourMachinesWindowModel.heading, cssClass: GtkViewerStyle.Class.heading), size: 20),
+            to: listPage
+        )
 
         let addButton = GtkWidgets.button(
             YourMachinesWindowModel.addTitle,
@@ -356,7 +359,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
         if model.isEmpty {
             GtkWidgets.append(
-                GtkWidgets.label(YourMachinesWindowModel.emptySentence, cssClass: GtkViewerStyle.Class.muted),
+                GtkWidgets.onTextLine(
+                    GtkWidgets.label(YourMachinesWindowModel.emptySentence, cssClass: GtkViewerStyle.Class.muted),
+                    size: 13
+                ),
                 to: listPage
             )
             GtkWidgets.append(addButton, to: listPage)
@@ -414,7 +420,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             if let dotClass = Self.cssClass(for: row.dot) {
                 GtkWidgets.append(GtkWidgets.dot(cssClass: dotClass), to: detailRow)
             }
-            GtkWidgets.append(GtkWidgets.label(row.detail, cssClass: GtkViewerStyle.Class.rowDetail), to: detailRow)
+            GtkWidgets.append(
+                GtkWidgets.onTextLine(GtkWidgets.label(row.detail, cssClass: GtkViewerStyle.Class.rowDetail), size: 12),
+                to: detailRow
+            )
             GtkWidgets.append(detailRow, to: content)
         }
         gtk_button_set_child(sensorium_gtk_button(rowButton), sensorium_gtk_widget(content))
@@ -602,11 +611,17 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         // Sensorium Host -- there is no way to tell those apart without a port
         // probe this app does not do, and an implied filter it cannot back up
         // is worse than an honest, unfiltered list.
-        GtkWidgets.append(GtkWidgets.label("Add a Machine", cssClass: GtkViewerStyle.Class.heading), to: pickerPage)
         GtkWidgets.append(
-            GtkWidgets.label(
-                "Every other machine on your tailnet appears here, whether or not Sensorium Host is running on it.",
-                cssClass: GtkViewerStyle.Class.muted
+            GtkWidgets.onTextLine(GtkWidgets.label("Add a Machine", cssClass: GtkViewerStyle.Class.heading), size: 20),
+            to: pickerPage
+        )
+        GtkWidgets.append(
+            GtkWidgets.onTextLine(
+                GtkWidgets.label(
+                    "Every other machine on your tailnet appears here, whether or not Sensorium Host is running on it.",
+                    cssClass: GtkViewerStyle.Class.muted
+                ),
+                size: 13
             ),
             to: pickerPage
         )
@@ -617,14 +632,20 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         case let .unreachable(reason):
             // No "Open Tailscale" here: this platform has no app to open, and
             // a button that cannot do anything is worse than none.
-            GtkWidgets.append(GtkWidgets.label(reason, cssClass: GtkViewerStyle.Class.bad), to: pickerPage)
+            GtkWidgets.append(
+                GtkWidgets.onTextLine(GtkWidgets.label(reason, cssClass: GtkViewerStyle.Class.bad), size: 13),
+                to: pickerPage
+            )
             appendLookAgain(to: pickerPage)
         case .noOtherDevices:
             GtkWidgets.append(
-                GtkWidgets.label(
-                    "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
-                        + "on, then choose Look Again.",
-                    cssClass: GtkViewerStyle.Class.muted
+                GtkWidgets.onTextLine(
+                    GtkWidgets.label(
+                        "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
+                            + "on, then choose Look Again.",
+                        cssClass: GtkViewerStyle.Class.muted
+                    ),
+                    size: 13
                 ),
                 to: pickerPage
             )
@@ -664,7 +685,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         }
         gtk_label_set_ellipsize(sensorium_gtk_label(title), PANGO_ELLIPSIZE_END)
         GtkWidgets.append(GtkWidgets.onTextLine(title, size: 14), to: content)
-        GtkWidgets.append(subtitle, to: content)
+        GtkWidgets.append(GtkWidgets.onTextLine(subtitle, size: 11, mono: true), to: content)
         let button = gtkRef(gtk_button_new())
         GtkWidgets.takesNoKeyboardFocus(button)
         gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
@@ -692,15 +713,21 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
     private func buildCodePage(device: ViewerPairingDevice?, isPairingAgain: Bool) {
         GtkWidgets.append(
-            GtkWidgets.label(
-                device.map { "Type the Code Shown on \($0.label)" } ?? "Type the Code Shown on That Machine",
-                cssClass: GtkViewerStyle.Class.heading
+            GtkWidgets.onTextLine(
+                GtkWidgets.label(
+                    device.map { "Type the Code Shown on \($0.label)" } ?? "Type the Code Shown on That Machine",
+                    cssClass: GtkViewerStyle.Class.heading
+                ),
+                size: 20
             ),
             to: codePage
         )
         if isPairingAgain {
             GtkWidgets.append(
-                GtkWidgets.label("Pairing again replaces the saved key.", cssClass: GtkViewerStyle.Class.muted),
+                GtkWidgets.onTextLine(
+                    GtkWidgets.label("Pairing again replaces the saved key.", cssClass: GtkViewerStyle.Class.muted),
+                    size: 13
+                ),
                 to: codePage
             )
         }
@@ -731,8 +758,8 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         messageDetail = detail
         gtk_widget_set_visible(sensorium_gtk_widget(headline), 0)
         gtk_widget_set_visible(sensorium_gtk_widget(detail), 0)
-        GtkWidgets.append(headline, to: codePage)
-        GtkWidgets.append(detail, to: codePage)
+        GtkWidgets.append(GtkWidgets.onTextLine(headline, size: 13), to: codePage)
+        GtkWidgets.append(GtkWidgets.onTextLine(detail, size: 12), to: codePage)
 
         let name = GtkWidgets.entry(placeholder: "Studio", cssClass: nil)
         GtkWidgets.setText(form.name, on: name)
@@ -773,11 +800,11 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private static func fieldGroup(label: String?, field: GtkRef, hint: GtkRef?) -> GtkRef {
         let group = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.xxs))
         if let label {
-            GtkWidgets.append(GtkWidgets.label(label, cssClass: GtkViewerStyle.Class.muted), to: group)
+            GtkWidgets.append(GtkWidgets.onTextLine(GtkWidgets.label(label, cssClass: GtkViewerStyle.Class.muted), size: 13), to: group)
         }
         GtkWidgets.append(field, to: group)
         if let hint {
-            GtkWidgets.append(hint, to: group)
+            GtkWidgets.append(GtkWidgets.onTextLine(hint, size: 12), to: group)
         }
         return group
     }

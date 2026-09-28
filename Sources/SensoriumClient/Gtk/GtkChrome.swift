@@ -199,27 +199,50 @@ enum GtkWidgets {
         return label
     }
 
-    /// `label`, set in `size`-point sans, on the line AppKit sets that text
-    /// on: a box `TextLine.height` tall with the label's baseline
-    /// `TextLine.baseline` below its top, to the fraction of a point,
-    /// whatever the Linux face's own ascent. For a label Pango may cut
-    /// short, which a CSS line-height cannot place: the ellipsis Pango adds
-    /// keeps the face's own line, and the text rides up with it.
-    static func onTextLine(_ label: GtkRef, size: Int) -> GtkRef {
+    /// `label`, set in `size`-point sans or `mono`, on the lines AppKit sets
+    /// that text on: a box `TextLine.height` tall for each line, the first
+    /// line's baseline `TextLine.baseline` below its top to the fraction of a
+    /// point, whatever the Linux face's own ascent and descent. A CSS
+    /// line-height alone spaces the lines but centres the face's own ascent
+    /// and descent on each, and an ellipsis Pango adds keeps the face's own
+    /// line. The box is shown only while the label is.
+    static func onTextLine(_ label: GtkRef, size: Int, mono: Bool = false) -> GtkRef {
         let line = gtkRef(gtk_box_new(GTK_ORIENTATION_VERTICAL, 0))
         g_object_set_data(sensorium_g_object(line), textLineSizeKey, UnsafeMutableRawPointer(bitPattern: size))
+        g_object_set_data(sensorium_g_object(line), textLineMonoKey, UnsafeMutableRawPointer(bitPattern: mono ? 1 : 0))
         gtk_widget_set_layout_manager(
             sensorium_gtk_widget(line),
-            gtk_custom_layout_new(nil, textLineMeasure, textLineAllocate)
+            gtk_custom_layout_new(textLineRequestMode, textLineMeasure, textLineAllocate)
         )
         gtk_box_append(sensorium_gtk_box(line), sensorium_gtk_widget(label))
+        sensorium_bind_visible(label, line)
         return line
     }
 
     private static let textLineSizeKey = "sensorium-text-line-size"
+    private static let textLineMonoKey = "sensorium-text-line-mono"
 
-    private static func textLineSize(_ widget: UnsafeMutablePointer<GtkWidget>) -> Double {
-        Double(Int(bitPattern: g_object_get_data(sensorium_g_object(widget), textLineSizeKey)))
+    private static func textLine(_ widget: UnsafeMutablePointer<GtkWidget>) -> (size: Double, mono: Bool) {
+        (
+            Double(Int(bitPattern: g_object_get_data(sensorium_g_object(widget), textLineSizeKey))),
+            g_object_get_data(sensorium_g_object(widget), textLineMonoKey) != nil
+        )
+    }
+
+    /// How many lines `label` sets its text on at `width` points.
+    private static func lineCount(_ label: UnsafeMutablePointer<GtkWidget>, width: Int32) -> Int {
+        guard gtk_label_get_wrap(sensorium_gtk_label(label)) != 0,
+              let copy = pango_layout_copy(gtk_label_get_layout(sensorium_gtk_label(label))) else {
+            return 1
+        }
+        defer { g_object_unref(UnsafeMutableRawPointer(copy)) }
+        pango_layout_set_width(copy, width * PANGO_SCALE)
+        return max(1, Int(pango_layout_get_line_count(copy)))
+    }
+
+    /// Wrapped text is as tall as the width it is given lets it be.
+    private static let textLineRequestMode: @convention(c) (UnsafeMutablePointer<GtkWidget>?) -> GtkSizeRequestMode = { _ in
+        GTK_SIZE_REQUEST_HEIGHT_FOR_WIDTH
     }
 
     private static let textLineMeasure: @convention(c) (
@@ -228,8 +251,13 @@ enum GtkWidgets {
         UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?
     ) -> Void = { widget, orientation, forSize, minimum, natural, _, _ in
         guard let widget, let label = gtk_widget_get_first_child(widget) else { return }
-        if orientation == GTK_ORIENTATION_VERTICAL {
-            let height = Int32(ViewerChromeMetrics.TextLine.height(size: textLineSize(widget), mono: false))
+        // Asked for a height at no width, wrapped text answers as the label
+        // does: its lines depend on a width only allocation gives it.
+        if orientation == GTK_ORIENTATION_VERTICAL, forSize >= 0 || gtk_label_get_wrap(sensorium_gtk_label(label)) == 0 {
+            let text = textLine(widget)
+            let height = Int32(
+                Double(lineCount(label, width: forSize)) * ViewerChromeMetrics.TextLine.height(size: text.size, mono: text.mono)
+            )
             minimum?.pointee = height
             natural?.pointee = height
         } else {
@@ -243,10 +271,11 @@ enum GtkWidgets {
         guard let widget, let label = gtk_widget_get_first_child(widget) else { return }
         var natural: Int32 = 0
         gtk_widget_measure(label, GTK_ORIENTATION_VERTICAL, width, nil, &natural, nil, nil)
+        let text = textLine(widget)
         let ascent = Double(pango_layout_get_baseline(gtk_label_get_layout(sensorium_gtk_label(label)))) / Double(PANGO_SCALE)
         var top = graphene_point_t(
             x: 0,
-            y: Float(ViewerChromeMetrics.TextLine.baseline(size: textLineSize(widget), mono: false) - ascent)
+            y: Float(ViewerChromeMetrics.TextLine.baseline(size: text.size, mono: text.mono) - ascent)
         )
         gtk_widget_allocate(label, width, natural, -1, gsk_transform_translate(nil, &top))
     }
@@ -382,7 +411,7 @@ enum GtkWidgets {
     static func loadingSentence(_ text: String) -> GtkRef {
         let row = box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.xxs))
         append(dot(cssClass: GtkViewerStyle.Class.dotActivity), to: row)
-        append(label(text, cssClass: GtkViewerStyle.Class.muted), to: row)
+        append(onTextLine(label(text, cssClass: GtkViewerStyle.Class.muted), size: 13), to: row)
         return row
     }
 

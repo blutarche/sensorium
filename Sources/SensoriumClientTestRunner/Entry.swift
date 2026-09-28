@@ -61,6 +61,7 @@ struct SensoriumClientTestRunner {
         testGtkYourMachinesMenuCommandsTests()
         testGtkYourMachinesMenuBarFitsLargeTextTests()
         testGtkRowNameSitsOnMacLineTests()
+        testGtkYourMachinesTextSitsOnMacLinesTests()
         await testDisplayCountMenuTests()
         await testSecondDisplayRefusalReconciliationTests()
         await testClientSessionControllerPairIntentTests()
