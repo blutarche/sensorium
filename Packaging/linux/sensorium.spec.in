@@ -55,6 +55,9 @@ viewer; the machine being worked on runs macOS.
 # package ships no static standard library. The runtime is a Fedora package
 # of its own, swift-lang-runtime, which the automatic dependency generator
 # picks up from the sonames in the binary.
+# rpmbuild sets CC to gcc, but SwiftPM's C targets require Clang's module-map
+# flags. Let the Swift toolchain choose its bundled compiler.
+unset CC CXX
 swift build -c release --product Sensorium
 
 %install
@@ -92,3 +95,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/com.sensorium.viewer.
 %{_datadir}/applications/com.sensorium.viewer.desktop
 %{_metainfodir}/com.sensorium.viewer.metainfo.xml
 %{_datadir}/icons/hicolor/*/apps/com.sensorium.viewer.png
+
+%changelog
+* Tue Sep 29 2026 Sensorium contributors - 0.2.0-1
+- Release 0.2.0.
