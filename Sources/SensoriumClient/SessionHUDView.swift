@@ -318,11 +318,8 @@ private final class SessionHUDRowView: NSView {
     private var fullValueWidth: CGFloat = 0
     private var sparklineReserve: CGFloat = 0
 
-    private static let labelColumnWidth: CGFloat = 96
-    /// A column is half the panel less the gutter, so its labels take the
-    /// width the longest of them actually needs and no more -- measured
-    /// against "END-TO-END", the longest label a narrow row carries.
-    private static let narrowLabelColumnWidth: CGFloat = 70
+    private static let labelColumnWidth = ViewerChromeMetrics.Diagnostics.labelColumnWidth
+    private static let narrowLabelColumnWidth = ViewerChromeMetrics.Diagnostics.narrowLabelColumnWidth
 
     init(isNarrow: Bool) {
         sparkline = isNarrow ? nil : SessionHUDSparklineView()
@@ -483,7 +480,10 @@ private final class SessionHUDRowView: NSView {
 /// this only strokes what it returns.
 @MainActor
 private final class SessionHUDSparklineView: NSView {
-    static let size = NSSize(width: 64, height: 14)
+    static let size = NSSize(
+        width: ViewerChromeMetrics.Diagnostics.sparklineWidth,
+        height: ViewerChromeMetrics.Diagnostics.sparklineHeight
+    )
 
     var samples: [Double] = [] {
         didSet { needsDisplay = true }

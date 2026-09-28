@@ -91,6 +91,23 @@ func gtkRunIndexedCallback(_ data: GtkRef?, _ index: Int32) {
     MainActor.assumeIsolated { callback.run(index) }
 }
 
+/// A key controller's closure: whether it took the key, so GTK knows not to
+/// pass it on. Sendable for the same reason `GtkCallback` is.
+final class GtkKeyPressHandler: @unchecked Sendable {
+    let run: @MainActor (guint, GdkModifierType) -> Bool
+
+    init(_ run: @escaping @MainActor (guint, GdkModifierType) -> Bool) {
+        self.run = run
+    }
+}
+
+let gtkKeyPressedHandler: @convention(c) (GtkRef?, guint, guint, GdkModifierType, GtkRef?) -> gboolean = {
+    _, keyval, _, state, data in
+    guard let data else { return 0 }
+    let handler = Unmanaged<GtkKeyPressHandler>.fromOpaque(data).takeUnretainedValue()
+    return MainActor.assumeIsolated { handler.run(keyval, state) } ? 1 : 0
+}
+
 let gtkActionActivateHandler: @convention(c) (GtkRef?, OpaquePointer?, GtkRef?) -> Void = { _, parameter, data in
     guard let parameter else { return }
     gtkRunIndexedCallback(data, g_variant_get_int32(parameter))
@@ -182,6 +199,58 @@ enum GtkWidgets {
         return label
     }
 
+    /// `label`, set in `size`-point sans, on the line AppKit sets that text
+    /// on: a box `TextLine.height` tall with the label's baseline
+    /// `TextLine.baseline` below its top, to the fraction of a point,
+    /// whatever the Linux face's own ascent. For a label Pango may cut
+    /// short, which a CSS line-height cannot place: the ellipsis Pango adds
+    /// keeps the face's own line, and the text rides up with it.
+    static func onTextLine(_ label: GtkRef, size: Int) -> GtkRef {
+        let line = gtkRef(gtk_box_new(GTK_ORIENTATION_VERTICAL, 0))
+        g_object_set_data(sensorium_g_object(line), textLineSizeKey, UnsafeMutableRawPointer(bitPattern: size))
+        gtk_widget_set_layout_manager(
+            sensorium_gtk_widget(line),
+            gtk_custom_layout_new(nil, textLineMeasure, textLineAllocate)
+        )
+        gtk_box_append(sensorium_gtk_box(line), sensorium_gtk_widget(label))
+        return line
+    }
+
+    private static let textLineSizeKey = "sensorium-text-line-size"
+
+    private static func textLineSize(_ widget: UnsafeMutablePointer<GtkWidget>) -> Double {
+        Double(Int(bitPattern: g_object_get_data(sensorium_g_object(widget), textLineSizeKey)))
+    }
+
+    private static let textLineMeasure: @convention(c) (
+        UnsafeMutablePointer<GtkWidget>?, GtkOrientation, Int32,
+        UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?,
+        UnsafeMutablePointer<Int32>?, UnsafeMutablePointer<Int32>?
+    ) -> Void = { widget, orientation, forSize, minimum, natural, _, _ in
+        guard let widget, let label = gtk_widget_get_first_child(widget) else { return }
+        if orientation == GTK_ORIENTATION_VERTICAL {
+            let height = Int32(ViewerChromeMetrics.TextLine.height(size: textLineSize(widget), mono: false))
+            minimum?.pointee = height
+            natural?.pointee = height
+        } else {
+            gtk_widget_measure(label, orientation, forSize, minimum, natural, nil, nil)
+        }
+    }
+
+    private static let textLineAllocate: @convention(c) (
+        UnsafeMutablePointer<GtkWidget>?, Int32, Int32, Int32
+    ) -> Void = { widget, width, _, _ in
+        guard let widget, let label = gtk_widget_get_first_child(widget) else { return }
+        var natural: Int32 = 0
+        gtk_widget_measure(label, GTK_ORIENTATION_VERTICAL, width, nil, &natural, nil, nil)
+        let ascent = Double(pango_layout_get_baseline(gtk_label_get_layout(sensorium_gtk_label(label)))) / Double(PANGO_SCALE)
+        var top = graphene_point_t(
+            x: 0,
+            y: Float(ViewerChromeMetrics.TextLine.baseline(size: textLineSize(widget), mono: false) - ascent)
+        )
+        gtk_widget_allocate(label, width, natural, -1, gsk_transform_translate(nil, &top))
+    }
+
     /// A column of fixed width, the width every macOS window of this viewer
     /// lays its content out at, inset from the window's edges by
     /// `Space.xl`.
@@ -226,6 +295,49 @@ enum GtkWidgets {
         append(gtkRef(gtk_label_new(title)), to: content)
         gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
         return button
+    }
+
+    /// The "\u{2026}" a saved machine's row ends in: `GtkViewerStyle.MoreDots`,
+    /// in the colour GTK resolves for the button that holds it, placed on the
+    /// device pixels this draw lands on.
+    static func moreDots() -> GtkRef {
+        let area = gtkRef(gtk_drawing_area_new())
+        let size = Int32(GtkViewerStyle.MoreDots.buttonSize)
+        gtk_widget_set_size_request(sensorium_gtk_widget(area), size, size)
+        gtk_drawing_area_set_draw_func(
+            sensorium_gtk_drawing_area(area),
+            { area, context, _, _, _ in
+                guard let area, let context else { return }
+                var color = GdkRGBA()
+                gtk_widget_get_color(sensorium_gtk_widget(area), &color)
+                // GTK hands a drawing area a context in logical units and
+                // scales it afterwards, so the surface's own scale and this
+                // widget's place on it are what the dots are snapped against.
+                let widget = sensorium_gtk_widget(area)
+                var scale = 1.0
+                var origin = (x: 0.0, y: 0.0)
+                if let native = gtk_widget_get_native(widget), let surface = gtk_native_get_surface(native) {
+                    scale = gdk_surface_get_scale(surface)
+                    var from = graphene_point_t(x: 0, y: 0)
+                    var to = graphene_point_t(x: 0, y: 0)
+                    var offset = (x: 0.0, y: 0.0)
+                    gtk_native_get_surface_transform(native, &offset.x, &offset.y)
+                    if gtk_widget_compute_point(widget, sensorium_gtk_widget(UnsafeMutableRawPointer(native)), &from, &to) != 0 {
+                        origin = ((Double(to.x) + offset.x) * scale, (Double(to.y) + offset.y) * scale)
+                    }
+                }
+                let dots = GtkViewerStyle.MoreDots.placement(scale: scale, origin: origin)
+                cairo_set_source_rgba(context, Double(color.red), Double(color.green), Double(color.blue), Double(color.alpha))
+                for centre in dots.centres {
+                    cairo_new_sub_path(context)
+                    cairo_arc(context, (centre.x - origin.x) / scale, (centre.y - origin.y) / scale, dots.diameter / 2 / scale, 0, 2 * .pi)
+                }
+                cairo_fill(context)
+            },
+            nil,
+            nil
+        )
+        return area
     }
 
     /// Draws in the colour GTK resolves for the link itself, so the icon

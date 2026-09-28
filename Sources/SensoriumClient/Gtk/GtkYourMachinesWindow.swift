@@ -40,10 +40,13 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     public var onConnectAsVirtualDisplayFallback: ((Data) -> Void)?
     public var onCloseRequested: (() -> Void)?
     public var onCodeStepAbandoned: (() -> Void)?
+    /// Hide Sensorium: every viewer window, not only this one.
+    public var onHide: (() -> Void)?
 
     private let store: any SavedHostStoring
     private let window: GtkRef
     private let stack: GtkRef
+    package let menuBar: GtkViewerMenuBar
     private let listPage: GtkRef
     private let pickerPage: GtkRef
     private let codePage: GtkRef
@@ -112,12 +115,49 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(listPage), "list")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(pickerPage), "picker")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(codePage), "code")
-        gtk_window_set_child(sensorium_gtk_window(window), sensorium_gtk_widget(stack))
+        menuBar = GtkViewerMenuBar(window: window)
+        menuBar.update(LinuxViewerMenu.bar(Self.menuBarState))
+        menuBar.onCommand = { [weak self] in self?.perform($0) }
+        let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)
+        gtk_box_append(sensorium_gtk_box(content), sensorium_gtk_widget(menuBar.widget))
+        gtk_box_append(sensorium_gtk_box(content), sensorium_gtk_widget(stack))
+        gtk_window_set_child(sensorium_gtk_window(window), content)
 
         installRowMenuActions()
         installKeys()
         installCloseRequest()
         reloadFromStore()
+    }
+
+    /// The menus as macOS shows them while this window is in front: it can be
+    /// minimized, but neither resized nor made full screen.
+    private static let menuBarState = ViewerMenuBarState(canFullScreen: false, zoomEnabled: false)
+
+    public func minimize() {
+        gtk_window_minimize(sensorium_gtk_window(window))
+    }
+
+    /// About Sensorium, over this window.
+    public func showAbout() {
+        GtkViewerAbout.present(over: window)
+    }
+
+    private func perform(_ command: ViewerMenuCommand) {
+        switch command {
+        case .about:
+            showAbout()
+        case .quit:
+            onCloseRequested?()
+        case .showYourMachines:
+            showList()
+            show()
+        case .hide:
+            onHide?()
+        case .minimize:
+            minimize()
+        default:
+            break
+        }
     }
 
     // MARK: - Showing and hiding
@@ -368,7 +408,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         let name = GtkWidgets.label(row.name, cssClass: GtkViewerStyle.Class.rowName, wraps: false)
         gtk_label_set_ellipsize(sensorium_gtk_label(name), PANGO_ELLIPSIZE_END)
         gtk_widget_set_halign(sensorium_gtk_widget(name), GTK_ALIGN_FILL)
-        GtkWidgets.append(name, to: content)
+        GtkWidgets.append(GtkWidgets.onTextLine(name, size: 14), to: content)
         if !row.detail.isEmpty {
             let detailRow = GtkWidgets.box(vertical: false, spacing: nameToDetailGap)
             if let dotClass = Self.cssClass(for: row.dot) {
@@ -394,7 +434,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_widget_add_css_class(sensorium_gtk_widget(menuButton), GtkViewerStyle.Class.iconButton)
         // A child rather than a label: a labelled menu button adds a
         // disclosure arrow the macOS "\u{2026}" does not have.
-        gtk_menu_button_set_child(sensorium_gtk_menu_button(menuButton), gtk_label_new("\u{2026}"))
+        gtk_menu_button_set_child(sensorium_gtk_menu_button(menuButton), sensorium_gtk_widget(GtkWidgets.moreDots()))
         GtkWidgets.setAccessibleLabel("More actions for \(row.name)", on: menuButton)
         let menu = rowMenu(for: row, index: index)
         gtk_menu_button_set_menu_model(sensorium_gtk_menu_button(menuButton), sensorium_g_menu_model(menu))
@@ -622,7 +662,8 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             gtk_widget_add_css_class(sensorium_gtk_widget(title), GtkViewerStyle.Class.offline)
             gtk_widget_add_css_class(sensorium_gtk_widget(subtitle), GtkViewerStyle.Class.offline)
         }
-        GtkWidgets.append(title, to: content)
+        gtk_label_set_ellipsize(sensorium_gtk_label(title), PANGO_ELLIPSIZE_END)
+        GtkWidgets.append(GtkWidgets.onTextLine(title, size: 14), to: content)
         GtkWidgets.append(subtitle, to: content)
         let button = gtkRef(gtk_button_new())
         GtkWidgets.takesNoKeyboardFocus(button)
@@ -914,32 +955,18 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtkConnect(window, "close-request", closeRequest, Unmanaged.passUnretained(callback).toOpaque())
     }
 
-    /// The two chords the menu bar carries on macOS. There is no menu bar
-    /// here, and quitting has to work before any machine has been reached.
+    /// The menu bar's own chords. GTK shows them beside each item but binds
+    /// none of them, and quitting has to work before any machine has been
+    /// reached.
     private func installKeys() {
-        let callback = GtkIndexedCallback { [weak self] keyval in
-            guard let self else { return }
-            switch keyval {
-            case Int32(GDK_KEY_q), Int32(GDK_KEY_Q):
-                self.onCloseRequested?()
-            case Int32(GDK_KEY_1):
-                self.showList()
-                self.show()
-            default:
-                break
-            }
+        let handler = GtkKeyPressHandler { [weak self] keyval, state in
+            guard let self, let command = self.menuBar.command(keyval: keyval, state: state) else { return false }
+            self.perform(command)
+            return true
         }
-        windowCallbacks.append(callback)
+        windowCallbacks.append(handler)
         let controller = gtkRef(gtk_event_controller_key_new())
-        let pressed: @convention(c) (GtkRef?, guint, guint, GdkModifierType, GtkRef?) -> gboolean = {
-            _, keyval, _, state, data in
-            guard sensorium_modifier_has_control(state) != 0, let data else { return 0 }
-            let claimed: Set<guint> = [guint(GDK_KEY_q), guint(GDK_KEY_Q), guint(GDK_KEY_1)]
-            guard claimed.contains(keyval) else { return 0 }
-            gtkRunIndexedCallback(data, Int32(bitPattern: keyval))
-            return 1
-        }
-        gtkConnect(controller, "key-pressed", pressed, Unmanaged.passUnretained(callback).toOpaque())
+        gtkConnect(controller, "key-pressed", gtkKeyPressedHandler, Unmanaged.passUnretained(handler).toOpaque())
         gtk_widget_add_controller(sensorium_gtk_widget(window), sensorium_gtk_event_controller(controller))
     }
 }

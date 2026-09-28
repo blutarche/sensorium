@@ -224,22 +224,13 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
-        // Linux has no native menu bar, so a sentence that would say "the
-        // Screen menu" on macOS has to name the shortcut strip's own gear
-        // instead -- `SessionSettingsNaming.title`.
-        #if os(macOS)
+        // Both platforms have a Screen menu in their menu bar.
         expect(
             HostScreenRefusalCopy.screenControlName == "the Screen menu",
-            "macOS names its own Screen menu, got \(HostScreenRefusalCopy.screenControlName)"
+            "the copy names the Screen menu, got \(HostScreenRefusalCopy.screenControlName)"
         )
-        #else
-        expect(
-            HostScreenRefusalCopy.screenControlName == "Session Settings",
-            "Linux names the gear's own accessible name instead, got \(HostScreenRefusalCopy.screenControlName)"
-        )
-        #endif
 
-        print("PASS: screenControlName names the platform's own control for choosing a host screen")
+        print("PASS: screenControlName names the Screen menu, where a host screen is chosen")
     }
 
     do {

@@ -7,7 +7,6 @@ import SensoriumCore
 /// What one press on the shortcut strip landed on.
 enum ShortcutStripHit: Equatable {
     case action(ShortcutStripAction)
-    case gear
     case pin
     case confirm
     case cancel
@@ -37,6 +36,9 @@ enum SessionChromePainter {
     /// eyebrow: `SessionHUDEyebrow` on macOS draws all of them at the same
     /// size, 12, mono, medium.
     private static let eyebrowSize: Double = 12
+    /// The latency columns' own headers, one size under the block eyebrow
+    /// above them, as `SessionHUDEyebrow.columnSize` sets them on macOS.
+    private static let columnHeaderSize: Double = 11
     private static let headlineSize: Double = 16
     private static let detailSize: Double = 12
     /// The status panel's own buttons -- `ViewerActionButton.titleFont` on
@@ -46,15 +48,15 @@ enum SessionChromePainter {
     /// on macOS is 12, regular.
     private static let buttonTitleSize: Double = 12
     private static let rowSize: Double = 11
+    private static let eyebrowWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.eyebrow)
+    private static let headlineWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.headline)
+    private static let detailWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.detail)
+    private static let buttonWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.button)
+    private static let hudLabelWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.hudLabel)
+    private static let hudValueWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.hudValue)
+    private static let hudNoteWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.hudNote)
     private static let dotSize: Double = Double(ViewerChromeMetrics.StatusDot.size)
     private static let dotRadius: Double = Double(ViewerChromeMetrics.StatusDot.radius)
-
-    /// The most a section's label column ever reserves room for its own
-    /// widest value -- a section of short values (a latency reading) gives
-    /// its labels more room than this, but a section with one outlying long
-    /// value (`DROPPED HERE`'s own multi-line reading) never loses more than
-    /// this much of its own room to the label beside it.
-    private static let rowValueWidthCap: Double = 64
 
     // MARK: - Status panel
 
@@ -69,6 +71,10 @@ enum SessionChromePainter {
 
     private static var eyebrowTracking: Double {
         Double(ViewerChromeMetrics.Tracking.widest) * eyebrowSize
+    }
+
+    private static func sectionTitleSize(isNarrow: Bool) -> Double {
+        isNarrow ? columnHeaderSize : eyebrowSize
     }
 
     /// Fills the whole window behind the status panel -- the one overlay with
@@ -87,17 +93,17 @@ enum SessionChromePainter {
         let width = ViewerStatusPanelMetrics.sessionPanelWidth { measureButtonTitle($0) }
         let textWidth = width - inset * 2
         let eyebrowHeight = CairoChromeText.measure(
-            status.eyebrow, pointSize: eyebrowSize, mono: true, weight: .medium, tracking: eyebrowTracking
+            status.eyebrow, pointSize: eyebrowSize, mono: true, weight: eyebrowWeight, tracking: eyebrowTracking
         ).height
         var height = inset + eyebrowRowHeight(eyebrowHeight: eyebrowHeight)
         height += ViewerStatusPanelMetrics.eyebrowToTitleGap
         height += CairoChromeText.measure(
-            status.headline, pointSize: headlineSize, weight: .medium, maxWidth: textWidth
+            status.headline, pointSize: headlineSize, weight: headlineWeight, maxWidth: textWidth
         ).height
         if !status.detail.isEmpty {
             height += ViewerStatusPanelMetrics.titleToDetailGap
             height += CairoChromeText.measure(
-                status.detail, pointSize: detailSize, maxWidth: textWidth
+                status.detail, pointSize: detailSize, weight: detailWeight, maxWidth: textWidth
             ).height
         }
         if !status.buttons.isEmpty {
@@ -114,7 +120,7 @@ enum SessionChromePainter {
         let textWidth = bounds.width - inset * 2
         var y = bounds.y + inset
         let eyebrowHeight = CairoChromeText.measure(
-            status.eyebrow, pointSize: eyebrowSize, mono: true, weight: .medium, tracking: eyebrowTracking
+            status.eyebrow, pointSize: eyebrowSize, mono: true, weight: eyebrowWeight, tracking: eyebrowTracking
         ).height
         let dotTop = y + 2
         let dotCentreY = dotTop + dotSize / 2
@@ -133,7 +139,7 @@ enum SessionChromePainter {
             pointSize: eyebrowSize,
             color: ViewerPalette.muted2,
             mono: true,
-            weight: .medium,
+            weight: eyebrowWeight,
             tracking: eyebrowTracking
         )
         y += eyebrowRowHeight(eyebrowHeight: eyebrowHeight) + ViewerStatusPanelMetrics.eyebrowToTitleGap
@@ -144,7 +150,7 @@ enum SessionChromePainter {
             y: y,
             pointSize: headlineSize,
             color: ViewerPalette.ink,
-            weight: .medium,
+            weight: headlineWeight,
             maxWidth: textWidth
         )
         if !status.detail.isEmpty {
@@ -156,6 +162,7 @@ enum SessionChromePainter {
                 y: y,
                 pointSize: detailSize,
                 color: ViewerPalette.muted,
+                weight: detailWeight,
                 maxWidth: textWidth
             )
         }
@@ -180,7 +187,7 @@ enum SessionChromePainter {
     }
 
     private static func measureButtonTitle(_ title: String) -> Double {
-        CairoChromeText.measure(title, pointSize: statusButtonTitleSize, weight: .medium).width
+        CairoChromeText.measure(title, pointSize: statusButtonTitleSize, weight: buttonWeight).width
     }
 
     /// Matches `ViewerActionButton` on macOS: flat, `Radius.base`-cornered,
@@ -198,7 +205,7 @@ enum SessionChromePainter {
             radius: Double(ViewerChromeMetrics.Radius.base),
             color: isPrimary ? ViewerPalette.accent : ViewerPalette.bg4
         )
-        let size = CairoChromeText.measure(title, pointSize: statusButtonTitleSize, weight: .medium)
+        let size = CairoChromeText.measure(title, pointSize: statusButtonTitleSize, weight: buttonWeight)
         CairoChromeText.draw(
             title,
             in: context,
@@ -206,7 +213,7 @@ enum SessionChromePainter {
             y: rect.y + (rect.height - size.height) / 2,
             pointSize: statusButtonTitleSize,
             color: isPrimary ? ViewerPalette.chromeBg : ViewerPalette.ink,
-            weight: .medium
+            weight: buttonWeight
         )
     }
 
@@ -219,7 +226,7 @@ enum SessionChromePainter {
     static let noticeDismissSize: Double = Double(ViewerChromeMetrics.Notice.dismissHitSize)
 
     static func noticeSize(line: String) -> (width: Double, height: Double) {
-        let text = CairoChromeText.measure(line, pointSize: detailSize, maxWidth: noticeMaxTextWidth)
+        let text = CairoChromeText.measure(line, pointSize: detailSize, weight: detailWeight, maxWidth: noticeMaxTextWidth)
         let width = gap + text.width + tightGap + noticeDismissSize + gap
         let height = max(text.height, noticeDismissSize) + gap * 2
         return (width, height)
@@ -248,6 +255,7 @@ enum SessionChromePainter {
             y: bounds.y + gap,
             pointSize: detailSize,
             color: ViewerPalette.ink,
+            weight: detailWeight,
             maxWidth: textMaxWidth
         )
         // Two 1.5pt strokes rather than a "✕" character: a fallback face
@@ -271,93 +279,80 @@ enum SessionChromePainter {
         for block in blocks {
             if let title = block.title {
                 height += CairoChromeText.measure(
-                    title, pointSize: eyebrowSize, mono: true, weight: .medium, tracking: eyebrowTracking
+                    title, pointSize: eyebrowSize, mono: true, weight: eyebrowWeight, tracking: eyebrowTracking
                 ).height
                 height += rowGap
             }
             switch block {
             case let .section(section):
-                height += sectionHeight(section, width: diagnosticsWidth - gap * 2)
+                height += sectionHeight(section, width: diagnosticsWidth - gap * 2, isNarrow: false)
             case let .columns(_, left, right):
                 // The same halved, gutter-short column `drawDiagnostics`
                 // actually draws into -- a note here still measured against
                 // the full panel width would wrap to fewer lines than the
                 // narrower column really holds, undersizing the panel below.
                 let columnWidth = (diagnosticsWidth - gap * 2 - columnGutter) / 2
-                height += max(sectionHeight(left, width: columnWidth), sectionHeight(right, width: columnWidth))
+                height += max(
+                    sectionHeight(left, width: columnWidth, isNarrow: true),
+                    sectionHeight(right, width: columnWidth, isNarrow: true)
+                )
             }
             height += groupGap
         }
-        // One line per chord that opens a piece of this desktop's own
-        // chrome, which is the only place a desktop with no menu bar says
-        // where they are. Each is its own line -- see `helpLines` -- rather
-        // than one sentence `·`-joined and left to Pango's own word wrap,
-        // which could still break inside a chord itself once three of them
-        // shared a line too narrow to hold them all.
-        for line in helpLines {
-            height += CairoChromeText.measure(line, pointSize: rowSize, maxWidth: diagnosticsWidth - gap * 2, ellipsize: true).height
-        }
-        return (diagnosticsWidth, height + gap)
-    }
-
-    /// Named `Session controls: Ctrl-Shift-Super-K`, not
-    /// `Session controls: Ctrl-Shift-Super-K · Shortcut strip: …` -- three
-    /// separate lines rather than one joined by `·`, so each chord's own
-    /// sentence is short enough to always draw whole on its own line.
-    /// Drawn with `ellipsize: true`, never `maxWidth` alone, so a line still
-    /// too long for the panel loses characters off its own end rather than
-    /// wrapping a chord like "Ctrl-Shift-Super-Space" across two lines.
-    static var helpLines: [String] {
-        [
-            "Session controls: \(ViewerKeyNames.sessionControls)",
-            "Shortcut strip: \(ViewerKeyNames.shortcutStrip)",
-            "Back to this machine: \(ViewerKeyNames.escapeGesture)"
-        ]
+        return (diagnosticsWidth, blocks.isEmpty ? height + gap : height - groupGap + gap)
     }
 
     /// `width` is the section's own drawn width -- the full panel width for a
     /// lone section, or one narrow column's share for one half of a
     /// `.columns` block -- so a note's wrap is measured at the same width
     /// `drawSection` actually wraps it at.
-    private static func sectionHeight(_ section: SessionHUDSection, width: Double) -> Double {
+    private static func sectionHeight(_ section: SessionHUDSection, width: Double, isNarrow: Bool) -> Double {
+        let titleSize = sectionTitleSize(isNarrow: isNarrow)
         var height = CairoChromeText.measure(
-            section.title, pointSize: eyebrowSize, mono: true, weight: .medium, tracking: eyebrowTracking
+            section.title, pointSize: titleSize, mono: true, weight: eyebrowWeight,
+            tracking: Double(ViewerChromeMetrics.Tracking.widest) * titleSize
         ).height + rowGap
-        let labelWidth = sectionLabelWidth(section, width: width)
-        let valueWidth = max(0, width - labelWidth - tightGap)
         for row in section.rows {
-            height += max(
-                CairoChromeText.measure(row.label, pointSize: rowSize, mono: true, maxWidth: labelWidth, ellipsize: true).height,
-                CairoChromeText.measure(
-                    row.value, pointSize: rowSize, mono: true, weight: .medium, maxWidth: valueWidth, tabularFigures: true
-                ).height
-            )
+            height += rowLineHeight(row, width: width, isNarrow: isNarrow)
             if let note = row.note {
-                height += CairoChromeText.measure(note, pointSize: rowSize, maxWidth: width).height
+                let layout = rowLayout(row, width: width, isNarrow: isNarrow)
+                height += rowGap + CairoChromeText.measure(
+                    note, pointSize: rowSize, weight: hudNoteWeight, maxWidth: layout.noteWidth
+                ).height
             }
             height += rowGap
         }
         if let note = section.note {
-            height += CairoChromeText.measure(note, pointSize: rowSize, maxWidth: width).height + rowGap
+            height += CairoChromeText.measure(note, pointSize: rowSize, weight: hudNoteWeight, maxWidth: width).height + rowGap
         }
-        return height
+        // The row gap stands between lines, not after the last one.
+        return height - rowGap
     }
 
-    /// The narrowest column that holds every one of a section's own labels
-    /// whole, widened past a fixed floor for a section whose own values are
-    /// all short -- see `SessionHUDRowLayout.sectionLabelColumnWidth` and
-    /// `rowValueWidthCap`.
-    private static func sectionLabelWidth(_ section: SessionHUDSection, width: Double) -> Double {
-        SessionHUDRowLayout.sectionLabelColumnWidth(
-            labels: section.rows.map(\.label),
-            values: section.rows.map(\.value),
-            rowWidth: width,
-            columnGap: tightGap,
-            valueWidthCap: rowValueWidthCap,
-            measureLabel: { CairoChromeText.measure($0, pointSize: rowSize, mono: true).width },
-            measureValue: {
-                CairoChromeText.measure($0, pointSize: rowSize, mono: true, weight: .medium, tabularFigures: true).width
-            }
+    private static func rowLayout(_ row: SessionHUDRow, width: Double, isNarrow: Bool) -> SessionHUDRowLayout.Row {
+        SessionHUDRowLayout.layout(
+            valueWidth: CairoChromeText.measure(
+                row.value, pointSize: rowSize, mono: true, weight: hudValueWeight, tabularFigures: true
+            ).width,
+            columnWidth: width,
+            isNarrow: isNarrow,
+            showsSparkline: (row.trend?.count ?? 0) >= 2
+        )
+    }
+
+    /// One line, label and value alike: a value too wide for its column is
+    /// cut with an ellipsis, as on macOS.
+    private static func rowLineHeight(_ row: SessionHUDRow, width: Double, isNarrow: Bool) -> Double {
+        let layout = rowLayout(row, width: width, isNarrow: isNarrow)
+        return max(
+            CairoChromeText.measure(
+                row.label, pointSize: rowSize, mono: true, weight: hudLabelWeight,
+                maxWidth: layout.label.width, ellipsize: true
+            ).height,
+            CairoChromeText.measure(
+                row.value, pointSize: rowSize, mono: true, weight: hudValueWeight,
+                maxWidth: max(1, layout.value.width), tabularFigures: true, ellipsize: true
+            ).height
         )
     }
 
@@ -385,7 +380,7 @@ enum SessionChromePainter {
                     pointSize: eyebrowSize,
                     color: ViewerPalette.muted2,
                     mono: true,
-                    weight: .medium,
+                    weight: eyebrowWeight,
                     tracking: eyebrowTracking
                 ) + rowGap
             }
@@ -396,32 +391,21 @@ enum SessionChromePainter {
                     in: context,
                     x: bounds.x + gap,
                     y: y,
-                    width: bounds.width - gap * 2
+                    width: bounds.width - gap * 2,
+                    isNarrow: false
                 )
             case let .columns(_, left, right):
                 let columnWidth = (bounds.width - gap * 2 - columnGutter) / 2
                 let leftBottom = drawSection(
-                    left, in: context, x: bounds.x + gap, y: y, width: columnWidth
+                    left, in: context, x: bounds.x + gap, y: y, width: columnWidth, isNarrow: true
                 )
                 let rightBottom = drawSection(
                     right, in: context, x: bounds.x + gap + columnWidth + columnGutter, y: y,
-                    width: columnWidth
+                    width: columnWidth, isNarrow: true
                 )
                 y = max(leftBottom, rightBottom)
             }
             y += groupGap
-        }
-        for line in helpLines {
-            y += CairoChromeText.draw(
-                line,
-                in: context,
-                x: bounds.x + gap,
-                y: y,
-                pointSize: rowSize,
-                color: ViewerPalette.muted2,
-                maxWidth: bounds.width - gap * 2,
-                ellipsize: true
-            )
         }
     }
 
@@ -430,79 +414,75 @@ enum SessionChromePainter {
         in context: OpaquePointer,
         x: Double,
         y: Double,
-        width: Double
+        width: Double,
+        isNarrow: Bool
     ) -> Double {
         var cursor = y
+        let titleSize = sectionTitleSize(isNarrow: isNarrow)
         cursor += CairoChromeText.draw(
             section.title,
             in: context,
             x: x,
             y: cursor,
-            pointSize: eyebrowSize,
+            pointSize: titleSize,
             color: ViewerPalette.muted2,
             mono: true,
-            weight: .medium,
-            tracking: eyebrowTracking
+            weight: eyebrowWeight,
+            tracking: Double(ViewerChromeMetrics.Tracking.widest) * titleSize
         ) + rowGap
-        // The label column is as wide as this section's own widest label
-        // needs, capped so the value beside it never drops under this
-        // section's own widest value (or `rowValueWidthCap`, whichever is
-        // smaller) -- see `sectionLabelWidth`.
-        let labelWidth = sectionLabelWidth(section, width: width)
-        let valueWidth = max(0, width - labelWidth - tightGap)
         for row in section.rows {
-            let rowLayout = SessionHUDRowLayout.layout(
-                label: row.label,
-                value: row.value,
-                rowWidth: width,
-                labelColumnWidth: labelWidth,
-                columnGap: tightGap,
-                measureLabel: { CairoChromeText.measure($0, pointSize: rowSize, mono: true).width },
-                measureValue: {
-                    CairoChromeText.measure($0, pointSize: rowSize, mono: true, weight: .medium, tabularFigures: true).width
-                }
-            )
-            // Ellipsized, never wrapped: a label that still does not fit its
-            // own widened column loses characters off the end rather than
-            // breaking mid-word onto a second line.
-            let labelHeight = CairoChromeText.draw(
+            let layout = rowLayout(row, width: width, isNarrow: isNarrow)
+            let lineHeight = rowLineHeight(row, width: width, isNarrow: isNarrow)
+            CairoChromeText.draw(
                 row.label,
                 in: context,
-                x: x,
+                x: x + layout.label.x,
                 y: cursor,
                 pointSize: rowSize,
-                color: row.isStale ? ViewerPalette.muted2 : ViewerPalette.muted,
+                color: ViewerPalette.muted,
                 mono: true,
-                maxWidth: labelWidth,
+                weight: hudLabelWeight,
+                maxWidth: layout.label.width,
                 ellipsize: true
             )
             let valueColor = row.tone.map(ViewerPalette.color(for:))
-                ?? (row.isStale ? ViewerPalette.muted2 : ViewerPalette.ink)
-            // Wraps inside its own column instead of truncating -- a reading
-            // like "4 before decode, 1 before present" loses the half of it
-            // an ellipsis would cut.
-            let valueHeight = CairoChromeText.draw(
+                ?? (row.isStale ? ViewerPalette.muted : ViewerPalette.ink)
+            CairoChromeText.draw(
                 row.value,
                 in: context,
-                x: x + rowLayout.value.x,
+                x: x + layout.value.x,
                 y: cursor,
                 pointSize: rowSize,
                 color: valueColor,
                 mono: true,
-                weight: .medium,
-                maxWidth: valueWidth,
-                tabularFigures: true
+                weight: hudValueWeight,
+                maxWidth: max(1, layout.value.width),
+                tabularFigures: true,
+                ellipsize: true
             )
-            cursor += max(labelHeight, valueHeight)
+            if let sparkline = layout.sparkline, let trend = row.trend {
+                drawSparkline(
+                    trend,
+                    in: context,
+                    bounds: ViewerChromeRect(
+                        x: x + sparkline.x,
+                        y: cursor + (lineHeight - sparkline.height) / 2,
+                        width: sparkline.width,
+                        height: sparkline.height
+                    )
+                )
+            }
+            cursor += lineHeight
             if let note = row.note {
-                cursor += CairoChromeText.draw(
+                cursor += rowGap + CairoChromeText.draw(
                     note,
                     in: context,
-                    x: x,
-                    y: cursor,
+                    x: x + layout.noteIndent,
+                    y: cursor + rowGap,
                     pointSize: rowSize,
                     color: ViewerPalette.muted2,
-                    maxWidth: width
+                    weight: hudNoteWeight,
+                    maxWidth: layout.noteWidth
                 )
             }
             cursor += rowGap
@@ -515,10 +495,39 @@ enum SessionChromePainter {
                 y: cursor,
                 pointSize: rowSize,
                 color: ViewerPalette.muted2,
+                weight: hudNoteWeight,
                 maxWidth: width
             ) + rowGap
         }
-        return cursor
+        return cursor - rowGap
+    }
+
+    /// `SessionHUDSparklineView`: a 1pt baseline across the middle, the trend
+    /// as a 1.5pt polyline inset 1pt top and bottom, and a dot of radius 1 on
+    /// its last point.
+    private static func drawSparkline(_ samples: [Double], in context: OpaquePointer, bounds: ViewerChromeRect) {
+        CairoChromeText.setSource(context, ViewerPalette.line)
+        cairo_set_line_width(context, 1)
+        cairo_move_to(context, bounds.x, bounds.y + bounds.height / 2)
+        cairo_line_to(context, bounds.x + bounds.width, bounds.y + bounds.height / 2)
+        cairo_stroke(context)
+
+        let plot = CGRect(x: 0, y: 1, width: bounds.width, height: bounds.height - 2)
+        // The layout's y grows upward, as AppKit's does; cairo's grows down.
+        let points = SessionHUDSparklineLayout.points(for: samples, in: plot).map {
+            (x: bounds.x + Double($0.x), y: bounds.y + bounds.height - Double($0.y))
+        }
+        guard let first = points.first, let last = points.last, points.count >= 2 else { return }
+        CairoChromeText.setSource(context, ViewerPalette.accent2)
+        cairo_set_line_width(context, 1.5)
+        cairo_move_to(context, first.x, first.y)
+        for point in points.dropFirst() {
+            cairo_line_to(context, point.x, point.y)
+        }
+        cairo_stroke(context)
+        cairo_new_sub_path(context)
+        cairo_arc(context, last.x, last.y, 1, 0, 2 * Double.pi)
+        cairo_fill(context)
     }
 
     // MARK: - Shortcut strip
@@ -535,12 +544,10 @@ enum SessionChromePainter {
     /// same way.
     private static let confirmButtonHeight: Double = Double(ViewerChromeMetrics.Strip.confirmButtonHeight)
     private static let stripButtonMinimumWidth: Double = 56
-    private static let iconSize: Double = Double(ViewerChromeMetrics.Strip.actionIconSize)
     /// The question's own face -- `ShortcutStripView.question` is 12, regular.
     private static let stripTextSize: Double = 12
     /// The host name label at the bar's leading edge -- `hostNameLabel` on
-    /// macOS is 12, regular. A button's own fallback text, drawn in place of
-    /// an icon `FreedesktopIconLookup` found nothing for, is this size too.
+    /// macOS is 12, regular.
     private static let hostNameTextSize: Double = 12
     /// `ShortcutStripView.makeCluster`'s own pill: half its height, so the
     /// pill is always a stadium rather than a rounded rectangle.
@@ -559,19 +566,16 @@ enum SessionChromePainter {
         [.spotlight, .launchpad, .switchApp],
         [.lockScreen, .quitApp]
     ]
-    /// One button's hit region, its title (drawn only when it has no icon)
-    /// and the icon path found for it, if any.
+    /// One button's hit region and the title its tests and tooltip name it by.
     private struct StripButtonSpec {
         let hit: ShortcutStripHit
         let title: String
-        let iconPath: String?
     }
 
     private struct StripButtonEntry {
         let hit: ShortcutStripHit
         let rect: ViewerChromeRect
         let title: String
-        let iconPath: String?
     }
 
     /// One pill: its own background rect and the buttons drawn inside it.
@@ -583,7 +587,7 @@ enum SessionChromePainter {
     private struct StripClusterLayout {
         let hostNameOrigin: (x: Double, y: Double)
         /// The room between the host name's own origin and the trailing
-        /// pill (gear, pin) -- what a long host name is truncated to rather
+        /// pin's pill -- what a long host name is truncated to rather
         /// than drawn under the pill.
         let hostNameMaxWidth: Double
         let clusters: [StripCluster]
@@ -595,14 +599,15 @@ enum SessionChromePainter {
     }
 
     static func stripSize(visibility: ShortcutStripVisibility, hostName: String) -> (width: Double, height: Double) {
+        let clustersWidth = stripClusters(hostName: hostName, originX: 0, originY: 0, width: nil).width
         if case .confirming = visibility {
-            let width = stripLayout(visibility: visibility, hostName: hostName, originX: 0, originY: 0)
+            let confirmRight = stripLayout(visibility: visibility, hostName: hostName, originX: 0, originY: 0)
+                .filter { $0.hit != .pin }
                 .map { $0.rect.x + $0.rect.width }
                 .max() ?? stripButtonMinimumWidth
-            return (width + gap, stripHeight)
+            return (max(clustersWidth, confirmRight + gap), stripHeight)
         }
-        let layout = stripClusters(hostName: hostName, originX: 0, originY: 0, width: nil)
-        return (layout.width, stripHeight)
+        return (clustersWidth, stripHeight)
     }
 
     private static func confirmButtonWidth(_ title: String) -> Double {
@@ -622,36 +627,10 @@ enum SessionChromePainter {
     }
 
     private static func actionSpec(_ action: ShortcutStripAction) -> StripButtonSpec {
-        StripButtonSpec(
-            hit: .action(action),
-            title: action.title,
-            iconPath: action.freedesktopIconNames.lazy.compactMap(FreedesktopIconLookup.svgPath).first
-        )
+        StripButtonSpec(hit: .action(action), title: action.title)
     }
 
-    /// `emblem-system-symbolic` first, falling back to
-    /// `preferences-system-symbolic`, then to the word "Settings" when
-    /// neither theme has an SVG for either.
-    private static var gearSpec: StripButtonSpec {
-        StripButtonSpec(
-            hit: .gear,
-            title: SessionSettingsNaming.shortTitle,
-            iconPath: FreedesktopIconLookup.svgPath(named: "emblem-system-symbolic")
-                ?? FreedesktopIconLookup.svgPath(named: "preferences-system-symbolic")
-        )
-    }
-
-    private static var pinSpec: StripButtonSpec {
-        StripButtonSpec(hit: .pin, title: "Pin", iconPath: FreedesktopIconLookup.svgPath(named: "view-pin-symbolic"))
-    }
-
-    /// An icon-only button is a fixed 28x28 square; one with no icon widens
-    /// to fit its own fallback word, 8pt of padding either side of it.
-    private static func clusterButtonWidth(iconPath: String?, title: String) -> Double {
-        guard iconPath == nil else { return stripButtonHeight }
-        let text = CairoChromeText.measure(title, pointSize: hostNameTextSize).width
-        return text + Double(ViewerChromeMetrics.Space.xs) * 2
-    }
+    private static let pinSpec = StripButtonSpec(hit: .pin, title: "Pin")
 
     /// Lays out one pill's buttons left to right from `x`, and answers the
     /// pill rect they sit inside -- `clusterInnerPadding` on every side.
@@ -659,14 +638,12 @@ enum SessionChromePainter {
         var cursor = x + clusterInnerPadding
         var buttons: [StripButtonEntry] = []
         for spec in specs {
-            let width = clusterButtonWidth(iconPath: spec.iconPath, title: spec.title)
             buttons.append(StripButtonEntry(
                 hit: spec.hit,
-                rect: ViewerChromeRect(x: cursor, y: y, width: width, height: stripButtonHeight),
-                title: spec.title,
-                iconPath: spec.iconPath
+                rect: ViewerChromeRect(x: cursor, y: y, width: stripButtonHeight, height: stripButtonHeight),
+                title: spec.title
             ))
-            cursor += width + clusterButtonSpacing
+            cursor += stripButtonHeight + clusterButtonSpacing
         }
         let right = specs.isEmpty ? x + clusterInnerPadding : cursor - clusterButtonSpacing + clusterInnerPadding
         return StripCluster(pill: ViewerChromeRect(x: x, y: y, width: right - x, height: stripButtonHeight), buttons: buttons)
@@ -674,7 +651,7 @@ enum SessionChromePainter {
 
     /// The whole non-confirming strip: a host name label at the leading
     /// edge, the four action clusters centred as one group, and a trailing
-    /// pill holding the gear then the pin -- `ShortcutStripView.init`'s own
+    /// pill holding the pin -- `ShortcutStripView.init`'s own
     /// layout, translated to cairo.
     ///
     /// When `width` is the real bar width, the cluster row is centred across
@@ -695,7 +672,7 @@ enum SessionChromePainter {
         let hostNameSize = CairoChromeText.measure(hostName, pointSize: hostNameTextSize)
         let hostZoneWidth = gap + hostNameSize.width + gap
 
-        let trailingSpecs = [gearSpec, pinSpec]
+        let trailingSpecs = [pinSpec]
         let unplacedTrailing = layoutCluster(trailingSpecs, x: 0, y: buttonY)
         let trailingZoneWidth = gap + unplacedTrailing.pill.width + gap
 
@@ -708,8 +685,8 @@ enum SessionChromePainter {
 
         let barWidth = width ?? (2 * max(hostZoneWidth, trailingZoneWidth) + clustersWidth(unplacedActionClusters))
 
-        // A toolbar's own overflow rule: the host name and the trailing pill
-        // (gear, pin) are never dropped, so whatever room the action row
+        // A toolbar's own overflow rule: the host name and the pin's pill
+        // are never dropped, so whatever room the action row
         // does not fit in, whole clusters drop off its own right end --
         // Lock Screen and Quit App first -- until what is left fits between
         // them. An isolated screenshot (`width == nil`, `stripSize`) never
@@ -758,7 +735,8 @@ enum SessionChromePainter {
 
     /// Every pressable thing on the strip, in the order it is drawn. Built
     /// once and used for both the drawing and the hit test, so the two cannot
-    /// disagree about where a button is.
+    /// disagree about where a button is. The confirm row keeps the pin where
+    /// it was, as macOS does.
     static func stripLayout(
         visibility: ShortcutStripVisibility,
         hostName: String,
@@ -766,6 +744,7 @@ enum SessionChromePainter {
         originY: Double,
         width: Double? = nil
     ) -> [(hit: ShortcutStripHit, rect: ViewerChromeRect, title: String)] {
+        let clusters = stripClusters(hostName: hostName, originX: originX, originY: originY, width: width).clusters
         if case let .confirming(action) = visibility, let question = action.confirmation(hostName: hostName) {
             let questionWidth = CairoChromeText.measure(question.question, pointSize: stripTextSize).width
             let confirmWidth = confirmButtonWidth(question.confirmTitle)
@@ -779,6 +758,8 @@ enum SessionChromePainter {
             // every one of the row's three pieces, question included.
             let confirmX = groupLeft + questionWidth + tightGap
             let cancelX = confirmX + confirmWidth + tightGap
+            let pin: [(hit: ShortcutStripHit, rect: ViewerChromeRect, title: String)] =
+                (clusters.last?.buttons ?? []).map { ($0.hit, $0.rect, $0.title) }
             return [
                 (
                     .confirm,
@@ -790,10 +771,9 @@ enum SessionChromePainter {
                     ViewerChromeRect(x: cancelX, y: top, width: cancelWidth, height: confirmButtonHeight),
                     question.cancelTitle
                 )
-            ]
+            ] + pin
         }
-        return stripClusters(hostName: hostName, originX: originX, originY: originY, width: width)
-            .clusters.flatMap { cluster in cluster.buttons.map { ($0.hit, $0.rect, $0.title) } }
+        return clusters.flatMap { cluster in cluster.buttons.map { ($0.hit, $0.rect, $0.title) } }
     }
 
     static func drawStrip(
@@ -814,41 +794,6 @@ enum SessionChromePainter {
             radius: 0,
             color: ViewerPalette.chromeBorder2
         )
-        if case let .confirming(action) = visibility, let question = action.confirmation(hostName: hostName) {
-            let size = CairoChromeText.measure(question.question, pointSize: stripTextSize)
-            let confirmWidth = confirmButtonWidth(question.confirmTitle)
-            let cancelWidth = confirmButtonWidth(question.cancelTitle)
-            let left = bounds.x + confirmRowLeft(
-                questionWidth: size.width, confirmWidth: confirmWidth, cancelWidth: cancelWidth, width: bounds.width
-            )
-            CairoChromeText.draw(
-                question.question,
-                in: context,
-                x: left,
-                y: bounds.y + (stripHeight - size.height) / 2,
-                pointSize: stripTextSize,
-                color: ViewerPalette.ink
-            )
-            for entry in stripLayout(
-                visibility: visibility, hostName: hostName, originX: bounds.x, originY: bounds.y, width: bounds.width
-            ) {
-                // Never accented, whichever of the two proceeds.
-                CairoChromeText.fill(
-                    context, entry.rect, radius: Double(ViewerChromeMetrics.Radius.base), color: ViewerPalette.bg4
-                )
-                let titleSize = CairoChromeText.measure(entry.title, pointSize: buttonTitleSize)
-                CairoChromeText.draw(
-                    entry.title,
-                    in: context,
-                    x: entry.rect.x + (entry.rect.width - titleSize.width) / 2,
-                    y: entry.rect.y + (entry.rect.height - titleSize.height) / 2,
-                    pointSize: buttonTitleSize,
-                    color: ViewerPalette.ink
-                )
-            }
-            return
-        }
-
         let layout = stripClusters(hostName: hostName, originX: bounds.x, originY: bounds.y, width: bounds.width)
         CairoChromeText.draw(
             hostName,
@@ -860,41 +805,123 @@ enum SessionChromePainter {
             maxWidth: layout.hostNameMaxWidth,
             ellipsize: true
         )
-        for cluster in layout.clusters {
+        let confirmation: ShortcutStripConfirmation? = if case let .confirming(action) = visibility {
+            action.confirmation(hostName: hostName)
+        } else {
+            nil
+        }
+        // The confirm row replaces the action clusters only; the pin's pill
+        // stays, as it does on macOS.
+        let clusters = confirmation == nil ? layout.clusters : Array(layout.clusters.suffix(1))
+        for cluster in clusters {
             CairoChromeText.fill(context, cluster.pill, radius: clusterRadius, color: ViewerPalette.chromeBg.withAlpha(0.55))
             for entry in cluster.buttons {
-                // The pin's own on/off state: an accent fill rather than
-                // macOS's `pin` / `pin.fill` symbol swap, since a fallback
-                // word has no filled counterpart to swap to. Every other
-                // button is transparent but for the pill behind it, matching
-                // `ShortcutStripIconButton`'s own rest state.
-                let isOn = entry.hit == .pin && isPinned
-                if isOn {
-                    CairoChromeText.fill(
-                        context, entry.rect, radius: Double(ViewerChromeMetrics.Radius.base), color: ViewerPalette.accent
-                    )
-                }
-                if let iconPath = entry.iconPath {
-                    drawIcon(
-                        path: iconPath,
-                        in: context,
-                        x: entry.rect.x + (entry.rect.width - iconSize) / 2,
-                        y: entry.rect.y + (entry.rect.height - iconSize) / 2,
-                        color: isOn ? ViewerPalette.chromeBg : ViewerPalette.ink
-                    )
-                } else {
-                    let size = CairoChromeText.measure(entry.title, pointSize: hostNameTextSize)
-                    CairoChromeText.draw(
-                        entry.title,
-                        in: context,
-                        x: entry.rect.x + (entry.rect.width - size.width) / 2,
-                        y: entry.rect.y + (entry.rect.height - size.height) / 2,
-                        pointSize: hostNameTextSize,
-                        color: isOn ? ViewerPalette.chromeBg : ViewerPalette.ink
-                    )
-                }
+                guard let glyph = stripGlyph(for: entry.hit, isPinned: isPinned) else { continue }
+                let box = ShortcutStripGlyph.box
+                drawStripGlyph(
+                    glyph,
+                    in: context,
+                    x: entry.rect.x + (entry.rect.width - box) / 2,
+                    y: entry.rect.y + (entry.rect.height - box) / 2,
+                    color: ViewerPalette.ink
+                )
             }
         }
+        guard let question = confirmation else { return }
+        let size = CairoChromeText.measure(question.question, pointSize: stripTextSize)
+        let confirmWidth = confirmButtonWidth(question.confirmTitle)
+        let cancelWidth = confirmButtonWidth(question.cancelTitle)
+        let left = bounds.x + confirmRowLeft(
+            questionWidth: size.width, confirmWidth: confirmWidth, cancelWidth: cancelWidth, width: bounds.width
+        )
+        CairoChromeText.draw(
+            question.question,
+            in: context,
+            x: left,
+            y: bounds.y + (stripHeight - size.height) / 2,
+            pointSize: stripTextSize,
+            color: ViewerPalette.ink
+        )
+        for entry in stripLayout(
+            visibility: visibility, hostName: hostName, originX: bounds.x, originY: bounds.y, width: bounds.width
+        ) where entry.hit == .confirm || entry.hit == .cancel {
+            // Never accented, whichever of the two proceeds.
+            CairoChromeText.fill(
+                context, entry.rect, radius: Double(ViewerChromeMetrics.Radius.base), color: ViewerPalette.bg4
+            )
+            let titleSize = CairoChromeText.measure(entry.title, pointSize: buttonTitleSize)
+            CairoChromeText.draw(
+                entry.title,
+                in: context,
+                x: entry.rect.x + (entry.rect.width - titleSize.width) / 2,
+                y: entry.rect.y + (entry.rect.height - titleSize.height) / 2,
+                pointSize: buttonTitleSize,
+                color: ViewerPalette.ink
+            )
+        }
+    }
+
+    /// macOS swaps `pin` for `pin.fill` while pinned, and fills nothing
+    /// behind it.
+    private static func stripGlyph(for hit: ShortcutStripHit, isPinned: Bool) -> ShortcutStripGlyph? {
+        switch hit {
+        case let .action(action): action.glyph
+        case .pin: ShortcutStripGlyph.pin(filled: isPinned)
+        case .confirm, .cancel: nil
+        }
+    }
+
+    /// `glyph` drawn in device pixels from the device pixel nearest `x`, `y`,
+    /// so its strokes and edges stay crisp at a fractional scale.
+    private static func drawStripGlyph(
+        _ glyph: ShortcutStripGlyph, in context: OpaquePointer, x: Double, y: Double, color: ViewerColor
+    ) {
+        var originX = x
+        var originY = y
+        cairo_user_to_device(context, &originX, &originY)
+        var matrix = cairo_matrix_t()
+        cairo_get_matrix(context, &matrix)
+        let scale = matrix.xx > 0 ? matrix.xx : 1
+        cairo_save(context)
+        cairo_identity_matrix(context)
+        cairo_translate(context, originX.rounded(), originY.rounded())
+        CairoChromeText.setSource(context, color)
+        cairo_set_line_width(context, glyph.deviceLineWidth(scale: scale))
+        cairo_set_line_cap(context, CAIRO_LINE_CAP_ROUND)
+        cairo_set_line_join(context, CAIRO_LINE_JOIN_ROUND)
+        for shape in glyph.deviceShapes(scale: scale) {
+            cairo_new_path(context)
+            switch shape {
+            case let .path(points, closed, filled):
+                for (index, point) in points.enumerated() {
+                    if index == 0 {
+                        cairo_move_to(context, point.x, point.y)
+                    } else {
+                        cairo_line_to(context, point.x, point.y)
+                    }
+                }
+                if closed { cairo_close_path(context) }
+                if filled { cairo_fill_preserve(context) }
+                cairo_stroke(context)
+            case let .rect(rect, radius, filled):
+                CairoChromeText.addRoundedRect(context, rect, radius: radius)
+                if filled {
+                    cairo_fill(context)
+                } else {
+                    cairo_stroke(context)
+                }
+            case let .circle(center, radius):
+                cairo_arc(context, center.x, center.y, radius, 0, 2 * Double.pi)
+                cairo_stroke(context)
+            case let .arch(center, radius, legLength):
+                cairo_move_to(context, center.x - radius, center.y + legLength)
+                cairo_line_to(context, center.x - radius, center.y)
+                cairo_arc(context, center.x, center.y, radius, Double.pi, 2 * Double.pi)
+                cairo_line_to(context, center.x + radius, center.y + legLength)
+                cairo_stroke(context)
+            }
+        }
+        cairo_restore(context)
     }
 
     /// A pill the height of its own bounds, filled and outlined the way
@@ -904,65 +931,6 @@ enum SessionChromePainter {
         let pillRadius = bounds.height / 2
         CairoChromeText.fill(context, bounds, radius: pillRadius, color: ViewerPalette.ink.withAlpha(0.3))
         CairoChromeText.stroke(context, bounds, radius: pillRadius, color: ViewerPalette.chromeBg.withAlpha(0.35))
-    }
-
-    /// Every icon this window draws, rasterised once per path and device
-    /// scale, and kept as an alpha mask -- an SVG's own colours are never
-    /// what ends up on screen, only its coverage, so it tints like one of
-    /// macOS's template images rather than carrying whatever colour the icon
-    /// theme drew it in. Rasterising on every frame of a strip that is open
-    /// is work the picture's own frame budget pays for; a path that failed
-    /// to decode is remembered as a failure rather than retried each frame.
-    private static var iconMaskCache: [String: OpaquePointer?] = [:]
-
-    /// The uniform scale a context's current transform carries -- the same
-    /// factor `renderToPNG`'s own `cairo_scale(context, scale, scale)` puts
-    /// there before any overlay is drawn, read back so an icon is rasterised
-    /// at the device's own pixel density rather than always at 1x.
-    private static func deviceScale(_ context: OpaquePointer) -> Double {
-        var matrix = cairo_matrix_t()
-        cairo_get_matrix(context, &matrix)
-        return matrix.xx > 0 ? matrix.xx : 1
-    }
-
-    private static func iconMask(path: String, scale: Double) -> OpaquePointer? {
-        let key = "\(path)@\(scale)"
-        if let cached = iconMaskCache[key] { return cached }
-        let pixelSize = Int32((iconSize * scale).rounded())
-        guard pixelSize > 0,
-            let pixbuf = gdk_pixbuf_new_from_file_at_scale(path, pixelSize, pixelSize, 0, nil) else {
-            iconMaskCache[key] = OpaquePointer?.none
-            return nil
-        }
-        defer { g_object_unref(UnsafeMutableRawPointer(pixbuf)) }
-        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, pixelSize, pixelSize),
-            cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS else {
-            iconMaskCache[key] = OpaquePointer?.none
-            return nil
-        }
-        guard let maskContext = cairo_create(surface) else {
-            cairo_surface_destroy(surface)
-            iconMaskCache[key] = OpaquePointer?.none
-            return nil
-        }
-        gdk_cairo_set_source_pixbuf(maskContext, pixbuf, 0, 0)
-        cairo_paint(maskContext)
-        cairo_destroy(maskContext)
-        cairo_surface_flush(surface)
-        iconMaskCache[key] = surface
-        return surface
-    }
-
-    private static func drawIcon(path: String, in context: OpaquePointer, x: Double, y: Double, color: ViewerColor) {
-        guard let mask = iconMask(path: path, scale: deviceScale(context)) else { return }
-        let pixelSize = Double(cairo_image_surface_get_width(mask))
-        guard pixelSize > 0 else { return }
-        cairo_save(context)
-        cairo_translate(context, x, y)
-        cairo_scale(context, iconSize / pixelSize, iconSize / pixelSize)
-        CairoChromeText.setSource(context, color)
-        cairo_mask_surface(context, mask, 0, 0)
-        cairo_restore(context)
     }
 }
 #endif

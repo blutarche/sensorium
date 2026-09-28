@@ -119,71 +119,98 @@ func testSessionChromePainterPixelTests() {
     print("PASS: the diagnostics panel and shortcut strip sample the fills, borders and alpha the design system records")
 }
 
-/// With every icon lookup forced to answer nothing, every button on the
-/// strip -- ten actions, the gear and the pin -- must still draw its own
-/// short word rather than a blank square: `FreedesktopIconLookup`'s own
-/// reason for existing, verified end to end through the PNG this actually
-/// writes.
+/// Every button on the strip -- ten actions and the pin -- draws its own
+/// glyph in ink. The pinned pin is a filled glyph with nothing accented
+/// behind it, and the confirm row leaves the host name and the pin where
+/// they were.
 @MainActor
-func testShortcutStripIconFallbackDrawsInkTests() {
-    FreedesktopIconLookup.forceNotFound = true
-    defer { FreedesktopIconLookup.forceNotFound = false }
-
+func testShortcutStripGlyphsDrawTests() {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-        "sensorium-strip-fallback-tests-\(UUID().uuidString)", isDirectory: true
+        "sensorium-strip-glyph-tests-\(UUID().uuidString)", isDirectory: true
     )
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let url = directory.appendingPathComponent("strip-no-icons.png")
-    expect(
-        SessionChromeRenderPreview.renderOverlay(
-            .strip(visibility: .shown, hostName: "Test", isPinned: false), scale: 1, to: url
-        ),
-        "the strip renders with every icon lookup forced to nil"
-    )
-
-    let rects = SessionChromeRenderPreview.stripButtonRects(hostName: "Test")
-    expect(rects.count == 12, "ten actions, the gear and the pin, got \(rects.count)")
-
-    for rect in rects {
-        expect(!rect.title.isEmpty, "every entry still carries a title")
-        var foundInk = false
-        var y = Int(rect.y) + 2
-        while y < Int(rect.y + rect.height) - 2 && !foundInk {
-            var x = Int(rect.x) + 2
-            while x < Int(rect.x + rect.width) - 2 && !foundInk {
-                if let pixel = pngPixel(at: url, x: x, y: y) {
-                    let luminance = 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b
-                    if luminance > 0.5 { foundInk = true }
-                }
-                x += 2
+    let hostName = "Studio"
+    let width = 1100.0
+    func render(_ name: String, _ visibility: ShortcutStripVisibility, pinned: Bool, scale: Double = 1) -> URL {
+        let url = directory.appendingPathComponent("\(name).png")
+        expect(
+            SessionChromeRenderPreview.renderOverlay(
+                .strip(visibility: visibility, hostName: hostName, isPinned: pinned), scale: scale, width: width, to: url
+            ),
+            "the \(name) strip renders"
+        )
+        return url
+    }
+    func inkCount(_ url: URL, _ rect: (title: String, x: Double, y: Double, width: Double, height: Double), scale: Double = 1) -> Int {
+        var count = 0
+        for y in Int(rect.y * scale)..<Int((rect.y + rect.height) * scale) {
+            for x in Int(rect.x * scale)..<Int((rect.x + rect.width) * scale) {
+                if matches(pngPixel(at: url, x: x, y: y), ViewerPalette.ink) { count += 1 }
             }
-            y += 2
         }
-        expect(foundInk, "\"\(rect.title)\"'s own button draws visible ink rather than a blank square")
+        return count
+    }
+    func accentCount(_ url: URL, _ rect: (title: String, x: Double, y: Double, width: Double, height: Double)) -> Int {
+        var count = 0
+        for y in Int(rect.y)..<Int(rect.y + rect.height) {
+            for x in Int(rect.x)..<Int(rect.x + rect.width) where matches(pngPixel(at: url, x: x, y: y), ViewerPalette.accent) {
+                count += 1
+            }
+        }
+        return count
     }
 
-    let gear = rects.first(where: { $0.title == "Settings" })
-    let pin = rects.first(where: { $0.title == "Pin" })
-    expect(gear != nil, "the gear fell back to its own word, \"Settings\"")
-    expect(pin != nil, "the pin fell back to its own word, \"Pin\"")
-    if let gear, let pin {
-        expect(gear.x < pin.x, "the gear sits immediately before the pin in the trailing cluster")
+    let rects = SessionChromeRenderPreview.stripButtonRects(hostName: hostName, width: width)
+    expect(rects.count == 11, "ten actions and the pin, and no gear, got \(rects.count)")
+    expect(rects.last?.title == "Pin", "the pin is the last button")
+    for scale in [1.0, 1.5, 2.0] {
+        let shown = render("shown-\(scale)", .shown, pinned: false, scale: scale)
+        for rect in rects {
+            expect(inkCount(shown, rect, scale: scale) > Int(4 * scale * scale),
+                   "\"\(rect.title)\" draws its glyph in ink at \(scale)x")
+        }
     }
 
-    print("PASS: every strip button draws its own fallback word when no icon theme has it")
+    let shown = render("shown", .shown, pinned: false)
+    let pinned = render("pinned", .shown, pinned: true)
+    if let pin = rects.last {
+        expect(accentCount(pinned, pin) == 0, "the pinned pin has no accent fill behind it")
+        expect(inkCount(pinned, pin) > inkCount(shown, pin), "the pinned pin is filled, the unpinned one an outline")
+    }
+
+    let confirming = ShortcutStripVisibility.confirming(.lockScreen)
+    let confirmRects = SessionChromeRenderPreview.stripButtonRects(hostName: hostName, width: width, visibility: confirming)
+    let pinWhileConfirming = confirmRects.first(where: { $0.title == "Pin" })
+    expect(pinWhileConfirming != nil, "the pin can still be pressed on the confirm row")
+    if let pinWhileConfirming, let pin = rects.last {
+        expect(pinWhileConfirming.x == pin.x && pinWhileConfirming.y == pin.y, "the pin stays put on the confirm row")
+    }
+    let confirmURL = render("confirming", confirming, pinned: false)
+    var shownHostInk = 0
+    var confirmHostInk = 0
+    for y in 0..<40 {
+        for x in 0..<80 {
+            if matches(pngPixel(at: shown, x: x, y: y), ViewerPalette.muted) { shownHostInk += 1 }
+            if matches(pngPixel(at: confirmURL, x: x, y: y), ViewerPalette.muted) { confirmHostInk += 1 }
+        }
+    }
+    expect(shownHostInk > 0 && shownHostInk == confirmHostInk,
+           "the host name stays put, in muted ink, on the confirm row (\(shownHostInk) vs \(confirmHostInk))")
+    if let pin = rects.last {
+        expect(inkCount(confirmURL, pin) == inkCount(shown, pin), "the confirm row draws the same pin")
+    }
+
+    print("PASS: every strip button draws its own glyph at 1x, 1.5x and 2x, the pin fills rather than accents, and the confirm row keeps the host name and pin")
 }
 
 /// A host name too long for a narrow bar is truncated before the trailing
-/// gear-and-pin pill, never drawn under it. The host name is the only
+/// pin pill, never drawn under it. The host name is the only
 /// strip text drawn in `ViewerPalette.muted`, so that colour reaching
 /// under the pill is what a caller that forgot to cap it would draw.
 @MainActor
 func testShortcutStripLongHostNameNeverDrawsUnderPillTests() {
-    FreedesktopIconLookup.forceNotFound = true
-    defer { FreedesktopIconLookup.forceNotFound = false }
-
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sensorium-strip-hostname-tests-\(UUID().uuidString)", isDirectory: true
     )
@@ -201,15 +228,13 @@ func testShortcutStripLongHostNameNeverDrawsUnderPillTests() {
     )
 
     let rects = SessionChromeRenderPreview.stripButtonRects(hostName: hostName, width: width)
-    let gear = rects.first(where: { $0.title == "Settings" })
     let pin = rects.first(where: { $0.title == "Pin" })
-    expect(gear != nil, "the gear still draws at a narrow width")
     expect(pin != nil, "the pin still draws at a narrow width")
-    guard let gear, let pin else { return }
+    guard let pin else { return }
 
-    let pillLeft = Int(min(gear.x, pin.x))
-    let top = Int(gear.y)
-    let bottom = Int(gear.y + gear.height)
+    let pillLeft = Int(pin.x)
+    let top = Int(pin.y)
+    let bottom = Int(pin.y + pin.height)
     var foundHostNameInkUnderPill = false
     for y in top..<bottom {
         for x in pillLeft..<Int(width) {
@@ -218,9 +243,9 @@ func testShortcutStripLongHostNameNeverDrawsUnderPillTests() {
             }
         }
     }
-    expect(!foundHostNameInkUnderPill, "the host name's own ink reaches under the gear/pin pill at x=\(pillLeft)")
+    expect(!foundHostNameInkUnderPill, "the host name's own ink reaches under the pin pill at x=\(pillLeft)")
 
-    print("PASS: a very long host name is truncated before the trailing gear/pin pill, never drawn under it")
+    print("PASS: a very long host name is truncated before the trailing pin pill, never drawn under it")
 }
 
 /// The transient notice's own warn-coloured border and its stroke-drawn
@@ -349,134 +374,99 @@ func testScrimOpaqueBeforeFirstFrameTests() {
 }
 
 /// At every width a real session window might give the strip -- 1280, 1024
-/// and 800 -- and whether an icon theme is found, no two of the strip's own
-/// buttons ever touch and none crosses the bar's own edge: the toolbar-style
-/// overflow `stripClusters` drops whole clusters for, rather than letting
-/// the host name, the action clusters and the trailing gear-and-pin pill
-/// crowd into each other.
+/// and 800 -- no two of the strip's own buttons ever touch and none crosses
+/// the bar's own edge: the toolbar-style overflow `stripClusters` drops
+/// whole clusters for, rather than letting the host name, the action
+/// clusters and the trailing pin pill crowd into each other.
 @MainActor
 func testShortcutStripOverflowNeverOverlapsTests() {
-    defer { FreedesktopIconLookup.forceNotFound = false }
     for width in [1280.0, 1024.0, 800.0] {
-        for iconsPresent in [true, false] {
-            FreedesktopIconLookup.forceNotFound = !iconsPresent
-            let rects = SessionChromeRenderPreview.stripButtonRects(hostName: "workshop", width: width)
-            let context = "width \(Int(width)), icons \(iconsPresent ? "present" : "missing")"
-            expect(!rects.isEmpty, "the strip still draws at least one button, \(context)")
-            for rect in rects {
+        let rects = SessionChromeRenderPreview.stripButtonRects(hostName: "workshop", width: width)
+        let context = "width \(Int(width))"
+        expect(!rects.isEmpty, "the strip still draws at least one button, \(context)")
+        for rect in rects {
+            expect(
+                rect.x >= -0.01 && rect.x + rect.width <= width + 0.01,
+                "\"\(rect.title)\" stays within the bar, \(context) (x \(rect.x), width \(rect.width))"
+            )
+        }
+        for i in 0..<rects.count {
+            for j in (i + 1)..<rects.count {
+                let a = rects[i]
+                let b = rects[j]
+                let overlapsX = a.x < b.x + b.width && b.x < a.x + a.width
+                let overlapsY = a.y < b.y + b.height && b.y < a.y + a.height
                 expect(
-                    rect.x >= -0.01 && rect.x + rect.width <= width + 0.01,
-                    "\"\(rect.title)\" stays within the bar, \(context) (x \(rect.x), width \(rect.width))"
+                    !(overlapsX && overlapsY),
+                    "\"\(a.title)\" and \"\(b.title)\" never overlap, \(context)"
                 )
-            }
-            for i in 0..<rects.count {
-                for j in (i + 1)..<rects.count {
-                    let a = rects[i]
-                    let b = rects[j]
-                    let overlapsX = a.x < b.x + b.width && b.x < a.x + a.width
-                    let overlapsY = a.y < b.y + b.height && b.y < a.y + a.height
-                    expect(
-                        !(overlapsX && overlapsY),
-                        "\"\(a.title)\" and \"\(b.title)\" never overlap, \(context)"
-                    )
-                }
             }
         }
     }
 
-    print("PASS: the shortcut strip never overlaps its own buttons or overruns the bar at 1280, 1024 or 800, with or without icons")
+    print("PASS: the shortcut strip never overlaps its own buttons or overruns the bar at 1280, 1024 or 800")
 }
 
-/// The real "DROPPED HERE" reading -- a sentence long enough to overrun even
-/// a widened label column's own value width -- wraps onto a second line
-/// rather than losing its own end to an ellipsis, and its own label draws
-/// whole rather than clipped.
+/// A value too long for its column stays on one line and loses its end to
+/// an ellipsis, as a truncating-tail value does on macOS, and its label still
+/// draws whole.
 @MainActor
-func testSessionHUDLabelWrapNotTruncatedTests() {
+func testSessionHUDLongValueStaysOnOneLineTests() {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-        "sensorium-hud-wrap-tests-\(UUID().uuidString)", isDirectory: true
+        "sensorium-hud-one-line-tests-\(UUID().uuidString)", isDirectory: true
     )
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let latency = SessionHUDSection(title: "THIS MACHINE", rows: [
-        SessionHUDRow(label: "RECEIVE", value: "3.2 ms"),
-        SessionHUDRow(label: "END-TO-END", value: "18.5 ms"),
-        SessionHUDRow(label: "INPUT RTT", value: "22.0 ms")
-    ])
-    let stream = SessionHUDSection(title: "STREAM", rows: [
-        SessionHUDRow(label: "VIDEO IN", value: "41.5 Mbit/s"),
-        // A long session's own real drop counts, not "4 before decode, 1
-        // before present": at 11pt JetBrains Mono and 72dpi, that shorter
-        // reading measures 178pt, whole inside the section's own 206pt value
-        // column, so it does not demonstrate a wrap. This one measures 222pt,
-        // wider than the column, so it does.
-        SessionHUDRow(label: "DROPPED HERE", value: "12840 before decode, 9075 before present")
-    ])
-    let blocks: [SessionHUDBlock] = [.columns(title: "LATENCY", latency, latency), .section(stream)]
-
-    let withLongRow = directory.appendingPathComponent("hud-wrap.png")
+    func stream(_ dropped: String) -> [SessionHUDBlock] {
+        [.section(SessionHUDSection(title: "STREAM", rows: [
+            SessionHUDRow(label: "VIDEO IN", value: "41.5 Mbit/s"),
+            SessionHUDRow(label: "DROPPED HERE", value: dropped)
+        ]))]
+    }
+    let longURL = directory.appendingPathComponent("hud-long.png")
+    let shortURL = directory.appendingPathComponent("hud-short.png")
     expect(
-        SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: blocks, isFlagged: false), scale: 1, to: withLongRow),
-        "the HUD renders with its widest real labels and a value too long for one line"
+        SessionChromeRenderPreview.renderOverlay(
+            .diagnostics(blocks: stream("12840 before decode, 9075 before present"), isFlagged: false),
+            scale: 1, to: longURL
+        ),
+        "the HUD renders with a value too long for one line"
     )
-
-    // A section with the same labels but a short value in "DROPPED HERE"'s
-    // place, so its rendered height is the single-line height every row
-    // this fixture otherwise shares -- the wrapped render is taller only if
-    // the long value actually grew a second line rather than being clipped
-    // to fit the first.
-    let shortStream = SessionHUDSection(title: "STREAM", rows: [
-        SessionHUDRow(label: "VIDEO IN", value: "41.5 Mbit/s"),
-        SessionHUDRow(label: "DROPPED HERE", value: "0")
-    ])
-    let shortBlocks: [SessionHUDBlock] = [.columns(title: "LATENCY", latency, latency), .section(shortStream)]
-    let withShortRow = directory.appendingPathComponent("hud-no-wrap.png")
     expect(
-        SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: shortBlocks, isFlagged: false), scale: 1, to: withShortRow),
-        "the same HUD renders with a value short enough for one line"
+        SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: stream("0"), isFlagged: false), scale: 1, to: shortURL),
+        "the same HUD renders with a short value"
     )
-
-    if let longSize = pngSize(at: withLongRow), let shortSize = pngSize(at: withShortRow) {
+    if let longSize = pngSize(at: longURL), let shortSize = pngSize(at: shortURL) {
         expect(
-            longSize.height > shortSize.height,
-            "the long \"DROPPED HERE\" reading wraps to a second line and grows the panel, "
-                + "rather than staying the same height a truncated single line would (\(longSize.height) vs \(shortSize.height))"
+            longSize.height == shortSize.height,
+            "the long reading stays on one line (\(longSize.height) vs \(shortSize.height))"
         )
     } else {
         expect(false, "both HUD PNGs could be read back")
     }
 
-    // "DROPPED HERE" measures 82pt at 11pt JetBrains Mono -- comfortably
-    // under half the 296pt-wide stream section even before it is widened,
-    // so ink at its own rightmost stroke, x=88 (panel inset 12 plus 76),
-    // proves it drew whole rather than being clipped partway through the
-    // word.
-    if let labelWidth = pngSize(at: withLongRow) {
-        var foundInkNearFullLabelWidth = false
-        let x = 12 + 76
-        for y in 0..<labelWidth.height {
-            if let pixel = pngPixel(at: withLongRow, x: x, y: y) {
+    // "DROPPED HERE" is about 79pt at 11pt monospace; its label column is
+    // 96, so ink near its end, at x = 12 + 74, proves it drew whole.
+    if let size = pngSize(at: longURL) {
+        var found = false
+        for y in 0..<size.height {
+            if let pixel = pngPixel(at: longURL, x: 12 + 74, y: y) {
                 let luminance = 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b
-                if luminance > 0.3 { foundInkNearFullLabelWidth = true; break }
+                if luminance > 0.3 { found = true; break }
             }
         }
-        expect(foundInkNearFullLabelWidth, "\"DROPPED HERE\" draws ink out near its own full measured width, not clipped")
+        expect(found, "\"DROPPED HERE\" draws ink out near its own full width, not clipped")
     }
 
-    print("PASS: a HUD value too long for its column wraps to a second line, and its own label draws whole rather than clipped")
+    print("PASS: a HUD value too long for its column stays on one line, and its label draws whole")
 }
 
 /// At the diagnostics panel's own 320pt width, each latency column is 140pt
-/// wide. Every value in this section ("18.5 ms", "22.0 ms"...) is far short
-/// of the value-width ceiling, so the label column widens past that fixed
-/// floor to fit "END-TO-END" and "INPUT RTT" whole -- checked by comparing
-/// this render's own height against a control section whose labels are
-/// short enough that nobody could dispute they fit one line: an equal
-/// height proves neither real label grew a second line. At this chrome's
-/// own 72dpi (see `CairoChromeText`), "END-TO-END" (67pt) plus its own value
-/// (41pt) plus the column gap (8pt) is 116pt, well inside the 140pt column,
-/// so it draws whole with room to spare.
+/// wide with a 70pt label column, which holds "END-TO-END" and "INPUT RTT"
+/// whole -- checked by comparing this render's own height against a control
+/// section whose labels are short enough that nobody could dispute they fit
+/// one line: an equal height proves neither real label grew a second line.
 @MainActor
 func testSessionHUDNarrowLatencyLabelsNeverWrapTests() {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -521,10 +511,8 @@ func testSessionHUDNarrowLatencyLabelsNeverWrapTests() {
         expect(false, "both latency PNGs could be read back")
     }
 
-    // "INPUT RTT" (56pt at 11pt JetBrains Mono, 72dpi) fits its own widened
-    // column whole at 140pt once its own short value ("22.0 ms", 41pt) is
-    // reserved rather than a flat 64pt: ink out near its own full measured
-    // width proves it drew whole rather than being clipped.
+    // "INPUT RTT" is about 60pt at 11pt monospace, 72dpi: ink out near its
+    // own full width proves it drew whole in its 70pt column.
     if let size = pngSize(at: realURL) {
         var foundInkNearFullLabelWidth = false
         let x = 12 + 50 // panel inset + close to "INPUT RTT"'s own full measured width
@@ -537,76 +525,7 @@ func testSessionHUDNarrowLatencyLabelsNeverWrapTests() {
         expect(foundInkNearFullLabelWidth, "\"INPUT RTT\" draws ink out near its own full measured width, not clipped")
     }
 
-    print("PASS: the narrow latency columns' own labels never wrap mid-word, and \"INPUT RTT\" fits its widened column whole")
-}
-
-/// Every action's own icon name, plus the gear's and the pin's, resolves to
-/// a real SVG under the icon themes actually installed, so every button
-/// draws icon-only rather than its own fallback word.
-@MainActor
-func testFreedesktopIconLookupResolvesRealThemeTests() {
-    FreedesktopIconLookup.forceNotFound = false
-    var names = ShortcutStripAction.allCases.map { $0.freedesktopIconNames[0] }
-    names.append("emblem-system-symbolic")
-    names.append("view-pin-symbolic")
-    for name in names {
-        expect(
-            FreedesktopIconLookup.svgPath(named: name) != nil,
-            "\"\(name)\" resolves to a real SVG under the installed icon themes"
-        )
-    }
-
-    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
-        "sensorium-icon-lookup-tests-\(UUID().uuidString)", isDirectory: true
-    )
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: directory) }
-    let url = directory.appendingPathComponent("strip-icons.png")
-    expect(
-        SessionChromeRenderPreview.renderOverlay(
-            .strip(visibility: .shown, hostName: "workshop", isPinned: false), scale: 1, to: url
-        ),
-        "the strip renders with the real icon theme"
-    )
-    let rects = SessionChromeRenderPreview.stripButtonRects(hostName: "workshop")
-    for rect in rects {
-        expect(
-            abs(rect.width - 28) < 0.5,
-            "\"\(rect.title)\" draws as a 28pt icon-only square rather than falling back to its own word (got width \(rect.width))"
-        )
-    }
-
-    // A 5x5 grid of luminance samples over the icon glyph itself -- 18pt
-    // drawn centred in the 28pt hit square, so the inner 70% of the square
-    // is where the ink actually falls -- coarse enough to ignore
-    // anti-aliasing but dense enough over both axes that two different
-    // glyphs never land on the same fingerprint by chance, and narrow
-    // enough to stay off the square's own padding, where a thin glyph (a
-    // chevron, an outlined window) leaves no ink to sample.
-    func fingerprint(_ rect: (title: String, x: Double, y: Double, width: Double, height: Double)) -> [Double] {
-        var samples: [Double] = []
-        for yStep in 0..<5 {
-            for xStep in 0..<5 {
-                let x = Int(rect.x + rect.width * (0.15 + 0.7 * Double(xStep) / 4))
-                let y = Int(rect.y + rect.height * (0.15 + 0.7 * Double(yStep) / 4))
-                let pixel = pngPixel(at: url, x: x, y: y)
-                let luminance = pixel.map { 0.299 * $0.r + 0.587 * $0.g + 0.114 * $0.b }
-                samples.append(luminance ?? -1)
-            }
-        }
-        return samples
-    }
-    let fingerprints = rects.map { (title: $0.title, samples: fingerprint($0)) }
-    for i in 0..<fingerprints.count {
-        for j in (i + 1)..<fingerprints.count {
-            let a = fingerprints[i]
-            let b = fingerprints[j]
-            let identical = zip(a.samples, b.samples).allSatisfy { abs($0 - $1) < 0.02 }
-            expect(!identical, "\"\(a.title)\" and \"\(b.title)\" draw the same icon")
-        }
-    }
-
-    print("PASS: every strip action's icon resolves on the real installed theme, every button draws icon-only, and no two draw the same icon")
+    print("PASS: the narrow latency columns' own labels never wrap mid-word, and \"INPUT RTT\" fits its 70pt column whole")
 }
 
 /// A fixed mono-11 string measures the same logical width whether the
@@ -631,101 +550,392 @@ func testChromeTextScaleParityTests() {
     print("PASS: a chrome string measures the same logical width at 1x and 1.5x, near its real 72dpi width")
 }
 
-/// An empty diagnostics panel draws nothing but its own footer -- `gap`
-/// above, one line per chord, `gap` below -- so its own three rows are the
-/// whole render. A total-height check alone cannot tell a whole chord line
-/// from a split one: a sentence long enough to wrap at this width can still
-/// land on three rows in total, just not the three rows this test means.
-/// What only a split changes is how far each row's own ink reaches -- a
-/// chord broken onto the row below leaves the row above short of that
-/// chord's own full width, and the row below overruns its own -- so each
-/// row's own ink is checked against its own line's own full measured width,
-/// at both 1x and 1.5x.
+/// Text the session window paints is drawn at its role's own weight, the
+/// same token the GTK windows read.
 @MainActor
-func testHUDFooterKeyChordsNeverSplitTests() {
+func testChromeTextRoleWeightTests() {
+    func pangoWidth(_ text: String, pointSize: Double, weight: Int) -> Double {
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return 0 }
+        defer { cairo_surface_destroy(surface) }
+        guard let context = cairo_create(surface), let layout = pango_cairo_create_layout(context) else { return 0 }
+        defer { g_object_unref(UnsafeMutableRawPointer(layout)); cairo_destroy(context) }
+        let layoutContext = pango_layout_get_context(layout)
+        pango_cairo_context_set_resolution(layoutContext, 72)
+        let options = cairo_font_options_create()
+        cairo_font_options_set_hint_metrics(options, CAIRO_HINT_METRICS_OFF)
+        pango_cairo_context_set_font_options(layoutContext, options)
+        cairo_font_options_destroy(options)
+        pango_context_set_round_glyph_positions(layoutContext, 0)
+        let description = pango_font_description_new()
+        pango_font_description_set_family(description, "sans-serif")
+        pango_font_description_set_weight(description, PangoWeight(rawValue: UInt32(weight)))
+        pango_font_description_set_size(description, sensorium_pango_units_from_points(pointSize))
+        pango_layout_set_font_description(layout, description)
+        pango_font_description_free(description)
+        pango_layout_set_text(layout, text, -1)
+        var width: Int32 = 0
+        var height: Int32 = 0
+        pango_layout_get_pixel_size(layout, &width, &height)
+        return Double(width)
+    }
+    typealias Weight = ViewerChromeMetrics.TextWeight
+    let roles: [(String, Double, Int)] = [
+        ("Cannot reach Workstation.", 16, Weight.headline),
+        ("Try Again", 13, Weight.button),
+        ("Check that it is awake.", 12, Weight.detail),
+        ("Connected to Workstation.", 11, Weight.hudNote),
+    ]
+    for (text, size, weight) in roles {
+        let painted = SessionChromeRenderPreview.measureChromeText(text, pointSize: size, mono: false, scale: 1, weight: weight)
+        let expected = pangoWidth(text, pointSize: size, weight: weight)
+        expect(painted == expected, "\"\(text)\" is painted at weight \(weight), \(expected)pt wide, got \(painted)pt")
+    }
+    print("PASS: painted text is drawn at its role's weight")
+}
+
+/// The HUD's labels and values are in the system's monospace family, as
+/// they are mono on macOS: a narrow and a wide glyph measure the same.
+@MainActor
+func testChromeTextMonoIsMonospaceTests() {
+    let narrow = SessionChromeRenderPreview.measureChromeText("iiiiiiiiii", pointSize: 11, mono: true, scale: 1)
+    let wide = SessionChromeRenderPreview.measureChromeText("MMMMMMMMMM", pointSize: 11, mono: true, scale: 1)
+    expect(abs(narrow - wide) < 0.5, "ten i and ten M measure the same in the HUD's mono face, got \(narrow) and \(wide)")
+    print("PASS: the HUD's mono text is set in a monospace family")
+}
+
+/// Painted text sits on the lines AppKit sets a label's on macOS, whatever
+/// the Linux face's own metrics: each line `TextLine.height` tall, its
+/// baseline `TextLine.baseline` below the top.
+@MainActor
+func testChromeTextSitsOnMacLinesTests() {
+    typealias Line = ViewerChromeMetrics.TextLine
+    for (size, mono) in [(11.0, true), (12.0, true), (11.0, false), (12.0, false), (13.0, false), (16.0, false)] {
+        let label = "\(Int(size))pt \(mono ? "mono" : "sans")"
+        let line = Line.height(size: size, mono: mono)
+        let one = SessionChromeRenderPreview.measureChromeTextHeight(
+            "HELD", pointSize: size, mono: mono, maxWidth: 400, ellipsize: false
+        )
+        let three = SessionChromeRenderPreview.measureChromeTextHeight(
+            "HELD\nHELD\nHELD", pointSize: size, mono: mono, maxWidth: 400, ellipsize: false
+        )
+        expect(one == line && three == 3 * line, "\(label) lines are \(line)pt tall, got \(one) and \(three) for three")
+        for scale in [1.5, 2.0] {
+            let bottom = SessionChromeRenderPreview.chromeTextInkBottom("HELD", pointSize: size, mono: mono, scale: scale)
+            let baseline = Line.baseline(size: size, mono: mono)
+            expect(
+                abs(bottom - baseline) <= 1 / scale,
+                "\(label) sits on a baseline \(baseline)pt below its top at \(scale)x, got \(bottom)"
+            )
+        }
+    }
+    print("PASS: painted text sits on the lines AppKit sets on macOS")
+}
+
+/// The panel ends 12pt below its last section, as `SessionHUDView` does:
+/// no footer of chord lines under it, and no row gap after a section's last
+/// row, which AppKit's stack view only puts between rows.
+@MainActor
+func testHUDHasNoFooterTests() {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sensorium-hud-footer-tests-\(UUID().uuidString)", isDirectory: true
     )
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let gap: Double = 12
-    let diagnosticsWidth: Double = 320
-    let rowSize: Double = 11
-    let lines = [
-        "Session controls: \(ViewerKeyNames.sessionControls)",
-        "Shortcut strip: \(ViewerKeyNames.shortcutStrip)",
-        "Back to this machine: \(ViewerKeyNames.escapeGesture)"
-    ]
+    let section = SessionHUDSection(title: "STREAM", rows: [SessionHUDRow(label: "FPS", value: "58")])
+    let url = directory.appendingPathComponent("hud.png")
+    expect(
+        SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: [.section(section)], isFlagged: false), scale: 1, to: url),
+        "a one-row HUD renders"
+    )
+    let height = Double(pngSize(at: url)?.height ?? 0)
+    let title = SessionChromeRenderPreview.measureChromeTextHeight("STREAM", pointSize: 12, mono: true, maxWidth: 296, ellipsize: true)
+    let row = SessionChromeRenderPreview.measureChromeTextHeight("58", pointSize: 11, mono: true, maxWidth: 296, ellipsize: true)
+    // Top inset, title, gap, row, bottom inset.
+    let expected = 12 + title + 4 + row + 12
+    expect(
+        abs(height - expected) < 1,
+        "a one-row panel is \(expected)pt tall with nothing under its last section, got \(height)"
+    )
 
-    // Each line's own single-line height and full natural width, measured
-    // independently of the footer render below -- `ellipsize` forces
-    // exactly one line by contract, so this is what a whole, unsplit line
-    // costs and how far its own ink reaches.
-    let lineHeights = lines.map {
-        SessionChromeRenderPreview.measureChromeTextHeight(
-            $0, pointSize: rowSize, maxWidth: diagnosticsWidth - gap * 2, ellipsize: true
-        )
-    }
-    let naturalWidths = lines.map {
-        SessionChromeRenderPreview.measureChromeText($0, pointSize: rowSize, mono: false, scale: 1)
-    }
-    let expectedHeight = gap * 2 + lineHeights.reduce(0, +)
+    let twoURL = directory.appendingPathComponent("hud-two.png")
+    expect(
+        SessionChromeRenderPreview.renderOverlay(
+            .diagnostics(blocks: [.section(section), .section(section)], isFlagged: false), scale: 1, to: twoURL
+        ),
+        "a two-section HUD renders"
+    )
+    let twoHeight = Double(pngSize(at: twoURL)?.height ?? 0)
+    // The group gap alone between the two sections.
+    let twoExpected = 12 + (title + 4 + row) + 16 + (title + 4 + row) + 12
+    expect(
+        abs(twoHeight - twoExpected) < 1,
+        "two one-row sections stand 16pt apart in a \(twoExpected)pt panel, got \(twoHeight)"
+    )
+    print("PASS: the HUD has no footer under its last section")
+}
 
-    for scale in [1.0, 1.5] {
-        let url = directory.appendingPathComponent("footer-\(scale).png")
-        expect(
-            SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: [], isFlagged: false), scale: scale, to: url),
-            "an empty diagnostics panel, which is only its own footer, renders at \(scale)x"
-        )
-        guard let size = pngSize(at: url) else {
-            expect(false, "the footer PNG at \(scale)x could be read back")
-            continue
+/// The two latency columns' headers sit one size under the block's eyebrow,
+/// as `SessionHUDView` sets them at 11.
+@MainActor
+func testHUDColumnHeadersStepDownTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-hud-columns-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let left = SessionHUDSection(title: "THIS MACHINE", rows: [SessionHUDRow(label: "DECODE", value: "3 ms")])
+    let right = SessionHUDSection(title: "MINI", rows: [SessionHUDRow(label: "ENCODE", value: "4 ms")])
+    let url = directory.appendingPathComponent("hud-columns.png")
+    expect(
+        SessionChromeRenderPreview.renderOverlay(
+            .diagnostics(blocks: [.columns(title: "LATENCY", left, right)], isFlagged: false), scale: 1, to: url
+        ),
+        "a HUD of two columns renders"
+    )
+    let height = Double(pngSize(at: url)?.height ?? 0)
+    let line = ViewerChromeMetrics.TextLine.height
+    // Top inset, block eyebrow, gap, column header, gap, row, bottom inset.
+    let expected = 12 + line(12, true) + 4 + line(11, true) + 4 + line(11, true) + 12
+    expect(
+        abs(height - expected) < 1,
+        "a columns block with 11pt headers is \(expected)pt tall, got \(height)"
+    )
+    print("PASS: the HUD's column headers sit one size under its eyebrows")
+}
+
+/// A last-known reading is drawn as `SessionHUDView` draws it: its label in
+/// the same muted tone as any other label, and its value dimmed to that tone,
+/// not below it.
+@MainActor
+func testHUDStaleRowToneTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-hud-stale-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let section = SessionHUDSection(title: "FIDELITY", rows: [
+        SessionHUDRow(label: "SIZE", value: "2880 × 1800", isStale: true),
+        SessionHUDRow(label: "APPLIED", value: "1.50x", isStale: true)
+    ])
+    let url = directory.appendingPathComponent("hud-stale.png")
+    expect(
+        SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: [.section(section)], isFlagged: false), scale: 2, to: url),
+        "a HUD of stale rows renders"
+    )
+    guard let surface = cairo_image_surface_create_from_png(url.path),
+          cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS,
+          let data = cairo_image_surface_get_data(surface) else {
+        expect(false, "the stale HUD render reads back")
+        return
+    }
+    defer { cairo_surface_destroy(surface) }
+    let stride = Int(cairo_image_surface_get_stride(surface))
+    var brightest = 0
+    for y in 0..<Int(cairo_image_surface_get_height(surface)) {
+        for x in 0..<Int(cairo_image_surface_get_width(surface)) {
+            brightest = max(brightest, Int(data[y * stride + x * 4 + 1]))
         }
-        let renderedHeight = Double(size.height) / scale
-        expect(
-            abs(renderedHeight - expectedHeight) < 1,
-            "the footer rendered \(renderedHeight)pt tall at \(scale)x, not near the \(expectedHeight)pt three "
-                + "whole chord lines cost -- a chord split across two lines would grow this past that"
-        )
+    }
+    let muted = Int((ViewerPalette.muted.green * 255).rounded())
+    expect(
+        abs(brightest - muted) <= 2,
+        "the brightest stale text is the muted tone, \(muted), got \(brightest)"
+    )
+    print("PASS: a stale HUD row draws its label and value in the muted tone, as on macOS")
+}
 
-        var rowTop = gap
-        for row in 0..<3 {
-            let pixelTop = Int((rowTop * scale).rounded())
-            let pixelBottom = Int(((rowTop + lineHeights[row]) * scale).rounded())
-            var maxInkX = -1
-            for py in pixelTop..<min(pixelBottom, size.height) {
-                for px in stride(from: size.width - 1, through: 0, by: -1) {
-                    if let pixel = pngPixel(at: url, x: px, y: py) {
-                        let luminance = 0.299 * pixel.r + 0.587 * pixel.g + 0.114 * pixel.b
-                        if luminance > 0.3 { maxInkX = max(maxInkX, px); break }
-                    }
+/// VIDEO IN's trend draws a sparkline in the data-viz colour at the trailing
+/// edge of its row, the way `SessionHUDSparklineView` draws it on macOS.
+@MainActor
+func testHUDSparklineDrawsTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-hud-sparkline-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    func render(_ trend: [Double]?, name: String) -> Int {
+        let blocks: [SessionHUDBlock] = [.section(SessionHUDSection(title: "STREAM", rows: [
+            SessionHUDRow(label: "VIDEO IN", value: "41.5 Mbit/s", trend: trend)
+        ]))]
+        let url = directory.appendingPathComponent(name)
+        expect(
+            SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: blocks, isFlagged: false), scale: 1, to: url),
+            "the HUD renders \(name)"
+        )
+        guard let size = pngSize(at: url) else { return -1 }
+        var pink = 0
+        for y in 0..<size.height {
+            for x in (12 + 232)..<(12 + 296) {
+                if let p = pngPixel(at: url, x: x, y: y), p.r > 0.6, p.g < 0.8, p.b > 0.5, p.r > p.g + 0.15 {
+                    pink += 1
                 }
             }
-            let expectedInkX = naturalWidths[row] * scale
-            // A whole line's own last glyph still overshoots its own
-            // measured advance by ~9pt logical (an ordinary hinting/ink
-            // overshoot this font gives every one of these three lines
-            // alike, not a defect) -- 30pt is generous past that and still
-            // an order of magnitude under the ~100-180pt logical a chord
-            // split onto the wrong row moves a row's own ink by.
-            expect(
-                Double(maxInkX) > expectedInkX - 30 * scale && Double(maxInkX) < expectedInkX + 30 * scale,
-                "row \(row) at \(scale)x draws ink out to \(maxInkX)px, not the \(expectedInkX)px "
-                    + "\"\(lines[row])\" draws whole -- a chord split onto the row below would fall short "
-                    + "here, and overrun the row above"
-            )
-            rowTop += lineHeights[row]
+        }
+        return pink
+    }
+    let with = render([38, 40, 41.5, 39, 42, 41.5], name: "trend.png")
+    let without = render(nil, name: "no-trend.png")
+    expect(with > 20, "a trend draws pink ink in the row's trailing 64pt, got \(with) pixels")
+    expect(without == 0, "a row without a trend draws none, got \(without) pixels")
+    print("PASS: a HUD trend draws its sparkline at the row's trailing edge, and a row without one draws none")
+}
+/// The painted session menu bar is the metric height at every scale, on the
+/// chrome surface, with the open menu's title on a lifted pill.
+@MainActor
+func testSessionMenuBarPaintsTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-menu-bar-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let titles = ["Sensorium", "Edit", "View"]
+    for scale in [1.0, 1.5, 2.0] {
+        let url = directory.appendingPathComponent("bar-\(scale).png")
+        expect(
+            SessionChromeRenderPreview.renderOverlay(.menuBar(titles: titles, openIndex: 1), scale: scale, width: 400, to: url),
+            "the menu bar renders at \(scale)x"
+        )
+        let expected = Int((Double(ViewerChromeMetrics.MenuBar.height) * scale).rounded())
+        expect(pngSize(at: url)?.height == expected, "the bar is \(expected)px tall at \(scale)x, got \(String(describing: pngSize(at: url)))")
+        let last = expected - 1
+        expect(matches(pngPixel(at: url, x: 398, y: 2), ViewerPalette.chromeBg2), "the bar is the chrome surface at \(scale)x")
+        expect(
+            matches(pngPixel(at: url, x: 398, y: last), ViewerPalette.chromeBg2),
+            "the bar draws no hairline, which GTK could only draw blurred at 1.5x, at \(scale)x"
+        )
+        let items = SessionChromeRenderPreview.menuBarItems(titles: titles)
+        let open = Int(((items[1].x + 2) * scale).rounded())
+        let closed = Int(((items[2].x + 2) * scale).rounded())
+        let middle = expected / 2
+        expect(matches(pngPixel(at: url, x: open, y: middle), ViewerPalette.bg4), "the open title sits on a pill at \(scale)x")
+        let pillTop = Int((4 * scale).rounded())
+        expect(
+            matches(pngPixel(at: url, x: open + 4, y: pillTop), ViewerPalette.bg4)
+                && matches(pngPixel(at: url, x: open + 4, y: pillTop - 1), ViewerPalette.chromeBg2),
+            "the pill starts crisply 4pt down at \(scale)x"
+        )
+        expect(matches(pngPixel(at: url, x: closed, y: middle), ViewerPalette.chromeBg2), "a closed title has none at \(scale)x")
+    }
+    print("PASS: the painted menu bar is the metric height at 1x, 1.5x and 2x, with the open title on a pill")
+}
+
+/// Brightest pixel in a rect of a PNG, as the largest of its components --
+/// light text on the dark chrome is never brighter than its own colour.
+private func brightest(at url: URL, x: Range<Int>, y: Range<Int>) -> Double {
+    var best = 0.0
+    for py in y {
+        for px in x {
+            if let p = pngPixel(at: url, x: px, y: py) { best = max(best, p.r, p.g, p.b) }
         }
     }
+    return best
+}
 
-    print("PASS: the HUD footer's three key-chord lines never split across two lines, at 1x or 1.5x")
+/// A painted menu draws a checkmark only on the current choice, dims a
+/// disabled row, fills the highlighted row with the accent, and names its
+/// chords with Super standing in for Command.
+@MainActor
+func testSessionMenuPopupPaintsTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-menu-popup-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let menu = ViewerMenu(title: "View", items: [
+        ViewerMenuItem(title: "Fit to Window", command: .setStreamScale(nil), isSelected: true),
+        ViewerMenuItem(title: "Enter Full Screen", command: .toggleFullScreen, keyEquivalent: "f", modifiers: [.command, .control]),
+        .separator,
+        ViewerMenuItem(title: "Capture Pointer", command: .togglePointerCapture, isEnabled: false),
+        ViewerMenuItem(title: "Start With", command: .submenu, submenu: ViewerMenu(title: "Start With", items: []))
+    ])
+    let url = directory.appendingPathComponent("popup.png")
+    expect(SessionChromeRenderPreview.renderOverlay(.menuPopup(menu, highlighted: 1), scale: 1, to: url), "the menu renders")
+    let layout = SessionChromeRenderPreview.menuPopupLayout(menu)
+    expect(layout.width >= Double(ViewerChromeMetrics.MenuBar.minimumPopupWidth), "the menu is at least its minimum width")
+    expect(pngSize(at: url)?.height == Int(layout.height.rounded()), "the PNG is the layout's height")
+
+    let padding = Int(ViewerChromeMetrics.MenuBar.rowPaddingX)
+    let check = padding..<(padding + Int(ViewerChromeMetrics.MenuBar.checkColumnWidth))
+    func rows(_ index: Int) -> Range<Int> {
+        let rect = layout.rect(ofRow: index)
+        return Int(rect.y + 2)..<Int(rect.y + rect.height - 2)
+    }
+    expect(brightest(at: url, x: check, y: rows(0)) > 0.85, "the current choice draws a checkmark in ink")
+    expect(brightest(at: url, x: check, y: rows(3)) < 0.3, "a row that is not chosen draws nothing in the check column")
+    let text = (padding + check.count)..<(Int(layout.width) - padding)
+    expect(brightest(at: url, x: text, y: rows(3)) < 0.45, "a disabled row is drawn dim, got \(brightest(at: url, x: text, y: rows(3)))")
+    expect(brightest(at: url, x: text, y: rows(0)) > 0.85, "an enabled row is drawn in ink")
+    let rect1 = layout.rect(ofRow: 1)
+    expect(
+        matches(pngPixel(at: url, x: Int(layout.width) / 2, y: Int(rect1.y + 2)), ViewerPalette.accent),
+        "the highlighted row is filled with the accent"
+    )
+    expect(
+        SessionChromeRenderPreview.menuChordLabel(for: menu.items[1]) == "Ctrl+Super+F",
+        "the full screen chord reads Ctrl+Super+F"
+    )
+    print("PASS: a painted menu checks the current choice, dims disabled rows, highlights in accent, and labels chords with Super")
+}
+/// The scrim draws over the HUD, dimming it, and leaves the menu bar above
+/// it undimmed; the HUD starts below the bar.
+@MainActor
+func testSessionCompositeStackingTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-composite-stacking-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let hostName = "mini.local"
+    var live = SessionChromeState()
+    live.toggleDiagnosticsRequested()
+    var lost = live
+    var machine = ViewerSessionStateMachine(hostName: hostName)
+    machine.handle(.canvasReady)
+    machine.handle(.sessionEnded)
+    lost.apply(status: machine.status, now: 0)
+    let titles = ["Sensorium", "Edit", "View"]
+    func render(_ state: SessionChromeState, _ name: String) -> URL {
+        let url = directory.appendingPathComponent(name)
+        expect(
+            SessionChromeRenderPreview.renderComposite(
+                state: state, hostName: hostName, menuTitles: titles, windowWidth: 900, windowHeight: 600, scale: 1, to: url
+            ),
+            "the \(name) composite renders"
+        )
+        return url
+    }
+    let liveURL = render(live, "live.png")
+    let lostURL = render(lost, "lost.png")
+    let bar = Int(ViewerChromeMetrics.MenuBar.height)
+    let hudX = Int(ViewerChromeMetrics.Diagnostics.edgeInset) + 4
+    let hudY = bar + Int(ViewerChromeMetrics.Diagnostics.edgeInset) + 4
+    let above = pngPixel(at: liveURL, x: hudX, y: bar + 2)
+    let hud = pngPixel(at: liveURL, x: hudX, y: hudY)
+    expect(
+        matches(above, ViewerColor(hex: 0x000000)) && !matches(hud, ViewerColor(hex: 0x000000)),
+        "the HUD starts one inset below the bar"
+    )
+    let dimmed = pngPixel(at: lostURL, x: hudX, y: hudY)
+    if let hud, let dimmed {
+        expect(dimmed.r + dimmed.g + dimmed.b < (hud.r + hud.g + hud.b) * 0.6, "the scrim dims the HUD under it")
+    } else {
+        expect(false, "the HUD pixels read back")
+    }
+    expect(matches(pngPixel(at: lostURL, x: 898, y: 2), ViewerPalette.chromeBg2), "the scrim leaves the menu bar undimmed")
+    print("PASS: the scrim dims the HUD and leaves the menu bar above it, and the HUD sits below the bar")
 }
 #else
 @MainActor
 func testSessionChromePainterPixelTests() {}
 @MainActor
-func testShortcutStripIconFallbackDrawsInkTests() {}
+func testShortcutStripGlyphsDrawTests() {}
 @MainActor
 func testShortcutStripLongHostNameNeverDrawsUnderPillTests() {}
 @MainActor
@@ -733,15 +943,29 @@ func testNoticeBorderAndDismissGlyphTests() {}
 @MainActor
 func testShortcutStripOverflowNeverOverlapsTests() {}
 @MainActor
-func testSessionHUDLabelWrapNotTruncatedTests() {}
+func testSessionHUDLongValueStaysOnOneLineTests() {}
 @MainActor
 func testSessionHUDNarrowLatencyLabelsNeverWrapTests() {}
 @MainActor
-func testFreedesktopIconLookupResolvesRealThemeTests() {}
-@MainActor
 func testChromeTextScaleParityTests() {}
 @MainActor
-func testHUDFooterKeyChordsNeverSplitTests() {}
+func testChromeTextMonoIsMonospaceTests() {}
+@MainActor
+func testHUDHasNoFooterTests() {}
+@MainActor
+func testHUDColumnHeadersStepDownTests() {}
+@MainActor
+func testHUDStaleRowToneTests() {}
+func testChromeTextRoleWeightTests() {}
+@MainActor
+func testChromeTextSitsOnMacLinesTests() {}
+func testHUDSparklineDrawsTests() {}
+@MainActor
+func testSessionMenuBarPaintsTests() {}
+@MainActor
+func testSessionMenuPopupPaintsTests() {}
+@MainActor
+func testSessionCompositeStackingTests() {}
 @MainActor
 func testScrimOpaqueBeforeFirstFrameTests() {}
 #endif

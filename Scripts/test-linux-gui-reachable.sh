@@ -63,6 +63,16 @@ Status panel words|status: ViewerSessionStatus
 Status panel buttons drawn|SessionChromePainter.drawStatusPanel
 Status panel button pressed|ViewerStatusPanelHitTest.action
 Status panel action reported|chrome.onSessionAction
+Menu bar in Your Machines|GtkViewerMenuBar
+Menu items in Your Machines|menuBar.onCommand
+Menu chords in Your Machines|menuBar.command
+Menu chords in a session window|WaylandSessionMenuKeys
+Menu items in a session window|LinuxViewerMenu.sessionAction
+Menu bar painted in a session window|SessionChromePainter.drawMenuBar
+Menus open from the session bar|WaylandMenuPopup
+Session menus drawn|SessionChromePainter.drawMenuPopup
+Session bar hides in full screen|menuBarFullscreenChanged
+Session menu choices applied|applySessionControl
 EOF
 )
 

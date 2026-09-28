@@ -10,20 +10,20 @@ import Foundation
 /// nothing here decides what to say or how wide a panel is, it only measures
 /// and draws what it is handed.
 
-/// The three weights this design system draws text in. A Pango weight
-/// enum rather than a bold `Bool`, so the status panel and the diagnostics
-/// HUD can ask for `medium` without a caller inventing a fourth boolean.
-enum CairoFontWeight {
-    case regular
-    case medium
-    case bold
+/// A Pango weight, 100 to 900: a text role's own from
+/// `ViewerChromeMetrics.TextWeight`, or plain regular or bold.
+struct CairoFontWeight {
+    let value: Int
+
+    init(_ value: Int) {
+        self.value = value
+    }
+
+    static let regular = CairoFontWeight(Int(PANGO_WEIGHT_NORMAL.rawValue))
+    static let bold = CairoFontWeight(Int(PANGO_WEIGHT_BOLD.rawValue))
 
     var pangoWeight: PangoWeight {
-        switch self {
-        case .regular: return PANGO_WEIGHT_NORMAL
-        case .medium: return PANGO_WEIGHT_MEDIUM
-        case .bold: return PANGO_WEIGHT_BOLD
-        }
+        PangoWeight(rawValue: UInt32(value))
     }
 }
 
@@ -80,7 +80,7 @@ enum CairoChromeText {
         var width: Int32 = 0
         var height: Int32 = 0
         pango_layout_get_pixel_size(layout, &width, &height)
-        return (Double(width), Double(height))
+        return (Double(width), textHeight(of: layout, pointSize: pointSize, mono: mono))
     }
 
     /// Draws `text` with its top-left corner at `x`, `y` and answers how tall
@@ -116,12 +116,13 @@ enum CairoChromeText {
         }
         defer { g_object_unref(UnsafeMutableRawPointer(layout)) }
         setSource(context, color)
-        cairo_move_to(context, x, y)
-        pango_cairo_show_layout(context, layout)
-        var width: Int32 = 0
-        var height: Int32 = 0
-        pango_layout_get_pixel_size(layout, &width, &height)
-        return Double(height)
+        let baseline = ViewerChromeMetrics.TextLine.baseline(size: pointSize, mono: mono)
+        let lineHeight = ViewerChromeMetrics.TextLine.height(size: pointSize, mono: mono)
+        for index in 0..<pango_layout_get_line_count(layout) {
+            cairo_move_to(context, x, y + baseline + Double(index) * lineHeight)
+            pango_cairo_show_layout_line(context, pango_layout_get_line_readonly(layout, index))
+        }
+        return textHeight(of: layout, pointSize: pointSize, mono: mono)
     }
 
     /// Draws `text` centred horizontally on `centreX`.
@@ -147,6 +148,10 @@ enum CairoChromeText {
             mono: mono,
             weight: weight
         )
+    }
+
+    private static func textHeight(of layout: OpaquePointer, pointSize: Double, mono: Bool) -> Double {
+        Double(pango_layout_get_line_count(layout)) * ViewerChromeMetrics.TextLine.height(size: pointSize, mono: mono)
     }
 
     static func setSource(_ context: OpaquePointer, _ color: ViewerColor) {
@@ -226,7 +231,7 @@ enum CairoChromeText {
     /// parsed string: `pango_font_description_set_size` takes Pango units, the
     /// same fractional-point conversion `sensorium_pango_units_from_points`
     /// already gives the rest of this file, so a caller is never rounded to a
-    /// whole point the way a string like `"Sans 12"` would round it.
+    /// whole point the way a string like `"sans-serif 12"` would round it.
     ///
     /// A "point" here means the same thing it does on macOS -- one logical
     /// pixel before the backing scale. Pango's own default reads a size in
@@ -242,6 +247,10 @@ enum CairoChromeText {
     /// column sized from the one and truncated against the other. Turning
     /// both off makes a layout's own size depend only on its font and text,
     /// never on which context or backing scale it happened to be built on.
+    ///
+    /// Its lines are drawn one by one on `TextLine`'s lines rather than
+    /// Pango's own, which follow the Linux face's metrics: each is as tall,
+    /// and its baseline as far down, as AppKit sets it on macOS.
     private static func makeLayout(
         on context: OpaquePointer,
         text: String,
@@ -262,7 +271,7 @@ enum CairoChromeText {
         cairo_font_options_destroy(fontOptions)
         pango_context_set_round_glyph_positions(layoutContext, 0)
         let description = pango_font_description_new()
-        pango_font_description_set_family(description, mono ? "JetBrains Mono" : "sans-serif")
+        pango_font_description_set_family(description, mono ? "monospace" : "sans-serif")
         pango_font_description_set_weight(description, weight.pangoWeight)
         pango_font_description_set_size(description, sensorium_pango_units_from_points(pointSize))
         pango_layout_set_font_description(layout, description)

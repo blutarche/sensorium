@@ -60,14 +60,6 @@ func testEditKeyPassthroughRoutingTests() {
     )
     expect(
         !router.claimsKeyEquivalent(
-            chord: SystemShortcutCatalog.sessionControlsToggle,
-            viewer: focused,
-            accessibilityGranted: false
-        ),
-        "the session controls' own summon chord is unaffected"
-    )
-    expect(
-        !router.claimsKeyEquivalent(
             chord: SystemShortcutCatalog.escapeGesture,
             viewer: focused,
             accessibilityGranted: false

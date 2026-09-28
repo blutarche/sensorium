@@ -187,12 +187,7 @@ final class AppKitViewerPrompts: ViewerPrompts {
     }
 
     func confirmNewKey() async -> Bool {
-        let confirm = NSAlert()
-        confirm.messageText = ViewerNewKeyConfirmation.question
-        confirm.informativeText = ViewerNewKeyConfirmation.detail
-        confirm.addButton(withTitle: ViewerNewKeyConfirmation.confirmTitle)
-        confirm.addButton(withTitle: ViewerNewKeyConfirmation.cancelTitle)
-        return confirm.runModal() == .alertFirstButtonReturn
+        ViewerNewKeyAlert.isConfirmed(ViewerNewKeyAlert.make().runModal())
     }
 
     /// Nothing on this platform raises one: the launch notices belong to the
@@ -304,6 +299,23 @@ struct Sensorium {
                 ).load()
             }
             let prompts = GtkViewerPrompts(launchWindow: launch)
+            let registry = LinuxViewerWindowRegistry(environment: environment)
+            let hide = {
+                launch.minimize()
+                registry.minimizeSessionWindows()
+            }
+            launch.onHide = hide
+            registry.onApplicationCommand = { command in
+                switch command {
+                case .about: launch.showAbout()
+                case .quit: quit.fire()
+                case .showYourMachines:
+                    launch.showList()
+                    launch.show()
+                case .hide: hide()
+                default: break
+                }
+            }
             // What this machine cannot do, said once, before any machine has
             // been reached. None of it stops pairing or a session: each
             // notice is a sentence and a button that takes it away.
@@ -320,7 +332,7 @@ struct Sensorium {
                 windowFactory: LinuxSessionWindowFactory(
                     tracesPresentation: CommandLine.arguments.contains("--trace")
                 ),
-                windowRegistry: LinuxViewerWindowRegistry(environment: environment)
+                windowRegistry: registry
             )
         }
         await viewer.run(arguments: Array(CommandLine.arguments.dropFirst()))

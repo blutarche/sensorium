@@ -30,11 +30,6 @@ struct WaylandSessionChrome {
     var overlayPointerX: Double = 0
     var overlayPointerY: Double = 0
     var overlays: [WaylandOverlayKind: WaylandOverlaySurface] = [:]
-    /// The session controls are an ordinary desktop window rather than an
-    /// overlay: it takes typing, and a subsurface cannot hold the keyboard
-    /// focus a toplevel already has. Held as the protocol so the
-    /// create-once-reuse-after policy is testable without a real GTK window.
-    var controlsWindow: (any SessionControlsWindowPresenting)?
     /// The band a pinned strip has taken off the top of the window, in the
     /// logical units a pointer position is reported in. The picture and
     /// every pointer position are measured against what is left.
@@ -45,6 +40,13 @@ struct WaylandSessionChrome {
     /// confirmation names it.
     var hostName = ""
     var hasShown = false
+    /// Whether the painted menu bar is up, which full screen decides.
+    var menuBar = SessionMenuBarVisibility()
+    var menuNavigator = SessionMenuNavigator()
+    /// One popup per open menu, the bar's menu first and each submenu after
+    /// it, with the navigator path each was opened for.
+    var menuPopups: [WaylandMenuPopup] = []
+    var menuPopupPaths: [[Int?]] = []
 }
 
 /// The Linux session window's half of `SessionWindowChrome`.
@@ -184,14 +186,10 @@ extension WaylandSessionWindow: SessionWindowChrome {
         relayoutChrome()
     }
 
-    /// The viewer's own chord for the session controls. On macOS these are
-    /// menu bar menus; here they are a window of their own.
-    func openSessionControls() {
-        chrome.controlsWindow = SessionControlsWindowOpening.openOrReuse(
-            existing: chrome.controlsWindow,
-            model: chrome.state.controls,
-            makeNew: makeSessionControlsWindow
-        )
+    /// View > Session Diagnostics.
+    func toggleDiagnostics() {
+        chrome.state.toggleDiagnosticsRequested()
+        relayoutChrome()
     }
 
     func applyDiagnostics(_ snapshot: SessionHUDSnapshot) {
@@ -211,15 +209,17 @@ extension WaylandSessionWindow: SessionWindowChrome {
         for overlay in chrome.overlays.values {
             overlay.redrawIfOwed()
         }
+        for popup in chrome.menuPopups {
+            popup.redrawIfOwed()
+        }
     }
 
     func tearDownChrome() {
+        closeMenuPopups(from: 0)
         for overlay in chrome.overlays.values {
             overlay.tearDown()
         }
         chrome.overlays = [:]
-        chrome.controlsWindow?.close()
-        chrome.controlsWindow = nil
     }
 
     /// Places every overlay the current state asks for and hides the rest.
@@ -230,10 +230,11 @@ extension WaylandSessionWindow: SessionWindowChrome {
         let size = logicalSize
         let scale = surfaceScale
         let state = chrome.state
-        // What a pinned strip has taken from the top of the window. The
-        // picture gives it up rather than being drawn under it, and the
-        // diagnostics panel starts below it.
-        let topInset = WaylandOverlayLayout.topInset(
+        // The menu bar's height, outside full screen, and below it what a
+        // pinned strip has taken. The picture gives both up rather than
+        // being drawn under them, and the other chrome starts below them.
+        let barTop = chrome.menuBar.contentTop
+        let topInset = barTop + WaylandOverlayLayout.topInset(
             isPinned: state.strip.isPinned,
             isStripOpen: state.isStripVisible,
             stripHeight: SessionChromePainter.stripHeight
@@ -250,7 +251,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
         }
 
         if state.isScrimVisible {
-            let rect = WaylandOverlayLayout.canvasScrim(windowWidth: size.width, windowHeight: size.height)
+            let rect = WaylandOverlayLayout.canvasScrim(windowWidth: size.width, windowHeight: size.height, top: barTop)
             place(.canvasScrim, at: rect, scale: scale) { context, bounds in
                 SessionChromePainter.drawScrim(in: context, bounds: bounds, opaque: state.isScrimOpaque)
             }
@@ -262,10 +263,10 @@ extension WaylandSessionWindow: SessionWindowChrome {
             let measured = SessionChromePainter.statusPanelSize(status: status)
             let rect = WaylandOverlayLayout.statusPanel(
                 windowWidth: size.width,
-                windowHeight: size.height,
+                windowHeight: size.height - barTop,
                 contentWidth: measured.width,
                 contentHeight: measured.height
-            )
+            ).offset(y: barTop)
             place(.statusPanel, at: rect, scale: scale) { context, bounds in
                 SessionChromePainter.drawStatusPanel(status: status, in: context, bounds: bounds)
             }
@@ -313,7 +314,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             let rect = WaylandOverlayLayout.shortcutStrip(
                 windowWidth: size.width,
                 contentHeight: measured.height
-            )
+            ).offset(y: barTop)
             place(.shortcutStrip, at: rect, scale: scale) { context, bounds in
                 SessionChromePainter.drawStrip(
                     visibility: visibility,
@@ -332,13 +333,205 @@ extension WaylandSessionWindow: SessionWindowChrome {
                 windowWidth: size.width,
                 contentWidth: SessionChromePainter.handleWidth,
                 contentHeight: SessionChromePainter.handleHeight
-            )
+            ).offset(y: barTop)
             place(.stripHandle, at: rect, scale: scale) { context, bounds in
                 SessionChromePainter.drawHandle(in: context, bounds: bounds)
             }
         } else {
             chrome.overlays[.stripHandle]?.hide()
         }
+
+        if chrome.menuBar.isVisible {
+            let titles = sessionMenus.map(\.title)
+            let openIndex = chrome.menuNavigator.openMenu
+            place(.menuBar, at: WaylandOverlayLayout.menuBar(windowWidth: size.width), scale: scale) { context, bounds in
+                SessionChromePainter.drawMenuBar(titles: titles, openIndex: openIndex, in: context, bounds: bounds)
+            }
+        } else {
+            chrome.overlays[.menuBar]?.hide()
+        }
+    }
+
+    // MARK: - Menu bar
+
+    /// The menus as the painted bar shows them now.
+    var sessionMenus: [ViewerMenu] {
+        LinuxViewerMenu.bar(menuBarState)
+    }
+
+    /// Opens the bar's menu titled `title`, its first choosable row
+    /// highlighted, as a click on the title followed by Down would.
+    public func openMenu(titled title: String) {
+        guard let index = sessionMenus.firstIndex(where: { $0.title == title }) else { return }
+        if chrome.menuBar.isFullscreen {
+            chrome.menuBar.pointerOnPicture(y: 0, isMenuOpen: false)
+        }
+        chrome.menuNavigator.open(index, in: sessionMenus, highlightFirst: true)
+        menuOpened()
+    }
+
+    /// One key while a menu is open. Every key comes here then, and the ones
+    /// that are not a menu key do nothing.
+    public func menuKey(_ key: SessionMenuKey) {
+        let command = chrome.menuNavigator.key(key, in: sessionMenus)
+        syncMenuPopups()
+        if let command { performMenuCommand(command) }
+    }
+
+    var isMenuOpen: Bool { chrome.menuNavigator.isOpen }
+
+    func closeMenus() {
+        guard chrome.menuNavigator.isOpen || !chrome.menuPopups.isEmpty else { return }
+        chrome.menuNavigator.close()
+        syncMenuPopups()
+    }
+
+    /// Full screen hides the bar and takes its height back for the picture.
+    func menuBarFullscreenChanged(_ isFullscreen: Bool) {
+        guard chrome.menuBar.isFullscreen != isFullscreen else { return }
+        chrome.menuNavigator.close()
+        chrome.menuBar.setFullscreen(isFullscreen)
+        syncMenuPopups()
+    }
+
+    /// Keys held into an open menu are not the far machine's any more.
+    private func menuOpened() {
+        route(.focusLost)
+        syncMenuPopups()
+    }
+
+    /// Makes the open popups match the navigator: keeps each one whose menu
+    /// is still the one open at its depth and redraws it, closes the rest,
+    /// and opens what is newly open.
+    func syncMenuPopups() {
+        let menus = sessionMenus
+        let navigator = chrome.menuNavigator
+        var depth = 0
+        if let openMenu = navigator.openMenu {
+            while depth < navigator.highlights.count, let menu = navigator.menu(atDepth: depth, in: menus) {
+                let path = [openMenu] + Array(navigator.highlights.prefix(depth))
+                if depth < chrome.menuPopupPaths.count, chrome.menuPopupPaths[depth] == path {
+                    chrome.menuPopups[depth].redraw()
+                } else {
+                    closeMenuPopups(from: depth)
+                    guard let popup = makeMenuPopup(depth: depth, menu: menu, openMenu: openMenu) else { break }
+                    chrome.menuPopups.append(popup)
+                    chrome.menuPopupPaths.append(path)
+                }
+                depth += 1
+            }
+        }
+        closeMenuPopups(from: depth)
+        if !navigator.isOpen {
+            chrome.menuBar.menuClosed(isPointerOnBar: overlayKind(for: pointerSurface) == .menuBar)
+        }
+        relayoutChrome()
+        wl_display_flush(display)
+    }
+
+    /// A submenu has to go before the popup it opened from, so the deepest
+    /// goes first.
+    private func closeMenuPopups(from depth: Int) {
+        while chrome.menuPopups.count > depth {
+            chrome.menuPopups.removeLast().tearDown()
+            chrome.menuPopupPaths.removeLast()
+        }
+    }
+
+    private func makeMenuPopup(depth: Int, menu: ViewerMenu, openMenu: Int) -> WaylandMenuPopup? {
+        guard let compositor, let xdgWmBase, let shm, let xdgSurface else { return nil }
+        let layout = SessionChromePainter.menuPopupLayout(menu)
+        let parent: OpaquePointer
+        let anchor: ViewerChromeRect
+        if depth == 0 {
+            let items = SessionChromePainter.menuBarItems(titles: sessionMenus.map(\.title))
+            guard items.indices.contains(openMenu) else { return nil }
+            parent = xdgSurface
+            anchor = ViewerChromeRect(
+                x: items[openMenu].x, y: 0, width: items[openMenu].width, height: SessionChromePainter.menuBarHeight
+            )
+        } else {
+            guard let row = chrome.menuNavigator.highlights[depth - 1],
+                  let parentMenu = chrome.menuNavigator.menu(atDepth: depth - 1, in: sessionMenus) else { return nil }
+            let parentPopup = chrome.menuPopups[depth - 1]
+            parent = parentPopup.xdgSurface
+            let rect = SessionChromePainter.menuPopupLayout(parentMenu).rect(ofRow: row)
+            anchor = ViewerChromeRect(x: 0, y: rect.y, width: parentPopup.width, height: rect.height)
+        }
+        let popup = WaylandMenuPopup(
+            compositor: compositor,
+            wmBase: xdgWmBase,
+            parent: parent,
+            anchor: anchor,
+            isSubmenu: depth > 0,
+            width: layout.width,
+            height: layout.height,
+            scale: surfaceScale,
+            shm: shm,
+            viewporter: viewporter
+        ) { [weak self] context, bounds in
+            guard let self, let menu = self.chrome.menuNavigator.menu(atDepth: depth, in: self.sessionMenus) else { return }
+            let highlights = self.chrome.menuNavigator.highlights
+            let highlighted = depth < highlights.count ? highlights[depth] : nil
+            SessionChromePainter.drawMenuPopup(menu, highlighted: highlighted, in: context, bounds: bounds)
+        }
+        popup?.onDone = { [weak self] in self?.closeMenus() }
+        return popup
+    }
+
+    private func menuPopupDepth(for surface: OpaquePointer?) -> Int? {
+        guard let surface else { return nil }
+        return chrome.menuPopups.firstIndex { $0.surface == surface }
+    }
+
+    /// The pointer over an open popup highlights the row under it; a move
+    /// along the bar while a menu is open opens the one under it instead.
+    private func menuPointerMoved(surface: OpaquePointer?, x: Double, y: Double) -> Bool {
+        if let depth = menuPopupDepth(for: surface) {
+            guard let menu = chrome.menuNavigator.menu(atDepth: depth, in: sessionMenus) else { return true }
+            let row = SessionChromePainter.menuPopupLayout(menu).row(atY: y)
+            let before = chrome.menuNavigator
+            chrome.menuNavigator.hover(depth: depth, row: row, in: sessionMenus)
+            if chrome.menuNavigator != before { syncMenuPopups() }
+            return true
+        }
+        guard overlayKind(for: surface) == .menuBar else { return false }
+        if chrome.menuNavigator.isOpen,
+           let index = SessionMenuBarLayout.item(atX: x, in: SessionChromePainter.menuBarItems(titles: sessionMenus.map(\.title))),
+           index != chrome.menuNavigator.openMenu {
+            chrome.menuNavigator.open(index, in: sessionMenus, highlightFirst: false)
+            syncMenuPopups()
+        }
+        return true
+    }
+
+    /// Whether this press was the menus': on the bar, in a popup, or anywhere
+    /// at all while a menu is open, where it only closes the menus.
+    private func menuPressed(surface: OpaquePointer?, button: CanvasPointerButton) -> Bool {
+        if let depth = menuPopupDepth(for: surface) {
+            guard button == .left,
+                  let menu = chrome.menuNavigator.menu(atDepth: depth, in: sessionMenus),
+                  let row = SessionChromePainter.menuPopupLayout(menu).row(atY: chrome.overlayPointerY) else { return true }
+            let command = chrome.menuNavigator.click(depth: depth, row: row, in: sessionMenus)
+            syncMenuPopups()
+            if let command { performMenuCommand(command) }
+            return true
+        }
+        if overlayKind(for: surface) == .menuBar {
+            guard button == .left else { return true }
+            let items = SessionChromePainter.menuBarItems(titles: sessionMenus.map(\.title))
+            let index = SessionMenuBarLayout.item(atX: chrome.overlayPointerX, in: items)
+            if let index, index != chrome.menuNavigator.openMenu {
+                chrome.menuNavigator.open(index, in: sessionMenus, highlightFirst: false)
+                menuOpened()
+            } else {
+                closeMenus()
+            }
+            return true
+        }
+        guard chrome.menuNavigator.isOpen else { return false }
+        closeMenus()
+        return true
     }
 
     // MARK: - Resize
@@ -378,13 +571,19 @@ extension WaylandSessionWindow: SessionWindowChrome {
     /// Whether the pointer is on one of this window's overlays rather than on
     /// the picture. What `CanvasChromeClickPolicy` is asked.
     func chromeContainsPointer(surface: OpaquePointer?) -> Bool {
-        overlayKind(for: surface) != nil
+        overlayKind(for: surface) != nil || menuPopupDepth(for: surface) != nil || chrome.menuNavigator.isOpen
     }
 
     /// True when this enter belonged to an overlay, in which case the session
     /// hears nothing about it.
     func chromePointerEntered(surface: OpaquePointer?, x: Double, y: Double) -> Bool {
+        if menuPopupDepth(for: surface) != nil {
+            chrome.overlayPointerX = x
+            chrome.overlayPointerY = y
+            return menuPointerMoved(surface: surface, x: x, y: y)
+        }
         guard let kind = overlayKind(for: surface) else {
+            menuBarPointerOnPicture(y: y)
             // Back on the picture: whatever the strip believed about the
             // pointer being on it is no longer true.
             chrome.state.pointerOverStrip(false, now: chromeNow())
@@ -406,15 +605,29 @@ extension WaylandSessionWindow: SessionWindowChrome {
     /// True when this motion belonged to an overlay. Motion inside an overlay
     /// is not the far machine's pointer moving.
     func chromePointerMoved(surface: OpaquePointer?, x: Double, y: Double) -> Bool {
-        guard overlayKind(for: surface) != nil else { return false }
+        guard overlayKind(for: surface) != nil || menuPopupDepth(for: surface) != nil else {
+            menuBarPointerOnPicture(y: y)
+            return false
+        }
         chrome.overlayPointerX = x
         chrome.overlayPointerY = y
+        _ = menuPointerMoved(surface: surface, x: x, y: y)
         return true
+    }
+
+    /// In full screen the top edge brings the bar up, and moving off it puts
+    /// it away again.
+    private func menuBarPointerOnPicture(y: Double) {
+        guard chrome.menuBar.isFullscreen, capture?.isCapturing != true else { return }
+        let before = chrome.menuBar
+        chrome.menuBar.pointerOnPicture(y: y, isMenuOpen: chrome.menuNavigator.isOpen)
+        if chrome.menuBar != before { relayoutChrome() }
     }
 
     /// A press the policy already decided is the chrome's. Which control it
     /// landed on is decided by the same layout that drew them.
     func chromePressed(surface: OpaquePointer?, button: CanvasPointerButton) {
+        guard !menuPressed(surface: surface, button: button) else { return }
         guard button == .left, let kind = overlayKind(for: surface) else { return }
         switch kind {
         case .stripHandle:
@@ -426,7 +639,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             pressShortcutStrip()
         case .notice:
             pressNotice()
-        case .diagnostics, .canvasScrim:
+        case .diagnostics, .canvasScrim, .menuBar:
             break
         }
     }
@@ -481,8 +694,6 @@ extension WaylandSessionWindow: SessionWindowChrome {
             }
         case .cancel:
             chrome.state.cancelPendingStripAction()
-        case .gear:
-            openSessionControls()
         case .pin:
             chrome.state.togglePinRequested(now: chromeNow())
         }
@@ -503,7 +714,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             chrome.state.pointerOverHandle(isOver, now: now)
         case .shortcutStrip:
             chrome.state.pointerOverStrip(isOver, now: now)
-        case .statusPanel, .notice, .diagnostics, .canvasScrim:
+        case .statusPanel, .notice, .diagnostics, .canvasScrim, .menuBar:
             return
         }
         relayoutChrome()
@@ -524,13 +735,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
         relayoutChrome()
     }
 
-    private func makeSessionControlsWindow() -> GtkSessionControlsWindow? {
-        GtkSessionControlsWindow { [weak self] activation in
-            self?.applySessionControl(activation)
-        }
-    }
-
-    private func applySessionControl(_ activation: SessionControlsActivation) {
+    func applySessionControl(_ activation: SessionControlsActivation) {
         switch activation {
         case let .selectRealScreen(token):
             chrome.onSelectRealScreen?(token)
@@ -551,8 +756,10 @@ extension WaylandSessionWindow: SessionWindowChrome {
         }
     }
 
+    /// A menu open while its choices change shows the new ones.
     private func refreshSessionControls() {
-        chrome.controlsWindow?.update(model: chrome.state.controls)
+        guard chrome.menuNavigator.isOpen else { return }
+        syncMenuPopups()
     }
 
     private func buildOverlaysIfNeeded() {

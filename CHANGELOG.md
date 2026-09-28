@@ -52,13 +52,17 @@ once it reaches 1.0.
 
 ### Changed
 
+- The Linux viewer has the Mac's menu bar, with the same menus, across
+  Your Machines and the session window. Every session choice lives in
+  its menus, so the Session Settings window and its Ctrl-Shift-Super-K
+  chord are gone.
 - The Linux viewer now looks like the Mac viewer. Its status panels,
   shortcut strip, notices, diagnostics panel and windows use the same
-  sizes, colours and spacing, and the strip shows the desktop's own
-  icons. A gear on the strip opens Session Settings.
-- The Linux viewer's windows (Your Machines, pairing, messages and
-  Session Settings) are drawn like the Mac's, with the same surfaces,
-  sizes and labels, instead of the desktop theme's buttons and fields.
+  sizes, colours and spacing, and the strip draws its own icons, shaped
+  like the Mac's.
+- The Linux viewer's windows (Your Machines, pairing and messages) are
+  drawn like the Mac's, with the same surfaces, sizes and labels,
+  instead of the desktop theme's buttons and fields.
   They draw no focus ring or hover look the Mac does not, Tab moves
   between fields as on the Mac, and the Look Again, Enter Address
   Manually and Back links carry the same icons on every desktop theme.
@@ -67,7 +71,7 @@ once it reaches 1.0.
 - A long machine name ends in "…" on the Mac as it does on Linux.
 - The pairing code placeholder stays centred in its field while the
   field is being typed into on the Mac.
-- Scale choices in Session Settings read "1.00x (1920 × 1200)".
+- Scale choices on Linux read "1.00x (1920 × 1200)".
 - The reason a viewer cannot start begins with a capital letter.
 - A machine paired without a name shows its address once, with only its
   status on the line below.

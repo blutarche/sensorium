@@ -51,7 +51,7 @@ public enum ShortcutStripAction: CaseIterable, Equatable, Sendable {
     }
 
     /// The SF Symbol drawn on the button, chosen to match the glyph macOS
-    /// itself uses for the same idea where one exists.
+    /// itself uses for the same idea where one exists. Linux draws `glyph`.
     public var symbolName: String {
         switch self {
         case .missionControl: "rectangle.3.group"
@@ -64,34 +64,6 @@ public enum ShortcutStripAction: CaseIterable, Equatable, Sendable {
         case .switchApp: "arrow.left.arrow.right.square"
         case .lockScreen: "lock.fill"
         case .quitApp: "xmark.circle"
-        }
-    }
-
-    /// The same button drawn from an icon theme rather than from SF Symbols,
-    /// named from the freedesktop icon naming specification's `-symbolic`
-    /// glyphs, so any theme that follows it has the template-style icon a
-    /// button ink-tints -- the same role `symbolName`'s own SF Symbol plays
-    /// on macOS. Kept beside `symbolName` rather than in the window layer, so
-    /// a button can never reach one platform without a name for the other.
-    ///
-    /// Tried in order: the first name a theme has a symbolic copy of wins.
-    /// Mission Control's own first choice, "view-paged-symbolic", is a
-    /// stack of pages rather than the dot grid "view-app-grid-symbolic"
-    /// draws for Launchpad, so the two buttons read as different actions
-    /// rather than duplicates; "view-dual-symbolic" stands in on a theme
-    /// that lacks it.
-    public var freedesktopIconNames: [String] {
-        switch self {
-        case .missionControl: ["view-paged-symbolic", "view-dual-symbolic"]
-        case .applicationWindows: ["focus-windows-symbolic"]
-        case .desktopLeft: ["go-previous-symbolic"]
-        case .desktopRight: ["go-next-symbolic"]
-        case .showDesktop: ["user-desktop-symbolic"]
-        case .spotlight: ["system-search-symbolic"]
-        case .launchpad: ["view-app-grid-symbolic"]
-        case .switchApp: ["go-jump-symbolic"]
-        case .lockScreen: ["system-lock-screen-symbolic"]
-        case .quitApp: ["application-exit-symbolic"]
         }
     }
 

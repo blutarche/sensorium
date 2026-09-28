@@ -15,13 +15,13 @@ func testGtkViewerStylesheetTests() {
         "the window leaves its font family to GTK's own setting"
     )
     expect(
-        css.contains("\"JetBrains Mono\", monospace"),
-        "mono text asks for JetBrains Mono before falling back, the same as the mono case of ViewerDesignTokens.font"
+        css.contains("font-family: monospace;") && css.matches(of: /font-family: [^;]*[A-Z"]/).isEmpty,
+        "mono text asks for the system monospace family and names no font"
     )
 
     expect(
-        css.contains("font-size: 14px; font-weight: 600"),
-        "a row's own name is 14pt medium, drawn SemiBold, matching TailnetDeviceRow's and SavedMachineRowButton's own title font"
+        cssRule(".\(GtkViewerStyle.Class.rowName)", in: css).contains("font-size: 14px"),
+        "a row's own name is 14pt, matching TailnetDeviceRow's and SavedMachineRowButton's own title font"
     )
     expect(
         !css.contains(".\(GtkViewerStyle.Class.row):hover"),
@@ -109,6 +109,55 @@ func testGtkLinkIconMatchesMacOSGlyphBoxTests() {
     print("PASS: each link's embedded icon fills the box its SF Symbol inks on macOS and puts the title where macOS does")
 }
 
+/// A saved machine's "\u{2026}" is three dots drawn from this source, where
+/// macOS draws the glyph. Measured on the macOS preview at 2x, relative to
+/// the row: the middle dot's centre 20.225pt in from the row's right edge and
+/// 4.815pt below its centre, 4.865pt between centres, 2.68pt across. Each
+/// placement is whole device pixels at the window's own scale, so the three
+/// rasterise alike at any scale, fractional ones included.
+func testGtkMoreDotsMatchMacOSTests() {
+    typealias Dots = GtkViewerStyle.MoreDots
+    let size = Dots.buttonSize
+    expect(size == 24, "the button is 24pt square, as on macOS -- got \(size)")
+    let fromRight = size + ViewerChromeMetrics.Space.xs - Dots.middle.x
+    expect(abs(fromRight - 20.225) < 0.01, "the middle dot is 20.225pt in from the row's right edge -- got \(fromRight)")
+    expect(abs(Dots.middle.y - size / 2 - 4.815) < 0.01, "and 4.815pt below the row's centre -- got \(Dots.middle.y - size / 2)")
+    expect(Dots.pitch == 4.865 && Dots.diameter == 2.68, "4.865pt apart and 2.68pt across -- got \(Dots.pitch), \(Dots.diameter)")
+
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        for origin in [(x: 0.0, y: 0.0), (x: 19.5, y: 97.5), (x: 0.25, y: 0.75), (x: 13.3, y: 7.7)] {
+            let dots = Dots.placement(scale: scale, origin: origin)
+            let label = "at \(scale)x from \(origin)"
+            let d = dots.diameter
+            expect(d >= 1 && d == d.rounded(), "each dot is whole device pixels across \(label) -- got \(d)")
+            expect(abs(d - Dots.diameter * scale) <= 0.5, "and as wide as macOS draws it \(label) -- got \(d)")
+            expect(dots.centres.count == 3, "three dots \(label)")
+            guard dots.centres.count == 3 else { continue }
+            let (left, middle, right) = (dots.centres[0], dots.centres[1], dots.centres[2])
+            expect(left.y == middle.y && right.y == middle.y, "the dots share one line \(label)")
+            let pitch = middle.x - left.x
+            expect(
+                right.x - middle.x == pitch && pitch == pitch.rounded() && abs(pitch - Dots.pitch * scale) <= 0.5,
+                "the dots are evenly spaced whole device pixels apart \(label) -- got \(dots.centres)"
+            )
+            for centre in dots.centres {
+                let edge = (x: centre.x - d / 2, y: centre.y - d / 2)
+                expect(
+                    edge.x == edge.x.rounded() && edge.y == edge.y.rounded(),
+                    "each dot's box starts on a device pixel \(label) -- got \(centre), \(d) across"
+                )
+            }
+            let ideal = (x: origin.x + Dots.middle.x * scale, y: origin.y + Dots.middle.y * scale)
+            expect(
+                abs(middle.x - ideal.x) <= 0.5 && abs(middle.y - ideal.y) <= 0.5,
+                "the middle dot is within half a device pixel of where macOS draws it \(label) -- got \(middle), not \(ideal)"
+            )
+        }
+    }
+
+    print("PASS: a row's \u{2026} is three even, whole-pixel dots where macOS draws the glyph, at every scale")
+}
+
 /// A desktop theme styles every `button`, `entry` and `menubutton > button`
 /// it finds, and a property this stylesheet leaves unset is one the theme
 /// still draws, whatever this stylesheet's priority. Each check names the
@@ -124,7 +173,7 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
 
     let buttonSelectors = [
         ".\(Class.row)", ".\(Class.primary)", ".\(Class.secondary)", ".\(Class.messageSecondary)",
-        ".\(Class.rowAction)", ".\(Class.link)", ".\(Class.settingsRow)",
+        ".\(Class.rowAction)", ".\(Class.link)",
         "menubutton.\(Class.iconButton) > button"
     ]
     for selector in buttonSelectors {
@@ -158,9 +207,9 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
 
     let eyebrow = cssRule(".\(Class.eyebrow)", in: css)
     check(
-        eyebrow.contains("font-size: 12px") && eyebrow.contains("font-weight: 600")
+        eyebrow.contains("font-size: 12px")
             && eyebrow.contains("color: \(palette.muted2.hexString)") && eyebrow.contains("letter-spacing: 2.64px"),
-        "the eyebrow is mono 12 medium muted2 at Tracking.widest, as ViewerMessageWindowController draws it"
+        "the eyebrow is mono 12 muted2 at Tracking.widest, as ViewerMessageWindowController draws it"
     )
     check(cssRule(".\(Class.detail)", in: css).contains("font-size: 12px"), "a message's detail is 12, as ViewerMessageWindowController draws it")
     check(cssRule(".\(Class.hint)", in: css).contains("font-size: 12px"), "a field's hint is 12, as ViewerFormControls.hintLabel draws it")
@@ -182,18 +231,19 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         cssRule("window.sensorium entry > text > placeholder", in: css).contains("color: \(palette.muted2.hexString)"),
         "a placeholder is muted2, as ViewerFormControls.placeholder draws it"
     )
-    // Noto Sans Medium, the sans most Linux desktops resolve to, is barely
-    // heavier than its Regular, so macOS's medium reads as regular there.
-    check(
-        !css.contains("font-weight: 500") && css.contains("font-weight: 600"),
-        "text macOS draws medium is drawn SemiBold, the nearest face visibly heavier than regular"
-    )
-
     // A bare `.code` would lose to `window.sensorium entry` on specificity.
     let code = cssRule("window.sensorium entry.\(Class.code)", in: css)
     check(
         code.contains("font-size: 20px") && code.contains("monospace") && !code.contains("letter-spacing"),
         "the code field is 20 mono with no added tracking, as YourMachinesWindow.codeField draws it, in a rule that outranks the plain field's"
+    )
+    // GTK centres a field's text on the Linux face's own ascent and descent,
+    // which sets a sans or code field's text a point below the macOS field's;
+    // a 14pt mono field's already sits on it.
+    check(
+        cssValue("margin-bottom", in: cssRule("window.sensorium entry > text", in: css)) == "2px"
+            && cssValue("margin-bottom", in: cssRule("window.sensorium entry.\(Class.monoField) > text", in: css)) == "0",
+        "a sans or code field's text sits a point above centre, a mono field's on it, as on macOS"
     )
     check(
         !css.contains("entry:focus"),
@@ -243,11 +293,18 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         "a row's text sits 16 from its outer left edge and 12 from its top, border included, as a layer border draws inside SavedMachineRowButton's frame; got \(rowInset)"
     )
     // Pango reads a bare number as a multiple of the font's own line height,
-    // which varies by font; only a length pins it.
-    let sized = css.matches(of: /(font-family: "JetBrains Mono", monospace; )?line-height: ([\d.]+)px; font-size: (\d+)px/)
+    // which varies by font; only a length pins it. A row's name is the one
+    // exception: `GtkWidgets.onTextLine` places it, since Pango drops the
+    // line height from the ellipsis it cuts a long name with.
+    let rowName = cssRule(".\(Class.rowName)", in: css)
     check(
-        sized.count == css.matches(of: /font-size:/).count,
-        "every font size comes with a line height in pixels"
+        rowName.contains("font-size: 14px") && !rowName.contains("line-height"),
+        "a row's name has its size but no line height of its own"
+    )
+    let sized = css.matches(of: /(font-family: monospace; )?line-height: ([\d.]+)px; font-size: (\d+)px/)
+    check(
+        sized.count == css.matches(of: /font-size:/).count - 1,
+        "every other font size comes with a line height in pixels"
     )
     // An AppKit label's line in Inter and in JetBrains Mono, the fonts the
     // macOS viewer asks for, measured from NSTextField at each size used.
@@ -284,6 +341,70 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
     print("PASS: every GTK surface the viewer draws sets each property the desktop theme would otherwise draw")
 }
 
+/// Each text role's weight, measured as the one whose stem width in Noto
+/// Sans or Noto Sans Mono comes nearest the macOS preview's for the same
+/// string, size and scale, and the GTK rule for that role drawing it.
+func testTextWeightTokensTests() {
+    typealias Weight = ViewerChromeMetrics.TextWeight
+    typealias Class = GtkViewerStyle.Class
+    let pinned: [(String, Int, Int)] = [
+        ("headline", Weight.headline, 700),
+        ("eyebrow", Weight.eyebrow, 700),
+        ("detail", Weight.detail, 600),
+        ("body", Weight.body, 600),
+        ("button", Weight.button, 700),
+        ("windowHeading", Weight.windowHeading, 600),
+        ("rowName", Weight.rowName, 700),
+        ("rowDetail", Weight.rowDetail, 600),
+        ("deviceSubtitle", Weight.deviceSubtitle, 600),
+        ("field", Weight.field, 500),
+        ("code", Weight.code, 500),
+        ("hint", Weight.hint, 600),
+        ("link", Weight.link, 600),
+        ("hudLabel", Weight.hudLabel, 600),
+        ("hudValue", Weight.hudValue, 800),
+        ("hudNote", Weight.hudNote, 500),
+    ]
+    for (role, token, measured) in pinned {
+        expect(token == measured, "the \(role) role is drawn at \(measured), got \(token)")
+    }
+
+    let css = GtkViewerStyle.stylesheet
+    let rules: [(String, Int)] = [
+        (".\(Class.heading)", Weight.windowHeading),
+        (".\(Class.eyebrow)", Weight.eyebrow),
+        (".\(Class.headline)", Weight.headline),
+        (".\(Class.sentence)", Weight.body),
+        (".\(Class.muted)", Weight.body),
+        (".\(Class.bad)", Weight.body),
+        (".\(Class.detail)", Weight.detail),
+        (".\(Class.hint)", Weight.hint),
+        (".\(Class.rowName)", Weight.rowName),
+        (".\(Class.rowDetail)", Weight.rowDetail),
+        (".\(Class.deviceSubtitle)", Weight.deviceSubtitle),
+        (".\(Class.primary)", Weight.button),
+        (".\(Class.secondary)", Weight.button),
+        (".\(Class.messageSecondary)", Weight.button),
+        (".\(Class.rowAction)", Weight.button),
+        (".\(Class.link)", Weight.link),
+        ("window.sensorium entry", Weight.field),
+        ("window.sensorium entry.\(Class.code)", Weight.code),
+    ]
+    for (selector, weight) in rules {
+        expect(
+            cssRule(selector, in: css).contains("font-weight: \(weight);"),
+            "\(selector) is drawn at \(weight)"
+        )
+    }
+    // A headline turned bad keeps its own weight: the later rule wins a tie.
+    expect(
+        css.range(of: ".\(Class.headline) {")!.lowerBound > css.range(of: ".\(Class.bad) {")!.lowerBound
+            && css.range(of: ".\(Class.hint) {")!.lowerBound > css.range(of: ".\(Class.muted) {")!.lowerBound,
+        "the headline and hint rules come after the body rules they share a label with"
+    )
+    print("PASS: every text role is drawn at the weight measured nearest macOS")
+}
+
 /// The bodies of every rule in `css` whose selector list names `selector`
 /// exactly, joined, or an empty string when none does.
 func cssRule(_ selector: String, in css: String) -> String {
@@ -318,4 +439,61 @@ func cssPixels(_ property: String, in body: String) -> Double {
     guard let first = cssValue(property, in: body)?.split(separator: " ").first,
           first.hasSuffix("px") || first == "0" else { return 0 }
     return Double(first.replacingOccurrences(of: "px", with: "")) ?? 0
+}
+
+/// The Your Machines menu bar is styled to look like the one the session
+/// window paints: same height, padding, colours, font size, highlight and
+/// checkmark.
+@MainActor
+func testGtkMenuBarMatchesPaintedBarTests() {
+    let css = GtkViewerStyle.stylesheet
+    typealias Metrics = ViewerChromeMetrics.MenuBar
+    let bar = cssRule("window.sensorium menubar", in: css)
+    expect(
+        bar.contains("min-height: \(Int(Metrics.height))px") && bar.contains("background-color: \(ViewerPalette.chromeBg2.hexString)")
+            && bar.contains("border: none") && bar.contains("padding: 0 \(Int(Metrics.barPaddingX))px"),
+        "the bar is the painted bar's height, surface and padding, with no border: \(bar)"
+    )
+    let item = cssRule("window.sensorium menubar > item", in: css)
+    expect(
+        item.contains("font-size: \(Int(Metrics.fontSize))px") && item.contains("padding: 0 \(Int(Metrics.itemPaddingX))px")
+            && item.contains("margin: \(Int(Metrics.titleInsetY))px 0"),
+        "a title is the painted size and padding: \(item)"
+    )
+    expect(cssRule("window.sensorium menubar > item:first-child", in: css).contains("font-weight: bold"), "the app menu's title is bold")
+    expect(
+        cssRule("window.sensorium menubar > item:selected", in: css).contains("background-color: \(ViewerPalette.bg4.hexString)"),
+        "the open title sits on the painted pill"
+    )
+    let contents = cssRule("window.sensorium popover.menu > contents", in: css)
+    expect(
+        contents.contains("background-color: \(ViewerPalette.chromeBg2.hexString)")
+            && contents.contains("border-radius: \(Int(Metrics.popupRadius))px")
+            && contents.contains("border: 1px solid \(ViewerPalette.chromeBorder2.hexString)")
+            && contents.contains("padding: \(Int(Metrics.popupPaddingY) - 1)px 0"),
+        "a menu is the painted surface, radius and padding: \(contents)"
+    )
+    expect(
+        cssRule("window.sensorium menubar > item > popover.menu > contents", in: css)
+            .contains("margin-top: \(Int(Metrics.titleInsetY))px"),
+        "a menu opens from the bar's bottom edge, not its title's pill, as the painted one does"
+    )
+    let row = cssRule("window.sensorium popover.menu modelbutton", in: css)
+    expect(
+        row.contains("min-height: \(Int(Metrics.rowHeight))px") && row.contains("font-size: \(Int(Metrics.fontSize))px"),
+        "a row is the painted height and size: \(row)"
+    )
+    expect(
+        cssRule("window.sensorium popover.menu modelbutton:selected", in: css).contains("background-color: \(ViewerPalette.accent.hexString)"),
+        "the highlighted row is the accent"
+    )
+    expect(
+        cssRule("window.sensorium popover.menu modelbutton:disabled", in: css).contains("color: \(ViewerPalette.muted2.hexString)"),
+        "a disabled row is dimmed as painted"
+    )
+    let checked = cssRule("window.sensorium popover.menu modelbutton check:checked", in: css)
+    let encoded = SessionMenuGlyph.checkmark.svg(color: ViewerPalette.ink)
+        .addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+    expect(checked.contains(encoded), "the checkmark is the painted one: \(checked)")
+    print("PASS: the Your Machines menu bar is styled like the painted session bar")
 }

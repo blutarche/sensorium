@@ -22,6 +22,8 @@ public enum SessionChromeRenderPreview {
         case diagnostics(blocks: [SessionHUDBlock], isFlagged: Bool)
         case stripHandle
         case strip(visibility: ShortcutStripVisibility, hostName: String, isPinned: Bool)
+        case menuBar(titles: [String], openIndex: Int?)
+        case menuPopup(ViewerMenu, highlighted: Int?)
     }
 
     /// Renders one overlay at its own measured size and writes it as a PNG.
@@ -52,10 +54,13 @@ public enum SessionChromeRenderPreview {
     /// way `WaylandSessionWindow.relayoutChrome()` places it on a real
     /// compositor: `WaylandOverlayLayout` decides the rect, `SessionChromePainter`
     /// draws into it. `hostName` is what the strip's own confirmation names.
+    /// `menuTitles`, when given, draws the menu bar across the top with the
+    /// rest of the chrome below it, as outside full screen.
     @discardableResult
     public static func renderComposite(
         state: SessionChromeState,
         hostName: String,
+        menuTitles: [String] = [],
         windowWidth: Double,
         windowHeight: Double,
         scale: Double,
@@ -64,7 +69,8 @@ public enum SessionChromeRenderPreview {
         // The band a pinned, open strip claims across the top, exactly as
         // `WaylandSessionWindow.relayoutChrome()` computes it -- the notice
         // and diagnostics panel move down by the same amount here.
-        let topInset = WaylandOverlayLayout.topInset(
+        let barTop = menuTitles.isEmpty ? 0 : SessionChromePainter.menuBarHeight
+        let topInset = barTop + WaylandOverlayLayout.topInset(
             isPinned: state.strip.isPinned,
             isStripOpen: state.isStripVisible,
             stripHeight: SessionChromePainter.stripHeight
@@ -74,8 +80,26 @@ public enum SessionChromeRenderPreview {
             cairo_rectangle(context, 0, 0, windowWidth, windowHeight)
             cairo_fill(context)
 
+            // Placed exactly where `WaylandSessionWindow.relayoutChrome()`
+            // places the real diagnostics panel: top left, below the same
+            // pinned-strip band the notice moved down by. Drawn first, as the
+            // lowest overlay, so the scrim dims it.
+            if state.isDiagnosticsVisible {
+                let blocks = state.diagnosticsBlocks
+                let isFlagged = state.telemetry?.isAttentionWorthy ?? false
+                let measured = SessionChromePainter.diagnosticsSize(blocks: blocks)
+                let rect = WaylandOverlayLayout.diagnosticsHUD(
+                    windowWidth: windowWidth,
+                    contentWidth: measured.width,
+                    contentHeight: measured.height,
+                    topInset: topInset
+                )
+                drawAt(rect, in: context) { bounds in
+                    SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
+                }
+            }
             if state.isScrimVisible {
-                let rect = WaylandOverlayLayout.canvasScrim(windowWidth: windowWidth, windowHeight: windowHeight)
+                let rect = WaylandOverlayLayout.canvasScrim(windowWidth: windowWidth, windowHeight: windowHeight, top: barTop)
                 drawAt(rect, in: context) { bounds in
                     SessionChromePainter.drawScrim(in: context, bounds: bounds, opaque: state.isScrimOpaque)
                 }
@@ -84,10 +108,10 @@ public enum SessionChromeRenderPreview {
                 let measured = SessionChromePainter.statusPanelSize(status: status)
                 let rect = WaylandOverlayLayout.statusPanel(
                     windowWidth: windowWidth,
-                    windowHeight: windowHeight,
+                    windowHeight: windowHeight - barTop,
                     contentWidth: measured.width,
                     contentHeight: measured.height
-                )
+                ).offset(y: barTop)
                 drawAt(rect, in: context) { bounds in
                     SessionChromePainter.drawStatusPanel(status: status, in: context, bounds: bounds)
                 }
@@ -97,7 +121,7 @@ public enum SessionChromeRenderPreview {
                     windowWidth: windowWidth,
                     contentWidth: SessionChromePainter.handleWidth,
                     contentHeight: SessionChromePainter.handleHeight
-                )
+                ).offset(y: barTop)
                 drawAt(rect, in: context) { bounds in
                     SessionChromePainter.drawHandle(in: context, bounds: bounds)
                 }
@@ -109,7 +133,7 @@ public enum SessionChromeRenderPreview {
                 let rect = WaylandOverlayLayout.shortcutStrip(
                     windowWidth: windowWidth,
                     contentHeight: measured.height
-                )
+                ).offset(y: barTop)
                 drawAt(rect, in: context) { bounds in
                     SessionChromePainter.drawStrip(
                         visibility: visibility, hostName: hostName, isPinned: isPinned, in: context, bounds: bounds
@@ -128,21 +152,9 @@ public enum SessionChromeRenderPreview {
                     SessionChromePainter.drawNotice(line: line, in: context, bounds: bounds)
                 }
             }
-            // Placed exactly where `WaylandSessionWindow.relayoutChrome()`
-            // places the real diagnostics panel: top left, below the same
-            // pinned-strip band the notice moved down by.
-            if state.isDiagnosticsVisible {
-                let blocks = state.diagnosticsBlocks
-                let isFlagged = state.telemetry?.isAttentionWorthy ?? false
-                let measured = SessionChromePainter.diagnosticsSize(blocks: blocks)
-                let rect = WaylandOverlayLayout.diagnosticsHUD(
-                    windowWidth: windowWidth,
-                    contentWidth: measured.width,
-                    contentHeight: measured.height,
-                    topInset: topInset
-                )
-                drawAt(rect, in: context) { bounds in
-                    SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
+            if !menuTitles.isEmpty {
+                drawAt(WaylandOverlayLayout.menuBar(windowWidth: windowWidth), in: context) { bounds in
+                    SessionChromePainter.drawMenuBar(titles: menuTitles, openIndex: nil, in: context, bounds: bounds)
                 }
             }
         }
@@ -155,12 +167,24 @@ public enum SessionChromeRenderPreview {
     /// a button's own ink or rect without reaching `SessionChromePainter`,
     /// which is internal.
     public static func stripButtonRects(
-        hostName: String, width: Double? = nil
+        hostName: String, width: Double? = nil, visibility: ShortcutStripVisibility = .shown
     ) -> [(title: String, x: Double, y: Double, width: Double, height: Double)] {
         let barWidth = width ?? SessionChromePainter.stripSize(visibility: .shown, hostName: hostName).width
         return SessionChromePainter.stripLayout(
-            visibility: .shown, hostName: hostName, originX: 0, originY: 0, width: barWidth
+            visibility: visibility, hostName: hostName, originX: 0, originY: 0, width: barWidth
         ).map { (title: $0.title, x: $0.rect.x, y: $0.rect.y, width: $0.rect.width, height: $0.rect.height) }
+    }
+
+    public static func menuBarItems(titles: [String]) -> [SessionMenuBarLayout.Item] {
+        SessionChromePainter.menuBarItems(titles: titles)
+    }
+
+    public static func menuPopupLayout(_ menu: ViewerMenu) -> SessionMenuPopupLayout {
+        SessionChromePainter.menuPopupLayout(menu)
+    }
+
+    public static func menuChordLabel(for item: ViewerMenuItem) -> String? {
+        SessionChromePainter.menuChordLabel(for: item)
     }
 
     // MARK: - Measuring and drawing one overlay
@@ -177,6 +201,10 @@ public enum SessionChromeRenderPreview {
             (SessionChromePainter.handleWidth, SessionChromePainter.handleHeight)
         case let .strip(visibility, hostName, _):
             SessionChromePainter.stripSize(visibility: visibility, hostName: hostName)
+        case let .menuBar(titles, _):
+            (menuBarItems(titles: titles).last.map { $0.x + $0.width } ?? 0, SessionChromePainter.menuBarHeight)
+        case let .menuPopup(menu, _):
+            (menuPopupLayout(menu).width, menuPopupLayout(menu).height)
         }
     }
 
@@ -194,6 +222,10 @@ public enum SessionChromeRenderPreview {
             SessionChromePainter.drawStrip(
                 visibility: visibility, hostName: hostName, isPinned: isPinned, in: context, bounds: bounds
             )
+        case let .menuBar(titles, openIndex):
+            SessionChromePainter.drawMenuBar(titles: titles, openIndex: openIndex, in: context, bounds: bounds)
+        case let .menuPopup(menu, highlighted):
+            SessionChromePainter.drawMenuPopup(menu, highlighted: highlighted, in: context, bounds: bounds)
         }
     }
 
@@ -215,29 +247,56 @@ public enum SessionChromeRenderPreview {
     /// one. `CairoChromeText` is internal, so this is the seam that reaches
     /// it.
     public static func measureChromeText(
-        _ text: String, pointSize: Double, mono: Bool, scale: Double
+        _ text: String, pointSize: Double, mono: Bool, scale: Double, weight: Int = 400
     ) -> Double {
         guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return 0 }
         defer { cairo_surface_destroy(surface) }
         guard let context = cairo_create(surface) else { return 0 }
         defer { cairo_destroy(context) }
         cairo_scale(context, scale, scale)
-        return CairoChromeText.measure(text, pointSize: pointSize, mono: mono, on: context).width
+        return CairoChromeText.measure(text, pointSize: pointSize, mono: mono, weight: CairoFontWeight(weight), on: context).width
     }
 
     /// `CairoChromeText.measure`'s own drawn height for `text` at `maxWidth`,
-    /// `ellipsize` true forcing it to one line -- the same call
-    /// `SessionChromePainter`'s own footer makes. A test outside this module
-    /// checks a real chord sentence's own single-line height against this,
-    /// to prove a render that should be exactly that many lines drew no more.
+    /// `ellipsize` true forcing it to one line. A test outside this module
+    /// adds these up to prove a render that should be exactly that many lines
+    /// drew no more.
     public static func measureChromeTextHeight(
-        _ text: String, pointSize: Double, maxWidth: Double, ellipsize: Bool
+        _ text: String, pointSize: Double, mono: Bool = false, maxWidth: Double, ellipsize: Bool
     ) -> Double {
         guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return 0 }
         defer { cairo_surface_destroy(surface) }
         guard let context = cairo_create(surface) else { return 0 }
         defer { cairo_destroy(context) }
-        return CairoChromeText.measure(text, pointSize: pointSize, maxWidth: maxWidth, ellipsize: ellipsize, on: context).height
+        return CairoChromeText.measure(
+            text, pointSize: pointSize, mono: mono, maxWidth: maxWidth, ellipsize: ellipsize, on: context
+        ).height
+    }
+
+    /// Where the ink of `text`, drawn by `CairoChromeText.draw` with its top
+    /// at 0 on a surface at `scale`, ends, in logical units: the baseline,
+    /// for text with no descenders.
+    public static func chromeTextInkBottom(_ text: String, pointSize: Double, mono: Bool, scale: Double) -> Double {
+        let size = CairoChromeText.measure(text, pointSize: pointSize, mono: mono)
+        let width = Int32((size.width * scale).rounded(.up)) + 2
+        let height = Int32((size.height * scale).rounded(.up)) + Int32(pointSize * scale)
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height) else { return 0 }
+        defer { cairo_surface_destroy(surface) }
+        guard let context = cairo_create(surface) else { return 0 }
+        defer { cairo_destroy(context) }
+        cairo_scale(context, scale, scale)
+        CairoChromeText.draw(text, in: context, x: 0, y: 0, pointSize: pointSize, color: ViewerPalette.ink, mono: mono)
+        cairo_surface_flush(surface)
+        guard let data = cairo_image_surface_get_data(surface) else { return 0 }
+        let stride = Int(cairo_image_surface_get_stride(surface))
+        var bottom = 0
+        for row in 0..<Int(height) {
+            for column in 0..<Int(width) where data[row * stride + column * 4 + 3] > 127 {
+                bottom = row + 1
+                break
+            }
+        }
+        return Double(bottom) / scale
     }
 
     // MARK: - Cairo plumbing

@@ -190,13 +190,7 @@ func testOfferedHostScreenStartTests() async {
             for: .canvasRefused(reason: CanvasRefusalReason.canvasNotOffered), hostLabel: "Mini"
         )
         expect(!row.contains("canvas-not-offered"), "on the row too, got \(row)")
-        // Linux has no native menu bar, so the fallback it names must be the
-        // gear's own accessible name, not a macOS menu that is not there.
-        #if os(macOS)
-        expect(line.hasSuffix("from the Screen menu."), "macOS names its own Screen menu, got \(line)")
-        #else
-        expect(line.hasSuffix("from Session Settings."), "Linux names the gear's own control instead, got \(line)")
-        #endif
-        print("PASS: a host that does not offer a virtual display says so in words, naming the platform's own control")
+        expect(line.hasSuffix("from the Screen menu."), "the line names the Screen menu, got \(line)")
+        print("PASS: a host that does not offer a virtual display says so in words, naming the Screen menu")
     }
 }

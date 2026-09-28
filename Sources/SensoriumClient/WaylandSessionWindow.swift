@@ -52,7 +52,7 @@ public final class WaylandSessionWindow:
     /// frame off the socket never waits for whatever the window is doing.
     public nonisolated let videoSink = SurfaceVideoSink()
 
-    private let display: OpaquePointer
+    let display: OpaquePointer
     private var registry: OpaquePointer?
     /// Read by `WaylandSessionWindow+Chrome.swift`, which builds this
     /// window's overlays out of them: an extension can store nothing, so the
@@ -68,9 +68,9 @@ public final class WaylandSessionWindow:
     private var cursorSurface: OpaquePointer?
     private var cursorHotspotX: Int32 = 0
     private var cursorHotspotY: Int32 = 0
-    private var xdgWmBase: OpaquePointer?
+    private(set) var xdgWmBase: OpaquePointer?
     private(set) var surface: OpaquePointer?
-    private var xdgSurface: OpaquePointer?
+    private(set) var xdgSurface: OpaquePointer?
     private var xdgToplevel: OpaquePointer?
     private var decorationManager: OpaquePointer?
     private var decoration: OpaquePointer?
@@ -122,7 +122,7 @@ public final class WaylandSessionWindow:
     /// Built with the viewport, and told that this surface counts from its
     /// top-left corner rather than an AppKit view's bottom-left one.
     private var router: CanvasSurfaceEventRouter!
-    private var capture: WaylandPointerCaptureController!
+    private(set) var capture: WaylandPointerCaptureController!
     private var keyboardState: WaylandKeyboardState?
     private var scroll = WaylandScrollFrameAccumulator()
     private var keyRepeat = KeyRepeatSchedule()
@@ -137,13 +137,14 @@ public final class WaylandSessionWindow:
     private var pointerEnterSerial: UInt32 = 0
     /// Which of this window's surfaces the pointer is on -- the main one, or
     /// one of the chrome's subsurfaces. `nil` while it is on none of them.
-    private var pointerSurface: OpaquePointer?
+    private(set) var pointerSurface: OpaquePointer?
     /// The newest input event serial this window has seen since it last lost
     /// keyboard focus, or `nil` while it has none -- what `WaylandPasteboard`
     /// needs `set_selection` to carry, since a stale one is ignored.
     private var latestInputSerial: UInt32?
     private var hasKeyboardFocus = false
     private var isFullscreen = false
+    private var isMaximized = false
     private let drops = ViewerFrameDropCounter()
     private let makeDecoder: VideoDecoderFactory
     private let initialStreamScalePreference: StreamScalePreference
@@ -170,6 +171,12 @@ public final class WaylandSessionWindow:
     /// the person: the window has already given the pointer and the keyboard
     /// back by the time this runs.
     public var onReleaseToLocalMachine: (() -> Void)?
+    /// The app menu's own items, which act beyond this window: About, Your
+    /// Machines, Hide and Quit.
+    public var onMenuCommand: ((ViewerMenuCommand) -> Void)?
+    /// Decides, with `SystemShortcutRouter`, which menu chords reach the host
+    /// rather than the menu.
+    public var shortcutMode: SystemShortcutMode = .default
 
     /// Runs every time this window gains keyboard focus, synchronously on
     /// the event loop's thread. Set by the live session's runner.
@@ -687,8 +694,10 @@ public final class WaylandSessionWindow:
         }
     }
 
-    fileprivate func handleToplevelConfigure(width: Int32, height: Int32, isFullscreen: Bool) {
+    fileprivate func handleToplevelConfigure(width: Int32, height: Int32, isFullscreen: Bool, isMaximized: Bool) {
         self.isFullscreen = isFullscreen
+        self.isMaximized = isMaximized
+        menuBarFullscreenChanged(isFullscreen)
         guard state.configure(logicalWidth: Int(width), logicalHeight: Int(height)) else { return }
         applySurfaceGeometry()
     }
@@ -881,6 +890,7 @@ public final class WaylandSessionWindow:
 
     fileprivate func handleKeyboardLeave() {
         hasKeyboardFocus = false
+        closeMenus()
         latestInputSerial = nil
         cancelKeyRepeat()
         keyRepeat.focusLost()
@@ -910,6 +920,13 @@ public final class WaylandSessionWindow:
     }
 
     fileprivate func handleKey(evdev: UInt32, isDown: Bool) {
+        // An open menu takes every key, and the far machine hears none.
+        if isMenuOpen {
+            cancelKeyRepeat()
+            keyRepeat.focusLost()
+            if isDown, let key = SessionMenuKey(evdev: evdev) { menuKey(key) }
+            return
+        }
         if isDown {
             if let delay = keyRepeat.keyDown(evdev: evdev, isModifier: EvdevKeycodeTable.isModifierKey(evdev: evdev)) {
                 armKeyRepeat(afterMilliseconds: delay)
@@ -917,7 +934,7 @@ public final class WaylandSessionWindow:
         } else if keyRepeat.keyUp(evdev: evdev) {
             cancelKeyRepeat()
         }
-        apply(WaylandKeyPath.destination(evdev: evdev, isDown: isDown, keyboard: keyboardState))
+        apply(WaylandKeyPath.destination(evdev: evdev, isDown: isDown, keyboard: keyboardState, menu: menuKeys))
     }
 
     /// One key, acted on where `WaylandKeyPath` said it goes. The window's
@@ -927,8 +944,11 @@ public final class WaylandSessionWindow:
         switch destination {
         case let .shortcutStrip(isDown):
             if isDown { toggleShortcutStrip() }
-        case let .sessionControls(isDown):
-            if isDown { openSessionControls() }
+        case let .menuCommand(command, isDown):
+            // A chord that means one thing is not a chord to hold down.
+            cancelKeyRepeat()
+            keyRepeat.focusLost()
+            if isDown { performMenuCommand(command) }
         case let .reservedChord(chord, event, isDown):
             // A chord that means one thing is not a chord to hold down.
             cancelKeyRepeat()
@@ -942,6 +962,58 @@ public final class WaylandSessionWindow:
         case let .canvas(event):
             route(event)
         case .dropped:
+            break
+        }
+    }
+
+    /// The menus as they stand for this window now.
+    public var menuBarState: ViewerMenuBarState {
+        chrome.state.controls.menuBarState(isPointerCaptured: isPointerCaptured, isFullscreen: isFullscreen)
+    }
+
+    private var menuKeys: WaylandSessionMenuKeys {
+        WaylandSessionMenuKeys(
+            menus: LinuxViewerMenu.bar(menuBarState),
+            router: SystemShortcutRouter(mode: shortcutMode),
+            viewer: viewerWindowState
+        )
+    }
+
+    /// One menu item chosen, by its chord or from the menu itself.
+    public func performMenuCommand(_ command: ViewerMenuCommand) {
+        switch LinuxViewerMenu.sessionAction(
+            for: command,
+            clipboardSharingEnabled: chrome.state.controls.clipboardSharingEnabled
+        ) {
+        case let .application(command):
+            onMenuCommand?(command)
+        case let .sessionChoice(choice):
+            applySessionControl(choice)
+        case .toggleFullScreen:
+            guard let xdgToplevel else { return }
+            if isFullscreen {
+                xdg_toplevel_unset_fullscreen(xdgToplevel)
+            } else {
+                xdg_toplevel_set_fullscreen(xdgToplevel, nil)
+            }
+            wl_display_flush(display)
+        case .toggleDiagnostics:
+            toggleDiagnostics()
+        case .togglePointerCapture:
+            togglePointerCapture()
+        case .minimize:
+            guard let xdgToplevel else { return }
+            xdg_toplevel_set_minimized(xdgToplevel)
+            wl_display_flush(display)
+        case .zoom:
+            guard let xdgToplevel else { return }
+            if isMaximized {
+                xdg_toplevel_unset_maximized(xdgToplevel)
+            } else {
+                xdg_toplevel_set_maximized(xdgToplevel)
+            }
+            wl_display_flush(display)
+        case .none:
             break
         }
     }
@@ -975,7 +1047,7 @@ public final class WaylandSessionWindow:
     private func fireKeyRepeat() -> gboolean {
         repeatTimerID = 0
         guard let due = keyRepeat.fire() else { return 0 }
-        let destination = WaylandKeyPath.destination(evdev: due.key, isDown: true, keyboard: keyboardState)
+        let destination = WaylandKeyPath.destination(evdev: due.key, isDown: true, keyboard: keyboardState, menu: menuKeys)
         // A key with nowhere to go stops repeating rather than repeating
         // into nothing.
         guard destination != .dropped else { return 0 }
@@ -1407,14 +1479,14 @@ nonisolated(unsafe) private let xdgSurfaceListener = heapListener(xdg_surface_li
     }
 ))
 
-/// Whether a `xdg_toplevel.configure` state array says this window is
-/// fullscreen. The array is a run of 32-bit state values, and a state the
-/// compositor does not name is one this window is not in.
-private func statesContainFullscreen(_ states: UnsafeMutablePointer<wl_array>?) -> Bool {
+/// Whether a `xdg_toplevel.configure` state array names `state`. The array
+/// is a run of 32-bit state values, and a state the compositor does not name
+/// is one this window is not in.
+private func toplevelStates(_ states: UnsafeMutablePointer<wl_array>?, contain state: xdg_toplevel_state) -> Bool {
     guard let states, let data = states.pointee.data else { return false }
     let count = states.pointee.size / MemoryLayout<UInt32>.size
     let values = data.assumingMemoryBound(to: UInt32.self)
-    for index in 0..<count where values[index] == UInt32(XDG_TOPLEVEL_STATE_FULLSCREEN.rawValue) {
+    for index in 0..<count where values[index] == UInt32(state.rawValue) {
         return true
     }
     return false
@@ -1423,9 +1495,12 @@ private func statesContainFullscreen(_ states: UnsafeMutablePointer<wl_array>?) 
 nonisolated(unsafe) private let xdgToplevelListener = heapListener(xdg_toplevel_listener(
     configure: { data, _, width, height, states in
         guard let window = windowFrom(data) else { return }
-        let isFullscreen = statesContainFullscreen(states)
+        let isFullscreen = toplevelStates(states, contain: XDG_TOPLEVEL_STATE_FULLSCREEN)
+        let isMaximized = toplevelStates(states, contain: XDG_TOPLEVEL_STATE_MAXIMIZED)
         MainActor.assumeIsolated {
-            window.handleToplevelConfigure(width: width, height: height, isFullscreen: isFullscreen)
+            window.handleToplevelConfigure(
+                width: width, height: height, isFullscreen: isFullscreen, isMaximized: isMaximized
+            )
         }
     },
     close: { data, _ in

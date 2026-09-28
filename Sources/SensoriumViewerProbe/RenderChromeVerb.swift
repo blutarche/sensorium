@@ -105,8 +105,7 @@ enum RenderChromeVerb {
             .stripHandle, scale: scale, to: url("strip-handle", scale, directory)
         ))
 
-        // The strip's own icon-only clusters, gear and pin included, as this
-        // machine's icon theme actually resolves them.
+        // The strip's own icon-only clusters and the pin.
         write("strip", SessionChromeRenderPreview.renderOverlay(
             .strip(visibility: .shown, hostName: hostName, isPinned: false),
             scale: scale,
@@ -114,17 +113,12 @@ enum RenderChromeVerb {
             to: url("strip", scale, directory)
         ))
 
-        // The same strip with every icon lookup forced to answer nothing, so
-        // every button -- action, gear and pin alike -- falls back to its
-        // own short text label rather than drawing blank.
-        FreedesktopIconLookup.forceNotFound = true
-        write("strip-no-icons", SessionChromeRenderPreview.renderOverlay(
-            .strip(visibility: .shown, hostName: hostName, isPinned: false),
+        write("strip-pinned", SessionChromeRenderPreview.renderOverlay(
+            .strip(visibility: .shown, hostName: hostName, isPinned: true),
             scale: scale,
             width: windowWidth,
-            to: url("strip-no-icons", scale, directory)
+            to: url("strip-pinned", scale, directory)
         ))
-        FreedesktopIconLookup.forceNotFound = false
 
         var confirmingStrip = ShortcutStripModel(phase: .live)
         confirmingStrip.toggleRequested()

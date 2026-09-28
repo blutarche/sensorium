@@ -7,16 +7,16 @@
 /// that surface against the ones the chrome put up. Nothing here holds a
 /// Wayland object, so the rule can be driven without a compositor.
 public enum WaylandOverlayKind: CaseIterable, Sendable {
-    /// Listed first so it is the first subsurface created and so the lowest
-    /// in the stack: every other overlay is created after it and so draws
-    /// above it, the way a real compositor orders sibling subsurfaces by
-    /// creation order.
+    /// A real compositor stacks sibling subsurfaces in creation order, which
+    /// is this order. The HUD comes first so the scrim dims it and the
+    /// status panel's buttons are never under it, as on macOS.
+    case diagnostics
     case canvasScrim
     case statusPanel
     case notice
-    case diagnostics
     case shortcutStrip
     case stripHandle
+    case menuBar
 }
 
 /// Which surfaces belong to the chrome right now.

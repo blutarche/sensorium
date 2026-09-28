@@ -62,25 +62,28 @@ private func fixtureSnapshot() -> SessionHUDSnapshot {
 /// whatever font actually measures it. A fake measurer stands in for pango,
 /// so this runs on macOS even though `CairoChromeText` itself is Linux-only.
 func testSessionHUDRowLayoutNoOverlapTests() {
-    // Wide enough that "END-TO-END" (10 characters) and "DROPPED HERE" (12)
-    // both exceed their own column at this width, the same way a fallback
-    // monospace face wider than JetBrains Mono overran them in a real render.
     let measure: (String) -> Double = { Double($0.count) * 9 }
-    let columnGap = 8.0
-    let diagnosticsWidth = 320.0
-    let edgeInset = 12.0
-    let columnGutter = 16.0
-    let fullWidth = diagnosticsWidth - edgeInset * 2
-    let narrowWidth = (fullWidth - columnGutter) / 2
+    let fullWidth = 320.0 - 12.0 * 2
+    let narrowWidth = (fullWidth - 16.0) / 2
 
-    func assertNoOverlap(label: String, value: String, rowWidth: Double, labelColumnWidth: Double) {
+    func assertNoOverlap(_ row: SessionHUDRow, columnWidth: Double, isNarrow: Bool) {
         let layout = SessionHUDRowLayout.layout(
-            label: label, value: value, rowWidth: rowWidth, labelColumnWidth: labelColumnWidth,
-            columnGap: columnGap, measureLabel: measure, measureValue: measure
+            valueWidth: measure(row.value), columnWidth: columnWidth, isNarrow: isNarrow,
+            showsSparkline: (row.trend?.count ?? 0) >= 2
         )
         expect(
             layout.label.x + layout.label.width <= layout.value.x,
-            "\"\(label)\" overlaps its own value \"\(value)\" at a \(Int(labelColumnWidth))-wide label column"
+            "\"\(row.label)\" overlaps its own value \"\(row.value)\""
+        )
+        if let sparkline = layout.sparkline {
+            expect(
+                layout.value.x + layout.value.width <= sparkline.x,
+                "\"\(row.label)\"'s value \"\(row.value)\" runs into its own sparkline"
+            )
+        }
+        expect(
+            layout.value.x + layout.value.width <= columnWidth,
+            "\"\(row.label)\"'s value \"\(row.value)\" runs past its own column"
         )
     }
 
@@ -90,13 +93,13 @@ func testSessionHUDRowLayoutNoOverlapTests() {
         switch block {
         case let .section(section):
             for row in section.rows {
-                assertNoOverlap(label: row.label, value: row.value, rowWidth: fullWidth, labelColumnWidth: 96)
+                assertNoOverlap(row, columnWidth: fullWidth, isNarrow: false)
                 checked += 1
             }
         case let .columns(_, left, right):
             for section in [left, right] {
                 for row in section.rows {
-                    assertNoOverlap(label: row.label, value: row.value, rowWidth: narrowWidth, labelColumnWidth: 70)
+                    assertNoOverlap(row, columnWidth: narrowWidth, isNarrow: true)
                     checked += 1
                 }
             }
@@ -104,84 +107,85 @@ func testSessionHUDRowLayoutNoOverlapTests() {
     }
     expect(checked > 0, "the fixture actually carried rows to check")
 
-    print("PASS: no HUD row's label draws over its own value, at either the 96 or the 70 column")
+    print("PASS: no HUD row's label, value or sparkline draws over another, full width or in a column")
 }
 
-/// A section's own label column widens to whatever its own widest label
-/// needs, capped so the value beside it never drops under the smaller of
-/// that section's own widest measured value and a fixed ceiling -- not a
-/// flat reservation for that ceiling regardless of how wide the values
-/// actually are, so "END-TO-END" and "INPUT RTT" fit whole in the narrow
-/// latency columns even though every value there ("18.5 ms", "22.0 ms") is
-/// far short of the ceiling.
-func testSessionHUDSectionLabelColumnWidensToFitTests() {
-    // Two different scales, so a wrong test that fed the label measurer's
-    // numbers to the value side (or back) would be caught here rather than
-    // by a coincidence of matching digits.
-    let measureLabel: (String) -> Double = { Double($0.count) * 6 }
-    let measureValue: (String) -> Double = { Double($0.count) * 7 }
-    let columnGap = 8.0
-    let valueWidthCap = 64.0
+/// `SessionHUDRowView`'s own geometry: a fixed label column (96, or 70 in a
+/// column), the value left-aligned 8 after it, a 64 by 14 sparkline at the
+/// column's trailing edge that takes its width plus 8 from the value only
+/// when it is drawn, and notes indented 8.
+func testSessionHUDRowLayoutMatchesMacOSGeometryTests() {
+    let full = 320.0 - 12.0 * 2
+    let narrow = (full - 16.0) / 2
 
-    // "END-TO-END" measures 60, its own value "18.5 ms" measures 49 -- far
-    // under the 64pt ceiling, so the column reserves only the value's own
-    // 49 and leaves the label its full 60, rather than a flat 64 that would
-    // cut the label column to 130-8-64=58.
-    let latencyColumn = SessionHUDRowLayout.sectionLabelColumnWidth(
-        labels: ["END-TO-END", "RECEIVE"], values: ["18.5 ms", "3.2 ms"], rowWidth: 130, columnGap: columnGap,
-        valueWidthCap: valueWidthCap, measureLabel: measureLabel, measureValue: measureValue
+    let plain = SessionHUDRowLayout.layout(valueWidth: 80, columnWidth: full, isNarrow: false, showsSparkline: false)
+    expect(plain.label.x == 0 && plain.label.width == 96, "a full-width label column is 96, got \(plain.label)")
+    expect(plain.value.x == 104 && plain.value.width == 80, "the value starts at 104, left-aligned, got \(plain.value)")
+    expect(plain.sparkline == nil, "a row without a trend has no sparkline")
+
+    let long = SessionHUDRowLayout.layout(valueWidth: 400, columnWidth: full, isNarrow: false, showsSparkline: false)
+    expect(long.value.width == 192, "a long value is cut at the column's end, 192 wide, got \(long.value)")
+
+    let trend = SessionHUDRowLayout.layout(valueWidth: 400, columnWidth: full, isNarrow: false, showsSparkline: true)
+    expect(trend.value.width == 120, "a sparkline takes 64 plus 8 from the value, leaving 120, got \(trend.value)")
+    expect(
+        trend.sparkline.map { $0.x == 232 && $0.width == 64 && $0.height == 14 } == true,
+        "the sparkline is 64 by 14 at the column's trailing edge, got \(String(describing: trend.sparkline))"
     )
-    expect(latencyColumn == 60, "\"END-TO-END\"'s own full 60pt fits once the value's own 49pt is reserved, not a flat 64, got \(latencyColumn)")
 
-    // An outlying long value -- "DROPPED HERE"'s own reading -- still never
-    // gives up more than the 64pt ceiling to the label, even though the
-    // value itself measures far past it: the cap still protects the room
-    // that value needs to wrap into.
-    let streamColumn = SessionHUDRowLayout.sectionLabelColumnWidth(
-        labels: ["DROPPED HERE"], values: ["4 before decode, 1 before present"], rowWidth: 300, columnGap: columnGap,
-        valueWidthCap: valueWidthCap, measureLabel: measureLabel, measureValue: measureValue
+    let column = SessionHUDRowLayout.layout(valueWidth: 400, columnWidth: narrow, isNarrow: true, showsSparkline: true)
+    expect(column.label.width == 70, "a column's label column is 70, got \(column.label)")
+    expect(column.value.x == 78 && column.value.width == 62, "a column's value starts at 78, at most 62 wide, got \(column.value)")
+    expect(column.sparkline == nil, "a column never draws a sparkline")
+
+    expect(plain.noteIndent == 8 && plain.noteWidth == full - 8, "a row's note is indented 8, got \(plain.noteIndent)")
+
+    print("PASS: a HUD row lays out on SessionHUDRowView's own label column, value start, sparkline and note indent")
+}
+
+#if canImport(AppKit)
+import AppKit
+
+/// The macOS panel itself lands where `SessionHUDRowLayout` says the Linux
+/// one draws: the VIDEO IN value and its sparkline.
+@MainActor
+func testSessionHUDViewMatchesRowLayoutTests() {
+    let view = SessionHUDView()
+    view.apply(telemetry: fixtureSnapshot())
+    view.layoutSubtreeIfNeeded()
+
+    func descendants(_ view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
+    }
+    let all = descendants(view)
+    guard
+        let label = all.compactMap({ $0 as? NSTextField }).first(where: { $0.stringValue == "VIDEO IN" }),
+        let row = label.superview?.superview?.superview,
+        let value = all.compactMap({ $0 as? NSTextField }).first(where: { $0.stringValue.hasSuffix("Mbit/s") })
+    else {
+        expect(false, "the macOS HUD shows a VIDEO IN row")
+        return
+    }
+    let inset = ViewerChromeMetrics.Space.sm
+    let columnWidth = Double(SessionHUDView.panelWidth - inset * 2)
+    let expected = SessionHUDRowLayout.layout(
+        valueWidth: Double(value.intrinsicContentSize.width), columnWidth: columnWidth,
+        isNarrow: false, showsSparkline: true
     )
-    expect(streamColumn == 72, "\"DROPPED HERE\"'s own full 72pt fits with room to spare even after reserving the 64pt ceiling, got \(streamColumn)")
-
-    // A section of short labels never pays for room none of them need.
-    let short = SessionHUDRowLayout.sectionLabelColumnWidth(
-        labels: ["FPS", "SIZE"], values: ["58", "1920x1080"], rowWidth: 300, columnGap: columnGap,
-        valueWidthCap: valueWidthCap, measureLabel: measureLabel, measureValue: measureValue
-    )
-    expect(short == 24, "a section of short labels only takes \"SIZE\"'s own 24pt, got \(short)")
-
-    // The real fixture too: whatever a genuine HUD reading's own sections
-    // cost their widest label, the value column beside it never drops under
-    // that section's own widest measured value (or the ceiling, whichever
-    // is smaller) -- narrow (140pt) and full-width (296pt) columns alike,
-    // the real diagnostics panel's own geometry.
-    let fullWidth = 320.0 - 12.0 * 2
-    let narrowWidth = (fullWidth - 16.0) / 2
-    let blocks = SessionHUDPanel.blocks(telemetry: fixtureSnapshot(), session: nil)
-    var checked = 0
-    func assertValueFloorHolds(_ section: SessionHUDSection, rowWidth: Double) {
-        let labelColumnWidth = SessionHUDRowLayout.sectionLabelColumnWidth(
-            labels: section.rows.map(\.label), values: section.rows.map(\.value), rowWidth: rowWidth, columnGap: columnGap,
-            valueWidthCap: valueWidthCap, measureLabel: measureLabel, measureValue: measureValue
-        )
-        let widestValue = section.rows.map(\.value).reduce(0.0) { max($0, measureValue($1)) }
-        let expectedFloor = min(widestValue, valueWidthCap)
+    let rowOrigin = row.convert(NSPoint.zero, to: view).x
+    // An NSTextField label draws its text 2pt inside its frame; its
+    // alignment rect is where the text starts.
+    let valueX = value.convert(value.alignmentRect(forFrame: value.bounds).origin, to: view).x - rowOrigin
+    expect(abs(Double(valueX) - expected.value.x) < 0.5, "VIDEO IN's value starts at \(expected.value.x), got \(valueX)")
+    let sparklines = row.subviews.filter { !($0 is NSStackView) && !$0.isHidden }
+    expect(sparklines.count == 1, "VIDEO IN carries one sparkline, got \(sparklines.count)")
+    if let sparkline = sparklines.first, let rect = expected.sparkline {
+        let frame = sparkline.frame
         expect(
-            rowWidth - labelColumnWidth - columnGap >= expectedFloor - 0.01,
-            "\"\(section.title)\"'s value column never drops under its own widest value or \(valueWidthCap), whichever is smaller"
+            abs(Double(frame.minX) - rect.x) < 0.5 && Double(frame.width) == rect.width && Double(frame.height) == rect.height,
+            "VIDEO IN's sparkline sits at \(rect), got \(frame)"
         )
-        checked += 1
     }
-    for block in blocks {
-        switch block {
-        case let .section(section):
-            assertValueFloorHolds(section, rowWidth: fullWidth)
-        case let .columns(_, left, right):
-            assertValueFloorHolds(left, rowWidth: narrowWidth)
-            assertValueFloorHolds(right, rowWidth: narrowWidth)
-        }
-    }
-    expect(checked > 0, "the fixture actually carried sections to check")
-
-    print("PASS: a HUD section's label column widens past a fixed floor when its own values are short, and stays capped when one is not")
+    print("PASS: the macOS HUD's VIDEO IN value and sparkline sit where the shared row layout puts them")
 }
+#endif

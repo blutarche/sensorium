@@ -56,23 +56,14 @@ func testSessionChromeStateTests() {
     print("PASS: the session window's chrome shows the panel, the strip, the notice and the diagnostics on the states that ask for them")
 }
 
-/// The chord that opens the session controls window on a desktop with no
-/// menu bar to hang those choices off. Named beside the strip's own chord,
-/// for the same reason: it belongs to the machine the person is sitting at.
+/// The session controls live in the menu bar now, so Control-Shift-Command-K
+/// is ordinary typing again and reaches the machine being worked on.
 func testSessionControlsChordTests() {
-    let chord = SystemShortcutCatalog.sessionControlsToggle
+    let event = CanvasSurfaceEvent.key(keyCode: 40, isDown: true, modifiers: [.command, .control, .shift])
     expect(
-        SystemShortcutCatalog.shortcut(for: chord) == nil,
-        "the session controls chord is never forwarded to the machine being worked on"
-    )
-    expect(
-        chord != SystemShortcutCatalog.shortcutStripToggle && chord != SystemShortcutCatalog.escapeGesture,
-        "it is not one of the two chords the viewer already keeps for itself"
-    )
-    expect(
-        !ViewerKeyNames.sessionControls.isEmpty,
-        "the chord is spelled out for the person who has to press it"
+        WaylandKeyPath.destination(for: event) == .canvas(event),
+        "Control-Shift-Command-K goes to the canvas, got \(WaylandKeyPath.destination(for: event))"
     )
 
-    print("PASS: the session controls chord is the viewer's own, never forwarded, and spelled out for the person pressing it")
+    print("PASS: the old session controls chord is no longer kept by the viewer")
 }

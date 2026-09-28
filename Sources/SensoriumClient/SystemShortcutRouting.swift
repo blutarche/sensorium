@@ -84,7 +84,6 @@ public enum SystemShortcutCatalog {
     private static let letterQ: UInt16 = 12
     private static let letterW: UInt16 = 13
     private static let letterH: UInt16 = 4
-    private static let letterK: UInt16 = 40
     private static let letterM: UInt16 = 46
     private static let letterZ: UInt16 = 6
     private static let letterX: UInt16 = 7
@@ -113,17 +112,6 @@ public enum SystemShortcutCatalog {
     /// on, so it is not a member of `all` and no mode can forward it.
     public static let shortcutStripToggle = KeyChord(
         keyCode: space,
-        modifiers: [.command, .control, .shift]
-    )
-
-    /// Opens the session controls -- screen, resolution, start target,
-    /// display count, scale and clipboard sharing. On macOS those are menu
-    /// bar menus; a desktop with no menu bar reaches them through this chord
-    /// instead. Named here for the same reason the two chords above are: it
-    /// belongs to the machine the person is sitting at, so it is not a
-    /// member of `all` and no mode can forward it.
-    public static let sessionControlsToggle = KeyChord(
-        keyCode: letterK,
         modifiers: [.command, .control, .shift]
     )
 

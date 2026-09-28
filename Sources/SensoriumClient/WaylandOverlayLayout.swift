@@ -17,6 +17,10 @@ public struct ViewerChromeRect: Equatable, Sendable {
         self.height = height
     }
 
+    public func offset(y dy: Double) -> ViewerChromeRect {
+        ViewerChromeRect(x: x, y: y + dy, width: width, height: height)
+    }
+
     public func contains(x pointX: Double, y pointY: Double) -> Bool {
         pointX >= x && pointX < x + width && pointY >= y && pointY < y + height
     }
@@ -48,8 +52,13 @@ public enum WaylandOverlayLayout {
 
     /// The whole window: behind the status panel, marking a frozen picture
     /// as stale, exactly the area `ViewerSessionStatusOverlay` dims on macOS.
-    public static func canvasScrim(windowWidth: Double, windowHeight: Double) -> ViewerChromeRect {
-        ViewerChromeRect(x: 0, y: 0, width: windowWidth, height: windowHeight)
+    /// `top` is the menu bar's height, which the scrim leaves undimmed.
+    public static func canvasScrim(windowWidth: Double, windowHeight: Double, top: Double = 0) -> ViewerChromeRect {
+        ViewerChromeRect(x: 0, y: top, width: windowWidth, height: max(0, windowHeight - top))
+    }
+
+    public static func menuBar(windowWidth: Double) -> ViewerChromeRect {
+        ViewerChromeRect(x: 0, y: 0, width: windowWidth, height: Double(ViewerChromeMetrics.MenuBar.height))
     }
 
     /// Centred on both axes: the panel is the only thing on screen worth

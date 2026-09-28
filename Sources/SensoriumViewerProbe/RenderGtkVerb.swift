@@ -202,48 +202,8 @@ enum RenderGtkVerb {
                 Task { @MainActor in await prompts.showNotice(ViewerFirstRunNotices.softwareDecode) }
                 guard let window = await newestVisibleToplevel() else { return nil }
                 return (window, { gtk_window_close(sensorium_gtk_window(window)) })
-            },
-            Fixture(name: "viewer-session-settings") {
-                let window = GtkSessionControlsWindow(activate: { _ in })
-                retained.append(window)
-                window.present(model: sessionSettingsModel)
-                return (window.toplevel, { window.close() })
             }
         ]
-    }
-
-    /// A live host-screen session on a two-display host, sharing the
-    /// clipboard: every group has rows, and one row in each is chosen.
-    private static var sessionSettingsModel: SessionControlsWindowModel {
-        var model = SessionControlsWindowModel()
-        model.hostScreens = [
-            HostScreenListEntry(
-                opaqueToken: Data([0x09]), label: "Built-in Display",
-                logicalWidth: 1512, logicalHeight: 982, backingScale: 2, isBuiltin: true,
-                displayIdentity: "00000610-0000a038"
-            ),
-            HostScreenListEntry(
-                opaqueToken: Data([0x0A]), label: "Studio Display",
-                logicalWidth: 2560, logicalHeight: 1440, backingScale: 2, isBuiltin: false,
-                displayIdentity: "00000610-0000ae3b"
-            )
-        ]
-        model.selectedScreenToken = Data([0x09])
-        model.canvasAvailable = false
-        model.isHostScreenSession = true
-        model.hostScreenModes = [
-            HostScreenModeEntry(
-                modeID: "3024x1964@1512x982@60", width: 1512, height: 982,
-                pixelWidth: 3024, pixelHeight: 1964, refreshRate: 60, isHiDPI: true
-            ),
-            HostScreenModeEntry(
-                modeID: "3024x1964@1800x1169@60", width: 1800, height: 1169,
-                pixelWidth: 3600, pixelHeight: 2338, refreshRate: 60, isHiDPI: true
-            )
-        ]
-        model.currentHostScreenModeID = "3024x1964@1512x982@60"
-        model.clipboardSharingEnabled = true
-        return model
     }
 
     // MARK: - Drawing
@@ -281,7 +241,7 @@ enum RenderGtkVerb {
 
     /// Draws `window` to `<name>@<scale>x.png` and checks its corner is the
     /// window background -- a corner in any other colour is a theme surface
-    /// showing through.
+    /// showing through. A window with a menu bar is checked just under it.
     private static func write(_ window: UnsafeMutableRawPointer, name: String, into directory: URL) -> Bool {
         let staging = directory.appendingPathComponent("\(name).staging.png").path
         let scale = sensorium_window_content_write_png(window, staging)
@@ -289,7 +249,7 @@ enum RenderGtkVerb {
             say("FAILED \(name): nothing was drawn")
             return false
         }
-        let path = directory.appendingPathComponent("\(name)@\(scale)x.png").path
+        let path = directory.appendingPathComponent("\(name)@\(String(format: "%g", scale))x.png").path
         try? FileManager.default.removeItem(atPath: path)
         do {
             try FileManager.default.moveItem(atPath: staging, toPath: path)
@@ -297,7 +257,9 @@ enum RenderGtkVerb {
             say("FAILED \(name): \(error)")
             return false
         }
-        let corner = sensorium_png_pixel(path, 1, 1)
+        let hasMenuBar = descendant(of: window, where: { String(cString: gtk_widget_get_css_name(sensorium_gtk_widget($0))) == "menubar" }) != nil
+        let cornerY = hasMenuBar ? Int32((Double(ViewerChromeMetrics.MenuBar.height) + 1) * scale) : 1
+        let corner = sensorium_png_pixel(path, 1, cornerY)
         let background = Int64(hexValue(ViewerPalette.chromeBg))
         if corner != background {
             say("FAILED \(name): the corner is \(String(format: "#%06X", corner)), not the window background")
@@ -312,7 +274,124 @@ enum RenderGtkVerb {
             say("FAILED \(name): \(wrong)")
             return false
         }
+        if let wrong = moreDotsOffMacOS(window, png: path, scale: scale) {
+            say("FAILED \(name): \(wrong)")
+            return false
+        }
         return true
+    }
+
+    /// Every row's "\u{2026}" button is the 24pt square macOS gives it, 8pt in
+    /// from the row's right edge and centred on the row, and its three dots
+    /// come out of the PNG alike: the same ink, evenly spaced, each centred
+    /// in its own box, the middle one where macOS draws it.
+    private static func moreDotsOffMacOS(_ window: UnsafeMutableRawPointer, png: String, scale: Double) -> String? {
+        typealias Dots = GtkViewerStyle.MoreDots
+        var buttons: [UnsafeMutableRawPointer] = []
+        _ = descendant(of: window) { widget in
+            if String(cString: gtk_widget_get_css_name(sensorium_gtk_widget(widget))) == "menubutton",
+               hasClass(widget, GtkViewerStyle.Class.iconButton) {
+                buttons.append(widget)
+            }
+            return false
+        }
+        guard let content = gtk_window_get_child(sensorium_gtk_window(window)) else { return nil }
+        for button in buttons {
+            guard let area = descendant(of: button, where: { sensorium_is_drawing_area($0) != 0 }),
+                  let row = gtk_widget_get_parent(sensorium_gtk_widget(button)) else {
+                return "a row's \u{2026} is not drawn from source"
+            }
+            let size = Int32(Dots.buttonSize)
+            guard gtk_widget_get_width(sensorium_gtk_widget(button)) == size,
+                  gtk_widget_get_height(sensorium_gtk_widget(button)) == size,
+                  gtk_widget_get_width(sensorium_gtk_widget(area)) == size else {
+                return "a row's \u{2026} button is not \(size)pt square"
+            }
+            guard let inRow = point(of: button, in: UnsafeMutableRawPointer(row)) else { return "a row's \u{2026} is not on its row" }
+            let rowWidth = Double(gtk_widget_get_width(row))
+            let rowHeight = Double(gtk_widget_get_height(row))
+            if abs(inRow.x + Dots.buttonSize + ViewerChromeMetrics.Space.xs - rowWidth) > 0.01
+                || abs(inRow.y + Dots.buttonSize / 2 - rowHeight / 2) > 0.5 {
+                return "a row's \u{2026} button sits at \(inRow) in a \(rowWidth) by \(rowHeight) row, not "
+                    + "\(ViewerChromeMetrics.Space.xs)pt in from its right edge and centred on it"
+            }
+            guard let areaInWindow = point(of: area, in: window),
+                  let contentInWindow = point(of: UnsafeMutableRawPointer(content), in: window) else {
+                return "a row's \u{2026} is not in the window"
+            }
+            let origin = (
+                x: (areaInWindow.x - contentInWindow.x + Double(gtk_widget_get_margin_start(content))) * scale,
+                y: (areaInWindow.y - contentInWindow.y + Double(gtk_widget_get_margin_top(content))) * scale
+            )
+            let box = (x: Int(origin.x.rounded(.down)), y: Int(origin.y.rounded(.down)), side: Int((Dots.buttonSize * scale).rounded(.up)) + 1)
+            var pixels = [UInt32](repeating: 0, count: box.side * box.side)
+            guard sensorium_png_region(png, Int32(box.x), Int32(box.y), Int32(box.side), Int32(box.side), &pixels) != 0 else {
+                return "a row's \u{2026} lies outside the PNG"
+            }
+            let background = pixels[0]
+            func ink(_ x: Int, _ y: Int) -> Double {
+                let pixel = pixels[y * box.side + x]
+                return Double(Int(pixel >> 16 & 0xFF) - Int(background >> 16 & 0xFF))
+            }
+            var blobs: [[Int]] = []
+            for x in 0..<box.side where (0..<box.side).contains(where: { ink(x, $0) > 8 }) {
+                if let last = blobs.last?.last, last == x - 1 {
+                    blobs[blobs.count - 1].append(x)
+                } else {
+                    blobs.append([x])
+                }
+            }
+            guard blobs.count == 3 else { return "a row's \u{2026} draws \(blobs.count) dots, not 3" }
+            var measured: [(ink: Double, x: Double, y: Double, boxX: Double, boxY: Double)] = []
+            for columns in blobs {
+                var total = 0.0, sumX = 0.0, sumY = 0.0
+                var rows: [Int] = []
+                for x in columns {
+                    for y in 0..<box.side {
+                        let value = max(0, ink(x, y))
+                        guard value > 0 else { continue }
+                        total += value
+                        sumX += (Double(x) + 0.5) * value
+                        sumY += (Double(y) + 0.5) * value
+                        if value > 8 { rows.append(y) }
+                    }
+                }
+                let top = Double(rows.min() ?? 0), bottom = Double((rows.max() ?? 0) + 1)
+                measured.append((
+                    total, sumX / total, sumY / total,
+                    (Double(columns.first!) + Double(columns.last! + 1)) / 2, (top + bottom) / 2
+                ))
+            }
+            let inks = measured.map(\.ink)
+            if (inks.max()! - inks.min()!) / inks.max()! > 0.02 {
+                return "a row's \u{2026} dots carry uneven ink at \(scale)x: \(inks)"
+            }
+            if abs((measured[1].x - measured[0].x) - (measured[2].x - measured[1].x)) > 0.05
+                || measured.map(\.y).max()! - measured.map(\.y).min()! > 0.05 {
+                return "a row's \u{2026} dots are unevenly spaced at \(scale)x: \(measured.map { ($0.x, $0.y) })"
+            }
+            if measured.contains(where: { abs($0.x - $0.boxX) > 0.1 || abs($0.y - $0.boxY) > 0.1 }) {
+                return "a row's \u{2026} dot is lopsided at \(scale)x: \(measured)"
+            }
+            let ideal = (
+                x: origin.x - Double(box.x) + Dots.middle.x * scale,
+                y: origin.y - Double(box.y) + Dots.middle.y * scale
+            )
+            if abs(measured[1].x - ideal.x) > 0.75 || abs(measured[1].y - ideal.y) > 0.75 {
+                return "a row's \u{2026} middle dot is at \((measured[1].x, measured[1].y)) at \(scale)x, not \(ideal) where macOS draws it"
+            }
+        }
+        return nil
+    }
+
+    /// Where `widget`'s top left falls in `target`, in points.
+    private static func point(of widget: UnsafeMutableRawPointer, in target: UnsafeMutableRawPointer) -> (x: Double, y: Double)? {
+        var from = graphene_point_t(x: 0, y: 0)
+        var to = graphene_point_t()
+        guard gtk_widget_compute_point(sensorium_gtk_widget(widget), sensorium_gtk_widget(target), &from, &to) != 0 else {
+            return nil
+        }
+        return (Double(to.x), Double(to.y))
     }
 
     /// Every link draws the icon held in source, never an icon theme's.
@@ -345,8 +424,7 @@ enum RenderGtkVerb {
         if name == "text" {
             return gtk_editable_get_editable(sensorium_gtk_editable(focus)) != 0 ? nil : "a field that cannot be typed into"
         }
-        if gtk_widget_has_css_class(focus, GtkViewerStyle.Class.rowSelected) != 0
-            || gtk_widget_has_css_class(focus, GtkViewerStyle.Class.settingsRow) != 0 {
+        if gtk_widget_has_css_class(focus, GtkViewerStyle.Class.rowSelected) != 0 {
             return nil
         }
         return focusDescription(window)

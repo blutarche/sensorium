@@ -59,7 +59,7 @@ private func dotShades(animationsEnabled: Bool) -> Set<Int> {
         pump(seconds: 0.05)
         let scale = sensorium_window_content_write_png(window, path)
         guard scale > 0 else { continue }
-        let middle = (margin + size / 2) * scale
+        let middle = Int32((Double(margin + size / 2) * scale).rounded())
         shades.insert(Int(sensorium_png_pixel(path, middle, middle)))
     }
     expect(!shades.isEmpty, "the activity dot's window was drawn")

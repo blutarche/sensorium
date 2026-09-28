@@ -50,17 +50,11 @@ func testViewerKeyNamesTests() {
     print("PASS: every sentence naming the escape gesture spells it from one place")
 }
 
-/// The strip is drawn from SF Symbols on macOS and from the freedesktop icon
-/// naming specification elsewhere, so every action needs a name in both
-/// vocabularies or a button comes up blank.
+/// The strip is drawn from SF Symbols on macOS, so every action needs a name
+/// or a button comes up blank.
 func testShortcutStripIconNameTests() {
     for action in ShortcutStripAction.allCases {
         expect(!action.symbolName.isEmpty, "\(action.title) has an SF Symbol name")
-        expect(!action.freedesktopIconNames.isEmpty, "\(action.title) has a freedesktop icon name")
     }
-    expect(
-        Set(ShortcutStripAction.allCases.map { $0.freedesktopIconNames[0] }).count == ShortcutStripAction.allCases.count,
-        "and no two buttons' first-choice icon names collide"
-    )
-    print("PASS: every shortcut strip action names an icon in both vocabularies")
+    print("PASS: every shortcut strip action names an SF Symbol")
 }

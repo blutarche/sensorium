@@ -52,7 +52,7 @@ enum ViewerFormControls {
     }
 
     static func textField(mono: Bool, size: CGFloat) -> NSTextField {
-        let field = NSTextField()
+        let field = ViewerPairingTextField()
         let cell = ViewerPairingFieldCell(textCell: "")
         cell.isEditable = true
         cell.isSelectable = true
@@ -175,6 +175,12 @@ final class ViewerFormActionButton: NSButton {
 /// AppKit gives a borderless text field no inset at all, which puts the caret
 /// against the fill's edge. There is no property for it; a cell is the only
 /// place the text and the field editor are both positioned.
+/// AppKit gives a text field with a custom cell 2pt alignment insets on each
+/// side, which lays its drawn box out past the column it is aligned to.
+final class ViewerPairingTextField: NSTextField {
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+}
+
 final class ViewerPairingFieldCell: NSTextFieldCell {
     private static let horizontalInset = ViewerDesign.Space.sm
 

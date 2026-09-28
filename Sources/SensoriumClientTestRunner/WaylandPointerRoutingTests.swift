@@ -236,6 +236,8 @@ func testWaylandLockedHostKeyRoutingTests() async {
             default: nil
             }
         }
+
+        func character(evdev code: UInt32) -> String? { nil }
     }
 
     let (sent, endedReason) = await runnerAfterLockedHostReport()

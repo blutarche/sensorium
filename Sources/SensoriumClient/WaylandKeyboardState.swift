@@ -148,6 +148,12 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
         xkb_state_update_mask(handles.state, depressed, latched, locked, 0, 0, group)
     }
 
+    public func character(evdev code: UInt32) -> String? {
+        let symbol = xkb_keysym_to_lower(xkb_state_key_get_one_sym(handles.state, code + 8))
+        guard let scalar = Unicode.Scalar(xkb_keysym_to_utf32(symbol)), scalar.value > 0x20 else { return nil }
+        return String(Character(scalar))
+    }
+
     /// One `wl_keyboard.key`, as the event the canvas should be told about,
     /// or nil for a key that is never forwarded.
     public func key(evdev code: UInt32, isDown: Bool) -> CanvasSurfaceEvent? {

@@ -183,11 +183,20 @@ static inline const GVariantType *sensorium_variant_type_int32(void) {
     return G_VARIANT_TYPE_INT32;
 }
 
-// Whether a key press arrived with Control held. The mask is an enumerator in
-// a C flags enum, and how Swift imports one of those is not something worth
-// depending on.
-static inline int sensorium_modifier_has_control(GdkModifierType state) {
-    return (state & GDK_CONTROL_MASK) != 0;
+static inline GtkPopoverMenuBar *sensorium_gtk_popover_menu_bar(gpointer object) {
+    return GTK_POPOVER_MENU_BAR(object);
+}
+
+static inline const GVariantType *sensorium_variant_type_string(void) {
+    return G_VARIANT_TYPE_STRING;
+}
+
+static inline int sensorium_is_about_dialog(gpointer object) {
+    return object != NULL && GTK_IS_ABOUT_DIALOG(object);
+}
+
+static inline int sensorium_is_editable(gpointer object) {
+    return object != NULL && GTK_IS_EDITABLE(object);
 }
 
 // Dark chrome, asked of the toolkit itself so the widgets this viewer does not
@@ -203,9 +212,10 @@ static inline void sensorium_prefer_dark_theme(void) {
 // Draws what `window` currently shows inside its content -- the child's own
 // box plus its margins, over the window's own background, without the title
 // bar or any client-side shadow -- at the scale the window's surface has, and
-// writes it to `path` as a PNG. Returns that scale, or 0 when the window has
-// not been laid out or the file could not be written.
-static inline int sensorium_window_content_write_png(gpointer object, const char *path) {
+// writes it to `path` as a PNG. Returns that scale, which is fractional on a
+// fractionally scaled output, or 0 when the window has not been laid out or
+// the file could not be written.
+static inline double sensorium_window_content_write_png(gpointer object, const char *path) {
     GtkWidget *window = GTK_WIDGET(object);
     GtkWidget *content = gtk_window_get_child(GTK_WINDOW(object));
     GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(object));
@@ -241,7 +251,7 @@ static inline int sensorium_window_content_write_png(gpointer object, const char
     gsk_render_node_unref(node);
     gboolean written = gdk_texture_save_to_png(texture, path);
     g_object_unref(texture);
-    return written ? (int)scale : 0;
+    return written ? scale : 0;
 }
 
 // The colour at one pixel of a PNG, as 0xRRGGBB, or -1 when the file cannot
@@ -267,6 +277,34 @@ static inline gint64 sensorium_png_pixel(const char *path, int x, int y) {
     g_free(pixels);
     g_object_unref(texture);
     return rgb;
+}
+
+// Copies the `width` by `height` block of a PNG whose top left is at `x`,
+// `y` into `out`, row by row, each pixel as 0xRRGGBB. Returns 0 when the file
+// cannot be read or the block does not lie inside it.
+static inline int sensorium_png_region(const char *path, int x, int y, int width, int height, guint32 *out) {
+    GdkTexture *texture = gdk_texture_new_from_filename(path, NULL);
+    if (texture == NULL) {
+        return 0;
+    }
+    int textureWidth = gdk_texture_get_width(texture);
+    int textureHeight = gdk_texture_get_height(texture);
+    if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > textureWidth || y + height > textureHeight) {
+        g_object_unref(texture);
+        return 0;
+    }
+    gsize stride = (gsize)textureWidth * 4;
+    guchar *pixels = g_malloc(stride * textureHeight);
+    gdk_texture_download(texture, pixels, stride);
+    for (int row = 0; row < height; row++) {
+        for (int column = 0; column < width; column++) {
+            guchar *pixel = pixels + (gsize)(y + row) * stride + (gsize)(x + column) * 4;
+            out[row * width + column] = ((guint32)pixel[2] << 16) | ((guint32)pixel[1] << 8) | (guint32)pixel[0];
+        }
+    }
+    g_free(pixels);
+    g_object_unref(texture);
+    return 1;
 }
 
 #endif

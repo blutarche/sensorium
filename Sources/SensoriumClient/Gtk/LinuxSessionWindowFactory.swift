@@ -39,6 +39,7 @@ public final class LinuxSessionWindowFactory: SessionWindowFactory {
         // What every strip confirmation and every tooltip names: the machine
         // being worked on, not the one this viewer runs on.
         window.setChromeHostName(hostName)
+        window.shortcutMode = shortcutMode
         if tracesPresentation {
             WaylandSessionTrace(window: window).start()
         }
@@ -55,13 +56,19 @@ public final class LinuxSessionWindowFactory: SessionWindowFactory {
 public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
     private let environment: LinuxViewerEnvironment
     private weak var primary: WaylandSessionWindow?
+    private var windows: [WeakSessionWindow] = []
+    /// The app menu's own items, chosen in any session window.
+    public var onApplicationCommand: ((ViewerMenuCommand) -> Void)?
 
     public init(environment: LinuxViewerEnvironment) {
         self.environment = environment
     }
 
     public func register(_ window: any ViewerSessionWindow) {
-        guard let window = window as? WaylandSessionWindow, window.surfaceID == 0 else { return }
+        guard let window = window as? WaylandSessionWindow else { return }
+        windows.append(WeakSessionWindow(window: window))
+        window.onMenuCommand = { [weak self] in self?.onApplicationCommand?($0) }
+        guard window.surfaceID == 0 else { return }
         primary = window
         window.shortcutInterceptor = environment.shortcutInterceptor
         environment.shortcutInhibit.window = window
@@ -69,10 +76,22 @@ public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
     }
 
     public func unregister(_ window: any ViewerSessionWindow) {
+        windows.removeAll { $0.window == nil || $0.window === window }
         guard let window = window as? WaylandSessionWindow, window === primary else { return }
         primary = nil
         environment.shortcutInhibit.window = nil
         environment.pasteboardBox.set(nil)
     }
+
+    /// Hide's half for the session windows.
+    public func minimizeSessionWindows() {
+        for entry in windows {
+            entry.window?.performMenuCommand(.minimize)
+        }
+    }
+}
+
+private struct WeakSessionWindow {
+    weak var window: WaylandSessionWindow?
 }
 #endif

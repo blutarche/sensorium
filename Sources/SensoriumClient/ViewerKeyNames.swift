@@ -20,13 +20,4 @@ public enum ViewerKeyNames {
         "Ctrl-Shift-Super-Space"
         #endif
     }()
-
-    /// `SystemShortcutCatalog.sessionControlsToggle`, in words.
-    public static let sessionControls: String = {
-        #if os(macOS)
-        "Control-Shift-Command-K"
-        #else
-        "Ctrl-Shift-Super-K"
-        #endif
-    }()
 }

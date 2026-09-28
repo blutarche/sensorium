@@ -129,33 +129,6 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     private var displayCountMenu: NSMenu?
     private var screenMenu: NSMenu?
 
-    /// What the Resolution menu offers before any window has ever had focus —
-    /// the same canvas geometry every session streams, with no cap chosen and
-    /// nothing to explain.
-    private static let defaultStreamScaleMenuState = DisplayScaleMenuState(
-        items: DisplayScaleMenuPlan.items(
-            selectedPreference: .automatic,
-            canvasLogicalWidth: Double(SavedHost.remoteCanvasPreset.logicalWidth),
-            canvasLogicalHeight: Double(SavedHost.remoteCanvasPreset.logicalHeight)
-        ),
-        clampNotice: nil
-    )
-
-    /// What the Displays menu offers before any window has ever had focus --
-    /// a session always starts at one display, per docs/ux-spec.md, until the
-    /// person chooses otherwise.
-    private static let defaultDisplayCountMenuState = DisplayCountMenuState(
-        items: DisplayCountMenuPlan.items(selectedCount: 1)
-    )
-
-    /// What the Screen menu offers before any window has ever had focus --
-    /// Virtual display, the only row every session starts with, before any
-    /// `hostScreenList` offer (if this machine is armed for host screen) has
-    /// arrived.
-    private static let defaultScreenMenuState = ScreenMenuState(
-        items: ScreenMenuPlan.items(displays: [], selectedToken: nil)
-    )
-
     public init(onQuit: @escaping () -> Void, onShowYourMachines: @escaping () -> Void) {
         self.onQuit = onQuit
         self.onShowYourMachines = onShowYourMachines
@@ -180,7 +153,7 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
 
     public func install(into application: NSApplication) {
         let bar = NSMenu()
-        for menu in ViewerMenuPlan.menus {
+        for menu in ViewerMenuPlan.bar(.initial) {
             let holder = NSMenuItem()
             let built = submenu(for: menu)
             holder.submenu = built
@@ -191,13 +164,16 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
                 clipboardSharingItem = built.items.first { $0.action == #selector(toggleClipboardSharing(_:)) }
                 fullScreenItem = built.items.first { $0.action == #selector(NSWindow.toggleFullScreen(_:)) }
                 built.delegate = self
-                // Session-controls -- Displays, Resolution, Screen -- sit
-                // between View and Window, the same order docs/ux-spec.md's
-                // own controls read in; Window and Help stay macOS's own
-                // last two menus.
-                bar.addItem(displayCountMenuHolder())
-                bar.addItem(displayMenuHolder())
-                bar.addItem(screenMenuHolder())
+            // Rebuilt whole on every open from the focused window's state.
+            case "Displays":
+                displayCountMenu = built
+                built.delegate = self
+            case "Resolution":
+                displayMenu = built
+                built.delegate = self
+            case "Screen":
+                screenMenu = built
+                built.delegate = self
             case "Window":
                 windowMenu = built
                 minimizeItem = built.items.first { $0.action == #selector(minimizeKeyWindow(_:)) }
@@ -218,45 +194,6 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         }
     }
 
-    private func displayMenuHolder() -> NSMenuItem {
-        let holder = NSMenuItem()
-        let menu = NSMenu(title: "Resolution")
-        menu.autoenablesItems = false
-        menu.delegate = self
-        rebuild(menu, from: Self.defaultStreamScaleMenuState)
-        holder.submenu = menu
-        displayMenu = menu
-        return holder
-    }
-
-    /// docs/ux-spec.md's "Displays: 1 or 2" -- a separate menu from
-    /// Resolution's per-display scale picker, since the two are separate
-    /// controls in the spec's own words.
-    private func displayCountMenuHolder() -> NSMenuItem {
-        let holder = NSMenuItem()
-        let menu = NSMenu(title: "Displays")
-        menu.autoenablesItems = false
-        menu.delegate = self
-        rebuild(menu, from: Self.defaultDisplayCountMenuState)
-        holder.submenu = menu
-        displayCountMenu = menu
-        return holder
-    }
-
-    /// docs/ux-spec.md's "Screen" control -- a separate menu from Displays
-    /// and Resolution, the same reasoning `displayCountMenuHolder()` above
-    /// already follows for its own separate control.
-    private func screenMenuHolder() -> NSMenuItem {
-        let holder = NSMenuItem()
-        let menu = NSMenu(title: "Screen")
-        menu.autoenablesItems = false
-        menu.delegate = self
-        rebuild(menu, from: Self.defaultScreenMenuState)
-        holder.submenu = menu
-        screenMenu = menu
-        return holder
-    }
-
     private func submenu(for menu: ViewerMenu) -> NSMenu {
         let result = NSMenu(title: menu.title)
         // Enablement is the plan's decision, not AppKit's, for every menu but
@@ -264,10 +201,15 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         // and everything else is always available -- see
         // `ViewerMenu.autoenablesItems`.
         result.autoenablesItems = menu.autoenablesItems
+        fill(result, from: menu)
+        return result
+    }
+
+    private func fill(_ result: NSMenu, from menu: ViewerMenu) {
+        result.removeAllItems()
         for item in menu.items {
             result.addItem(menuItem(for: item))
         }
-        return result
     }
 
     private func menuItem(for item: ViewerMenuItem) -> NSMenuItem {
@@ -279,8 +221,26 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         )
         result.keyEquivalentModifierMask = Self.modifierMask(item.modifiers)
         result.isEnabled = item.isEnabled
+        result.state = item.isSelected ? .on : .off
         result.target = target(for: item.command)
+        result.representedObject = representedObject(for: item.command)
+        if let submenu = item.submenu {
+            result.submenu = self.submenu(for: submenu)
+        }
         return result
+    }
+
+    /// What a row's action reads back to know which choice it is: `NSNull`
+    /// stands in for Automatic, since `nil` cannot sit in that slot.
+    private func representedObject(for command: ViewerMenuCommand) -> Any? {
+        switch command {
+        case let .setStreamScale(scale): scale.map { NSNumber(value: $0) } ?? NSNull()
+        case let .selectDisplayCount(count): NSNumber(value: count)
+        case let .selectRealScreen(token): token
+        case let .selectHostScreenMode(modeID): modeID
+        case let .selectStartTarget(target): target
+        default: nil
+        }
     }
 
     private func action(for command: ViewerMenuCommand) -> Selector? {
@@ -311,7 +271,12 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         case .toggleTelemetryOverlay: #selector(toggleTelemetryOverlay(_:))
         case .togglePointerCapture: #selector(togglePointerCapture(_:))
         case .toggleClipboardSharing: #selector(toggleClipboardSharing(_:))
-        case .setStreamScale, .streamScaleClampNotice, .escapeGestureHint, .separator: nil
+        case .setStreamScale: #selector(selectStreamScale(_:))
+        case .selectDisplayCount: #selector(selectDisplayCount(_:))
+        case .selectRealScreen: #selector(selectRealScreen(_:))
+        case .selectHostScreenMode: #selector(selectHostScreenMode(_:))
+        case .selectStartTarget: #selector(selectStartTarget(_:))
+        case .streamScaleClampNotice, .escapeGestureHint, .separator, .submenu: nil
         }
     }
 
@@ -319,13 +284,14 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         switch command {
         case .hide, .hideOthers, .showAll, .bringAllToFront: NSApplication.shared
         case .about, .quit, .showYourMachines, .toggleTelemetryOverlay, .togglePointerCapture,
-             .toggleClipboardSharing, .minimize: self
+             .toggleClipboardSharing, .minimize, .setStreamScale, .selectDisplayCount, .selectRealScreen,
+             .selectHostScreenMode, .selectStartTarget: self
         // Nil: found by the responder chain, starting at the key window's
         // first responder -- the pairing form's own text fields for the six
         // editing commands, whichever window is key for full screen and zoom.
         case .undo, .redo, .cut, .copy, .paste, .selectAll,
              .toggleFullScreen, .zoom,
-             .setStreamScale, .streamScaleClampNotice, .escapeGestureHint, .separator: nil
+             .streamScaleClampNotice, .escapeGestureHint, .separator, .submenu: nil
         }
     }
 
@@ -413,132 +379,77 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     /// can know at build time -- which window has focus, what it is doing
     /// right now -- is always current the moment the user actually looks.
     public func menuNeedsUpdate(_ menu: NSMenu) {
+        let model = ViewerMenuPlan.bar(currentState(readingWindowMenu: menu === windowMenu))
+        func items(_ title: String) -> [ViewerMenuItem] {
+            model.first { $0.title == title }?.items ?? []
+        }
+        func refresh(_ item: NSMenuItem?, from row: ViewerMenuItem?) {
+            guard let item, let row else { return }
+            item.title = row.title
+            item.isEnabled = row.isEnabled
+            item.state = row.isSelected ? .on : .off
+        }
+        let view = items("View")
+        // All three live in the View menu, so each refreshes whenever it
+        // opens. AppKit calls `menuNeedsUpdate` before matching a key
+        // equivalent as well as before showing a menu (this delegate
+        // implements no `menuHasKeyEquivalent(_:for:target:action:)` to skip
+        // that), so Ctrl-Cmd-F reads a title and an enabled state that are
+        // already current.
         if let pointerCaptureItem, menu.items.contains(where: { $0 === pointerCaptureItem }) {
-            let isCaptured = focusedTarget?.isPointerCaptured ?? false
-            pointerCaptureItem.title = ViewerMenuPlan.pointerCaptureTitle(isCaptured: isCaptured)
-            pointerCaptureItem.state = isCaptured ? .on : .off
+            refresh(pointerCaptureItem, from: view.first { $0.command == .togglePointerCapture })
         }
-        // Both items above live in the same View menu, so this is not part
-        // of the `else if` chain below -- the pointer-capture item and the
-        // Clipboard item must both refresh when that one menu opens, not
-        // whichever the chain reaches first.
         if let clipboardSharingItem, menu.items.contains(where: { $0 === clipboardSharingItem }) {
-            let isEnabled = focusedTarget?.isClipboardSharingEnabled ?? ClipboardSyncEngine.sharingEnabledByDefault
-            clipboardSharingItem.state = isEnabled ? .on : .off
+            refresh(clipboardSharingItem, from: view.first { $0.command == .toggleClipboardSharing })
         }
-        // Also in the View menu, alongside the two items above -- not an
-        // `else if` for the same reason. AppKit calls `menuNeedsUpdate`
-        // before matching a key equivalent as well as before showing a menu
-        // (this delegate implements no `menuHasKeyEquivalent(_:for:target:action:)`
-        // to skip that), so Ctrl-Cmd-F reads a title and an enabled state
-        // that are already current.
         if let fullScreenItem, menu.items.contains(where: { $0 === fullScreenItem }) {
-            // No registered target at all -- the launch window, say, is key
-            // instead -- means no window this menu knows about can go full
-            // screen: it is not resizable, and never offers the item.
-            let (title, isEnabled) = ViewerMenuPlan.fullScreenItem(
-                isFullscreen: focusedTarget?.viewerWindowState.isFullscreen ?? false,
-                canFullScreen: focusedTarget != nil
-            )
-            fullScreenItem.title = title
-            fullScreenItem.isEnabled = isEnabled
+            refresh(fullScreenItem, from: view.first { $0.command == .toggleFullScreen })
         }
         // AppKit calls `menuNeedsUpdate` on `NSApp.windowsMenu` too, before
         // showing it and before matching Cmd-M or Cmd-` against the window
         // list it appends below these three items.
         if menu === windowMenu {
+            let window = items("Window")
+            refresh(minimizeItem, from: window.first { $0.command == .minimize })
+            refresh(zoomItem, from: window.first { $0.command == .zoom })
+            refresh(bringAllToFrontItem, from: window.first { $0.command == .bringAllToFront })
+        }
+        for (built, title) in [(displayMenu, "Resolution"), (displayCountMenu, "Displays"), (screenMenu, "Screen")]
+        where menu === built {
+            if let source = model.first(where: { $0.title == title }) {
+                fill(menu, from: source)
+            }
+        }
+    }
+
+    /// The focused window's state, or the defaults when none has focus. No
+    /// registered target at all -- the launch window, say, is key instead --
+    /// means no window this menu knows about can go full screen: it is not
+    /// resizable, and never offers the item.
+    private func currentState(readingWindowMenu: Bool) -> ViewerMenuBarState {
+        let focused = focusedTarget
+        var state = ViewerMenuBarState(
+            streamScale: focused?.streamScaleMenuState ?? ViewerMenuBarState.initial.streamScale,
+            displayCount: focused?.displayCountMenuState ?? ViewerMenuBarState.initial.displayCount,
+            screen: focused?.screenMenuState ?? ViewerMenuBarState.initial.screen,
+            isPointerCaptured: focused?.isPointerCaptured ?? false,
+            isClipboardSharingEnabled: focused?.isClipboardSharingEnabled ?? ClipboardSyncEngine.sharingEnabledByDefault,
+            isFullscreen: focused?.viewerWindowState.isFullscreen ?? false,
+            canFullScreen: focused != nil
+        )
+        if readingWindowMenu {
             let target = windowMenuTargetWindow()
-            let state = ViewerMenuPlan.windowMenuState(
+            let window = ViewerMenuPlan.windowMenuState(
                 canMiniaturize: target?.styleMask.contains(.miniaturizable) ?? false,
                 isMiniaturized: target?.isMiniaturized ?? false,
                 canZoom: target?.styleMask.contains(.resizable) ?? false,
                 hasVisibleWindow: NSApplication.shared.windows.contains { $0.isVisible }
             )
-            minimizeItem?.isEnabled = state.minimizeEnabled
-            zoomItem?.isEnabled = state.zoomEnabled
-            bringAllToFrontItem?.isEnabled = state.bringAllToFrontEnabled
+            state.minimizeEnabled = window.minimizeEnabled
+            state.zoomEnabled = window.zoomEnabled
+            state.bringAllToFrontEnabled = window.bringAllToFrontEnabled
         }
-        if menu === displayMenu {
-            rebuild(menu, from: focusedTarget?.streamScaleMenuState ?? Self.defaultStreamScaleMenuState)
-        } else if menu === displayCountMenu {
-            rebuild(menu, from: focusedTarget?.displayCountMenuState ?? Self.defaultDisplayCountMenuState)
-        } else if menu === screenMenu {
-            rebuild(menu, from: focusedTarget?.screenMenuState ?? Self.defaultScreenMenuState)
-        }
-    }
-
-    private func rebuild(_ menu: NSMenu, from state: DisplayScaleMenuState) {
-        menu.removeAllItems()
-        for row in state.items {
-            let item = NSMenuItem(title: row.title, action: #selector(selectStreamScale(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = row.isSelected ? .on : .off
-            item.representedObject = row.scale.map { NSNumber(value: $0) } ?? NSNull()
-            menu.addItem(item)
-        }
-        if let clampNotice = state.clampNotice {
-            menu.addItem(.separator())
-            let notice = NSMenuItem(title: clampNotice, action: nil, keyEquivalent: "")
-            notice.isEnabled = false
-            menu.addItem(notice)
-        }
-    }
-
-    private func rebuild(_ menu: NSMenu, from state: DisplayCountMenuState) {
-        menu.removeAllItems()
-        for row in state.items {
-            let item = NSMenuItem(title: row.title, action: #selector(selectDisplayCount(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = row.isSelected ? .on : .off
-            item.isEnabled = row.isEnabled
-            item.representedObject = NSNumber(value: row.count)
-            menu.addItem(item)
-        }
-    }
-
-    private func rebuild(_ menu: NSMenu, from state: ScreenMenuState) {
-        menu.removeAllItems()
-        for row in state.items {
-            let item = NSMenuItem(title: row.title, action: #selector(selectRealScreen(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = row.isSelected ? .on : .off
-            item.representedObject = row.token
-            menu.addItem(item)
-        }
-        // The host screen's own resolution, under the screen it belongs to.
-        // Always present, so its absence never has to be explained: outside
-        // a live host-screen session it is simply not pickable.
-        menu.addItem(.separator())
-        let holder = NSMenuItem(title: state.modes.title, action: nil, keyEquivalent: "")
-        holder.isEnabled = state.modes.isEnabled
-        let submenu = NSMenu(title: state.modes.title)
-        submenu.autoenablesItems = false
-        for row in state.modes.items {
-            let item = NSMenuItem(title: row.title, action: #selector(selectHostScreenMode(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = row.isSelected ? .on : .off
-            item.isEnabled = state.modes.isEnabled
-            item.representedObject = row.modeID
-            submenu.addItem(item)
-        }
-        holder.submenu = submenu
-        menu.addItem(holder)
-        // The saved preference for this machine's *next* launch -- a
-        // separate submenu from Resolution's live, this-session-only mode
-        // picker just above, so the two are never mistaken for one control.
-        let startWithHolder = NSMenuItem(title: state.startWith.title, action: nil, keyEquivalent: "")
-        let startWithSubmenu = NSMenu(title: state.startWith.title)
-        startWithSubmenu.autoenablesItems = false
-        for row in state.startWith.items {
-            let item = NSMenuItem(title: row.title, action: #selector(selectStartTarget(_:)), keyEquivalent: "")
-            item.target = self
-            item.state = row.isSelected ? .on : .off
-            item.isEnabled = row.isEnabled
-            item.representedObject = row.target
-            startWithSubmenu.addItem(item)
-        }
-        startWithHolder.submenu = startWithSubmenu
-        menu.addItem(startWithHolder)
+        return state
     }
 
     private var focusedTarget: (any ViewerMenuCommandTarget)? {

@@ -47,8 +47,6 @@ public enum GtkViewerStyle {
         /// `ViewerMessageWindowController` and `ViewerFormControls.style`
         /// each draw on macOS.
         public static let messageSecondary = "sensorium-message-secondary"
-        /// One choice in the session settings window: flat, like a menu item.
-        public static let settingsRow = "sensorium-settings-row"
         /// A one-line message's own headline: ink, or `bad` beside it.
         public static let headline = "sensorium-headline"
         /// The smaller muted line under a headline.
@@ -155,6 +153,37 @@ public enum GtkViewerStyle {
         }
     }
 
+    /// The "\u{2026}" a saved machine's row ends in, drawn as three dots rather
+    /// than as a glyph a Linux font sizes and places its own way. In points
+    /// from the top left of the 24pt button, where the dots of the macOS
+    /// glyph fall.
+    public enum MoreDots {
+        public static let buttonSize = 24.0
+        /// The middle dot's centre.
+        public static let middle = (x: 11.775, y: 16.815)
+        /// From one dot's centre to the next.
+        public static let pitch = 4.865
+        public static let diameter = 2.68
+
+        /// Each dot's centre and their diameter, in device pixels, for a
+        /// button whose top left is at `origin` device pixels at `scale`.
+        /// The diameter and the spacing are whole pixels, and each dot's box
+        /// starts on a pixel, so at a fractional scale the three dots still
+        /// rasterise alike instead of each catching the pixel grid
+        /// differently.
+        public static func placement(
+            scale: Double,
+            origin: (x: Double, y: Double)
+        ) -> (centres: [(x: Double, y: Double)], diameter: Double) {
+            let diameter = max(1, (Self.diameter * scale).rounded())
+            let pitch = (Self.pitch * scale).rounded()
+            func snapped(_ centre: Double) -> Double { (centre - diameter / 2).rounded() + diameter / 2 }
+            let x = snapped(origin.x + middle.x * scale)
+            let y = snapped(origin.y + middle.y * scale)
+            return ([(x - pitch, y), (x, y), (x + pitch, y)], diameter)
+        }
+    }
+
     public static var stylesheet: String {
         let palette = ViewerPalette.self
         let space = ViewerChromeMetrics.Space.self
@@ -167,31 +196,27 @@ public enum GtkViewerStyle {
         let chromeBg = palette.chromeBg.hexString
         let chromeBg2 = palette.chromeBg2.hexString
         let bg4 = palette.bg4.hexString
-        let mono = "font-family: \"JetBrains Mono\", monospace"
+        let mono = "font-family: monospace"
         let selection = palette.selection
         let selectionBg = String(
             format: "rgba(%d, %d, %d, %g)",
             Int((selection.red * 255).rounded()), Int((selection.green * 255).rounded()),
             Int((selection.blue * 255).rounded()), selection.alpha
         )
-        // Lines as tall as AppKit sets a label's: the font's ascent and its
-        // descent, each rounded to a whole point, in Inter and JetBrains
-        // Mono, the fonts the macOS viewer asks for. Pango reads a bare
-        // number as a multiple of the font's own line height, which most
-        // Linux UI fonts set wider, so it is a length.
-        func lineHeight(_ size: Int, ascent: Double, descent: Double) -> Int {
-            Int((ascent * Double(size)).rounded() + (descent * Double(size)).rounded())
+        // Pango reads a bare line-height number as a multiple of the font's
+        // own line height, which most Linux UI fonts set wider, so it is a
+        // length.
+        func lineHeight(_ size: Int, mono: Bool) -> Int {
+            Int(ViewerChromeMetrics.TextLine.height(size: Double(size), mono: mono))
         }
         func text(_ size: Int) -> String {
-            "line-height: \(lineHeight(size, ascent: 1984.0 / 2048, descent: 494.0 / 2048))px; font-size: \(size)px"
+            "line-height: \(lineHeight(size, mono: false))px; font-size: \(size)px"
         }
         func monoText(_ size: Int) -> String {
-            "\(mono); line-height: \(lineHeight(size, ascent: 1.02, descent: 0.3))px; font-size: \(size)px"
+            "\(mono); line-height: \(lineHeight(size, mono: true))px; font-size: \(size)px"
         }
-        // What macOS draws medium. Noto Sans Medium, the sans most Linux
-        // desktops resolve to, is barely heavier than its Regular, so medium
-        // text is drawn SemiBold, the nearest face visibly heavier.
-        let medium = 600
+        typealias Weight = ViewerChromeMetrics.TextWeight
+        func weight(_ value: Int) -> String { "font-weight: \(value);" }
         func tracking(_ size: Double) -> String {
             String(format: "%g", Double(ViewerChromeMetrics.Tracking.widest) * size)
         }
@@ -218,9 +243,102 @@ public enum GtkViewerStyle {
         // whatever it leaves unset, in any state, the theme still draws.
         let buttons = [
             ".\(Class.row)", ".\(Class.primary)", ".\(Class.secondary)", ".\(Class.messageSecondary)",
-            ".\(Class.rowAction)", ".\(Class.link)", ".\(Class.settingsRow)",
+            ".\(Class.rowAction)", ".\(Class.link)",
             "menubutton.\(Class.iconButton) > button"
         ]
+        // The menu bar and its menus, drawn to match the ones the session
+        // window paints -- see `SessionChromePainter+MenuBar`. A menu's row
+        // insets are counted from its outer edge, 1px border included.
+        typealias MenuMetrics = ViewerChromeMetrics.MenuBar
+        func glyph(_ glyph: SessionMenuGlyph, _ color: ViewerColor) -> String {
+            let svg = glyph.svg(color: color).addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+            return "-gtk-icon-source: url(\"data:image/svg+xml,\(svg)\")"
+        }
+        let menuFont = text(Int(MenuMetrics.fontSize))
+        let rowInset = Int(ViewerChromeMetrics.Space.xxs)
+        let checkBox = Int(SessionMenuGlyph.checkmark.box)
+        let checkMargin = (Int(MenuMetrics.checkColumnWidth) - checkBox) / 2
+        let rowPadding = Int(MenuMetrics.rowPaddingX) - rowInset
+        let menus = """
+        window.sensorium menubar {
+            min-height: \(Int(MenuMetrics.height))px;
+            padding: 0 \(Int(MenuMetrics.barPaddingX))px;
+            background-color: \(chromeBg2);
+            background-image: none;
+            border: none;
+            box-shadow: none;
+        }
+        window.sensorium menubar > item {
+            padding: 0 \(Int(MenuMetrics.itemPaddingX))px;
+            margin: \(Int(MenuMetrics.titleInsetY))px 0;
+            border: none;
+            border-radius: \(radius)px;
+            background-color: transparent;
+            box-shadow: none;
+            color: \(ink);
+            \(menuFont);
+        }
+        window.sensorium menubar > item:first-child { font-weight: bold; }
+        window.sensorium menubar > item:selected { background-color: \(bg4); color: \(ink); }
+        window.sensorium popover.menu > contents {
+            background-color: \(chromeBg2);
+            background-image: none;
+            border: \(border)px solid \(palette.chromeBorder2.hexString);
+            border-radius: \(Int(MenuMetrics.popupRadius))px;
+            box-shadow: none;
+            padding: \(Int(MenuMetrics.popupPaddingY) - border)px 0;
+            min-width: \(Int(MenuMetrics.minimumPopupWidth) - 2 * border)px;
+        }
+        window.sensorium menubar > item > popover.menu > contents { margin-top: \(Int(MenuMetrics.titleInsetY))px; }
+        window.sensorium popover.menu > arrow { background: none; border: none; min-height: 0; min-width: 0; }
+        window.sensorium popover.menu modelbutton {
+            min-height: \(Int(MenuMetrics.rowHeight))px;
+            padding: 0 \(rowPadding)px;
+            margin: 0 \(rowInset - border)px;
+            border: none;
+            border-radius: \(radius)px;
+            background-color: transparent;
+            background-image: none;
+            box-shadow: none;
+            outline: none;
+            color: \(ink);
+            \(menuFont);
+        }
+        window.sensorium popover.menu modelbutton:selected { background-color: \(accent); color: \(ink); }
+        window.sensorium popover.menu modelbutton:disabled { color: \(muted2); }
+        window.sensorium popover.menu modelbutton accelerator {
+            margin-left: \(Int(MenuMetrics.chordGap))px;
+            color: \(muted);
+        }
+        window.sensorium popover.menu modelbutton:selected accelerator { color: \(ink); }
+        window.sensorium popover.menu modelbutton:disabled accelerator { color: \(muted2); }
+        window.sensorium popover.menu modelbutton check {
+            min-width: \(checkBox)px;
+            min-height: \(checkBox)px;
+            -gtk-icon-size: \(checkBox)px;
+            margin: 0 \(checkMargin)px;
+            padding: 0;
+            background: none;
+            border: none;
+            box-shadow: none;
+            -gtk-icon-source: none;
+        }
+        window.sensorium popover.menu modelbutton check:checked { \(glyph(.checkmark, palette.ink)); }
+        window.sensorium popover.menu modelbutton:disabled check:checked { \(glyph(.checkmark, palette.muted2)); }
+        window.sensorium popover.menu modelbutton arrow {
+            min-width: \(Int(SessionMenuGlyph.submenuArrow.box))px;
+            min-height: \(Int(SessionMenuGlyph.submenuArrow.box))px;
+            -gtk-icon-size: \(Int(SessionMenuGlyph.submenuArrow.box))px;
+            margin-left: \(Int(MenuMetrics.submenuArrowWidth) - Int(SessionMenuGlyph.submenuArrow.box))px;
+            \(glyph(.submenuArrow, palette.ink));
+        }
+        window.sensorium popover.menu modelbutton:disabled arrow { \(glyph(.submenuArrow, palette.muted2)); }
+        window.sensorium popover.menu separator {
+            min-height: \(border)px;
+            margin: \((Int(MenuMetrics.separatorHeight) - border) / 2)px \(Int(MenuMetrics.rowPaddingX) - border)px;
+            background-color: \(palette.chromeBorder2.hexString);
+        }
+        """
         return """
         window.sensorium, window.sensorium > * {
             background-color: \(chromeBg);
@@ -244,18 +362,18 @@ public enum GtkViewerStyle {
             transition: none;
             color: \(ink);
         }
-        .\(Class.heading) { \(text(20)); font-weight: \(medium); color: \(ink); }
-        .\(Class.eyebrow) { \(monoText(12)); font-weight: \(medium); letter-spacing: \(tracking(12))px; color: \(muted2); }
-        .\(Class.sentence) { \(text(13)); color: \(ink); }
-        .\(Class.headline) { \(text(13)); font-weight: \(medium); }
-        .\(Class.muted) { \(text(13)); color: \(muted); }
-        .\(Class.bad) { \(text(13)); color: \(palette.bad.hexString); }
-        .\(Class.detail) { \(text(12)); color: \(muted); }
-        .\(Class.hint) { \(text(12)); }
-        .\(Class.rowName) { \(text(14)); font-weight: \(medium); color: \(ink); }
+        .\(Class.heading) { \(text(20)); \(weight(Weight.windowHeading)) color: \(ink); }
+        .\(Class.eyebrow) { \(monoText(12)); \(weight(Weight.eyebrow)) letter-spacing: \(tracking(12))px; color: \(muted2); }
+        .\(Class.sentence) { \(text(13)); \(weight(Weight.body)) color: \(ink); }
+        .\(Class.muted) { \(text(13)); \(weight(Weight.body)) color: \(muted); }
+        .\(Class.bad) { \(text(13)); \(weight(Weight.body)) color: \(palette.bad.hexString); }
+        .\(Class.headline) { \(text(13)); \(weight(Weight.headline)) }
+        .\(Class.detail) { \(text(12)); \(weight(Weight.detail)) color: \(muted); }
+        .\(Class.hint) { \(text(12)); \(weight(Weight.hint)) }
+        .\(Class.rowName) { font-size: 14px; \(weight(Weight.rowName)) color: \(ink); }
         .\(Class.rowName).\(Class.offline) { color: \(muted); }
-        .\(Class.rowDetail) { \(text(12)); color: \(muted); }
-        .\(Class.deviceSubtitle) { \(monoText(11)); color: \(muted); }
+        .\(Class.rowDetail) { \(text(12)); \(weight(Weight.rowDetail)) color: \(muted); }
+        .\(Class.deviceSubtitle) { \(monoText(11)); \(weight(Weight.deviceSubtitle)) color: \(muted); }
         .\(Class.deviceSubtitle).\(Class.offline) { color: \(muted2); }
         .\(Class.row) {
             background-color: \(chromeBg2);
@@ -279,7 +397,7 @@ public enum GtkViewerStyle {
             padding: 0 \(buttonPadding)px;
             border-radius: \(radius)px;
             \(text(13));
-            font-weight: \(medium);
+            \(weight(Weight.button))
         }
         .\(Class.primary) { background-color: \(accent); border: \(border)px solid \(accent); color: \(chromeBg); }
         .\(Class.primary):disabled { background-color: \(chromeBg2); border: \(border)px solid \(line); color: \(muted2); }
@@ -291,23 +409,18 @@ public enum GtkViewerStyle {
             min-height: 24px;
             min-width: 64px;
             \(text(13));
-            font-weight: \(medium);
+            \(weight(Weight.button))
         }
         menubutton.\(Class.iconButton) > button {
             background-color: transparent;
             min-width: 24px;
             min-height: 24px;
+            padding: 0;
             \(text(16));
-            font-weight: \(medium);
+            \(weight(Weight.button))
             color: \(muted);
         }
-        .\(Class.link) { \(text(13)); color: \(accent); }
-        .\(Class.settingsRow) {
-            min-height: 28px;
-            padding: 0 \(Int(space.xs))px;
-            \(text(13));
-        }
-        .\(Class.settingsRow):disabled { color: \(muted2); }
+        .\(Class.link) { \(text(13)); \(weight(Weight.link)) color: \(accent); }
         window.sensorium entry {
             background-image: none;
             background-color: \(bg4);
@@ -319,13 +432,17 @@ public enum GtkViewerStyle {
             min-height: \(fieldMinHeight)px;
             padding: 0 \(Int(space.sm))px;
             \(text(14));
+            \(weight(Weight.field))
             caret-color: \(palette.accentHi.hexString);
         }
+        window.sensorium entry > text { margin-bottom: 2px; }
+        window.sensorium entry.\(Class.monoField) > text { margin-bottom: 0; }
         window.sensorium entry > text > placeholder { color: \(muted2); }
         window.sensorium entry > text > selection { background-color: \(selectionBg); color: \(ink); }
         window.sensorium entry.\(Class.readOnly) { color: \(muted); }
         .\(Class.monoField) { \(mono); }
-        window.sensorium entry.\(Class.code) { \(monoText(20)); min-height: \(codeMinHeight)px; }
+        window.sensorium entry.\(Class.code) { \(monoText(20)); \(weight(Weight.code)) min-height: \(codeMinHeight)px; }
+        \(menus)
         """
     }
 }

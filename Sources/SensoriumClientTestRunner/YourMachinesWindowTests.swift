@@ -1011,4 +1011,24 @@ func testViewerPairingFieldObserverLifetimeTests() {
 
     print("PASS: a pairing field cell's editor observer never outlives the cell")
 }
+
+/// The code step's fields sit on the same 24pt column as every other control
+/// in the window, edge to edge, as the Linux viewer draws them.
+@MainActor
+func testYourMachinesCodeStepFieldsSitOnTheColumnTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let view = content(of: controller)
+    view.layoutSubtreeIfNeeded()
+    let inset = ViewerDesign.Space.xl
+    for name in ["addressField", "codeField", "nameField"] {
+        let field = storedValue(name, of: controller, as: NSTextField.self)
+        let frame = field.convert(field.bounds, to: view)
+        expect(
+            frame.minX == inset && frame.maxX == view.bounds.width - inset,
+            "the \(name) spans \(inset)...\(view.bounds.width - inset), got \(frame.minX)...\(frame.maxX)"
+        )
+    }
+    print("PASS: the code step's fields sit on the window's 24pt column")
+}
 #endif

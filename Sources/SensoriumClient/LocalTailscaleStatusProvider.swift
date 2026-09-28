@@ -20,14 +20,24 @@ import SensoriumCore
 /// `docs/install.md`.
 public struct LocalTailscaleStatusProvider: TailnetStatusProviding {
     /// Every place this machine might have the CLI, tried in order until one is
-    /// actually executable. Covers both common Homebrew install prefixes and
-    /// the GUI app's own bundled binary, which answers the same `status`
-    /// verb Homebrew's standalone `tailscale` does.
+    /// actually executable. On macOS that is both common Homebrew install
+    /// prefixes and the GUI app's own bundled binary, which answers the same
+    /// `status` verb Homebrew's standalone `tailscale` does. On Linux it is
+    /// the system path a distribution's package installs to.
+    #if os(Linux)
+    public static let candidateExecutablePaths = [
+        "/usr/bin/tailscale",
+        "/usr/sbin/tailscale",
+        "/usr/local/bin/tailscale",
+        "/bin/tailscale"
+    ]
+    #else
     public static let candidateExecutablePaths = [
         "/usr/local/bin/tailscale",
         "/opt/homebrew/bin/tailscale",
         "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
     ]
+    #endif
 
     private let executablePaths: [String]
 

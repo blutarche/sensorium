@@ -16,16 +16,9 @@ public enum HostScreenRefusalCopy {
     /// screen, and a session never falls back to a canvas on its own.
     public static let noneAvailableReason = "host-screen-none-available"
 
-    /// Where a person picks a host screen, named for whichever platform this
-    /// is: macOS's own Screen menu, or `SessionSettingsNaming.title` on
-    /// Linux, which has no native menu bar.
-    public static let screenControlName: String = {
-        #if os(macOS)
-        "the Screen menu"
-        #else
-        SessionSettingsNaming.title
-        #endif
-    }()
+    /// Where a person picks a host screen: the Screen menu, in the menu bar
+    /// on both platforms.
+    public static let screenControlName = "the Screen menu"
 
     // Nothing below names a specific recovery path -- "connect with a
     // virtual display", say -- since a session canvas is opt-in and off by
