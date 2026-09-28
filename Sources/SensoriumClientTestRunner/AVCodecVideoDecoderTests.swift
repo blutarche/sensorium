@@ -114,6 +114,13 @@ private final class CollectedFrames: @unchecked Sendable {
 /// open and must fall back to software.
 private let absentRenderNodePath = "/dev/dri/renderD-sensorium-absent"
 
+/// Fedora's ffmpeg-free selects libopenh264, which releases each picture when
+/// the next access unit arrives. Its final picture is released at end of stream.
+private let softwareDecoderBuffersOneFrame: Bool = {
+    guard let codec = avcodec_find_decoder(AV_CODEC_ID_H264) else { return false }
+    return String(cString: codec.pointee.name) == "libopenh264"
+}()
+
 func testAVCodecVideoDecoderTests() {
     let fixture = DecoderFixture.load()
     softwareDecodeProducesFramesOfTheFixtureSize(fixture)
@@ -131,9 +138,10 @@ private func softwareDecodeProducesFramesOfTheFixtureSize(_ fixture: DecoderFixt
         try! decoder.decode(fixture.packet(index))
     }
     let frames = collected.all
+    let expectedCount = fixture.accessUnits.count - (softwareDecoderBuffersOneFrame ? 1 : 0)
     expect(
-        frames.count == fixture.accessUnits.count,
-        "software decode returns every frame of the fixture -- got \(frames.count) of \(fixture.accessUnits.count)"
+        frames.count == expectedCount,
+        "software decode returns every frame available before end of stream -- got \(frames.count) of \(expectedCount)"
     )
     expect(
         frames.allSatisfy { $0.width == fixture.width && $0.height == fixture.height },
@@ -182,10 +190,16 @@ private func resetBetweenKeyFramesDecodesBoth(_ fixture: DecoderFixture) {
     let collected = CollectedFrames()
     let decoder = AVCodecVideoDecoder(renderNodePath: nil) { collected.append($0) }
     try! decoder.decode(fixture.packet(keyFrames[0]))
+    if softwareDecoderBuffersOneFrame {
+        try! decoder.decode(fixture.packet(keyFrames[0] + 1))
+    }
     expect(collected.all.count == 1, "the first key frame decodes -- got \(collected.all.count) frames")
     decoder.reset()
     collected.removeAll()
     try! decoder.decode(fixture.packet(keyFrames[1]))
+    if softwareDecoderBuffersOneFrame {
+        try! decoder.decode(fixture.packet(keyFrames[1] + 1))
+    }
     expect(
         collected.all.count == 1,
         "the key frame after a reset decodes as well -- got \(collected.all.count) frames"
@@ -233,6 +247,9 @@ private func aBrokenParameterSetIsRefusedAndRecoveredFrom(_ fixture: DecoderFixt
     }
     expect(collected.all.isEmpty, "and hands over no picture -- got \(collected.all.count) frames")
     try! decoder.decode(fixture.packet(keyFrameIndex))
+    if softwareDecoderBuffersOneFrame {
+        try! decoder.decode(fixture.packet(keyFrameIndex + 1))
+    }
     expect(
         collected.all.count == 1,
         "a sound parameter set after a broken one still opens and decodes -- got \(collected.all.count) frames"
@@ -245,11 +262,17 @@ private func resetCyclesDoNotAccumulateFrames(_ fixture: DecoderFixture) {
     let counts = FrameCycleCounts()
     let decoder = AVCodecVideoDecoder(renderNodePath: nil) { _ in counts.recordDelivery() }
     try! decoder.decode(fixture.packet(keyFrameIndex))
+    if softwareDecoderBuffersOneFrame {
+        try! decoder.decode(fixture.packet(keyFrameIndex + 1))
+    }
     decoder.reset()
     let settled = AVFrameBox.liveCount
     let cycles = 200
     for _ in 0..<cycles {
         try! decoder.decode(fixture.packet(keyFrameIndex))
+        if softwareDecoderBuffersOneFrame {
+            try! decoder.decode(fixture.packet(keyFrameIndex + 1))
+        }
         decoder.reset()
     }
     expect(
