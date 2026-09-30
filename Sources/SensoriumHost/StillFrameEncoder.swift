@@ -200,6 +200,8 @@ public enum StillFrameEncoder {
         switch (codec, profileLevel) {
         case (.h264, .baselineAutoLevel):
             return kVTProfileLevel_H264_Baseline_AutoLevel
+        case (.h264, .constrainedBaselineAutoLevel):
+            return kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel
         case (.h264, .mainAutoLevel):
             return kVTProfileLevel_H264_Main_AutoLevel
         case (.h264, .highAutoLevel):

@@ -14,6 +14,13 @@ once it reaches 1.0.
   without the short hold the viewer adds to keep motion smooth.
 - The Linux viewer sends keys, clicks and pointer moves to the host in
   the order they happened.
+- On a Linux viewer whose video decoder is OpenH264, as on a stock
+  Fedora install, the last change on a still host screen no longer
+  waits up to a second to appear. That viewer now asks the host for a
+  simpler kind of video its decoder shows at once. Other viewers are
+  unchanged.
+- The Linux viewer no longer says it decodes in hardware when its
+  video decoder is one that only decodes in software.
 
 ## [0.2.0] - 2026-09-29
 

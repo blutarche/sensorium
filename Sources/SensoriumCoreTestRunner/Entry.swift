@@ -104,6 +104,7 @@ struct SensoriumCoreTestRunner {
             ("scale range is general, and the session canvas range reproduces today's constants", testScaleRangeIsGeneralAndTheSessionCanvasRangeReproducesTodaysConstants),
             ("clipboardSharing round-trips both values and refuses malformed shapes", testClipboardSharingRoundTripsAndRefusesMalformed),
             ("clipboardRefused round-trips every reason and refuses malformed shapes", testClipboardRefusedRoundTripsAndRefusesMalformed),
+            ("viewerDecoderPreference round-trips and refuses malformed shapes", testViewerDecoderPreferenceRoundTripsAndRefusesMalformed),
             ("the fidelity ladder spends resolution before frame rate and quality", testStreamFidelityLadderSpendsResolutionBeforeFrameRateAndQuality),
             ("fidelity pressure names the stage that cannot keep up", testStreamFidelityPressureNamesTheStageThatCannotKeepUp),
             ("fidelity pressure prefers the earliest stage that is behind", testStreamFidelityPressurePrefersTheEarliestStageThatIsBehind),

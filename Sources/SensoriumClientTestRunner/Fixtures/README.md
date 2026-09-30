@@ -1,7 +1,7 @@
 # H.264 decoder fixture
 
 `h264-sample.bin` is six access units of 320x200 flat-colour video, encoded
-at H.264 Main profile, the profile the Sensorium host encodes at, in exactly
+at H.264 Main profile, the profile the Sensorium host encodes at by default, in exactly
 the shape the Sensorium wire carries: raw SPS and PPS parameter sets delivered out
 of band, and access units whose NAL units are prefixed with a four-byte big
 endian length rather than Annex B start codes. The file is the SPS bytes, then
@@ -13,3 +13,10 @@ them. It was produced by encoding six generated frames at 320x200 with a
 forced key frame at those two positions and writing the encoder's own output
 unchanged; nothing about it is platform specific once written, and it is small
 enough to read in full.
+
+`h264-baseline-sample.bin` and `h264-baseline-sample.json` are the same
+shape at Constrained Baseline profile, the profile the host encodes at
+for a viewer that asks for it. They are six flat-colour frames at
+320x200 with key frames at the same two positions, encoded by
+VideoToolbox with the host encoder's settings, apart from the frame-delay
+cap VideoToolbox does not accept at that size, and written unchanged.

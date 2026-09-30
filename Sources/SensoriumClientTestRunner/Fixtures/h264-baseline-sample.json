@@ -1,0 +1,9 @@
+{
+  "width": 320,
+  "height": 200,
+  "sequenceParameterSetLength": 10,
+  "pictureParameterSetLength": 4,
+  "nalUnitLengthSize": 4,
+  "accessUnitLengths": [280, 320, 319, 248, 323, 323],
+  "accessUnitIsKeyFrame": [true, false, false, true, false, false]
+}

@@ -140,6 +140,10 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         pipeline?.requestKeyFrame()
     }
 
+    public func use(profileLevel: VideoEncoderProfileLevel) {
+        configuration = configuration.with(profileLevel: profileLevel)
+    }
+
     /// `nil` with no pipeline as well as with no frame yet: neither has a
     /// picture to send again.
     public func refreshStillPicture() async throws -> Int? {

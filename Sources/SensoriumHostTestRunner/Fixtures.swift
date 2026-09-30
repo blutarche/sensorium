@@ -627,6 +627,14 @@ final class FakeCanvasMedia: CanvasMediaStreaming {
     func emit(_ packet: EncodedVideoFramePacket) {
         packetHandler?(packet)
     }
+
+    /// Every profile this media was told to encode at, each with how many
+    /// times it had already been started when it was told.
+    private(set) var usedProfileLevels: [(profileLevel: VideoEncoderProfileLevel, startsBefore: Int)] = []
+
+    func use(profileLevel: VideoEncoderProfileLevel) {
+        usedProfileLevels.append((profileLevel, startedDisplayIDs.count))
+    }
 }
 
 enum FakeMediaFailure: Error {

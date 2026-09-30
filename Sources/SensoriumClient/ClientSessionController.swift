@@ -136,6 +136,7 @@ public actor ClientSessionController {
     /// one display; the live "Displays" menu is the only way a second one
     /// opens.
     private let requestSecondCanvas: Bool
+    private let decoderPreference: ViewerH264Profile?
     /// This session's own counter for `SensoriumMessage.input`'s `sequence`
     /// tag -- see `SessionMetricStage.inputRoundTrip`.
     private var nextInputSequence: UInt64 = 0
@@ -179,16 +180,21 @@ public actor ClientSessionController {
     /// to support `surfaceID` at all.
     public var didOpenSecondCanvas: Bool { secondCanvasDisplayID != nil }
 
+    /// `decoderPreference` is sent right after an authenticated hello, before
+    /// any target is requested, so the host builds its encoder to suit this
+    /// viewer's decoder. See `ViewerDecoderSelection`.
     public init(
         transport: any SensoriumControlTransport,
         identity: DeviceIdentity? = nil,
         pinnedHostPublicKey: Data? = nil,
-        requestSecondCanvas: Bool = false
+        requestSecondCanvas: Bool = false,
+        decoderPreference: ViewerH264Profile? = nil
     ) {
         self.transport = transport
         self.identity = identity
         self.pinnedHostPublicKey = pinnedHostPublicKey
         self.requestSecondCanvas = requestSecondCanvas
+        self.decoderPreference = decoderPreference
     }
 
     public func setCanvasObserver(_ observer: any CanvasLifecycleObserving) {
@@ -321,6 +327,9 @@ public actor ClientSessionController {
                 hostCertificateHash: hostCertificateHash,
                 signature: signature
             ))
+            if let decoderPreference {
+                try await transport.send(.viewerDecoderPreference(h264Profile: decoderPreference))
+            }
         } else {
             try await transport.send(.hello(protocolVersion: 1, deviceName: deviceName))
         }

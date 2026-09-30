@@ -122,6 +122,7 @@ public final class AVCodecVideoDecoder: VideoDecoding, @unchecked Sendable {
     private let receipts: FrameReceiptLedger?
     private let outputHandler: @Sendable (DecodedFrame) -> Void
     private let renderNodePath: String?
+    private let decoderName: String?
 
     private var context: UnsafeMutablePointer<AVCodecContext>?
     private var deviceReference: UnsafeMutablePointer<AVBufferRef>?
@@ -142,14 +143,18 @@ public final class AVCodecVideoDecoder: VideoDecoding, @unchecked Sendable {
     }
 
     /// `renderNodePath` is the DRM render node hardware decode is attempted
-    /// through; `nil` asks for software decode outright.
+    /// through; `nil` asks for software decode outright. `decoderName` names
+    /// one libavcodec H.264 decoder to use; `nil` takes the one libavcodec
+    /// picks for H.264.
     public init(
         receipts: FrameReceiptLedger? = nil,
         renderNodePath: String? = defaultRenderNodePath,
+        decoderName: String? = nil,
         outputHandler: @escaping @Sendable (DecodedFrame) -> Void
     ) {
         self.receipts = receipts
         self.renderNodePath = renderNodePath
+        self.decoderName = decoderName
         self.outputHandler = outputHandler
     }
 
@@ -359,7 +364,8 @@ public final class AVCodecVideoDecoder: VideoDecoding, @unchecked Sendable {
     }
 
     private func openContext(extradata: Data, renderNodePath: String?) throws {
-        guard let codec = avcodec_find_decoder(AV_CODEC_ID_H264) else {
+        let found = decoderName.map { avcodec_find_decoder_by_name($0) } ?? avcodec_find_decoder(AV_CODEC_ID_H264)
+        guard let codec = found else {
             throw AVCodecVideoDecoderError.decoderOpenFailed(0)
         }
         guard let newContext = avcodec_alloc_context3(codec) else {

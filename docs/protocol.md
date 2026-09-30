@@ -74,6 +74,7 @@ Tag 3 carries text or an image between the two machines' pasteboards, in both di
 | `streamScalePreference(preference, surfaceID)` | client → host | A person's explicit stream-scale choice, or a return to automatic |
 | `displayCount(count)` | client → host | The viewer's live choice of `1` or `2` session displays |
 | `clipboardSharing(enabled)` | client → host | The viewer's on/off choice, sent after every connect and on every change. No reply |
+| `viewerDecoderPreference(h264Profile)` | client → host | The H.264 profile the viewer's decoder shows without delay. Sent right after `authenticatedHello`, before any target is requested. No reply. See Viewer decoder preference below |
 | `clipboardRefused(reason)` | host → client | A clipboard the host did not share: `too-large` (with `clipboardByteCount` and `clipboardLimit`), `excluded-type`, or `unsupported-content`. Never carries content |
 | `timeSyncRequest(clientTimeNanoseconds)` | client → host | Relates the two monotonic clocks. Requires authentication |
 | `timeSyncReply(clientTimeNanoseconds, hostTimeNanoseconds)` | host → client | Echoes the request timestamp and stamps the host clock |
@@ -226,6 +227,22 @@ A stage with no samples yet is absent, never a zero. Sent once per `TelemetryPol
 A reading naming a surface the session cannot have is dropped. A rate that is not finite, or a rate or duration below zero, drops the whole sample instead of clamping it to zero. Zero itself is kept.
 
 Nothing in this message names an address, a window, a file, or anything the person at the viewer did: stage timings and rates only, the same rule `docs/privacy.md` states for traces.
+
+## Viewer decoder preference
+
+`viewerDecoderPreference(h264Profile)` names the one H.264 profile the viewer asks every encoder of this connection to use. The only value is `constrained-baseline`. Any other value is malformed.
+
+A viewer sends it when its decoder releases a picture of any other profile only once the next access unit arrives. OpenH264 does this, and a host sends nothing while its screen is still, so the last change would wait on screen until something else moved. The Linux viewer sends it when libavcodec's H.264 decoder is `libopenh264`. The macOS viewer never sends it.
+
+| Rule | Behaviour |
+|---|---|
+| Authentication | Required, like `clipboardSharing`. Unauthenticated, it is refused and the connection ends |
+| Timing | Honoured only before the connection's first `canvasRequest` or `hostScreenRequest` is admitted. Afterwards it is ignored, since every encoder is already built |
+| Effect | The host encodes this connection's video, still-screen refreshes included, in Constrained Baseline. Every other connection is unaffected |
+| Lifetime | The rest of the connection, across a `goodbye` and a later target on the same connection |
+| Older host | Decodes it as `.unrecognized` and skips it. The viewer gets Main profile, as before |
+
+It can only lower the profile, never raise it, and it is a separate message rather than a field on `authenticatedHello` so the signed hello transcript is unchanged. `protocolVersion` is not bumped for it.
 
 ## Host screen
 

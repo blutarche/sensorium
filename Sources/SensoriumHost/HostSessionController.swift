@@ -353,6 +353,11 @@ public final class HostSessionController {
     /// distinction nothing can act on would be state a later change has to
     /// keep correct for nothing.
     public private(set) var focusedSurface: CanvasSurfaceID?
+    /// The profile this connection's viewer asked every encoder to use, or
+    /// `nil` for the host's own default. Kept for the connection's whole
+    /// life: it describes the viewer's decoder, which a `goodbye` does not
+    /// change.
+    public private(set) var viewerRequestedProfileLevel: VideoEncoderProfileLevel?
 
     /// Set immediately before this controller calls `hostScreenPresenceGate.ask`
     /// while handling a `.hostScreenRequest`, and reset to `nil` at the start
@@ -1243,6 +1248,22 @@ public final class HostSessionController {
                 throw HostSessionControllerError.authenticationRequired
             }
             onClipboardSharingChanged?(enabled)
+            return nil
+        case let .viewerDecoderPreference(h264Profile):
+            guard !requireAuthentication || isAuthenticated else {
+                throw HostSessionControllerError.authenticationRequired
+            }
+            // An encoder's profile is fixed when it is built, which is when
+            // the target is admitted. A preference arriving after that would
+            // describe a stream this connection is not getting, so it is
+            // ignored rather than applied to part of the session.
+            guard connectionShape == nil else {
+                return nil
+            }
+            switch h264Profile {
+            case .constrainedBaseline:
+                viewerRequestedProfileLevel = .constrainedBaselineAutoLevel
+            }
             return nil
         case let .authenticatedHello(protocolVersion, deviceName, publicKey, helloCertificateHash, signature):
             guard !isAuthenticated else {

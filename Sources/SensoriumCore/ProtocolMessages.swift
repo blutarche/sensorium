@@ -199,11 +199,25 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// offer the unlock prompt. Sent unprompted right after `hostScreenReady`
     /// and again after every unlock attempt. Host to viewer only.
     case hostScreenLockState(locked: Bool)
+    /// The H.264 profile this viewer's decoder shows pictures from without
+    /// delay, sent once right after `authenticatedHello` and before any
+    /// target is requested. Viewer to host only. A preference, never a
+    /// requirement: it can only lower the profile the host encodes at, and a
+    /// host that does not know it skips it.
+    case viewerDecoderPreference(h264Profile: ViewerH264Profile)
     /// A wire `type` this build does not know, from a peer running a
     /// different protocol revision. Decode-only: nothing ever constructs this
     /// to send, and `encode` refuses it -- fabricating wire bytes for it
     /// would itself be inventing a new message type.
     case unrecognized(type: String)
+}
+
+/// The H.264 profiles a viewer can ask the host to encode at.
+public enum ViewerH264Profile: String, Equatable, Sendable {
+    /// No B-frames and no CABAC. Some software decoders release a picture
+    /// of any other profile only once the next access unit arrives, which a
+    /// screen that has stopped changing never sends.
+    case constrainedBaseline = "constrained-baseline"
 }
 
 /// What one `hostScreenUnlockRequest` did, as stable string tokens rather
@@ -559,6 +573,8 @@ public enum SensoriumFrameCodec {
         var hostScreenLocked: Bool? = nil
         /// `hostScreenList`'s own canvas availability. Absent means available.
         var canvasAvailable: Bool? = nil
+        /// `viewerDecoderPreference`'s own profile token.
+        var h264Profile: String? = nil
     }
 
     private struct WireHostScreenModeEntry: Codable {
@@ -877,6 +893,8 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "pairIntent", protocolVersion: nil, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .clipboardSharing(enabled):
             wire = WireMessage(type: "clipboardSharing", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, clipboardSharingEnabled: enabled)
+        case let .viewerDecoderPreference(h264Profile):
+            wire = WireMessage(type: "viewerDecoderPreference", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, h264Profile: h264Profile.rawValue)
         case let .clipboardRefused(refusal):
             var byteCount: Int? = nil
             var limit: Int? = nil
@@ -1034,6 +1052,13 @@ public enum SensoriumFrameCodec {
                 throw SensoriumProtocolError.malformedMessage
             }
             return .clipboardSharing(enabled: enabled)
+        case "viewerDecoderPreference":
+            // An unknown profile is malformed rather than `.unrecognized`,
+            // the same rule `streamScalePreference`'s kind follows.
+            guard let token = wire.h264Profile, let profile = ViewerH264Profile(rawValue: token) else {
+                throw SensoriumProtocolError.malformedMessage
+            }
+            return .viewerDecoderPreference(h264Profile: profile)
         case "clipboardRefused":
             // An unknown reason token is malformed rather than
             // `.unrecognized`, the same rule `streamScalePreference`'s kind

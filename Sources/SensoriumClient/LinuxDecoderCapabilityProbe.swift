@@ -8,9 +8,11 @@ import Foundation
 /// still runs every session, and a probe that cannot open a single node
 /// answers `false` rather than refusing anything.
 ///
-/// The question is asked of libva directly rather than of libavcodec, because
-/// libavcodec reports the decoder it was built with, while what matters here
-/// is whether the driver installed on this machine offers an H.264 profile.
+/// Two things must both hold. libavcodec must open its own `h264` decoder,
+/// the only one that decodes through a VA-API device; a build whose H.264
+/// decoder is OpenH264 decodes on the CPU whatever the driver offers. And
+/// the driver installed on this machine must offer an H.264 profile, which
+/// is asked of libva directly, since libavcodec cannot say.
 public struct LinuxDecoderCapabilityProbe: VideoDecodeCapabilities {
     /// The render nodes a Linux machine numbers its GPUs with. A machine with
     /// one GPU has `renderD128`; the rest are the next seven, which is as many
@@ -20,10 +22,10 @@ public struct LinuxDecoderCapabilityProbe: VideoDecodeCapabilities {
     public init() {}
 
     public func hasH264HardwareDecoder() -> Bool {
-        for number in Self.renderNodeNumbers where offersH264(atRenderNode: "/dev/dri/renderD\(number)") {
-            return true
-        }
-        return false
+        ViewerDecoderSelection.decodesInHardware(
+            decoderName: ViewerDecoderSelection.platformDecoderName,
+            driverOffersH264: Self.renderNodeNumbers.contains { offersH264(atRenderNode: "/dev/dri/renderD\($0)") }
+        )
     }
 
     private func offersH264(atRenderNode path: String) -> Bool {

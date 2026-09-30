@@ -68,10 +68,14 @@ public protocol CanvasMediaStreaming: AnyObject {
     /// so a conformer with no such signal to report keeps conforming
     /// unchanged.
     func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?)
+    /// Sets the profile every encoder this media builds from now on uses.
+    /// Called only before `start`.
+    func use(profileLevel: VideoEncoderProfileLevel)
 }
 
 public extension CanvasMediaStreaming {
     func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {}
+    func use(profileLevel: VideoEncoderProfileLevel) {}
 }
 
 public enum CanvasMediaReconfigurationError: Error, Equatable {
@@ -2338,6 +2342,9 @@ public final class HostSessionCoordinator {
                 await self?.canvasCaptureStoppedOnItsOwn(on: surface, generation: generation)
             }
         }
+        if let profileLevel = controller.viewerRequestedProfileLevel {
+            media[surface].use(profileLevel: profileLevel)
+        }
         try await media[surface].start(canvasDisplayID: canvasDisplayID) { packet in
             // The focused canvas's frames are preferred on the shared wire.
             // With no focus reported this is `.normal` for every surface,
@@ -2515,7 +2522,13 @@ public final class HostSessionCoordinator {
     /// How big this geometry may actually be encoded, saying so out loud
     /// when the display is larger than the encoder will take.
     private func hostScreenEncoderSizing(for geometry: SessionSurfaceGeometry) -> HostScreenEncoderSizing.Result {
-        let sizing = HostScreenEncoderSizing.resolve(for: geometry)
+        var sizing = HostScreenEncoderSizing.resolve(for: geometry)
+        if let profileLevel = controller.viewerRequestedProfileLevel {
+            sizing = HostScreenEncoderSizing.Result(
+                configuration: sizing.configuration.with(profileLevel: profileLevel),
+                wasClamped: sizing.wasClamped
+            )
+        }
         if sizing.wasClamped {
             // Loud, not silent: a real display's own logical size is being
             // held below what it actually is, and that is worth knowing

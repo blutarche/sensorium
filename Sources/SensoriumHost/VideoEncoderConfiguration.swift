@@ -10,6 +10,9 @@ public enum VideoCodec: Equatable, Sendable {
 /// VideoToolbox pick a default.
 public enum VideoEncoderProfileLevel: Equatable, Sendable {
     case baselineAutoLevel
+    /// Baseline with constraint_set1_flag set: no FMO, ASO or redundant
+    /// slices, which every Baseline decoder can take.
+    case constrainedBaselineAutoLevel
     case mainAutoLevel
     case highAutoLevel
 }
@@ -196,6 +199,29 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
             profileLevel: profileLevel,
             requiresHardwareAcceleration: requiresHardwareAcceleration,
             qualityScale: clamped
+        )
+    }
+
+    /// The same configuration at a different profile. Everything else,
+    /// bitrate included, is unchanged.
+    public func with(profileLevel newProfileLevel: VideoEncoderProfileLevel) -> Self {
+        Self(
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            codec: codec,
+            maxQueueDepth: maxQueueDepth,
+            captureWidth: captureWidth,
+            captureHeight: captureHeight,
+            encodeWidth: encodeWidth,
+            encodeHeight: encodeHeight,
+            averageBitRate: averageBitRate,
+            dataRateLimitBytes: dataRateLimitBytes,
+            dataRateLimitSeconds: dataRateLimitSeconds,
+            maxFrameDelayCount: maxFrameDelayCount,
+            profileLevel: newProfileLevel,
+            requiresHardwareAcceleration: requiresHardwareAcceleration,
+            qualityScale: qualityScale
         )
     }
 

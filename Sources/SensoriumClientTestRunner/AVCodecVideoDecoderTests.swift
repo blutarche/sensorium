@@ -58,13 +58,15 @@ private struct DecoderFixture {
         ))
     }
 
-    static func load() -> DecoderFixture {
+    /// `name` is the fixture's file name without its extension: `h264-sample`
+    /// is Main profile, `h264-baseline-sample` Constrained Baseline.
+    static func load(_ name: String = "h264-sample") -> DecoderFixture {
         let directory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures")
-        let blob = try! Data(contentsOf: directory.appendingPathComponent("h264-sample.bin"))
+        let blob = try! Data(contentsOf: directory.appendingPathComponent("\(name).bin"))
         let sidecar = try! JSONSerialization.jsonObject(
-            with: Data(contentsOf: directory.appendingPathComponent("h264-sample.json"))
+            with: Data(contentsOf: directory.appendingPathComponent("\(name).json"))
         ) as! [String: Any]
         let spsLength = sidecar["sequenceParameterSetLength"] as! Int
         let ppsLength = sidecar["pictureParameterSetLength"] as! Int
@@ -129,6 +131,37 @@ func testAVCodecVideoDecoderTests() {
     aPacketBeforeAnyParameterSetIsRefused(fixture)
     aBrokenParameterSetIsRefusedAndRecoveredFrom(fixture)
     resetCyclesDoNotAccumulateFrames(fixture)
+    openH264ShowsEachBaselinePictureBeforeTheNextArrives(DecoderFixture.load("h264-baseline-sample"))
+}
+
+/// OpenH264 holds back every picture of a Main-profile stream until the next
+/// access unit arrives, and a still host screen sends none. Constrained
+/// Baseline is what a viewer decoding with OpenH264 asks for, and each of its
+/// pictures must come out of the packet that carried it.
+private func openH264ShowsEachBaselinePictureBeforeTheNextArrives(_ fixture: DecoderFixture) {
+    guard avcodec_find_decoder_by_name("libopenh264") != nil else {
+        print("SKIP: this libavcodec has no OpenH264 decoder to check")
+        return
+    }
+    let sps = fixture.sequenceParameterSet
+    expect(
+        sps.count > 3 && sps[sps.startIndex + 1] == 66 && sps[sps.startIndex + 2] & 0x40 != 0,
+        "the fixture is Constrained Baseline, profile_idc 66 with constraint_set1_flag, as the host sends it"
+    )
+    let collected = CollectedFrames()
+    let decoder = AVCodecVideoDecoder(renderNodePath: nil, decoderName: "libopenh264") { collected.append($0) }
+    for index in fixture.accessUnits.indices {
+        try! decoder.decode(fixture.packet(index))
+        expect(
+            collected.all.count == index + 1,
+            "OpenH264 delivers picture \(index) before packet \(index + 1) is fed -- got \(collected.all.count) pictures"
+        )
+    }
+    expect(
+        collected.all.allSatisfy { $0.width == fixture.width && $0.height == fixture.height },
+        "every picture carries the fixture's size"
+    )
+    print("PASS: OpenH264 shows each picture of a Baseline stream as soon as its packet arrives")
 }
 
 private func softwareDecodeProducesFramesOfTheFixtureSize(_ fixture: DecoderFixture) {

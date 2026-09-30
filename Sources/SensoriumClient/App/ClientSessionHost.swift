@@ -303,7 +303,8 @@ final class ClientSessionHost {
         let controller = ClientSessionController(
             transport: transport,
             identity: identity,
-            pinnedHostPublicKey: saved.hostPublicKey
+            pinnedHostPublicKey: saved.hostPublicKey,
+            decoderPreference: ViewerDecoderSelection.platformRequestedProfile
         )
         let primaryWindow = try await ensurePrimaryWindow(attachingTo: controller)
         // Built, not shown. A dial with nothing to look at yet is reported on
