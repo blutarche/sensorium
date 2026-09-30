@@ -85,6 +85,66 @@ func testViewerPresentationPacingTests() {
         "a frame 300 milliseconds behind the stream is drawn on the next refresh, not held further"
     )
 
+    // The first picture after the screen sat still has no neighbours to keep
+    // even, so it is drawn at once; the frames after it are paced as usual.
+    var idle = warmedPacer(interval: interval, transit: transit, start: start, frames: warmUpFrames)
+    let pacedHold = idle.holdNanoseconds
+    let idleCapture = start + Int64(warmUpFrames) * interval + 500_000_000
+    let idleArrival = idleCapture + transit
+    idle.admit(makePacedFrame(capturedAtNanoseconds: idleCapture), nowNanoseconds: idleArrival)
+    let idleFirst = idle.frameToPresent(nowNanoseconds: idleArrival)
+    expect(
+        capturedAt(idleFirst) == idleCapture && idleFirst?.dueAtNanoseconds == idleArrival,
+        "a frame after a long still spell is due the moment it arrives, got \(String(describing: idleFirst?.dueAtNanoseconds))"
+    )
+    expect(
+        idle.holdNanoseconds == pacedHold,
+        "and does not change the hold shown for paced frames, got \(idle.holdNanoseconds) instead of \(pacedHold)"
+    )
+    let burst = (1...3).map { idleCapture + Int64($0) * interval }
+    for capture in burst {
+        idle.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: idleArrival)
+    }
+    expect(
+        idle.frameToPresent(nowNanoseconds: idleArrival) == nil,
+        "the frames that follow it are held as usual"
+    )
+    var idleShown: [Int64] = []
+    var idleTick = idleArrival
+    while idleShown.count < burst.count, idleTick < idleArrival + 1_000_000_000 {
+        if let presentation = idle.frameToPresent(nowNanoseconds: idleTick) {
+            idleShown.append(presentation.frame.timing?.hostCapturedAtNanoseconds ?? -1)
+            expect(presentation.supersededCount == 0, "and none is given up for a later one")
+        }
+        idleTick += 1_000_000
+    }
+    expect(idleShown == burst, "and are drawn in capture order, got \(idleShown)")
+
+    // Ahead of a waiting frame the idle test does not apply: it would jump
+    // the queue.
+    var queuedIdle = warmedPacer(interval: interval, transit: transit, start: start, frames: warmUpFrames)
+    let queuedCapture = start + Int64(warmUpFrames) * interval
+    queuedIdle.admit(makePacedFrame(capturedAtNanoseconds: queuedCapture), nowNanoseconds: queuedCapture + transit)
+    queuedIdle.admit(
+        makePacedFrame(capturedAtNanoseconds: queuedCapture + 500_000_000),
+        nowNanoseconds: queuedCapture + 500_000_000 + transit
+    )
+    let queuedRefresh = queuedIdle.frameToPresent(nowNanoseconds: queuedCapture + 500_000_000 + transit)
+    expect(
+        capturedAt(queuedRefresh) == queuedCapture && queuedRefresh?.supersededCount == 0,
+        "a frame with another still waiting is never treated as the first after a still spell"
+    )
+
+    // A pause shorter than the hold plus a frame interval is not a still
+    // spell.
+    var brief = warmedPacer(interval: interval, transit: transit, start: start, frames: warmUpFrames)
+    let briefCapture = start + Int64(warmUpFrames) * interval + interval
+    brief.admit(makePacedFrame(capturedAtNanoseconds: briefCapture), nowNanoseconds: briefCapture + transit)
+    expect(
+        brief.frameToPresent(nowNanoseconds: briefCapture + transit) == nil,
+        "a pause no longer than the hold plus a frame interval still holds the frame that ends it"
+    )
+
     // Arrivals that vary are held longer, so the gaps between them are
     // absorbed rather than shown as judder.
     var jittery = PresentationPacer()

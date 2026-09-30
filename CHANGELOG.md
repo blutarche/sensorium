@@ -8,6 +8,11 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- The first change after the host screen was still appears at once,
+  without the short hold the viewer adds to keep motion smooth.
+
 ## [0.2.0] - 2026-09-29
 
 ### Added

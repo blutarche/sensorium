@@ -31,6 +31,11 @@ import SensoriumCore
 /// than the whole window's spread is therefore already past due and is drawn
 /// at the next refresh rather than held.
 ///
+/// The first frame after the stream has gone still is not held at all: it has
+/// no neighbour whose spacing it could disturb, and holding it would only
+/// delay a typed character or a click. The frames after it are paced as above,
+/// and `holdNanoseconds` describes those.
+///
 /// Pure and nonisolated: what to draw when is decided here, and the drawing
 /// itself, the display link and the GPU stay in `MetalFramePresenter`.
 public struct PresentationPacer: Sendable {
@@ -99,6 +104,7 @@ public struct PresentationPacer: Sendable {
             return append(frame, dueAtNanoseconds: nowNanoseconds)
         }
         let capturedAt = timing.hostCapturedAtNanoseconds
+        let previousCapturedAt = lastCapturedAtNanoseconds
         recordCaptureInterval(capturedAt: capturedAt)
         append(&arrivalDelays, nowNanoseconds - capturedAt)
         let interval = frameIntervalNanoseconds
@@ -107,10 +113,16 @@ public struct PresentationPacer: Sendable {
         // `spread` is never negative, so this is already at least one frame
         // interval.
         holdNanoseconds = min(spread + interval, Self.maximumHoldNanoseconds)
+        // Longer than a frame held for the most it can be, so the frame before
+        // it was already on screen and nothing is left to keep even.
+        let firstAfterStillness = pending.isEmpty
+            && previousCapturedAt.map { capturedAt - $0 > holdNanoseconds + interval } == true
         return append(
             frame,
             capturedAtNanoseconds: capturedAt,
-            dueAtNanoseconds: capturedAt + baseline + holdNanoseconds
+            dueAtNanoseconds: firstAfterStillness
+                ? nowNanoseconds
+                : capturedAt + baseline + holdNanoseconds
         )
     }
 
