@@ -33,13 +33,17 @@ enum ViewVerbs {
         // the first real draw found, for a run diagnosing a picture that is
         // not on screen.
         let tracesPresentation = arguments.contains("--trace")
+        // Streams the host's offered screen rather than a session canvas,
+        // which a host only creates when its owner has offered one.
+        let streamsHostScreen = arguments.contains("--host-screen")
         arguments.removeAll {
             $0 == "--capture" || $0 == "--clipboard" || $0 == "--clipboard-roundtrip" || $0 == "--trace"
+                || $0 == "--host-screen"
         }
         switch arguments.first {
         case "view":
             guard arguments.count == 3 || arguments.count == 4, let port = UInt16(arguments[2]) else {
-                say("usage: SensoriumViewerProbe view <host> <port> [seconds] [--capture] [--clipboard] [--trace]")
+                say("usage: SensoriumViewerProbe view <host> <port> [seconds] [--capture] [--clipboard] [--trace] [--host-screen]")
                 exit(2)
             }
             let host = arguments[1]
@@ -51,7 +55,8 @@ enum ViewVerbs {
                     seconds: seconds,
                     capturesPointer: capturesPointer,
                     sharesClipboard: sharesClipboard,
-                    tracesPresentation: tracesPresentation
+                    tracesPresentation: tracesPresentation,
+                    streamsHostScreen: streamsHostScreen
                 )
             }
         case "view-selftest":
@@ -92,6 +97,9 @@ enum ViewVerbs {
     /// inside the window, which is the only way to reach it here: the menu
     /// item the macOS viewer offers has no counterpart on this rig.
     ///
+    /// `streamsHostScreen` asks for the host's offered screen, as the viewer
+    /// app does by default, instead of a session canvas.
+    ///
     /// `sharesClipboard` is off unless asked for, unlike the viewer app. A
     /// clipboard session is built either way, so a tag 3 packet always
     /// reaches the real apply path rather than being silently dropped by a
@@ -104,7 +112,8 @@ enum ViewVerbs {
         seconds: Int?,
         capturesPointer: Bool,
         sharesClipboard: Bool,
-        tracesPresentation: Bool
+        tracesPresentation: Bool,
+        streamsHostScreen: Bool
     ) async -> Int32 {
         guard let identity = ViewerProbe.loadIdentity() else { return 1 }
         let store = FileSavedHostStore(url: ViewerProbe.savedHostURL())
@@ -129,7 +138,8 @@ enum ViewVerbs {
             controller = ClientSessionController(
                 transport: connection,
                 identity: identity,
-                pinnedHostPublicKey: saved.hostPublicKey
+                pinnedHostPublicKey: saved.hostPublicKey,
+                decoderPreference: ViewerDecoderSelection.platformRequestedProfile
             )
             // The window is built before the session connects, and its
             // viewport registered before that, because the canvas-ready
@@ -147,7 +157,10 @@ enum ViewVerbs {
                 window.onFirstDrawDiagnostics = { say("Sensorium: \($0)") }
             }
             await controller.setCanvasObserver(window.canvasObserver())
-            switch try await controller.connect(deviceName: ViewerProbe.deviceName(), target: .sessionCanvas) {
+            switch try await controller.connect(
+                deviceName: ViewerProbe.deviceName(),
+                target: streamsHostScreen ? .offeredHostScreen(preferredDisplayIdentity: nil) : .sessionCanvas
+            ) {
             case let .canvas(displayID, _):
                 say("Session canvas ready, display \(displayID).")
             case let .hostScreen(geometry, _, _):
