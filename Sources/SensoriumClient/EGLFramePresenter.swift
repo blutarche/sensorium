@@ -84,6 +84,15 @@ public final class EGLFramePresenter {
     /// on first use because the matrix is compiled into the shader.
     private var programs: [NV12ColorConversion: Program] = [:]
     private var textures: [GLuint] = []
+    /// What each of `textures` currently has storage for, so a frame of the
+    /// same size and format is written into it instead of reallocating it.
+    private var planeStorage: [PlaneStorage?] = [nil, nil, nil]
+    /// Imports of the decoder's surfaces, kept for as long as the pool they
+    /// came from lives. Released by `tearDown()`, which can run from `deinit`.
+    nonisolated(unsafe) private var importedSurfaces = HardwareSurfaceImportCache<ImportedSurface>()
+    /// Keeps the pool named by `importedSurfaces` from being freed and its
+    /// address reused by a later pool, which would pass for the same pool.
+    nonisolated(unsafe) private var importedPoolReference: UnsafeMutablePointer<AVBufferRef>?
     private var latestFrame: AVFrameBox?
     private var latestTiming: FrameTiming?
     private var dueAtNanoseconds: Int64?
@@ -217,11 +226,7 @@ public final class EGLFramePresenter {
         textures = [GLuint](repeating: 0, count: 3)
         textures.withUnsafeMutableBufferPointer { glGenTextures(3, $0.baseAddress) }
         for texture in textures {
-            glBindTexture(GLenum(GL_TEXTURE_2D), texture)
-            glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GL_LINEAR)
-            glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GL_LINEAR)
-            glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GL_CLAMP_TO_EDGE)
-            glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GL_CLAMP_TO_EDGE)
+            Self.configure(texture)
         }
         resize(pixelWidth: pixelWidth, pixelHeight: pixelHeight)
     }
@@ -250,6 +255,9 @@ public final class EGLFramePresenter {
                 sensorium_egl_no_context()
             )
         }
+        // The textures go with the context; the images do not.
+        release(importedSurfaces.removeAll(), deletingTextures: false)
+        av_buffer_unref(&importedPoolReference)
         eglDestroySurface(display, surface)
         eglDestroyContext(display, context)
         eglTerminate(display)
@@ -589,6 +597,13 @@ public final class EGLFramePresenter {
         let release: () -> Void
     }
 
+    /// The size and texel format a plane's texture has storage for.
+    private struct PlaneStorage: Equatable {
+        let width: Int
+        let height: Int
+        let bytesPerPixel: Int
+    }
+
     private enum PlaneLayout: Hashable {
         /// Luma and interleaved chroma.
         case biplanar
@@ -614,6 +629,9 @@ public final class EGLFramePresenter {
         if box.pixelFormat == AV_PIX_FMT_VAAPI {
             return try bindExportedSurface(of: box, conversion: conversion)
         }
+        // The decoder fell back to software, so its surfaces are no longer
+        // coming and what was imported from them is dead weight.
+        releaseImportedSurfaces()
         switch box.pixelFormat {
         case AV_PIX_FMT_NV12:
             uploadPlane(
@@ -664,25 +682,96 @@ public final class EGLFramePresenter {
         }
     }
 
+    /// One decoder surface as the GPU sees it: an image per plane and the
+    /// texture each is bound to, made once and reused every time the decoder
+    /// returns to that surface.
+    private struct ImportedSurface {
+        let images: [EGLImageKHR]
+        let textures: [GLuint]
+    }
+
+    nonisolated private func release(_ surfaces: [ImportedSurface], deletingTextures: Bool) {
+        for surface in surfaces {
+            for image in surface.images {
+                sensorium_egl_destroy_image(display, image)
+            }
+            if deletingTextures {
+                var names = surface.textures
+                glDeleteTextures(GLsizei(names.count), &names)
+            }
+        }
+    }
+
+    /// Drops every import. Needs this presenter's context current.
+    private func releaseImportedSurfaces() {
+        release(importedSurfaces.removeAll(), deletingTextures: true)
+        av_buffer_unref(&importedPoolReference)
+    }
+
     /// The zero-copy path: the decoder's own surface, handed to the GPU as
-    /// dma-buf descriptors rather than read back and uploaded.
+    /// dma-buf descriptors rather than read back and uploaded. Each surface
+    /// is exported and imported the first time it appears; after that its
+    /// images and textures are reused.
     private func bindExportedSurface(
         of box: AVFrameBox,
         conversion: NV12ColorConversion
     ) throws -> BoundPlanes {
-        guard let vaDisplay = box.vaDisplay, let vaSurface = box.vaSurfaceID else {
+        guard let frame = box.frame, let vaDisplay = box.vaDisplay, let vaSurface = box.vaSurfaceID,
+              let poolBuffer = frame.pointee.hw_frames_ctx else {
             throw EGLFramePresenterError.unsupportedPixelFormat(box.pixelFormat.rawValue)
         }
+        // Every frame carries its own reference to the pool, so the reference
+        // differs frame to frame; the context it points at is the pool.
+        guard let poolContext = poolBuffer.pointee.data else {
+            throw EGLFramePresenterError.unsupportedPixelFormat(box.pixelFormat.rawValue)
+        }
+        let pool = UInt(bitPattern: poolContext)
+        if importedSurfaces.currentPool != pool {
+            releaseImportedSurfaces()
+            importedPoolReference = av_buffer_ref(poolBuffer)
+        }
+        release(
+            importedSurfaces.prepare(pool: pool, width: box.width, height: box.height),
+            deletingTextures: true
+        )
+        let syncStatus = sensorium_sync_va_surface(vaDisplay, vaSurface)
+        guard syncStatus == 0 else {
+            throw EGLFramePresenterError.unsupportedPixelFormat(syncStatus)
+        }
+        let key = HardwareSurfaceKey(display: UInt(bitPattern: vaDisplay), surface: UInt32(vaSurface))
+        let imported: ImportedSurface
+        if let cached = importedSurfaces.lookup(key) {
+            imported = cached
+        } else {
+            imported = try importSurface(display: vaDisplay, surface: vaSurface)
+            release(importedSurfaces.insert(imported, for: key), deletingTextures: true)
+        }
+        for (index, texture) in imported.textures.enumerated() {
+            glActiveTexture(GLenum(GL_TEXTURE0 + Int32(index)))
+            glBindTexture(GLenum(GL_TEXTURE_2D), texture)
+        }
+        return BoundPlanes(layout: .biplanar, conversion: conversion, release: {})
+    }
+
+    /// Exports one surface and wraps each plane in an image bound to a texture
+    /// of its own. The descriptors are closed as soon as the images exist: an
+    /// image keeps the memory alive by itself.
+    private func importSurface(display vaDisplay: VADisplay, surface vaSurface: VASurfaceID) throws -> ImportedSurface {
         var exported = SensoriumExportedSurface()
         let status = sensorium_export_va_surface(vaDisplay, vaSurface, &exported)
         guard status == 0 else {
             throw EGLFramePresenterError.unsupportedPixelFormat(status)
         }
+        defer { sensorium_close_exported_surface(&exported) }
         var images: [EGLImageKHR] = []
+        var names: [GLuint] = []
+        func abandon() {
+            release([ImportedSurface(images: images, textures: names)], deletingTextures: true)
+        }
         let layers = withUnsafeBytes(of: exported.layers) { raw in
             Array(raw.bindMemory(to: SensoriumExportedSurfaceLayer.self).prefix(Int(exported.layer_count)))
         }
-        for (index, layer) in layers.enumerated() {
+        for layer in layers {
             let attributes: [EGLint] = [
                 EGL_WIDTH, EGLint(layer.width),
                 EGL_HEIGHT, EGLint(layer.height),
@@ -697,30 +786,25 @@ public final class EGLFramePresenter {
             guard let image = attributes.withUnsafeBufferPointer({
                 sensorium_egl_create_dma_buf_image(display, $0.baseAddress)
             }), image != sensorium_egl_no_image() else {
-                for image in images {
-                    sensorium_egl_destroy_image(display, image)
-                }
-                sensorium_close_exported_surface(&exported)
+                abandon()
                 throw EGLFramePresenterError.unsupportedPixelFormat(Int32(bitPattern: eglGetError().magnitude))
             }
             images.append(image)
-            glActiveTexture(GLenum(GL_TEXTURE0 + Int32(index)))
-            glBindTexture(GLenum(GL_TEXTURE_2D), textures[index])
+            var texture: GLuint = 0
+            glGenTextures(1, &texture)
+            names.append(texture)
+            Self.configure(texture)
             sensorium_gl_bind_egl_image_to_texture(image)
         }
-        let eglDisplay = display
-        let closing = exported
-        return BoundPlanes(layout: .biplanar, conversion: conversion) {
-            // The images and their descriptors outlive the swap: the caller
-            // releases them only after `eglSwapBuffers` has returned and
-            // taken the rendered frame, and the textures stop naming
-            // these images at the next frame's binds.
-            for image in images {
-                sensorium_egl_destroy_image(eglDisplay, image)
-            }
-            var mutable = closing
-            sensorium_close_exported_surface(&mutable)
-        }
+        return ImportedSurface(images: images, textures: names)
+    }
+
+    private static func configure(_ texture: GLuint) {
+        glBindTexture(GLenum(GL_TEXTURE_2D), texture)
+        glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MIN_FILTER), GL_LINEAR)
+        glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_MAG_FILTER), GL_LINEAR)
+        glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_S), GL_CLAMP_TO_EDGE)
+        glTexParameteri(GLenum(GL_TEXTURE_2D), GLenum(GL_TEXTURE_WRAP_T), GL_CLAMP_TO_EDGE)
     }
 
     /// Uploads one plane, reading it at the stride libavcodec allocated rather
@@ -741,13 +825,28 @@ public final class EGLFramePresenter {
         glPixelStorei(GLenum(GL_UNPACK_ROW_LENGTH), GLint(stride / bytesPerPixel))
         let internalFormat: Int32 = bytesPerPixel == 1 ? GL_R8 : GL_RG8
         let format: Int32 = bytesPerPixel == 1 ? GL_RED : GL_RG
-        glTexImage2D(
+        let storage = PlaneStorage(width: width, height: height, bytesPerPixel: bytesPerPixel)
+        if planeStorage[index] != storage {
+            glTexImage2D(
+                GLenum(GL_TEXTURE_2D),
+                0,
+                internalFormat,
+                GLsizei(width),
+                GLsizei(height),
+                0,
+                GLenum(format),
+                GLenum(GL_UNSIGNED_BYTE),
+                nil
+            )
+            planeStorage[index] = storage
+        }
+        glTexSubImage2D(
             GLenum(GL_TEXTURE_2D),
             0,
-            internalFormat,
+            0,
+            0,
             GLsizei(width),
             GLsizei(height),
-            0,
             GLenum(format),
             GLenum(GL_UNSIGNED_BYTE),
             data

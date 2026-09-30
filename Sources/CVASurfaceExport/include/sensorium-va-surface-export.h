@@ -37,6 +37,12 @@ typedef struct {
 // no shader for it.
 int sensorium_export_va_surface(void *va_display, unsigned int surface, SensoriumExportedSurface *exported);
 
+// Waits until the decoder has finished writing a surface. Returns 0 on
+// success, or the VA status code otherwise. Needed before every read of a
+// surface, because an import made once is not synchronised with later writes
+// by anything but the driver's implicit dma-buf fences.
+int sensorium_sync_va_surface(void *va_display, unsigned int surface);
+
 // Closes every descriptor a successful export produced. Called once the GPU
 // has finished reading the images imported from them.
 void sensorium_close_exported_surface(SensoriumExportedSurface *exported);

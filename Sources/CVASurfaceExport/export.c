@@ -58,6 +58,11 @@ int sensorium_export_va_surface(void *va_display, unsigned int surface, Sensoriu
     return 0;
 }
 
+int sensorium_sync_va_surface(void *va_display, unsigned int surface)
+{
+    return vaSyncSurface((VADisplay)va_display, (VASurfaceID)surface);
+}
+
 void sensorium_close_exported_surface(SensoriumExportedSurface *exported)
 {
     for (uint32_t i = 0; i < exported->fd_count; i++) {
@@ -76,6 +81,13 @@ int sensorium_export_va_surface(void *va_display, unsigned int surface, Sensoriu
     (void)va_display;
     (void)surface;
     (void)exported;
+    return -1;
+}
+
+int sensorium_sync_va_surface(void *va_display, unsigned int surface)
+{
+    (void)va_display;
+    (void)surface;
     return -1;
 }
 
