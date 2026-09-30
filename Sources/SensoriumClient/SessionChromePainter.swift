@@ -55,6 +55,7 @@ enum SessionChromePainter {
     private static let hudLabelWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.hudLabel)
     private static let hudValueWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.hudValue)
     private static let hudNoteWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.hudNote)
+    private static let linkWeight = CairoFontWeight(ViewerChromeMetrics.TextWeight.link)
     private static let dotSize: Double = Double(ViewerChromeMetrics.StatusDot.size)
     private static let dotRadius: Double = Double(ViewerChromeMetrics.StatusDot.radius)
 
@@ -320,6 +321,9 @@ enum SessionChromePainter {
                     note, pointSize: rowSize, weight: hudNoteWeight, maxWidth: layout.noteWidth
                 ).height
             }
+            if let link = row.link {
+                height += rowGap + linkSize(link).height
+            }
             height += rowGap
         }
         if let note = section.note {
@@ -356,14 +360,33 @@ enum SessionChromePainter {
         )
     }
 
+    /// Interactive text as the rest of the viewer draws it: the link weight
+    /// in the accent colour, at the panel's own row size.
+    private static func linkSize(_ link: SessionHUDLink) -> (width: Double, height: Double) {
+        CairoChromeText.measure(link.title, pointSize: rowSize, weight: linkWeight)
+    }
+
+    /// Where `drawDiagnostics` puts each link inside `bounds`, found by
+    /// running the same drawing against a scratch pixel.
+    static func diagnosticsLinkLayouts(blocks: [SessionHUDBlock], bounds: ViewerChromeRect) -> [SessionHUDLinkLayout] {
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return [] }
+        defer { cairo_surface_destroy(surface) }
+        guard let context = cairo_create(surface) else { return [] }
+        defer { cairo_destroy(context) }
+        return drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: false)
+    }
+
     /// `isFlagged` is `SessionHUDSnapshot.isAttentionWorthy`: the same flag
     /// that turns the macOS `SessionHUDView`'s own border to its warn colour.
+    /// Returns where each link was drawn.
+    @discardableResult
     static func drawDiagnostics(
         blocks: [SessionHUDBlock],
         in context: OpaquePointer,
         bounds: ViewerChromeRect,
         isFlagged: Bool
-    ) {
+    ) -> [SessionHUDLinkLayout] {
+        var links: [SessionHUDLinkLayout] = []
         CairoChromeText.fill(context, bounds, radius: radius, color: ViewerPalette.chromeBg2)
         CairoChromeText.stroke(
             context, bounds, radius: radius,
@@ -392,21 +415,23 @@ enum SessionChromePainter {
                     x: bounds.x + gap,
                     y: y,
                     width: bounds.width - gap * 2,
-                    isNarrow: false
+                    isNarrow: false,
+                    links: &links
                 )
             case let .columns(_, left, right):
                 let columnWidth = (bounds.width - gap * 2 - columnGutter) / 2
                 let leftBottom = drawSection(
-                    left, in: context, x: bounds.x + gap, y: y, width: columnWidth, isNarrow: true
+                    left, in: context, x: bounds.x + gap, y: y, width: columnWidth, isNarrow: true, links: &links
                 )
                 let rightBottom = drawSection(
                     right, in: context, x: bounds.x + gap + columnWidth + columnGutter, y: y,
-                    width: columnWidth, isNarrow: true
+                    width: columnWidth, isNarrow: true, links: &links
                 )
                 y = max(leftBottom, rightBottom)
             }
             y += groupGap
         }
+        return links
     }
 
     private static func drawSection(
@@ -415,7 +440,8 @@ enum SessionChromePainter {
         x: Double,
         y: Double,
         width: Double,
-        isNarrow: Bool
+        isNarrow: Bool,
+        links: inout [SessionHUDLinkLayout]
     ) -> Double {
         var cursor = y
         let titleSize = sectionTitleSize(isNarrow: isNarrow)
@@ -484,6 +510,23 @@ enum SessionChromePainter {
                     weight: hudNoteWeight,
                     maxWidth: layout.noteWidth
                 )
+            }
+            if let link = row.link {
+                let size = linkSize(link)
+                let rect = ViewerChromeRect(
+                    x: x + layout.noteIndent, y: cursor + rowGap, width: size.width, height: size.height
+                )
+                CairoChromeText.draw(
+                    link.title,
+                    in: context,
+                    x: rect.x,
+                    y: rect.y,
+                    pointSize: rowSize,
+                    color: ViewerPalette.accent,
+                    weight: linkWeight
+                )
+                links.append(SessionHUDLinkLayout(rect: rect, link: link))
+                cursor += rowGap + size.height
             }
             cursor += rowGap
         }

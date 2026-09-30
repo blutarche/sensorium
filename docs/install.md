@@ -67,15 +67,10 @@ On Linux, Sensorium is the viewer only. The host runs on macOS.
    terminal, `sudo dnf install ./sensorium-<version>-1.fc44.x86_64.rpm` does
    the same thing. The package depends on the Swift runtime, which Fedora
    ships as `swift-lang-runtime`, and installing it pulls that in.
-3. Install the hardware video decoder. Fedora ships without it, and the
-   package that provides it lives in the RPM Fusion free repository, which
-   Fedora does not enable by default. Enable that repository the way RPM
-   Fusion documents, then install the driver.
-   ```sh
-   sudo dnf install mesa-va-drivers-freeworld
-   ```
-   Sensorium runs without it and decodes video in software, which uses more
-   power. It says so once at first launch.
+3. Install hardware video decoding, as described in
+   [Faster video on Fedora](#faster-video-on-fedora) below. Sensorium runs
+   without it and decodes video on the CPU, which uses more power. It says
+   so once at first launch.
 4. Install Tailscale for Linux the way Tailscale documents for Fedora, start
    it, and sign in. The viewer and the host have to be on the same tailnet.
 5. Launch Sensorium from the application menu. The first window is the list of
@@ -88,6 +83,29 @@ out of scope.
 
 Known limitation: KWin keeps Meta+L for its own lock screen, so that one
 shortcut never reaches the host.
+
+### Faster video on Fedora
+
+Stock Fedora decodes Sensorium's video on the CPU. Its FFmpeg build and its
+video drivers leave out H.264 hardware decoding. RPM Fusion provides the
+full versions. These steps follow
+[RPM Fusion's multimedia guide](https://rpmfusion.org/Howto/Multimedia).
+
+1. Enable RPM Fusion as described at
+   [rpmfusion.org/Configuration](https://rpmfusion.org/Configuration).
+2. Replace FFmpeg with the full build.
+   ```sh
+   sudo dnf swap ffmpeg-free ffmpeg --allowerasing
+   ```
+3. Install the full VA-API video driver.
+   ```sh
+   sudo dnf install mesa-va-drivers-freeworld
+   ```
+4. Replace the Vulkan video driver with the full one.
+   ```sh
+   sudo dnf swap mesa-vulkan-drivers mesa-vulkan-drivers-freeworld
+   ```
+5. Quit Sensorium and open it again.
 
 ## Current limitations
 

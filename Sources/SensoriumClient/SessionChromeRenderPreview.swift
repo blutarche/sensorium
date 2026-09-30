@@ -183,6 +183,19 @@ public enum SessionChromeRenderPreview {
         SessionChromePainter.menuPopupLayout(menu)
     }
 
+    public static func diagnosticsSize(blocks: [SessionHUDBlock]) -> (width: Double, height: Double) {
+        SessionChromePainter.diagnosticsSize(blocks: blocks)
+    }
+
+    /// Each link's rectangle on a diagnostics panel drawn at its own measured
+    /// size, the way `renderOverlay` draws it.
+    public static func diagnosticsLinkLayouts(blocks: [SessionHUDBlock]) -> [SessionHUDLinkLayout] {
+        let size = SessionChromePainter.diagnosticsSize(blocks: blocks)
+        return SessionChromePainter.diagnosticsLinkLayouts(
+            blocks: blocks, bounds: ViewerChromeRect(x: 0, y: 0, width: size.width, height: size.height)
+        )
+    }
+
     public static func menuChordLabel(for item: ViewerMenuItem) -> String? {
         SessionChromePainter.menuChordLabel(for: item)
     }

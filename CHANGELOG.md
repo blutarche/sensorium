@@ -8,6 +8,12 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- When the Linux viewer decodes video on the CPU, its diagnostics panel
+  says so and links to the install guide's steps for faster video on
+  Fedora.
+
 ### Fixed
 
 - The first change after the host screen was still appears at once,

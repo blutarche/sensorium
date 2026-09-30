@@ -80,6 +80,10 @@ public struct SessionHUDSnapshot: Equatable, Sendable {
     /// stopped growing is history; one still growing is the session skipping
     /// frames right now, which is the only version worth marking.
     public let viewerDropsGrew: Bool
+    /// Where this viewer's steps for hardware decoding live, linked from the
+    /// DECODER row while it decodes on the CPU. `nil` where there are no such
+    /// steps, and the row then links nowhere.
+    public let softwareDecodeGuide: String?
 
     public init(
         surfaceID: UInt32,
@@ -102,7 +106,8 @@ public struct SessionHUDSnapshot: Equatable, Sendable {
         fpsTrend: SessionHUDTrend = SessionHUDTrend(),
         viewerDroppedBeforeDecode: Int = 0,
         viewerDroppedBeforePresent: Int = 0,
-        viewerDropsGrew: Bool = false
+        viewerDropsGrew: Bool = false,
+        softwareDecodeGuide: String? = nil
     ) {
         self.surfaceID = surfaceID
         self.availability = availability
@@ -125,6 +130,7 @@ public struct SessionHUDSnapshot: Equatable, Sendable {
         self.viewerDroppedBeforeDecode = viewerDroppedBeforeDecode
         self.viewerDroppedBeforePresent = viewerDroppedBeforePresent
         self.viewerDropsGrew = viewerDropsGrew
+        self.softwareDecodeGuide = softwareDecodeGuide
     }
 }
 
@@ -194,6 +200,8 @@ public struct SessionHUDRow: Equatable, Sendable {
     /// either way, but `nil` is what an ordinary row without a trend at all
     /// carries.
     public let trend: [Double]?
+    /// Drawn on its own line under the note.
+    public let link: SessionHUDLink?
 
     public init(
         label: String,
@@ -201,7 +209,8 @@ public struct SessionHUDRow: Equatable, Sendable {
         tone: ViewerStatusTone? = nil,
         isStale: Bool = false,
         note: String? = nil,
-        trend: [Double]? = nil
+        trend: [Double]? = nil,
+        link: SessionHUDLink? = nil
     ) {
         self.label = label
         self.value = value
@@ -209,6 +218,35 @@ public struct SessionHUDRow: Equatable, Sendable {
         self.isStale = isStale
         self.note = note
         self.trend = trend
+        self.link = link
+    }
+}
+
+/// A web page a row points to, opened in the person's browser.
+public struct SessionHUDLink: Equatable, Sendable {
+    public let title: String
+    public let url: String
+
+    public init(title: String, url: String) {
+        self.title = title
+        self.url = url
+    }
+}
+
+/// Where one link sits on the drawn panel, in the panel's own coordinates.
+public struct SessionHUDLinkLayout: Equatable, Sendable {
+    public let rect: ViewerChromeRect
+    public let link: SessionHUDLink
+
+    public init(rect: ViewerChromeRect, link: SessionHUDLink) {
+        self.rect = rect
+        self.link = link
+    }
+}
+
+public enum SessionHUDLinkHitTest {
+    public static func link(atX x: Double, y: Double, in layouts: [SessionHUDLinkLayout]) -> SessionHUDLink? {
+        layouts.first { $0.rect.contains(x: x, y: y) }?.link
     }
 }
 
@@ -680,15 +718,30 @@ public enum SessionHUDPanel {
                 isStale: isSessionDown,
                 note: "Given up on this machine, not sent by \(hostReference(telemetry.hostName))."
             ),
-            SessionHUDRow(
-                label: "DECODER",
-                value: decoderText(telemetry.decoder),
-                tone: telemetry.decoder == .softwareFallback ? .warn : nil,
-                note: telemetry.decoder == .softwareFallback
-                    ? "No hardware decoder was available; this machine is decoding in software."
-                    : nil
-            )
+            decoderRow(telemetry)
         ])
+    }
+
+    private static func decoderRow(_ telemetry: SessionHUDSnapshot) -> SessionHUDRow {
+        let value = decoderText(telemetry.decoder)
+        guard telemetry.decoder == .softwareFallback else {
+            return SessionHUDRow(label: "DECODER", value: value)
+        }
+        guard let guide = telemetry.softwareDecodeGuide else {
+            return SessionHUDRow(
+                label: "DECODER",
+                value: value,
+                tone: .warn,
+                note: "No hardware decoder was available; this machine is decoding in software."
+            )
+        }
+        return SessionHUDRow(
+            label: "DECODER",
+            value: value,
+            tone: .warn,
+            note: "Video decoded on the CPU.",
+            link: SessionHUDLink(title: "Faster video", url: guide)
+        )
     }
 
     private static func isUnavailable(_ availability: SurfaceTelemetryAvailability) -> Bool {

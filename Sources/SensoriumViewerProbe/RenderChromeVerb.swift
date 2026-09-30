@@ -200,7 +200,7 @@ enum RenderChromeVerb {
 
     /// The HUD's rows. `isAttentionWorthy: true` builds a reading with every
     /// warn-toned field filled in -- dropped frames, a limited fidelity, a
-    /// stale reading -- so the panel's own warn rows are all on screen at
+    /// stale reading, CPU decoding with its guide link -- so the panel's own warn rows are all on screen at
     /// once; `false` clears the frame drops that `TelemetryAttentionThreshold`
     /// itself would flag, so an unflagged render never shows a warn-worthy
     /// drop count inside a plain border, a combination the real HUD never
@@ -252,7 +252,7 @@ enum RenderChromeVerb {
             requestedDrawablePixelWidth: 2560,
             requestedDrawablePixelHeight: 1600,
             streamScalePreference: .automatic,
-            decoder: .hardwareAccelerated,
+            decoder: isAttentionWorthy ? .softwareFallback : .hardwareAccelerated,
             isAttentionWorthy: isAttentionWorthy,
             isPointerCaptured: true,
             presentCompletionP50Nanoseconds: 4_600_000,
@@ -264,7 +264,8 @@ enum RenderChromeVerb {
             fpsTrend: SessionHUDTrend(samples: [59, 58, 60, 57, 58.4]),
             viewerDroppedBeforeDecode: 4,
             viewerDroppedBeforePresent: 1,
-            viewerDropsGrew: true
+            viewerDropsGrew: true,
+            softwareDecodeGuide: ViewerRelease.fasterVideoGuide
         )
     }
 

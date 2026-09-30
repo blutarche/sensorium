@@ -639,9 +639,25 @@ extension WaylandSessionWindow: SessionWindowChrome {
             pressShortcutStrip()
         case .notice:
             pressNotice()
-        case .diagnostics, .canvasScrim, .menuBar:
+        case .diagnostics:
+            pressDiagnostics()
+        case .canvasScrim, .menuBar:
             break
         }
+    }
+
+    /// Opens a link only when the press lands on its own text, laid out by
+    /// the same drawing that put it there.
+    private func pressDiagnostics() {
+        guard let rect = chrome.overlays[.diagnostics]?.rect else { return }
+        let local = ViewerChromeRect(x: 0, y: 0, width: rect.width, height: rect.height)
+        let layouts = SessionChromePainter.diagnosticsLinkLayouts(blocks: chrome.state.diagnosticsBlocks, bounds: local)
+        guard let link = SessionHUDLinkHitTest.link(
+            atX: chrome.overlayPointerX, y: chrome.overlayPointerY, in: layouts
+        ) else {
+            return
+        }
+        GtkURIOpener.open(link.url)
     }
 
     /// Dismisses only when the press lands on the ✕ itself -- the same rule

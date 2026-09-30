@@ -481,7 +481,8 @@ public final class ClientSessionRunner {
                 fpsTrend: fpsTrend,
                 viewerDroppedBeforeDecode: droppedBeforeDecode,
                 viewerDroppedBeforePresent: droppedBeforePresent,
-                viewerDropsGrew: viewerDropsGrew
+                viewerDropsGrew: viewerDropsGrew,
+                softwareDecodeGuide: ViewerRelease.platformSoftwareDecodeGuide
             )
             router.updateSessionHUD(surfaceID: surfaceID, snapshot: snapshot)
         }
