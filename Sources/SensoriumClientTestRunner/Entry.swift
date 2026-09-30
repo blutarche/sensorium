@@ -35,6 +35,7 @@ struct SensoriumClientTestRunner {
         testWaylandKeyboardStateModifiersEventTests()
         testWaylandKeyboardStateTruncatedKeymapSizeTests()
         await testInputRoutingTests()
+        await testOrderedCanvasInputTests()
         await testAuthenticatedHelloNamesThePinnedCertificate()
         await testCanvasSurfaceEventRouterSourceOriginTests()
         await runDarwinClientTests()

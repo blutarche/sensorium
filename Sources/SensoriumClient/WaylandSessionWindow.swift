@@ -122,6 +122,9 @@ public final class WaylandSessionWindow:
     /// Built with the viewport, and told that this surface counts from its
     /// top-left corner rather than an AppKit view's bottom-left one.
     private var router: CanvasSurfaceEventRouter!
+    /// The one path every input event takes to `router`, so they reach the
+    /// host in the order they happened. Finished by `close()`.
+    private var inputPipeline: OrderedCanvasInputPipeline?
     private(set) var capture: WaylandPointerCaptureController!
     private var keyboardState: WaylandKeyboardState?
     private var scroll = WaylandScrollFrameAccumulator()
@@ -345,7 +348,11 @@ public final class WaylandSessionWindow:
         )
         // A Wayland surface counts from its top-left corner, which is the
         // corner the canvas counts from too, so nothing here is flipped.
-        router = CanvasSurfaceEventRouter(viewport: viewport, sourceOrigin: .topLeft)
+        let router = CanvasSurfaceEventRouter(viewport: viewport, sourceOrigin: .topLeft)
+        self.router = router
+        inputPipeline = OrderedCanvasInputPipeline { event in
+            await router.route(event)
+        }
         capture = WaylandPointerCaptureController(locking: self) { [weak self] event in
             guard let self else { return }
             if case let .pointerCaptureChanged(isCaptured) = event {
@@ -574,6 +581,8 @@ public final class WaylandSessionWindow:
         // mid-capture must not leave a lock the compositor is still holding.
         capture?.reset()
         cancelKeyRepeat()
+        inputPipeline?.finish()
+        inputPipeline = nil
         // Before the surface they are subsurfaces of goes away.
         tearDownChrome()
         destroyShortcutInhibitor()
@@ -1411,8 +1420,7 @@ public final class WaylandSessionWindow:
     /// Everything this window reports to the session goes through here, so
     /// there is one place where a surface event becomes canvas input.
     func route(_ event: CanvasSurfaceEvent) {
-        guard let router else { return }
-        Task { await router.route(event) }
+        inputPipeline?.submit(event)
     }
 }
 
