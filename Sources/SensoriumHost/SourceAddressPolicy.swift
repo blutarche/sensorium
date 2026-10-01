@@ -127,9 +127,25 @@ public struct LocalSubnet: Equatable, Sendable {
     }
 }
 
-/// The subnets of every active interface on this machine, except loopback and
-/// any interface carrying a tailnet address, read with `getifaddrs` only.
+/// The subnets of every active interface on this machine, except loopback,
+/// point-to-point tunnels and any interface carrying a tailnet address, read
+/// with `getifaddrs` only.
 public enum LocalSubnetEnumerator {
+    /// One address `getifaddrs` reported, with its interface's name and flags.
+    public struct Entry: Equatable, Sendable {
+        public let name: String
+        public let flags: UInt32
+        public let address: [UInt8]
+        public let mask: [UInt8]
+
+        public init(name: String, flags: UInt32, address: [UInt8], mask: [UInt8]) {
+            self.name = name
+            self.flags = flags
+            self.address = address
+            self.mask = mask
+        }
+    }
+
     public static func current() -> [LocalSubnet] {
         var addresses: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&addresses) == 0, let first = addresses else {
@@ -137,8 +153,7 @@ public enum LocalSubnetEnumerator {
         }
         defer { freeifaddrs(addresses) }
 
-        var entries: [(name: String, flags: UInt32, address: [UInt8], mask: [UInt8])] = []
-        var tailnetInterfaces = Set<String>()
+        var entries: [Entry] = []
         var cursor: UnsafeMutablePointer<ifaddrs>? = first
         while let entry = cursor {
             defer { cursor = entry.pointee.ifa_next }
@@ -148,16 +163,26 @@ public enum LocalSubnetEnumerator {
                   let mask = rawBytes(rawMask, family: rawAddress.pointee.sa_family) else {
                 continue
             }
-            let name = String(cString: entry.pointee.ifa_name)
-            if isTailnet(address) {
-                tailnetInterfaces.insert(name)
-            }
-            entries.append((name, entry.pointee.ifa_flags, address, mask))
+            entries.append(Entry(
+                name: String(cString: entry.pointee.ifa_name),
+                flags: entry.pointee.ifa_flags,
+                address: address,
+                mask: mask
+            ))
         }
+        return subnets(from: entries)
+    }
 
+    /// The subnets among `entries` that count as this Mac's own network.
+    /// Every address of an interface that carries a tailnet address is
+    /// skipped, its link-local one included.
+    public static func subnets(from entries: [Entry]) -> [LocalSubnet] {
+        let tailnetInterfaces = Set(entries.filter { isTailnet($0.address) }.map(\.name))
         return entries.compactMap { entry in
             guard entry.flags & UInt32(IFF_UP) != 0,
                   entry.flags & UInt32(IFF_LOOPBACK) == 0,
+                  // A VPN tunnel's far side is somewhere else, not this network.
+                  entry.flags & UInt32(IFF_POINTOPOINT) == 0,
                   !tailnetInterfaces.contains(entry.name) else {
                 return nil
             }

@@ -195,3 +195,39 @@ func runHostLocalNetworkListenerParameterTests() {
     }
     print("PASS: the listener is unscoped only while the setting is on, and still needs a tailnet address")
 }
+
+/// Which of this Mac's interfaces count as "this network": not loopback, not
+/// a down interface, not the tailnet, and not a point-to-point tunnel.
+func runHostLocalSubnetInterfaceFilterTests() {
+    let up = UInt32(IFF_UP)
+    let v4Mask24: [UInt8] = [255, 255, 255, 0]
+    let v6Mask64: [UInt8] = Array(repeating: 0xff, count: 8) + Array(repeating: 0, count: 8)
+    let linkLocal: [UInt8] = [0xfe, 0x80] + Array(repeating: 0, count: 13) + [0x01]
+    let entries: [LocalSubnetEnumerator.Entry] = [
+        .init(name: "en0", flags: up, address: [192, 0, 2, 10], mask: v4Mask24),
+        .init(name: "en0", flags: up, address: linkLocal, mask: v6Mask64),
+        .init(name: "lo0", flags: up | UInt32(IFF_LOOPBACK), address: [127, 0, 0, 1], mask: [255, 0, 0, 0]),
+        .init(name: "en1", flags: 0, address: [203, 0, 113, 10], mask: v4Mask24),
+        .init(name: "utun3", flags: up, address: [100, 64, 1, 4], mask: [255, 255, 255, 255]),
+        .init(name: "utun3", flags: up, address: linkLocal, mask: v6Mask64),
+        .init(name: "utun4", flags: up | UInt32(IFF_POINTOPOINT), address: [198, 51, 100, 2], mask: [255, 0, 0, 0]),
+    ]
+    let subnets = LocalSubnetEnumerator.subnets(from: entries)
+    expect(
+        subnets.count == 2 && SourceAddressPolicy.isOnLinkSource("192.0.2.45", interfaces: subnets),
+        "only the wired or Wi-Fi interface's own subnets remain, got \(subnets.count)"
+    )
+    expect(
+        !SourceAddressPolicy.isOnLinkSource("198.51.100.200", interfaces: subnets),
+        "a point-to-point VPN tunnel's subnet is not this network"
+    )
+    expect(
+        !SourceAddressPolicy.isOnLinkSource("203.0.113.45", interfaces: subnets),
+        "a down interface's subnet is not this network"
+    )
+    expect(
+        !SourceAddressPolicy.isOnLinkSource("127.0.0.2", interfaces: subnets),
+        "loopback is not this network"
+    )
+    print("PASS: loopback, down, tailnet and point-to-point interfaces never count as this network")
+}

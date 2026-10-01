@@ -137,6 +137,7 @@ struct SensoriumHostTestRunner {
             { runHostListenerRecoveryPolicyTests() },
             { runHostLocalNetworkAdmissionTests() },
             { runHostLocalNetworkListenerParameterTests() },
+            { runHostLocalSubnetInterfaceFilterTests() },
             // Kept last -- see the file-level comment above.
             { await runHostScreenPresenceWaitingTests() },
             { await runHostScreenPresencePromptTests() },
