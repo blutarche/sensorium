@@ -144,8 +144,10 @@ public enum HostScreenOfferEligibility {
 /// *this device may drive my screen*.
 public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     public var devicePublicKey: Data
-    /// What the person at this machine typed while arming, never a value
-    /// read back from a live connection.
+    /// The device's name as this machine knew it when arming, never a value
+    /// read back from a live connection. A name the person at this machine
+    /// chooses later lives in `ApprovedDeviceStoring.customName` and is
+    /// shown in place of this one; renaming never rewrites this record.
     public var deviceName: String
     public var armedAt: Date
     /// Whether this device's own session should still ask the person at
@@ -178,7 +180,11 @@ public struct HostScreenDeviceArming: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         devicePublicKey = try container.decode(Data.self, forKey: .devicePublicKey)
-        deviceName = try container.decode(String.self, forKey: .deviceName)
+        // Cleaned on every read: a name stored before `DeviceName` existed, or
+        // edited on disk, must not reach the badge, prompt or session record.
+        let storedName = try container.decode(String.self, forKey: .deviceName)
+        deviceName = DeviceName.sanitized(storedName)
+            ?? ApprovedDeviceDisplayName.fingerprint(of: devicePublicKey)
         armedAt = try container.decode(Date.self, forKey: .armedAt)
         asksWhenSomeoneIsUsingThisMachine = try container.decodeIfPresent(
             Bool.self, forKey: .asksWhenSomeoneIsUsingThisMachine
@@ -201,7 +207,11 @@ extension HostScreenDeviceArming {
     ) -> HostScreenDeviceArming {
         HostScreenDeviceArming(
             devicePublicKey: devicePublicKey,
-            deviceName: ApprovedDeviceDisplayName.resolve(for: devicePublicKey, in: approvedStore),
+            // The reported name only: a name chosen at this machine is read
+            // fresh wherever the device is named, so clearing it takes
+            // effect without rewriting this record.
+            deviceName: approvedStore.name(for: devicePublicKey)
+                ?? ApprovedDeviceDisplayName.fingerprint(of: devicePublicKey),
             armedAt: now,
             asksWhenSomeoneIsUsingThisMachine: false
         )
@@ -374,17 +384,26 @@ public enum HostScreenArmingPresentation {
 
     /// One line per armed device, in the order they were armed. Empty when
     /// nothing is armed, which the menu bar and the Host Setup window both
-    /// read as "show nothing extra."
-    public static func lines(for arming: HostScreenArming) -> [DeviceLine] {
+    /// read as "show nothing extra." `hostChosenName` is the name the person
+    /// at this machine chose for a device, which wins over the arming
+    /// record's own.
+    public static func lines(
+        for arming: HostScreenArming,
+        hostChosenName: (Data) -> String? = { _ in nil }
+    ) -> [DeviceLine] {
         arming.devices.map { device in
-            DeviceLine(devicePublicKey: device.devicePublicKey, deviceName: device.deviceName)
+            DeviceLine(
+                devicePublicKey: device.devicePublicKey,
+                deviceName: hostChosenName(device.devicePublicKey) ?? device.deviceName
+            )
         }
     }
 
     /// One row per paired machine, every machine that has ever paired, not
     /// only the ones currently sharing a real screen. `approvedDevices` is
     /// every key `ApprovedDeviceStoring` holds,
-    /// paired with the name given at pairing; `arming` says which of them is
+    /// paired with the name to show for it (the one chosen at this machine,
+    /// else the one it reported); `arming` says which of them is
     /// currently sharing.
     public struct PairedMachineRow: Equatable, Sendable {
         public let devicePublicKey: Data

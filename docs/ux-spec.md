@@ -27,8 +27,9 @@ Top to bottom:
    - An actionable failure: Screen Recording not granted, with a button opening the permission, or Tailscale not running.
    - *Quit Sensorium Host and open it again*. This outranks every other line once this machine stops handing the host any picture.
 2. **Pairing code.** Six digits in two groups of three, large, with **Hide code** beneath them. Shown the moment a new machine asks to pair. Otherwise a **Show pairing code** button shows instead, never replacing the connected machine or its **Stop** button.
-3. **Paired machines.** One row per machine, named by the name it gave when it paired, never a key fingerprint. Each row has:
-   - The name, with **Remove** right-aligned. Removing a machine ends every connection it has at once and refuses it from then on until it pairs again.
+3. **Paired machines.** One row per machine, named by the name it gave when it paired or the name chosen for it with **Rename**, never a key fingerprint. Each row has:
+   - The name, with **Rename** and **Remove** right-aligned. Removing a machine ends every connection it has at once and refuses it from then on until it pairs again.
+   - **Rename** opens a small sheet: a field holding the current name, **Cancel** and **Rename**. Return renames and Escape cancels. The name is trimmed, loses any invisible or text-reversing characters, becomes one line, and is kept to 64 characters. An empty name puts back the name the machine reports. The name is kept on this machine only. It is what the host shows everywhere it names that machine: this list, the status line, the menu bar, the ask-first prompt, the badge and the session record. The name a machine reports when it connects or pairs again never replaces it. Renaming changes nothing about what the machine may do.
    - **Share host screen**, the only session-shaping control on the host. It arms the machine, not one screen, and a line beneath it names the screens this machine can share right now.
    - **Ask me first if this machine is in use**, shown while sharing is on, off by default.
    - A line naming its key fingerprint and why sharing is or is not available now.
@@ -53,7 +54,7 @@ Each machine row shows:
 
 | Field | Content |
 | --- | --- |
-| Name | Given when it paired |
+| Name | Given when it paired, or the name chosen with **Rename…** |
 | Address | The paired address |
 | State | *online* or *offline* |
 
@@ -61,7 +62,7 @@ Rows are ordered most recently connected first. With nothing paired yet, the lis
 
 Nothing is dialled until a row is clicked. One click connects. Return connects the selected row. While an attempt is out, the row appends *connecting…* or *stopping…* with a pulsing dot and offers **Cancel**. Other rows stay clickable, and clicking one stops the attempt already out. A failed attempt keeps a short reason, with the full explanation in the status panel.
 
-Each row also offers **Pair again** and **Forget**, from a right-click or its **…** button. Forgetting removes the entry and changes nothing on the machine it named. A row whose last host-screen attempt, tried through this machine's own **Start with** preference, failed to connect adds **Connect with a virtual display**, the one explicit retry on a virtual display.
+Each row also offers **Pair again**, **Rename…** and **Forget**, from a right-click or its **…** button. **Rename…** replaces the window's list with a short step: a field holding the current name, **Rename** and **Cancel**. Return renames and Escape cancels. The name is trimmed, loses any invisible or text-reversing characters, becomes one line, and is kept to 64 characters. An empty name puts back the one pairing gave the machine, which is its address when it was paired by address. The name is kept on this machine only and is never sent to the other one, and it shows everywhere the viewer names the machine. Pairing the machine again keeps it. Forgetting removes the entry and changes nothing on the machine it named. A row whose last host-screen attempt, tried through this machine's own **Start with** preference, failed to connect adds **Connect with a virtual display**, the one explicit retry on a virtual display.
 
 There is no Quit button here. Command-Q quits, and closing the window is the same choice. **Your machines…** (Command-1) opens it at any time.
 

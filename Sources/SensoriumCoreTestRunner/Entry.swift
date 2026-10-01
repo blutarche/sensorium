@@ -21,6 +21,7 @@ struct SensoriumCoreTestRunner {
             ("H.264 codec configuration round-trips parameter sets", testH264CodecConfigurationRoundTripsParameterSets),
             ("malformed frames are rejected", testMalformedFramesAreRejected),
             ("pairing code expires and cannot be reused", testPairingCodeExpiresAndCannotBeReused),
+            ("a device name is stripped of control and format characters, collapsed and capped", testDeviceNameSanitizerNeutralisesHostileNames),
             ("a pairing code's failure budget bounds guessing and the comparison is constant time", testPairingCodeBudgetBoundsGuessesAndComparesInConstantTime),
             ("device identity signs and verifies handshake transcript", testDeviceIdentitySignsAndVerifiesHandshakeTranscript),
             ("Ed25519 reproduces RFC 8032 test vector 1", testEd25519ReproducesRFC8032TestVector),

@@ -24,6 +24,8 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         /// `device` is `nil` only for an address being typed by hand, the one
         /// path that has no machine picked yet.
         case typeCode(device: ViewerPairingDevice?, isPairingAgain: Bool)
+        /// Naming one saved machine, from its row's menu.
+        case rename(hostPublicKey: Data)
     }
 
     private let store: any SavedHostStoring
@@ -90,6 +92,12 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     /// error appears or clears.
     private var addressHintReservedHeight: NSLayoutConstraint?
     private let pairButton = ViewerFormControls.actionButton("Pair")
+
+    // MARK: Rename step
+
+    private let renameField = ViewerFormControls.textField(mono: false, size: 14)
+    private let renameButton = ViewerFormControls.actionButton(YourMachinesWindowModel.renameConfirmTitle)
+    private let renameCancelButton = ViewerFormControls.actionButton(YourMachinesWindowModel.renameCancelTitle)
     private let messageHeadline = ViewerFormControls.label(
         "", font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
         color: ViewerDesign.ink, width: YourMachinesWindowController.contentWidth
@@ -165,6 +173,11 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         nameField.delegate = self
         pairButton.target = self
         pairButton.action = #selector(submit)
+        renameField.delegate = self
+        renameButton.target = self
+        renameButton.action = #selector(confirmRename)
+        renameCancelButton.target = self
+        renameCancelButton.action = #selector(cancelRename)
 
         buildFrame()
         reloadFromStore()
@@ -273,7 +286,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             ? host.host
             : "\(host.host):\(host.port)"
         enterCodeStep(
-            device: ViewerPairingDevice(address: address, name: host.displayName),
+            device: ViewerPairingDevice(address: address, name: host.pairedName),
             isPairingAgain: true
         )
         pairingAgainHostPublicKey = host.hostPublicKey
@@ -378,6 +391,8 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             body = chooseDeviceBody()
         case let .typeCode(device, isPairingAgain):
             body = codeBody(device: device, isPairingAgain: isPairingAgain)
+        case .rename:
+            body = renameBody()
         }
         body.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.addSubview(body)
@@ -491,6 +506,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         let menu = NSMenu()
         var actions = [
             ("Pair Again", #selector(pairAgainFromRow(_:))),
+            (YourMachinesWindowModel.renameTitle, #selector(renameRow(_:))),
             ("Forget", #selector(forgetRow(_:)))
         ]
         if row.offersConnectAsVirtualDisplayFallback {
@@ -544,6 +560,11 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         beginPairAgain(with: host)
     }
 
+    @objc private func renameRow(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? Data else { return }
+        beginRename(hostPublicKey: key)
+    }
+
     /// The row's own way out of a failed host-screen attempt a saved
     /// preference started -- see `onConnectAsVirtualDisplayFallback`.
     @objc private func connectAsVirtualDisplayFromRow(_ sender: NSMenuItem) {
@@ -565,6 +586,60 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             selectedHostPublicKey = nil
         }
         reloadFromStore()
+    }
+
+    // MARK: - Rename
+
+    /// Straight to the rename step for one saved machine, with the field
+    /// holding the name it shows now.
+    public func beginRename(hostPublicKey: Data) {
+        guard let host = store.load(hostPublicKey: hostPublicKey) else { return }
+        step = .rename(hostPublicKey: hostPublicKey)
+        renameField.stringValue = host.displayName
+        renderStep()
+        window.makeFirstResponder(renameField)
+        renameField.currentEditor()?.selectAll(nil)
+    }
+
+    private func renameBody() -> NSView {
+        let hint = sentence(YourMachinesWindowModel.renameHint)
+        let field = renameField
+        field.placeholderAttributedString = ViewerFormControls.placeholder(
+            currentRenameDefault, mono: false, size: 14
+        )
+        ViewerFormControls.style(renameButton, title: YourMachinesWindowModel.renameConfirmTitle, isPrimary: true, isEnabled: true)
+        renameButton.keyEquivalent = "\r"
+        ViewerFormControls.style(renameCancelButton, title: YourMachinesWindowModel.renameCancelTitle, isPrimary: false, isEnabled: true)
+        let buttonRow = NSStackView(views: [renameButton, renameCancelButton])
+        buttonRow.orientation = .horizontal
+        buttonRow.alignment = .centerY
+        buttonRow.spacing = ViewerDesign.Space.md
+
+        let stack = column(
+            [heading(YourMachinesWindowModel.renameHeading), field, hint, buttonRow],
+            spacing: ViewerDesign.Space.md
+        )
+        for view in stack.arrangedSubviews where view !== buttonRow {
+            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
+        field.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        return stack
+    }
+
+    /// The name an empty field would fall back to, shown as its placeholder.
+    private var currentRenameDefault: String {
+        guard case let .rename(key) = step else { return "" }
+        return store.load(hostPublicKey: key)?.pairedName ?? ""
+    }
+
+    @objc private func confirmRename() {
+        guard case let .rename(key) = step else { return }
+        store.rename(hostPublicKey: key, to: renameField.stringValue)
+        showList()
+    }
+
+    @objc private func cancelRename() {
+        showList()
     }
 
     // MARK: - Add a Machine, step one: which machine
@@ -844,6 +919,12 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     // MARK: - Live validation
 
     public func controlTextDidChange(_ notification: Notification) {
+        if (notification.object as? NSTextField) === renameField {
+            if renameField.stringValue.count > SavedHostName.maximumLength {
+                renameField.stringValue = String(renameField.stringValue.prefix(SavedHostName.maximumLength))
+            }
+            return
+        }
         form = ViewerPairingForm(
             address: addressField.stringValue,
             code: codeField.stringValue,
@@ -875,6 +956,22 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         }
         let location = grouped.distance(from: grouped.startIndex, to: caret)
         editor.setSelectedRange(NSRange(location: location, length: 0))
+    }
+
+    /// Return and Escape in the rename field, since the field editor takes
+    /// both before any button's key equivalent sees them.
+    public func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === renameField else { return false }
+        switch selector {
+        case #selector(NSResponder.insertNewline(_:)):
+            confirmRename()
+            return true
+        case #selector(NSResponder.cancelOperation(_:)):
+            cancelRename()
+            return true
+        default:
+            return false
+        }
     }
 
     public func controlTextDidBeginEditing(_ notification: Notification) {
@@ -964,11 +1061,13 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             self.isPairing = false
             switch result {
             case let .paired(host):
+                let previous = self.pairingAgainHostPublicKey.flatMap { self.store.load(hostPublicKey: $0) }
+                    ?? self.store.load(hostPublicKey: host.hostPublicKey)
                 if let replaced = self.pairingAgainHostPublicKey, replaced != host.hostPublicKey {
                     self.store.remove(hostPublicKey: replaced)
                 }
                 self.pairingAgainHostPublicKey = nil
-                self.store.save(host)
+                self.store.save(host.carryingName(from: previous))
                 self.selectedHostPublicKey = host.hostPublicKey
                 self.showList()
                 self.onConnect?(host)

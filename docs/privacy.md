@@ -28,9 +28,9 @@ Straight to the paired host over the existing tailnet. There is no cloud service
 |---|---|---|
 | Both | One device key pair | `~/Library/Application Support/Sensorium/device-identity.json`, owner-only |
 | Host | One TLS certificate and key | `~/Library/Application Support/Sensorium/host-tls-identity.json`, owner-only |
-| Host | Paired machine public keys | Host process |
+| Host | Paired machine public keys, the name each machine reported, and any name chosen for it at the host | `~/Library/Application Support/Sensorium/approved-devices.json`, owner-only |
 | Host | Which machines may reach the host screen | `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-only |
-| Host | One line per host-screen session: the device, the display, and when it ran | `~/Library/Application Support/Sensorium/host-screen-sessions.log` |
+| Host | One line per host-screen session: the device, the display, and when it ran. A device renamed at the host is named by that name, with the name it reported beside it | `~/Library/Application Support/Sensorium/host-screen-sessions.log` |
 | Viewer | Saved host name, port, and pinned public key | `~/Library/Application Support/Sensorium/saved-host.json` |
 | Viewer | Whether the shortcut strip is pinned | `~/Library/Application Support/Sensorium/shortcut-strip-pin.json`, owner-only |
 

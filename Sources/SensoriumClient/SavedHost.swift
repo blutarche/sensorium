@@ -4,7 +4,14 @@ import SensoriumCore
 /// Everything needed to reconnect in one action: which machine, and the key it must
 /// prove. The canvas is a fixed preset, so there is nothing to choose per session.
 public struct SavedHost: Codable, Equatable, Sendable {
-    public let displayName: String
+    /// The name pairing gave this machine -- the address it was paired by, or
+    /// the name typed beside the code. What a person sees only until they
+    /// rename it; see `displayName`.
+    public let pairedName: String
+    /// A name this person chose in the Your Machines window. Kept on this
+    /// viewer alone and never sent to the machine. `nil` for a machine never
+    /// renamed, and for one saved before this field existed.
+    public let customName: String?
     public let host: String
     public let port: UInt16
     public let hostPublicKey: Data
@@ -40,8 +47,14 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// `ClientSessionHost.hostScreenOffered(displays:)`.
     public let rememberedHostScreenOffer: [RememberedHostScreen]
 
+    /// What every window, title and headline calls this machine.
+    public var displayName: String { customName ?? pairedName }
+
+    /// `displayName` is the name pairing gave the machine; a custom name is
+    /// set afterwards with `withCustomName(_:)`.
     public init(
         displayName: String,
+        customName: String? = nil,
         host: String,
         port: UInt16,
         hostPublicKey: Data,
@@ -52,7 +65,8 @@ public struct SavedHost: Codable, Equatable, Sendable {
         lastLiveTarget: StartTarget? = nil,
         rememberedHostScreenOffer: [RememberedHostScreen] = []
     ) {
-        self.displayName = displayName
+        pairedName = displayName
+        self.customName = customName.flatMap(SavedHostName.normalized)
         self.host = host
         self.port = port
         self.hostPublicKey = hostPublicKey
@@ -65,13 +79,15 @@ public struct SavedHost: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case displayName, host, port, hostPublicKey, tlsCertificateHash, streamScalePreference
+        case displayName, customName, host, port, hostPublicKey, tlsCertificateHash, streamScalePreference
         case lastConnectedAt, startTargetPreference, lastLiveTarget, rememberedHostScreenOffer
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        displayName = try container.decode(String.self, forKey: .displayName)
+        pairedName = try container.decode(String.self, forKey: .displayName)
+        customName = try container.decodeIfPresent(String.self, forKey: .customName)
+            .flatMap(SavedHostName.normalized)
         host = try container.decode(String.self, forKey: .host)
         port = try container.decode(UInt16.self, forKey: .port)
         hostPublicKey = try container.decode(Data.self, forKey: .hostPublicKey)
@@ -100,7 +116,8 @@ public struct SavedHost: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(displayName, forKey: .displayName)
+        try container.encode(pairedName, forKey: .displayName)
+        try container.encodeIfPresent(customName, forKey: .customName)
         try container.encode(host, forKey: .host)
         try container.encode(port, forKey: .port)
         try container.encode(hostPublicKey, forKey: .hostPublicKey)
@@ -119,7 +136,8 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// is written back through the same upsert an ordinary save uses.
     public func connected(at moment: Date, liveTarget: StartTarget) -> SavedHost {
         SavedHost(
-            displayName: displayName,
+            displayName: pairedName,
+            customName: customName,
             host: host,
             port: port,
             hostPublicKey: hostPublicKey,
@@ -139,7 +157,8 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// current session actually is.
     public func withStartTargetPreference(_ preference: StartTarget) -> SavedHost {
         SavedHost(
-            displayName: displayName,
+            displayName: pairedName,
+            customName: customName,
             host: host,
             port: port,
             hostPublicKey: hostPublicKey,
@@ -159,7 +178,8 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// screens it was offered.
     public func withStreamScalePreference(_ preference: StreamScalePreference) -> SavedHost {
         SavedHost(
-            displayName: displayName,
+            displayName: pairedName,
+            customName: customName,
             host: host,
             port: port,
             hostPublicKey: hostPublicKey,
@@ -179,7 +199,8 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// straight over: remembering an offer is not choosing to use it.
     public func withRememberedHostScreenOffer(_ offer: [RememberedHostScreen]) -> SavedHost {
         SavedHost(
-            displayName: displayName,
+            displayName: pairedName,
+            customName: customName,
             host: host,
             port: port,
             hostPublicKey: hostPublicKey,
@@ -189,6 +210,49 @@ public struct SavedHost: Codable, Equatable, Sendable {
             startTargetPreference: startTargetPreference,
             lastLiveTarget: lastLiveTarget,
             rememberedHostScreenOffer: offer
+        )
+    }
+
+    /// The same machine under a name this person chose. The name is cleaned
+    /// and capped by `SavedHostName.normalized`; one that is empty after
+    /// trimming, or `nil`, puts the name pairing gave it back. Identity stays
+    /// the pinned key and the address, so nothing that finds this machine
+    /// reads the name.
+    public func withCustomName(_ name: String?) -> SavedHost {
+        SavedHost(
+            displayName: pairedName,
+            customName: name.flatMap(SavedHostName.normalized),
+            host: host,
+            port: port,
+            hostPublicKey: hostPublicKey,
+            tlsCertificateHash: tlsCertificateHash,
+            streamScalePreference: streamScalePreference,
+            lastConnectedAt: lastConnectedAt,
+            startTargetPreference: startTargetPreference,
+            lastLiveTarget: lastLiveTarget,
+            rememberedHostScreenOffer: rememberedHostScreenOffer
+        )
+    }
+
+    /// A freshly paired record that replaces `previous`, keeping the custom
+    /// name that record carried. Pairing again prefills the name field with
+    /// what the person sees, so a pairing name equal to the old custom name
+    /// is that same name and not a new default.
+    public func carryingName(from previous: SavedHost?) -> SavedHost {
+        guard let previous, let custom = previous.customName else { return self }
+        let paired = pairedName == custom ? previous.pairedName : pairedName
+        return SavedHost(
+            displayName: paired,
+            customName: custom,
+            host: host,
+            port: port,
+            hostPublicKey: hostPublicKey,
+            tlsCertificateHash: tlsCertificateHash,
+            streamScalePreference: streamScalePreference,
+            lastConnectedAt: lastConnectedAt,
+            startTargetPreference: startTargetPreference,
+            lastLiveTarget: lastLiveTarget,
+            rememberedHostScreenOffer: rememberedHostScreenOffer
         )
     }
 
@@ -210,6 +274,18 @@ public struct SavedHost: Codable, Equatable, Sendable {
     /// supplies a port, public key, or certificate pin.
     public func matches(_ entryURL: SensoriumEntryURL) -> Bool {
         host.caseInsensitiveCompare(entryURL.host) == .orderedSame
+    }
+}
+
+/// What a person may call a saved machine.
+public enum SavedHostName {
+    public static let maximumLength = DeviceName.maximumLength
+
+    /// The name to keep for what was typed, cleaned by
+    /// `DeviceName.sanitized`, or `nil` where nothing is left, which means
+    /// the machine goes back to its default name.
+    public static func normalized(_ typed: String) -> String? {
+        DeviceName.sanitized(typed)
     }
 }
 
@@ -357,6 +433,14 @@ public extension SavedHostStoring {
     func setStreamScalePreference(hostPublicKey: Data, to preference: StreamScalePreference) {
         guard let stored = load(hostPublicKey: hostPublicKey) else { return }
         save(stored.withStreamScalePreference(preference))
+    }
+
+    /// Records a person's own name for this machine, reading the stored record
+    /// first for the same reason `stampConnected` does. An empty name restores
+    /// the default one. A machine no longer held here is not written.
+    func rename(hostPublicKey: Data, to name: String) {
+        guard let stored = load(hostPublicKey: hostPublicKey) else { return }
+        save(stored.withCustomName(name))
     }
 
     /// Records a live session's own report of a fresh host-screen offer,

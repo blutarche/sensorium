@@ -127,6 +127,31 @@ private func testMachine(_ name: String, key: UInt8, host: String) -> SavedHost 
 }
 
 @MainActor
+private func rowMenuTitles(in view: NSView) -> [[String]] {
+    var found: [[String]] = []
+    for subview in view.subviews {
+        if String(describing: type(of: subview)) == "SavedMachineRowButton" {
+            let menu: NSMenu? = storedValue("rowMenu", of: subview)
+            found.append(menu?.items.map(\.title) ?? [])
+        }
+        found += rowMenuTitles(in: subview)
+    }
+    return found
+}
+
+@MainActor
+private func chooseRename(_ key: Data, in controller: YourMachinesWindowController) {
+    let selector = NSSelectorFromString("renameRow:")
+    guard controller.responds(to: selector) else {
+        print("FAIL: YourMachinesWindowController no longer answers -renameRow:")
+        Foundation.exit(1)
+    }
+    let item = NSMenuItem(title: YourMachinesWindowModel.renameTitle, action: nil, keyEquivalent: "")
+    item.representedObject = key
+    controller.perform(selector, with: item)
+}
+
+@MainActor
 func testYourMachinesWindowTests() async {
     let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
     let studio = testMachine("Studio", key: 2, host: "studio.tail1234.ts.net")
@@ -246,6 +271,102 @@ func testYourMachinesWindowTests() async {
         expect(hasLabel("Studio", in: content(of: controller)), "while every other row stays")
 
         print("PASS: forgetting a machine removes that entry and nothing else")
+    }
+
+    do {
+        // Rename is a row action above Forget, opens a step holding the
+        // current name, and writes only on Rename.
+        let store = InMemorySavedHostStore(hosts: [mini, studio])
+        let controller = YourMachinesWindowController(store: store)
+        expect(
+            rowMenuTitles(in: content(of: controller)).first == ["Pair Again", "Rename\u{2026}", "Forget"],
+            "each row's menu offers Rename\u{2026} just above Forget, got \(rowMenuTitles(in: content(of: controller)))"
+        )
+
+        chooseRename(mini.hostPublicKey, in: controller)
+        let field = storedValue("renameField", of: controller, as: NSTextField.self)
+        expect(
+            hasLabel(YourMachinesWindowModel.renameHeading, in: content(of: controller)),
+            "choosing Rename\u{2026} opens the rename step in this window"
+        )
+        expect(field.stringValue == "Loft", "the field starts with the name shown now, got \(field.stringValue)")
+
+        field.stringValue = "  Attic  "
+        guard let rename = button(titled: "Rename", in: content(of: controller)) else {
+            print("FAIL: the rename step offers no Rename button")
+            Foundation.exit(1)
+        }
+        tap(rename)
+        expect(store.load(hostPublicKey: mini.hostPublicKey)?.displayName == "Attic", "Rename stores the trimmed name")
+        expect(store.load(hostPublicKey: studio.hostPublicKey)?.displayName == "Studio", "and no other machine changes")
+        expect(hasLabel("Attic", in: content(of: controller)), "the row shows the new name")
+        expect(!hasLabel(YourMachinesWindowModel.renameHeading, in: content(of: controller)), "and the list is back")
+
+        chooseRename(mini.hostPublicKey, in: controller)
+        field.stringValue = "Different"
+        guard let cancel = button(titled: "Cancel", in: content(of: controller)) else {
+            print("FAIL: the rename step offers no Cancel button")
+            Foundation.exit(1)
+        }
+        tap(cancel)
+        expect(store.load(hostPublicKey: mini.hostPublicKey)?.displayName == "Attic", "Cancel changes nothing")
+        expect(hasLabel("Attic", in: content(of: controller)), "and the list is back")
+
+        chooseRename(mini.hostPublicKey, in: controller)
+        field.stringValue = String(repeating: "b", count: 80)
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        expect(field.stringValue.count == 64, "the field stops at 64 characters, got \(field.stringValue.count)")
+
+        let editor = NSTextView()
+        field.stringValue = "changed"
+        expect(
+            controller.control(field, textView: editor, doCommandBy: #selector(NSResponder.cancelOperation(_:))),
+            "Escape is taken by the rename field"
+        )
+        expect(store.load(hostPublicKey: mini.hostPublicKey)?.displayName == "Attic", "and cancels")
+        expect(!hasLabel(YourMachinesWindowModel.renameHeading, in: content(of: controller)), "back on the list")
+
+        chooseRename(mini.hostPublicKey, in: controller)
+        field.stringValue = "   "
+        expect(
+            controller.control(field, textView: editor, doCommandBy: #selector(NSResponder.insertNewline(_:))),
+            "Return is taken by the rename field"
+        )
+        expect(
+            store.load(hostPublicKey: mini.hostPublicKey)?.displayName == "Loft",
+            "and an empty name brings back the name pairing gave, got \(store.load(hostPublicKey: mini.hostPublicKey)?.displayName ?? "none")"
+        )
+
+        print("PASS: renaming from a row's menu writes on Rename, cancels on Cancel or Escape, and restores the default when empty")
+    }
+
+    do {
+        // Pairing a renamed machine again keeps the name the person chose.
+        let rekeyed = SavedHost(
+            displayName: "Loft",
+            host: "mini.tail1234.ts.net",
+            port: 7777,
+            hostPublicKey: Data([9]),
+            tlsCertificateHash: Data([9, 9])
+        )
+        let store = InMemorySavedHostStore(hosts: [mini.withCustomName("Attic")])
+        var connected: [String] = []
+        let controller = YourMachinesWindowController(store: store)
+        controller.sendPairIntent = { _ in .sent }
+        controller.pair = { _, _ in .paired(rekeyed) }
+        controller.onConnect = { connected.append($0.displayName) }
+        controller.beginPairAgain(with: store.loadAll()[0])
+        storedValue("codeField", of: controller, as: NSTextField.self).stringValue = "111111"
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: nil))
+        triggerSubmit(controller)
+        await pumpUntil { !connected.isEmpty }
+
+        expect(
+            store.loadAll().map(\.displayName) == ["Attic"] && store.loadAll().first?.hostPublicKey == Data([9]),
+            "the machine paired again under a new key keeps its custom name, got \(store.loadAll().map(\.displayName))"
+        )
+
+        print("PASS: pairing a renamed machine again keeps its name")
     }
 
     do {

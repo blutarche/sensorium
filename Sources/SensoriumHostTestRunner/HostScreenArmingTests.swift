@@ -276,6 +276,7 @@ func runHostScreenArmingTests() async {
             .appendingPathComponent("sensorium-approved-devices-permissions-test-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
         let store = FileApprovedDeviceStore(url: url)
+        store.save([Data([0x01])])
         store.setName("Kestrel Laptop Pro", for: Data([0x01]))
         let attributes = try! FileManager.default.attributesOfItem(atPath: url.path)
         expect(

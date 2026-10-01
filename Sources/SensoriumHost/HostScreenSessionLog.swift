@@ -7,10 +7,15 @@ import Foundation
 /// who, which display, and when.
 public struct HostScreenSessionRecord: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
-    /// The name the person at this machine gave this device while arming
-    /// it -- the same value `HostScreenDeviceArming.deviceName` already
-    /// carries, never a value read back from the connection itself.
+    /// The name this machine gave the device when the session began: the
+    /// one the person at this machine chose for it, else the one
+    /// `HostScreenDeviceArming.deviceName` carries -- never a value read
+    /// back from the connection itself. A later rename leaves it as written.
     public var deviceName: String
+    /// The name the device itself last reported, kept only when
+    /// `deviceName` is one chosen at this machine. Absent from records
+    /// written before this existed, and from any record with nothing to add.
+    public var reportedDeviceName: String?
     /// `HostScreenArmingPresentation`'s own wording for the target, e.g.
     /// "Built-in Display" -- not a `CGDirectDisplayID`, which is not stable
     /// across sleep or replug and would make an old record unreadable.
@@ -30,10 +35,12 @@ public struct HostScreenSessionRecord: Codable, Equatable, Sendable, Identifiabl
         displayLabel: String,
         startedAt: Date,
         outcome: HostScreenSessionOutcome? = nil,
-        displayModeChanges: [String]? = nil
+        displayModeChanges: [String]? = nil,
+        reportedDeviceName: String? = nil
     ) {
         self.id = id
         self.deviceName = deviceName
+        self.reportedDeviceName = reportedDeviceName
         self.displayLabel = displayLabel
         self.startedAt = startedAt
         self.outcome = outcome
@@ -116,10 +123,16 @@ public final class HostScreenSessionLogStore: @unchecked Sendable {
     public func beginSession(
         deviceName: String,
         displayLabel: String,
-        startedAt: Date
+        startedAt: Date,
+        reportedDeviceName: String? = nil
     ) -> HostScreenSessionRecord.ID {
         var all = load()
-        let record = HostScreenSessionRecord(deviceName: deviceName, displayLabel: displayLabel, startedAt: startedAt)
+        let record = HostScreenSessionRecord(
+            deviceName: deviceName,
+            displayLabel: displayLabel,
+            startedAt: startedAt,
+            reportedDeviceName: reportedDeviceName
+        )
         all.append(record)
         save(all)
         return record.id

@@ -54,6 +54,8 @@ Row detail line|row.detail
 Row reachability dot|row.dot
 Per-row Cancel|row.offersCancel
 Pair Again|Pair Again
+Rename|YourMachinesWindowModel.renameTitle
+Rename step|YourMachinesWindowModel.renameHeading
 Forget|Forget
 Connect with a Virtual Display|Connect with a Virtual Display
 Look Again|Look Again

@@ -110,6 +110,8 @@ struct SensoriumHostTestRunner {
             { await runHostMenuBarPingTitleColorTests() },
             { await runPairedMachinesSharingToggleTests() },
             { await runPairedMachinesCardInsetTests() },
+            { await runPairedMachineRenameTests() },
+            { await runApprovedDeviceStoreSafetyTests() },
             { await runFakeHostByteChannelTests() },
             { await runCaptureCursorPolicyTests() },
             { await runStreamFidelityLeverTests() },

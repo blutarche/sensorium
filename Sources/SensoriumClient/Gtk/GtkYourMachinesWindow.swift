@@ -23,6 +23,8 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         /// `device` is `nil` only for an address being typed by hand, the one
         /// path that has no machine picked yet.
         case typeCode(device: ViewerPairingDevice?, isPairingAgain: Bool)
+        /// Naming one saved machine, from its row's menu.
+        case rename(hostPublicKey: Data)
     }
 
     private static let windowWidth: Int32 = 460
@@ -50,6 +52,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private let listPage: GtkRef
     private let pickerPage: GtkRef
     private let codePage: GtkRef
+    private let renamePage: GtkRef
 
     private var step: Step = .list
     private var model = YourMachinesWindowModel(hosts: [])
@@ -94,6 +97,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private var messageHeadline: GtkRef?
     private var messageDetail: GtkRef?
     private var pairButton: GtkRef?
+    private var renameEntry: GtkRef?
 
     public init(store: any SavedHostStoring) {
         GtkToolkit.start()
@@ -104,6 +108,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         listPage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
         pickerPage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
         codePage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
+        renamePage = GtkWidgets.column(width: Self.contentWidth, spacing: spacing)
 
         // The window is Sensorium; the heading inside it says which list
         // this is, as the macOS window does.
@@ -115,6 +120,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(listPage), "list")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(pickerPage), "picker")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(codePage), "code")
+        gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(renamePage), "rename")
         menuBar = GtkViewerMenuBar(window: window)
         menuBar.update(LinuxViewerMenu.bar(Self.menuBarState))
         menuBar.onCommand = { [weak self] in self?.perform($0) }
@@ -234,7 +240,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             ? host.host
             : "\(host.host):\(host.port)"
         enterCodeStep(
-            device: ViewerPairingDevice(address: address, name: host.displayName),
+            device: ViewerPairingDevice(address: address, name: host.pairedName),
             isPairingAgain: true
         )
         pairingAgainHostPublicKey = host.hostPublicKey
@@ -299,12 +305,13 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         messageHeadline = nil
         messageDetail = nil
         pairButton = nil
+        renameEntry = nil
         // Given up before the widget holding it is torn down: the window
         // keeps a pointer to whichever widget Return activates, and a rebuild
         // that destroys that widget first leaves the window pointing at an
         // object that no longer exists.
         gtk_window_set_default_widget(sensorium_gtk_window(window), nil)
-        for page in [listPage, pickerPage, codePage] {
+        for page in [listPage, pickerPage, codePage, renamePage] {
             GtkWidgets.removeAllChildren(of: page)
         }
         pageCallbacks = []
@@ -319,6 +326,9 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         case let .typeCode(device, isPairingAgain):
             buildCodePage(device: device, isPairingAgain: isPairingAgain)
             gtk_stack_set_visible_child_name(sensorium_gtk_stack(stack), "code")
+        case let .rename(hostPublicKey):
+            buildRenamePage(hostPublicKey: hostPublicKey)
+            gtk_stack_set_visible_child_name(sensorium_gtk_stack(stack), "rename")
         }
     }
 
@@ -466,13 +476,14 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_overlay_add_overlay(sensorium_gtk_overlay(overlay), sensorium_gtk_widget(control))
     }
 
-    /// The same two actions a right-click offers, and the third only a failed
+    /// The same actions a right-click offers, and the last only a failed
     /// host-screen attempt this machine's own "Start with" preference started
     /// has any use for. The row is named by number: GTK's own action machinery
     /// carries an integer, and the number indexes the rows this render drew.
     private func rowMenu(for row: YourMachinesRow, index: Int) -> GtkRef {
         let menu = gtkRef(g_menu_new())
         g_menu_append(sensorium_g_menu(menu), "Pair Again", "machine.pair-again(\(index))")
+        g_menu_append(sensorium_g_menu(menu), YourMachinesWindowModel.renameTitle, "machine.rename(\(index))")
         g_menu_append(sensorium_g_menu(menu), "Forget", "machine.forget(\(index))")
         if row.offersConnectAsVirtualDisplayFallback {
             // The same title `ViewerSessionAction.connectAsVirtualDisplay`
@@ -534,13 +545,16 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         stopping()
     }
 
-    /// The three things a row's own menu can do, installed on the window once
+    /// The things a row's own menu can do, installed on the window once
     /// and reached by every row that draws a menu.
     private func installRowMenuActions() {
         let group = gtkRef(g_simple_action_group_new())
         addRowAction("pair-again", to: group) { [weak self] row in
             guard let self, let host = self.store.load(hostPublicKey: row.hostPublicKey) else { return }
             self.beginPairAgain(with: host)
+        }
+        addRowAction("rename", to: group) { [weak self] row in
+            self?.beginRename(hostPublicKey: row.hostPublicKey)
         }
         addRowAction("forget", to: group) { [weak self] row in
             self?.forget(hostPublicKey: row.hostPublicKey)
@@ -583,6 +597,66 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             selectedHostPublicKey = nil
         }
         reloadFromStore()
+    }
+
+    // MARK: - Rename
+
+    /// Straight to the rename step for one saved machine, with the field
+    /// holding the name it shows now.
+    public func beginRename(hostPublicKey: Data) {
+        guard store.load(hostPublicKey: hostPublicKey) != nil else { return }
+        step = .rename(hostPublicKey: hostPublicKey)
+        render()
+        if let renameEntry {
+            gtk_widget_grab_focus(sensorium_gtk_widget(renameEntry))
+            gtk_editable_select_region(sensorium_gtk_editable(renameEntry), 0, -1)
+        }
+    }
+
+    private func buildRenamePage(hostPublicKey: Data) {
+        let host = store.load(hostPublicKey: hostPublicKey)
+        GtkWidgets.append(
+            GtkWidgets.onTextLine(
+                GtkWidgets.label(YourMachinesWindowModel.renameHeading, cssClass: GtkViewerStyle.Class.heading),
+                size: 20
+            ),
+            to: renamePage
+        )
+        let entry = GtkWidgets.entry(placeholder: host?.pairedName ?? "", cssClass: nil)
+        gtk_entry_set_max_length(sensorium_gtk_entry(entry), Int32(SavedHostName.maximumLength))
+        GtkWidgets.setText(host?.displayName ?? "", on: entry)
+        renameEntry = entry
+        let activated = GtkCallback { [weak self] in self?.confirmRename() }
+        pageCallbacks.append(activated)
+        gtkConnect(entry, "activate", gtkClickedHandler, Unmanaged.passUnretained(activated).toOpaque())
+        GtkWidgets.append(entry, to: renamePage)
+        GtkWidgets.append(
+            GtkWidgets.onTextLine(
+                Self.hint(YourMachinesWindowModel.renameHint), size: 12
+            ),
+            to: renamePage
+        )
+
+        let buttons = GtkWidgets.box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.md))
+        let rename = GtkWidgets.button(YourMachinesWindowModel.renameConfirmTitle, cssClass: GtkViewerStyle.Class.primary)
+        gtk_widget_set_receives_default(sensorium_gtk_widget(rename), 1)
+        onClick(rename) { [weak self] in self?.confirmRename() }
+        GtkWidgets.append(rename, to: buttons)
+        let cancel = GtkWidgets.button(YourMachinesWindowModel.renameCancelTitle, cssClass: GtkViewerStyle.Class.secondary)
+        onClick(cancel) { [weak self] in self?.cancelRename() }
+        GtkWidgets.append(cancel, to: buttons)
+        GtkWidgets.append(buttons, to: renamePage)
+        gtk_window_set_default_widget(sensorium_gtk_window(window), sensorium_gtk_widget(rename))
+    }
+
+    private func confirmRename() {
+        guard case let .rename(hostPublicKey) = step, let renameEntry else { return }
+        store.rename(hostPublicKey: hostPublicKey, to: GtkWidgets.text(of: renameEntry))
+        showList()
+    }
+
+    private func cancelRename() {
+        showList()
     }
 
     // MARK: - Add a Machine, step one: which machine
@@ -932,11 +1006,13 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             self.isPairing = false
             switch result {
             case let .paired(host):
+                let previous = self.pairingAgainHostPublicKey.flatMap { self.store.load(hostPublicKey: $0) }
+                    ?? self.store.load(hostPublicKey: host.hostPublicKey)
                 if let replaced = self.pairingAgainHostPublicKey, replaced != host.hostPublicKey {
                     self.store.remove(hostPublicKey: replaced)
                 }
                 self.pairingAgainHostPublicKey = nil
-                self.store.save(host)
+                self.store.save(host.carryingName(from: previous))
                 self.selectedHostPublicKey = host.hostPublicKey
                 self.showList()
                 self.onConnect?(host)
@@ -987,7 +1063,12 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     /// reached.
     private func installKeys() {
         let handler = GtkKeyPressHandler { [weak self] keyval, state in
-            guard let self, let command = self.menuBar.command(keyval: keyval, state: state) else { return false }
+            guard let self else { return false }
+            if keyval == guint(GDK_KEY_Escape), case .rename = self.step {
+                self.cancelRename()
+                return true
+            }
+            guard let command = self.menuBar.command(keyval: keyval, state: state) else { return false }
             self.perform(command)
             return true
         }

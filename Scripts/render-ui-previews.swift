@@ -891,6 +891,28 @@ MainActor.assumeIsolated {
         )
     }
 
+    // A paired machine's Rename sheet, drawn where macOS drops a sheet: centred
+    // at the top of the host window's content, over the paired list.
+    do {
+        let controller = hostWindow(status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted))
+        controller.updatePairedMachines(twoPairedRows)
+        let windowImage = render(hostWindowContent(controller))
+        let sheet = PairedMachineRenameView(currentName: "Kestrel Laptop", onRename: { _ in }, onCancel: {})
+        sheet.frame = NSRect(origin: .zero, size: sheet.fittingSize)
+        let sheetImage = render(sheet)
+        write(
+            place(sheetImage, over: windowImage, in: CGRect(
+                x: (windowImage.width - sheetImage.width) / 2,
+                y: windowImage.height - sheetImage.height,
+                width: sheetImage.width,
+                height: sheetImage.height
+            )),
+            named: "host-rename-sheet.png",
+            state: "HostSetupWindowController with PairedMachineRenameView over it — Rename on the first paired"
+                + " machine, the field holding its current name; no stream pass, it never leaves the host"
+        )
+    }
+
     // The badge -- the one window Sensorium places on a physical display --
     // naming the connected device and display, with a Stop button, expanded
     // (the first few seconds of a session) and
@@ -1090,6 +1112,16 @@ MainActor.assumeIsolated {
         state: "YourMachinesWindowController after an attempt failed and the retry policy is about to dial"
             + " again — the row names the attempt and why it did not connect"
     )
+
+    machinesList.showList()
+    machinesList.beginRename(hostPublicKey: miniHost.hostPublicKey)
+    write(
+        render(machinesContent(machinesList)),
+        named: "viewer-rename-1.png",
+        state: "YourMachinesWindowController on the rename step for the first machine — the field holds the"
+            + " name it shows now, with Rename and Cancel beneath"
+    )
+    machinesList.showList()
 
     // The same three fixtures `SensoriumViewerProbe render-gtk` draws on
     // Linux, so each GTK render has a macOS one to be laid beside.

@@ -182,7 +182,7 @@ private final class HostScreenArmingCoordinator {
         let approvedDevices: [(publicKey: Data, name: String?)] =
             approvedStore.load()
                 .sorted { $0.base64EncodedString() < $1.base64EncodedString() }
-                .map { key in (key, approvedStore.name(for: key)) }
+                .map { key in (key, approvedStore.customName(for: key) ?? approvedStore.name(for: key)) }
         hostWindow?.updatePairedMachines(
             HostScreenArmingPresentation.pairedMachineRows(
                 approvedDevices: approvedDevices,
@@ -193,7 +193,10 @@ private final class HostScreenArmingCoordinator {
                 activeDisplays: DisplayInventory.online()
             )
         )
-        presence?.updateArming(HostScreenArmingPresentation.lines(for: arming))
+        presence?.updateArming(HostScreenArmingPresentation.lines(
+            for: arming,
+            hostChosenName: { [approvedStore] key in approvedStore.customName(for: key) }
+        ))
     }
 
     /// One row's own Share host screen toggle. Arms or disarms exactly the
@@ -237,6 +240,13 @@ private final class HostScreenArmingCoordinator {
     /// should still ask when this machine saw recent local input.
     func setAsksWhenInUse(devicePublicKey: Data, _ asksWhenInUse: Bool) {
         armingStore.setAsksWhenInUse(devicePublicKey: devicePublicKey, asksWhenInUse)
+        refresh()
+    }
+
+    /// The name typed in a row's rename sheet. Writes only the name this
+    /// machine shows, never the device's key or its arming record.
+    func rename(devicePublicKey: Data, to typed: String) {
+        PairedDeviceName.rename(devicePublicKey, to: typed, in: approvedStore)
         refresh()
     }
 
@@ -749,8 +759,8 @@ struct sensoriumd {
                     latencyRecorder: latencyRecorder,
                     clipboard: clipboard,
                     onEvent: { print("Sensorium host: \($0)") },
-                    // Who is on this machine, for the menu bar. The name
-                    // arrives on the wire.
+                    // Who is on this machine, for the menu bar: the name
+                    // chosen at this machine, else the one the hello reports.
                     onPeerPresence: { peer in
                         Task { @MainActor in
                             // The terminal is the record of what happened
@@ -787,8 +797,8 @@ struct sensoriumd {
                 // `HostSessionCoordinator` below can ever obtain a working
                 // host-screen media object, and `makeMedia` cannot return
                 // one without a log record and a visible badge already
-                // existing. `deviceName`/`displayLabel` read the arming
-                // record's own name -- `controller.hostScreenDeviceName`/
+                // existing. `deviceName`/`displayLabel` read the name chosen
+                // at this machine or the arming record's own name -- `controller.hostScreenDeviceName`/
                 // `hostScreenDisplayLabel` -- never the wire's own claim,
                 // and are only readable once a request has actually been
                 // admitted, which is also the earliest `makeMedia` can run.
@@ -805,6 +815,7 @@ struct sensoriumd {
                     },
                     sessionLog: sessionLog,
                     deviceName: { controller.hostScreenDeviceName ?? "" },
+                    reportedDeviceName: { controller.hostScreenReportedDeviceName },
                     displayLabel: { controller.hostScreenDisplayLabel ?? "" },
                     // The badge's own Stop control ends the same session
                     // the window's and menu bar's Stop controls already do.
@@ -1221,6 +1232,7 @@ struct sensoriumd {
             onToggleSharing: { key, isOn in armingCoordinator.toggle(devicePublicKey: key, isOn: isOn) },
             onRemovePairedDevice: { key in confirmAndRemovePairedDevice(devicePublicKey: key) },
             onToggleAskFirst: { key, isOn in armingCoordinator.setAsksWhenInUse(devicePublicKey: key, isOn) },
+            onRenamePairedDevice: { key, typed in armingCoordinator.rename(devicePublicKey: key, to: typed) },
             autoLoginStatus: { autoLoginRegistering.status() },
             onToggleAutoLogin: { isOn in
                 do {

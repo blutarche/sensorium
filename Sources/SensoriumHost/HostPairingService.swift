@@ -111,20 +111,27 @@ public final class HostPairingService {
         ) else {
             return .pairRejected(reason: "invalid-request")
         }
+        // The signature covers the name as sent; what this machine keeps
+        // and shows is the cleaned one, and a name with nothing left after
+        // cleaning is no name at all.
+        guard let cleanName = DeviceName.sanitized(deviceName) else {
+            return .pairRejected(reason: "invalid-request")
+        }
         // Read before anything below mutates it: whether this request is the
         // very first approval of `publicKey` is what `onDeviceApproved`
         // reports, and it must be what was already true, never a fact this
         // same request just wrote.
         let wasAlreadyApproved = approvedKeys.contains(publicKey)
         do {
-            _ = try authority.approve(code: code, deviceID: deviceName, now: now)
+            _ = try authority.approve(code: code, deviceID: cleanName, now: now)
             approvedKeys.insert(publicKey)
             approvedStore?.save(approvedKeys)
             // Every request that reaches here proved it holds the key it
             // names, so the name it gives is this machine's own.
-            approvedStore?.setName(deviceName, for: publicKey)
+            approvedStore?.setName(cleanName, for: publicKey)
             onDeviceApproved?(PairingApproval(
-                deviceName: deviceName,
+                // A device pairing again keeps the name chosen for it here.
+                deviceName: approvedStore?.customName(for: publicKey) ?? cleanName,
                 devicePublicKey: publicKey,
                 isNewDevice: !wasAlreadyApproved
             ))
@@ -162,15 +169,31 @@ public final class HostPairingService {
     /// existed or renamed on its own side afterward -- and, like the
     /// ceremony's own name write, it runs only once the caller has already
     /// verified this exact connection holds `publicKey`'s private half.
+    /// Like the ceremony, it writes only the reported name, never the one
+    /// the person at this machine chose (`ApprovedDeviceStoring.customName`).
+    /// The name is cleaned by `DeviceName.sanitized` first; one with nothing
+    /// left keeps the name already stored.
     public func recordDeviceName(_ deviceName: String, for publicKey: Data) {
-        guard let approvedStore, approvedKeys.contains(publicKey) else { return }
+        guard let approvedStore, approvedKeys.contains(publicKey),
+              let cleanName = DeviceName.sanitized(deviceName) else { return }
         let existingName = approvedStore.name(for: publicKey)
-        guard existingName == nil || existingName != deviceName else { return }
-        approvedStore.setName(deviceName, for: publicKey)
+        guard existingName == nil || existingName != cleanName else { return }
+        approvedStore.setName(cleanName, for: publicKey)
     }
 }
 
 extension HostPairingService {
+    /// The name the person at this machine chose for `publicKey`'s device,
+    /// or `nil` when they never renamed it.
+    public func hostChosenName(for publicKey: Data) -> String? {
+        approvedStore?.customName(for: publicKey)
+    }
+
+    /// The name `publicKey`'s device last reported, at pairing or in a hello.
+    public func reportedName(for publicKey: Data) -> String? {
+        approvedStore?.name(for: publicKey)
+    }
+
     func signCanvasReady(
         displayID: UInt32,
         logicalWidth: Int,

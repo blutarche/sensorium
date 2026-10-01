@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 
-/// One row per machine that has ever paired, each with its own Remove and
-/// Share host screen controls. Visible in every state the surrounding
+/// One row per machine that has ever paired, each with its own Rename,
+/// Remove and Share host screen controls. Visible in every state the surrounding
 /// `HostSetupWindowController` can be in, not only while a session is live
 /// -- someone who paired a machine months ago must see it without hunting.
 @MainActor
@@ -20,6 +20,8 @@ final class PairedMachinesView: NSView {
     var onToggleSharing: ((Data, Bool) -> Void)?
     var onRemovePairedDevice: ((Data) -> Void)?
     var onToggleAskFirst: ((Data, Bool) -> Void)?
+    /// The row's machine and the name it shows now.
+    var onRenamePairedDevice: ((Data, String) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -91,6 +93,7 @@ final class PairedMachinesView: NSView {
             let rowView = PairedMachineRowView(row: row)
             rowView.onToggle = { [weak self] isOn in self?.onToggleSharing?(row.devicePublicKey, isOn) }
             rowView.onRemove = { [weak self] in self?.onRemovePairedDevice?(row.devicePublicKey) }
+            rowView.onRename = { [weak self] in self?.onRenamePairedDevice?(row.devicePublicKey, row.deviceName) }
             rowView.onToggleAskFirst = { [weak self] isOn in self?.onToggleAskFirst?(row.devicePublicKey, isOn) }
             return rowView
         }
@@ -176,7 +179,7 @@ final class HostScreenSharingToggleControl: NSControl {
     }
 }
 
-/// One machine's own row, four lines at most: its name beside Remove, the
+/// One machine's own row, four lines at most: its name beside Rename and Remove, the
 /// Share host screen toggle, the ask-first checkbox while it is sharing, and
 /// one wrapping line combining its key fingerprint, which display it may
 /// share, and why sharing is or is not available -- everything this row
@@ -192,11 +195,13 @@ private final class PairedMachineRowView: NSView {
         checkboxWithTitle: HostScreenArmingPresentation.asksWhenInUseLabel, target: nil, action: nil
     )
     private let metaLabel = PairedMachinesView.label("", color: CanvasDesign.muted)
+    private let renameButton = NSButton()
     private let removeButton = NSButton()
     private let stack = NSStackView()
 
     var onToggle: ((Bool) -> Void)?
     var onRemove: (() -> Void)?
+    var onRename: (() -> Void)?
     var onToggleAskFirst: ((Bool) -> Void)?
 
     init(row: HostScreenArmingPresentation.PairedMachineRow) {
@@ -220,34 +225,16 @@ private final class PairedMachineRowView: NSView {
         toggleRow.alignment = .centerY
         toggleRow.spacing = CanvasDesign.Space.sm
 
-        removeButton.isBordered = false
-        removeButton.wantsLayer = true
-        removeButton.layer?.cornerRadius = CanvasDesign.Radius.tight
-        removeButton.layer?.backgroundColor = CanvasDesign.bg3.cgColor
-        removeButton.layer?.borderWidth = 1
-        removeButton.layer?.borderColor = CanvasDesign.line2.cgColor
-        let removeTitle = NSAttributedString(
-            string: "Remove",
-            attributes: [
-                .font: CanvasDesign.font(.primary, size: 12, weight: .regular),
-                .foregroundColor: CanvasDesign.bad.nsColor
-            ]
-        )
-        removeButton.attributedTitle = removeTitle
+        Self.styleRowButton(removeButton, title: "Remove", color: CanvasDesign.bad)
         removeButton.target = self
         removeButton.action = #selector(removeTapped)
-        removeButton.translatesAutoresizingMaskIntoConstraints = false
-        // Sized from the label itself, not left to the bordered-off cell's own
-        // tight fit: without this the title all but touches the border on
-        // every side. Insets match this row's own outer padding (`inset`
-        // below) horizontally and the row's tightest vertical gap otherwise.
-        let removeTitleSize = removeTitle.size()
-        let removeHorizontalInset = CanvasDesign.Space.md
-        let removeVerticalInset = CanvasDesign.Space.xs
+        Self.styleRowButton(renameButton, title: "Rename", color: CanvasDesign.ink)
+        renameButton.target = self
+        renameButton.action = #selector(renameTapped)
 
-        // The name and Remove share one line -- Remove pinned to the row's
-        // trailing edge, the name taking whatever is left and wrapping
-        // before it ever runs under the button. Top-aligned, not centred:
+        // The name, Rename and Remove share one line -- Remove pinned to the
+        // row's trailing edge with Rename just before it, the name taking
+        // whatever is left and wrapping before it ever runs under a button. Top-aligned, not centred:
         // a long name can wrap to a second line the button never grows to
         // match, and centring would then drift the button off the name's
         // own first line.
@@ -255,17 +242,18 @@ private final class PairedMachineRowView: NSView {
         nameRow.translatesAutoresizingMaskIntoConstraints = false
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
         nameRow.addSubview(nameLabel)
+        nameRow.addSubview(renameButton)
         nameRow.addSubview(removeButton)
         NSLayoutConstraint.activate([
             nameLabel.leadingAnchor.constraint(equalTo: nameRow.leadingAnchor),
             nameLabel.topAnchor.constraint(equalTo: nameRow.topAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: removeButton.leadingAnchor, constant: -CanvasDesign.Space.sm),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: renameButton.leadingAnchor, constant: -CanvasDesign.Space.sm),
+            renameButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -CanvasDesign.Space.xs),
+            renameButton.topAnchor.constraint(equalTo: nameRow.topAnchor),
             removeButton.trailingAnchor.constraint(equalTo: nameRow.trailingAnchor),
             removeButton.topAnchor.constraint(equalTo: nameRow.topAnchor),
             nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: nameLabel.bottomAnchor),
-            nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: removeButton.bottomAnchor),
-            removeButton.widthAnchor.constraint(equalToConstant: ceil(removeTitleSize.width) + removeHorizontalInset * 2),
-            removeButton.heightAnchor.constraint(equalToConstant: ceil(removeTitleSize.height) + removeVerticalInset * 2)
+            nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: removeButton.bottomAnchor)
         ])
 
         askFirstCheckbox.font = CanvasDesign.font(.primary, size: 12)
@@ -346,5 +334,37 @@ private final class PairedMachineRowView: NSView {
 
     @objc private func removeTapped() {
         onRemove?()
+    }
+
+    @objc private func renameTapped() {
+        onRename?()
+    }
+
+    /// A row's small bordered text button. Sized from the label itself, not
+    /// left to the bordered-off cell's own tight fit: without this the title
+    /// all but touches the border on every side. Insets match this row's own
+    /// outer padding horizontally and the row's tightest vertical gap
+    /// otherwise.
+    private static func styleRowButton(_ button: NSButton, title: String, color: DesignColor) {
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.cornerRadius = CanvasDesign.Radius.tight
+        button.layer?.backgroundColor = CanvasDesign.bg3.cgColor
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = CanvasDesign.line2.cgColor
+        let attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 12, weight: .regular),
+                .foregroundColor: color.nsColor
+            ]
+        )
+        button.attributedTitle = attributedTitle
+        button.translatesAutoresizingMaskIntoConstraints = false
+        let titleSize = attributedTitle.size()
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: ceil(titleSize.width) + CanvasDesign.Space.md * 2),
+            button.heightAnchor.constraint(equalToConstant: ceil(titleSize.height) + CanvasDesign.Space.xs * 2)
+        ])
     }
 }

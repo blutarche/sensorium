@@ -155,6 +155,9 @@ enum RenderGtkVerb {
                 window.select(hostPublicKey: studioHost.hostPublicKey)
             },
             machines("viewer-machines-7-long-name", hosts: [longNamedHost]),
+            machines("viewer-rename-1", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.beginRename(hostPublicKey: miniHost.hostPublicKey)
+            },
             machines("viewer-add-1-picker", hosts: [miniHost]) { window in
                 window.apply(deviceList: .devices(tailnetRows))
             },

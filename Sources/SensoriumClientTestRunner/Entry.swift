@@ -126,6 +126,7 @@ struct SensoriumClientTestRunner {
         testViewerWindowMenuStateTests()
         testShortcutStripPinMemoryTests()
         testSavedMachinesStoreTests()
+        testSavedHostRenameTests()
         testStartTargetTests()
         await testOfferedHostScreenStartTests()
         testYourMachinesWindowModelTests()

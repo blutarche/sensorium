@@ -69,6 +69,7 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     private let sequencer = VideoPacketSequencer()
     private let sessionLog: HostScreenSessionLogStore
     private let deviceName: () -> String
+    private let reportedDeviceName: () -> String?
     private let displayLabel: () -> String
     /// Fires the moment the badge's own Stop is tapped. Wired by the caller
     /// to whatever actually ends the live connection; this type's own job
@@ -103,6 +104,7 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         rawFactory: @escaping (VideoEncoderConfiguration, VideoPacketSequencer) -> any CanvasMediaStreaming,
         sessionLog: HostScreenSessionLogStore,
         deviceName: @escaping () -> String,
+        reportedDeviceName: @escaping () -> String? = { nil },
         displayLabel: @escaping () -> String,
         onBadgeStop: @escaping @MainActor () -> Void,
         badgeFactory: @escaping (HostScreenBadgeState, CGDirectDisplayID) -> any HostScreenBadgeDisplaying = {
@@ -112,6 +114,7 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         self.rawFactory = rawFactory
         self.sessionLog = sessionLog
         self.deviceName = deviceName
+        self.reportedDeviceName = reportedDeviceName
         self.displayLabel = displayLabel
         self.onBadgeStop = onBadgeStop
         self.badgeFactory = badgeFactory
@@ -126,7 +129,12 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     public func makeMedia(_ configuration: VideoEncoderConfiguration, displayID: CGDirectDisplayID) -> any CanvasMediaStreaming {
         let name = deviceName()
         let label = displayLabel()
-        recordID = sessionLog.beginSession(deviceName: name, displayLabel: label, startedAt: Date())
+        recordID = sessionLog.beginSession(
+            deviceName: name,
+            displayLabel: label,
+            startedAt: Date(),
+            reportedDeviceName: reportedDeviceName()
+        )
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: name, displayLabel: label))
         state.onStop = onBadgeStop
         let display = badgeFactory(state, displayID)

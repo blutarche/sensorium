@@ -108,6 +108,12 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         onToggleSharing: @escaping @MainActor (Data, Bool) -> Void,
         onRemovePairedDevice: @escaping @MainActor (Data) -> Void,
         onToggleAskFirst: @escaping @MainActor (Data, Bool) -> Void = { _, _ in },
+        // The row's machine and the name as typed in the rename sheet.
+        onRenamePairedDevice: @escaping @MainActor (Data, String) -> Void = { _, _ in },
+        // How the rename sheet is put up: the window, the name shown now, and
+        // what to call with the name typed. A test supplies its own so no
+        // real sheet reaches the window server.
+        presentRenamePrompt: (@MainActor (NSWindow, String, @escaping (String) -> Void) -> Void)? = nil,
         // Read fresh on every `refresh()`, never cached across it, the same
         // as `tailscaleAppURLLookup` above: the owner can change this in
         // System Settings directly while the window is open.
@@ -138,6 +144,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         pairedMachines.onToggleSharing = onToggleSharing
         pairedMachines.onRemovePairedDevice = onRemovePairedDevice
         pairedMachines.onToggleAskFirst = onToggleAskFirst
+        let presentRename = presentRenamePrompt ?? { window, currentName, onRename in
+            PairedMachineRenameSheet.present(on: window, currentName: currentName, onRename: onRename)
+        }
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 420),
             styleMask: [.titled, .closable],
@@ -151,6 +160,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         window.backgroundColor = CanvasDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
         window.delegate = self
+        pairedMachines.onRenamePairedDevice = { [weak window] key, currentName in
+            guard let window else { return }
+            presentRename(window, currentName) { typed in onRenamePairedDevice(key, typed) }
+        }
 
         buildContent()
         refresh()

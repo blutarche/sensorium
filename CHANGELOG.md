@@ -21,6 +21,16 @@ once it reaches 1.0.
 
 ### Added
 
+- A paired machine can be renamed from the **…** menu on its row in Your
+  Machines, on both viewers. The name is kept on the viewer only,
+  survives pairing again, and an empty name puts the original back.
+- The person at the host can rename a paired machine with **Rename** on
+  its row in the host window. The host shows that name everywhere it names
+  the machine, including the badge and the session record. The name is kept
+  on the host only, the name the machine reports never replaces it, and an
+  empty name puts the reported one back. On both sides, a machine's name
+  is shown without invisible or text-reversing characters, on one line,
+  and cut to 64 characters.
 - When the Linux viewer decodes video on the CPU, its diagnostics panel
   says so and links to the install guide's steps for faster video on
   Fedora.

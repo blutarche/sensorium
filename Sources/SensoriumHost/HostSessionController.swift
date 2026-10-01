@@ -109,11 +109,14 @@ private struct HostScreenSurfaceState {
     /// one shared count rather than a fresh one per reconnect.
     var devicePublicKey: Data
     var armingFingerprint: HostScreenArmingFingerprint
-    /// The arming record's own name for this device -- what the operator
-    /// typed or confirmed while arming, not the name an
-    /// `authenticatedHello` merely claims. What the badge names is this,
-    /// not the wire's own unverified claim.
+    /// The name the person at this machine chose for this device, else the
+    /// arming record's own -- never the name an `authenticatedHello`
+    /// merely claims. What the badge names is this, not the wire's own
+    /// unverified claim.
     var deviceName: String
+    /// The name the device last reported, kept only when `deviceName` is
+    /// one chosen here, so the session record can show both.
+    var reportedDeviceName: String?
     /// `HostScreenArmingPresentation.displayLabel(for:)`'s own words for
     /// the real display this surface was admitted for -- the same label
     /// `hostScreenList` already offered it under.
@@ -545,12 +548,35 @@ public final class HostSessionController {
         hostScreenSurface?.displayID
     }
 
-    /// The arming record's own name for the device this connection's live
-    /// host-screen surface was admitted for, or `nil` when none is live --
-    /// what the session log and the badge name, never a value read back
-    /// from the connection's own claim.
+    /// The name this host gives the device this connection's live
+    /// host-screen surface was admitted for -- the one chosen here, else the
+    /// arming record's own -- or `nil` when none is live. What the session
+    /// log and the badge name, never a value read back from the
+    /// connection's own claim.
     public var hostScreenDeviceName: String? {
         hostScreenSurface?.deviceName
+    }
+
+    /// The name that same device last reported, when `hostScreenDeviceName`
+    /// is one chosen here; `nil` otherwise.
+    public var hostScreenReportedDeviceName: String? {
+        hostScreenSurface?.reportedDeviceName
+    }
+
+    /// The name the person at this machine chose for the device this
+    /// connection authenticated as, or `nil` when there is none or nothing
+    /// has authenticated yet.
+    public var authenticatedDeviceDisplayName: String? {
+        guard let authenticatedClientKey else { return nil }
+        return pairing?.hostChosenName(for: authenticatedClientKey)
+    }
+
+    /// What this host calls `clientKey`'s device during host-screen
+    /// admission: the name chosen here, else the arming record's own.
+    private func armedDeviceDisplayName(for clientKey: Data, in arming: HostScreenArming) -> String {
+        pairing?.hostChosenName(for: clientKey)
+            ?? arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName
+            ?? ""
     }
 
     /// The same real display's own label, for the same connection
@@ -962,9 +988,10 @@ public final class HostSessionController {
 
         guard let clientKey = authenticatedClientKey,
               let arming = hostScreenArmingProvider?(),
-              let device = arming.devices.first(where: { $0.devicePublicKey == clientKey }) else {
+              arming.devices.contains(where: { $0.devicePublicKey == clientKey }) else {
             return .hostScreenRefused(reason: "host-screen-not-allowed")
         }
+        let deviceName = armedDeviceDisplayName(for: clientKey, in: arming)
 
         let current = hostScreenCurrentDisplaysProvider()
         let eligible = HostScreenOfferEligibility.offerable(from: current)
@@ -976,7 +1003,7 @@ public final class HostSessionController {
                 continue
             }
             let label = HostScreenArmingPresentation.displayLabel(for: display)
-            log("Sensorium host: did not offer host screen \"\(label)\" to \(device.deviceName): \(reason.words)")
+            log("Sensorium host: did not offer host screen \"\(label)\" to \(deviceName): \(reason.words)")
         }
 
         var entries: [HostScreenListEntry] = []
@@ -998,7 +1025,7 @@ public final class HostSessionController {
             ))
         }
         if !entries.isEmpty {
-            log("Sensorium host: offered \(entries.count) host screens to \(device.deviceName): \(labels.joined(separator: ", "))")
+            log("Sensorium host: offered \(entries.count) host screens to \(deviceName): \(labels.joined(separator: ", "))")
         }
         hostScreenMintedTokens = minted
         return .hostScreenList(displays: entries, canvasAvailable: privateDesktopOffered())
@@ -1233,7 +1260,7 @@ public final class HostSessionController {
             // Fires the same hook and nothing else: no authentication
             // check, no state change here, no reply. A device sends this
             // before it has anything else to offer.
-            onPairingRequested?(deviceName)
+            onPairingRequested?(DeviceName.sanitized(deviceName) ?? "")
             return nil
         case let .clipboardSharing(enabled):
             // Gated exactly like every other state-changing message this
@@ -1310,7 +1337,7 @@ public final class HostSessionController {
             // wrong or already-consumed code is a machine asking to pair just
             // as much as a correct one is, and this must not wait to find
             // out which.
-            onPairingRequested?(deviceName)
+            onPairingRequested?(DeviceName.sanitized(deviceName) ?? "")
             // A pairing connection carries no `authenticatedHello` -- the
             // machine is asking to pair, not opening a session -- so the
             // request's own signature is the only proof of possession this
@@ -1683,7 +1710,7 @@ public final class HostSessionController {
                     }
                     let armedDevice = arming.devices.first { $0.devicePublicKey == clientKey }
                     guard armedDevice?.asksWhenSomeoneIsUsingThisMachine == true else {
-                        log("host screen: \(armedDevice?.deviceName ?? "") is armed without asking first; no presence prompt")
+                        log("host screen: \(armedDeviceDisplayName(for: clientKey, in: arming)) is armed without asking first; no presence prompt")
                         return .proceed
                     }
                     let assessment = HostScreenPresenceRule.assess(
@@ -1695,7 +1722,7 @@ public final class HostSessionController {
                         return .proceed
                     case .mustAsk:
                         let content = HostScreenBadgeContent(
-                            deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
+                            deviceName: armedDeviceDisplayName(for: clientKey, in: arming),
                             displayLabel: HostScreenArmingPresentation.displayLabel(for: display)
                         )
                         guard let gate = hostScreenPresenceGate else {
@@ -1811,7 +1838,10 @@ public final class HostSessionController {
                     displayIdentity: HostScreenDisplayIdentity(display),
                     devicePublicKey: clientKey,
                     armingFingerprint: admittedFingerprint,
-                    deviceName: arming.devices.first { $0.devicePublicKey == clientKey }?.deviceName ?? "",
+                    deviceName: armedDeviceDisplayName(for: clientKey, in: arming),
+                    reportedDeviceName: pairing?.hostChosenName(for: clientKey) == nil
+                        ? nil
+                        : pairing?.reportedName(for: clientKey),
                     displayLabel: HostScreenArmingPresentation.displayLabel(for: display),
                     inputInjector: injector
                 )
