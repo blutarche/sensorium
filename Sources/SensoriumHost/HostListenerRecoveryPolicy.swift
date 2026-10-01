@@ -99,8 +99,12 @@ public struct HostListenerRecoveryPolicy: Sendable {
     }
 
     /// A rebuild that found the tailnet address on no interface binds
-    /// nothing: an unscoped listener would put the port on every network.
-    /// The next interface that carries the address triggers the rebuild.
+    /// nothing: falling back to an unscoped listener would put the port on
+    /// every network without the person at this machine asking for it. An
+    /// unscoped listener exists only while "Allow connections from this
+    /// network" is on, and `HostNetworkListener` bypasses this policy for it
+    /// entirely. The next interface that carries the address triggers the
+    /// rebuild.
     public mutating func rebuildFoundNoInterface() {
         rebuildPending = false
         interfaceLostSinceBind = true

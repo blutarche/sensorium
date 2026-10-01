@@ -60,8 +60,16 @@ public enum HostTransportKind: String, Equatable, Sendable {
 /// Accept-time source admission, factored out of the listener so every
 /// transport's policy is testable without a socket.
 public enum HostConnectionAdmission {
-    public static func admits(sourceHost: String, transport: HostTransportKind) -> Bool {
+    public static func admits(
+        sourceHost: String,
+        transport: HostTransportKind,
+        allowLocalNetwork: Bool = false,
+        localSubnets: [LocalSubnet] = []
+    ) -> Bool {
         if SourceAddressPolicy.isTailnetSource(sourceHost) {
+            return true
+        }
+        if allowLocalNetwork && SourceAddressPolicy.isOnLinkSource(sourceHost, interfaces: localSubnets) {
             return true
         }
         if transport == .quicLocalVerification {
@@ -70,11 +78,21 @@ public enum HostConnectionAdmission {
         return false
     }
 
-    public static func admits(endpoint: NWEndpoint, transport: HostTransportKind) -> Bool {
+    public static func admits(
+        endpoint: NWEndpoint,
+        transport: HostTransportKind,
+        allowLocalNetwork: Bool = false,
+        localSubnets: [LocalSubnet] = []
+    ) -> Bool {
         guard let source = sourceHost(of: endpoint) else {
             return false
         }
-        return admits(sourceHost: source, transport: transport)
+        return admits(
+            sourceHost: source,
+            transport: transport,
+            allowLocalNetwork: allowLocalNetwork,
+            localSubnets: localSubnets
+        )
     }
 
     /// The source as the policy reads it, and as a refusal has to name it.
@@ -109,6 +127,9 @@ public final class HostNetworkListener: @unchecked Sendable {
     private var stopped = false
     private var onState: (@Sendable (HostListenerState) -> Void)?
     private var onConnection: (@Sendable (NWConnection) -> Void)?
+    /// "Allow connections from this network". Only ever true for the QUIC
+    /// product transport, and touched only on `queue` once started.
+    private var allowsLocalNetwork: Bool
 
     /// Scopes the socket to the interface that owns the tailnet address.
     ///
@@ -127,6 +148,20 @@ public final class HostNetworkListener: @unchecked Sendable {
             tlsIdentity: tlsIdentity,
             requiredInterface: TailnetInterfaceLocator.interface(owningAddress: address)
         )
+    }
+
+    /// With "Allow connections from this network" on, the port is on every
+    /// interface and accept-time admission alone decides who gets in. The bind
+    /// address must still be a tailnet one: hosting still needs Tailscale.
+    public static func parameters(
+        boundToTailnetAddress address: String,
+        tlsIdentity: HostTLSIdentity,
+        allowsLocalNetwork: Bool
+    ) throws -> NWParameters {
+        guard allowsLocalNetwork else {
+            return try parameters(boundToTailnetAddress: address, tlsIdentity: tlsIdentity)
+        }
+        return try parameters(boundToTailnetAddress: address, tlsIdentity: tlsIdentity, requiredInterface: nil)
     }
 
     static func parameters(
@@ -213,9 +248,11 @@ public final class HostNetworkListener: @unchecked Sendable {
         tailnetAddress: String,
         port: UInt16,
         tlsIdentity: HostTLSIdentity,
-        transport: HostTransportKind = .quic
+        transport: HostTransportKind = .quic,
+        allowsLocalNetwork: Bool = false
     ) throws {
         self.transport = transport
+        self.allowsLocalNetwork = transport == .quic && allowsLocalNetwork
         self.tailnetAddress = tailnetAddress
         self.port = port
         self.tlsIdentity = tlsIdentity
@@ -256,7 +293,8 @@ public final class HostNetworkListener: @unchecked Sendable {
             listener = try NWListener(
                 using: Self.parameters(
                     boundToTailnetAddress: tailnetAddress,
-                    tlsIdentity: tlsIdentity
+                    tlsIdentity: tlsIdentity,
+                    allowsLocalNetwork: self.allowsLocalNetwork
                 ),
                 on: listenerPort
             )
@@ -273,7 +311,9 @@ public final class HostNetworkListener: @unchecked Sendable {
     /// The QUIC transport also follows the tailnet interface: when it is
     /// replaced, as it is whenever Tailscale restarts, the listener is rebuilt
     /// on the new one. Only the listener is replaced; connections it already
-    /// accepted are left to end on their own.
+    /// accepted are left to end on their own. While "Allow connections from
+    /// this network" is on the listener is unscoped, so tailnet churn does not
+    /// touch it.
     public func start(
         onState: (@Sendable (HostListenerState) -> Void)? = nil,
         onConnection: @escaping @Sendable (NWConnection) -> Void
@@ -293,6 +333,45 @@ public final class HostNetworkListener: @unchecked Sendable {
         }
     }
 
+    /// Rebuilds the QUIC listener for the new mode: unscoped when on, scoped to
+    /// the tailnet interface when off. Turning it off never leaves the
+    /// unscoped listener running, even when the tailnet interface cannot be
+    /// found yet; the path monitor then rebuilds once it appears. Connections
+    /// already accepted are the caller's to end.
+    public func setAllowsLocalNetwork(_ allows: Bool) {
+        queue.sync {
+            guard transport == .quic, !stopped, allows != allowsLocalNetwork else { return }
+            allowsLocalNetwork = allows
+            if allows {
+                listener.cancel()
+                do {
+                    guard let listenerPort = NWEndpoint.Port(rawValue: port) else {
+                        throw HostNetworkListenerError.invalidPort
+                    }
+                    let replacement = try NWListener(
+                        using: Self.parameters(
+                            boundToTailnetAddress: tailnetAddress,
+                            tlsIdentity: tlsIdentity,
+                            allowsLocalNetwork: true
+                        ),
+                        on: listenerPort
+                    )
+                    listener = replacement
+                    install(replacement, generation: generation)
+                    replacement.start(queue: queue)
+                } catch let error as NWError {
+                    onState?(.failed(HostListenerFailureDescription.describe(error)))
+                } catch {
+                    onState?(.failed("\(error)"))
+                }
+            } else {
+                listener.cancel()
+                onState?(.rebuilding)
+                rebuild()
+            }
+        }
+    }
+
     public func stop() {
         queue.sync {
             stopped = true
@@ -304,13 +383,15 @@ public final class HostNetworkListener: @unchecked Sendable {
 
     private func install(_ listener: NWListener, generation: Int) {
         listener.stateUpdateHandler = { [weak self, weak listener] state in
-            guard let self else { return }
+            // A listener replaced by a mode change or a rebuild still reports
+            // its own cancellation; only the current one speaks for the host.
+            guard let self, let listener, listener === self.listener else { return }
             let event: HostListenerRecoveryPolicy.ListenerEvent
             let reported: HostListenerState
             switch state {
             case .ready:
                 event = .ready
-                reported = .ready(port: listener?.port?.rawValue ?? 0)
+                reported = .ready(port: listener.port?.rawValue ?? 0)
             case let .failed(error):
                 event = .failed
                 reported = .failed(HostListenerFailureDescription.describe(error))
@@ -323,7 +404,9 @@ public final class HostNetworkListener: @unchecked Sendable {
             default:
                 return
             }
-            guard transport == .quic else {
+            // `HostListenerRecoveryPolicy` follows the tailnet interface; an
+            // unscoped listener has no interface to follow.
+            guard transport == .quic, !allowsLocalNetwork else {
                 if event != .waiting {
                     onState?(reported)
                 }
@@ -339,7 +422,13 @@ public final class HostNetworkListener: @unchecked Sendable {
             }
         }
         listener.newConnectionHandler = { [weak self, transport] connection in
-            guard HostConnectionAdmission.admits(endpoint: connection.endpoint, transport: transport) else {
+            let allowsLocalNetwork = self?.allowsLocalNetwork ?? false
+            guard HostConnectionAdmission.admits(
+                endpoint: connection.endpoint,
+                transport: transport,
+                allowLocalNetwork: allowsLocalNetwork,
+                localSubnets: allowsLocalNetwork ? LocalSubnetEnumerator.current() : []
+            ) else {
                 self?.onState?(.refusedSource(
                     address: HostConnectionAdmission.sourceHost(of: connection.endpoint) ?? "an address it could not read"
                 ))
@@ -351,7 +440,7 @@ public final class HostNetworkListener: @unchecked Sendable {
     }
 
     private func pathChanged(_ path: NWPath) {
-        guard !stopped else { return }
+        guard !stopped, !allowsLocalNetwork else { return }
         let interface = Self.interface(owning: tailnetAddress, in: path)
         if case let .rebuild(afterSeconds) = recovery.interfaceObserved(interface.map(Self.identity(of:))) {
             scheduleRebuild(afterSeconds: afterSeconds)
@@ -367,7 +456,7 @@ public final class HostNetworkListener: @unchecked Sendable {
     }
 
     private func rebuild() {
-        guard !stopped else { return }
+        guard !stopped, !allowsLocalNetwork else { return }
         guard let path = pathMonitor?.currentPath,
               let interface = Self.interface(owning: tailnetAddress, in: path) else {
             recovery.rebuildFoundNoInterface()
