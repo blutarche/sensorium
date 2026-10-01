@@ -663,10 +663,13 @@ private func testViewerApplicationBareEnterURLIsTheEnterVerb() async {
 final class StartLedger: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
+    private var requested = false
     let failingStarts: Int
     init(failingStarts: Int) { self.failingStarts = failingStarts }
     func next() -> Int { lock.lock(); defer { lock.unlock() }; count += 1; return count }
     var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    func noteHostScreenRequest() { lock.lock(); defer { lock.unlock() }; requested = true }
+    var hostScreenRequested: Bool { lock.lock(); defer { lock.unlock() }; return requested }
 }
 
 actor UnreachableThenScriptedConnection: ClientControlConnection {
@@ -691,7 +694,10 @@ actor UnreachableThenScriptedConnection: ClientControlConnection {
     nonisolated func beginHostSilenceWatch() {}
     nonisolated func endHostSilenceWatch() {}
     nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
-    func send(_ message: SensoriumMessage) async throws { sentMessages.append(message) }
+    func send(_ message: SensoriumMessage) async throws {
+        sentMessages.append(message)
+        if case .hostScreenRequest = message { ledger.noteHostScreenRequest() }
+    }
     func send(_ packet: SensoriumTransportPacket) async throws {}
     func receiveWirePacket() async throws -> SensoriumTransportPacket {
         if !pending.isEmpty { return pending.removeFirst() }
@@ -735,13 +741,8 @@ private func testRedialAfterUnreachableFirstDialStillReachesHostScreen() async {
     _ = await harness.settle(until: { harness.launch.showCount > 0 })
     harness.launch.onConnect?(machine)
 
-    _ = await harness.settle(until: { ledger.value >= 2 || harness.launch.stoppedTryingCount > 0 })
-    var requested = false
-    for c in made.all {
-        if await c.sentMessages.contains(where: { if case .hostScreenRequest = $0 { return true } else { return false } }) {
-            requested = true
-        }
-    }
+    _ = await harness.settle(until: { ledger.hostScreenRequested || harness.launch.stoppedTryingCount > 0 })
+    let requested = ledger.hostScreenRequested
     expect(
         ledger.value >= 2 && requested,
         "the redial after an unreachable first dial asks the host for its screen -- "
