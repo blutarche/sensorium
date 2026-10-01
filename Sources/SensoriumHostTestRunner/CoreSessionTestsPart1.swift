@@ -946,6 +946,10 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             "a connection refused by address names the address, so a wrong-network client is not mistaken for a dead network"
         )
         expect(
+            HostOperatorLog.sourceRefused(address: "192.0.2.45").contains("\u{201C}Allow connections from this network\u{201D}"),
+            "a refusal names the setting that would let a machine on this network in"
+        )
+        expect(
             HostOperatorLog.describe(CanvasWorkspacePlacementError.offlineCanvas)
                 == CanvasWorkspacePlacementError.offlineCanvas.operatorLogLine,
             "the one entry point every failing stage logs through knows the errors this host actually throws"
