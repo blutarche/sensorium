@@ -8,6 +8,15 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- The host window has a new setting, **Allow connections from this
+  network**. It is off by default. When it is on, a viewer on the same
+  Wi-Fi or wired network can connect by a name such as `mini.local`,
+  without Tailscale. Pairing works the same way as before. Turning it off
+  ends every session that did not come over Tailscale. The host still
+  needs Tailscale to start.
+
 ## [0.2.1] - 2026-10-02
 
 ### Added

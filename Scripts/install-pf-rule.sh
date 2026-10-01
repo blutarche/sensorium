@@ -10,6 +10,10 @@
 #
 # It touches only its own anchor file and never rewrites /etc/pf.conf rules that
 # belong to anything else, including Screen Sharing.
+#
+# The anchor passes Tailscale ranges only, so it also blocks the viewers on
+# this network that the host's "Allow connections from this network" setting
+# would admit. Do not add it to a host that uses that setting.
 set -eu
 
 ANCHOR_NAME="com.sensorium"
@@ -46,4 +50,8 @@ Reload with:
 Verify from a LAN address that the port is refused, and from a tailnet address
 that it is reachable. The host also rejects non-tailnet sources on its own; the
 anchor is the outer layer, not the only one.
+
+This anchor blocks the host's "Allow connections from this network" setting:
+with it in place, a viewer on this network cannot connect even when the
+setting is on.
 RULES

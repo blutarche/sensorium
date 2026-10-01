@@ -133,7 +133,7 @@ A refusal ends the attempt the ordinary way. Trying again, or choosing a private
 ### 6.1 Before a frame leaves the host
 
 1. The machine is paired and authenticated.
-2. The source address is on the tailnet.
+2. The source address is on the tailnet, or on the same subnet as the host while **Allow connections from this network** is on.
 3. Screen Recording is granted. `CGPreflightScreenCaptureAccess()` is read when the host starts, and again every thirty seconds while it runs (`HostPermissionMonitor`), which is what reports a grant revoked mid-run. It is not re-read at arming time or per session.
 4. The machine's key is armed, per §2.1.
 5. The host-presence rule from §6.2 is satisfied, or a valid resume ticket is presented for a session already granted, per §6.4.

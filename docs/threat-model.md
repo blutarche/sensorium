@@ -7,7 +7,7 @@ The host is a workstation with someone logged in. Remote control of it is full c
 ## Who the adversary is
 
 1. **Another machine on the tailnet.** The realistic adversary. It can reach the host's port and speak the protocol.
-2. **A machine on the same LAN or the public internet.** Should not reach the port at all.
+2. **A machine on the same LAN or the public internet.** A public source should not reach the port at all. A LAN machine reaches it only while the person at the host has turned on **Allow connections from this network**, which is off by default, and only from the same subnet as the host. It then has to pair and sign exactly as a tailnet machine does.
 3. **A process on the viewer machine.** Out of scope. A compromised viewer machine means a compromised session.
 
 There is no cloud account, backend, relay, or vendor control plane to attack, because none exists.
@@ -16,8 +16,8 @@ There is no cloud account, backend, relay, or vendor control plane to attack, be
 
 | Control | Enforced in | Stops |
 |---|---|---|
-| Optional PF anchor on the UDP port, added by hand, not installed by Sensorium | `Scripts/install-pf-rule.sh`, run by hand | LAN and public sources reaching the port |
-| Tailnet source check | `SourceAddressPolicy`, applied in `HostNetworkListener` before any session state exists | The same, without depending on the optional PF anchor |
+| Optional PF anchor on the UDP port, added by hand, not installed by Sensorium | `Scripts/install-pf-rule.sh`, run by hand | LAN and public sources reaching the port. It also blocks the LAN viewers **Allow connections from this network** would admit |
+| Tailnet source check, widened to the host's own subnets only while **Allow connections from this network** is on | `SourceAddressPolicy`, applied in `HostNetworkListener` before any session state exists | Public and off-subnet sources, without depending on the optional PF anchor. LAN sources too while the setting is off |
 | Signed device hello | `HostSessionController`, verified against the paired key set | A machine that has not completed pairing |
 | One-time pairing code | `HostPairingService`, single-use and time-limited | Silent enrollment of a new machine |
 | Per-code failure budget | `PairingAuthority`, 10 wrong guesses retire the issued code | Guessing the six digits across repeated connections |
@@ -27,7 +27,7 @@ There is no cloud account, backend, relay, or vendor control plane to attack, be
 | Held-input release | `HostSessionController.releaseHeldInput`, plus an explicit viewer release at disconnect | A modifier or button stuck down after a lost session |
 | Host-screen arming | `HostScreenArming`, `ApprovedDeviceStore`, host-local and host-set only | Host screen granted to a machine the person at the host has not armed |
 
-The source check stands on its own. The PF anchor is one more layer for anyone who adds it. Both viewer and host check input bounds independently.
+The source check stands on its own. The PF anchor is one more layer for anyone who adds it. While the setting is off, the listener is also bound to the tailnet interface alone. While it is on, the listener is on every interface, and the source check is what keeps public and off-subnet sources out. Both viewer and host check input bounds independently.
 
 Canvas-bounded input validation does not cover a system hotkey (Mission Control, Spotlight, the Lock Screen shortcut, and the rest `SystemHotkeyChord` recognizes): those post at the same HID tap real hardware uses and reach the whole login session, not only the streaming canvas, even from a canvas-mode session. While this machine is locked, a canvas-mode session posts nothing at all, system hotkeys included. This is not a gap the canvas bound failed to close -- a paired, armed device is already trusted with the owner's whole session, the same trust a saved password gives any other remote desktop, and a system hotkey reaches nothing a real keyboard at that session could not already reach.
 
@@ -55,6 +55,8 @@ On Linux the viewer keeps the same files under `~/.local/share/sensorium`, or un
 
 - **A compromised viewer machine.** It holds the paired key.
 - **Physical access to the host.** Out of scope.
+- **Pairing attempts from the local network.** While **Allow connections from this network** is on, any machine on the host's subnet can connect and try a pairing code, as any tailnet machine already can. It still needs the code shown at the host. This is accepted.
+- **Spending a shown pairing code from the local network.** The same machine can use up a shown code's 10-guess budget, which retires it before the intended viewer enters it. The person at the host then shows a new code. This denial of service is accepted. Leaving the setting off on shared networks avoids both.
 - **Traffic analysis inside the tailnet.** WireGuard encrypts payloads. Volume and timing are visible to the tailnet coordination path.
 - **Pre-boot (FileVault) access.** Not supported at all. FileVault's own unlock screen runs before the host's login window, and before any session can start.
 - **The Linux package's authenticity.** The Fedora RPM is unsigned. Only a SHA-256 checksum is published beside it, which detects a damaged download, not a substituted one. Anyone who can replace the file on the release page can replace the checksum with it.
