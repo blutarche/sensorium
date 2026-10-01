@@ -19,6 +19,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let onToggleAutoLogin: @MainActor (Bool) -> Void
     private let offersPrivateDesktop: @MainActor () -> Bool
     private let onTogglePrivateDesktop: @MainActor (Bool) -> Void
+    private let allowsLocalNetwork: @MainActor () -> Bool
+    private let onToggleLocalNetwork: @MainActor (Bool) -> Void
     /// The clock this window reads, so a test can hold time still.
     private let now: @MainActor () -> Date
     /// Looked up fresh on every `refresh()`, never cached across it: whether
@@ -60,6 +62,16 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let privateDesktopCheckbox = NSButton(checkboxWithTitle: "Offer a private desktop", target: nil, action: nil)
     private let privateDesktopExplanationLabel = NSTextField(
         labelWithString: "Lets a viewer open a separate desktop that isn\u{2019}t shown on this Mac\u{2019}s screens."
+    )
+    /// Whether a viewer on this Mac's own network may connect without
+    /// Tailscale. Reflects the stored setting, which is off unless the person
+    /// here turned it on.
+    private let localNetworkCheckbox = NSButton(
+        checkboxWithTitle: "Allow connections from this network", target: nil, action: nil
+    )
+    private let localNetworkExplanationLabel = NSTextField(
+        labelWithString: "Lets a viewer on the same Wi-Fi or wired network connect by name, such as mini.local, "
+            + "without Tailscale. Anyone on this network can then ask to pair. Leave it off on shared networks."
     )
     private var status: HostOperatorStatus
     /// Tailscale's app when installed, its download page when not; `nil`
@@ -103,6 +115,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         onToggleAutoLogin: @escaping @MainActor (Bool) -> Void = { _ in },
         offersPrivateDesktop: @escaping @MainActor () -> Bool = { false },
         onTogglePrivateDesktop: @escaping @MainActor (Bool) -> Void = { _ in },
+        allowsLocalNetwork: @escaping @MainActor () -> Bool = { false },
+        onToggleLocalNetwork: @escaping @MainActor (Bool) -> Void = { _ in },
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.onRevealPairingCode = onRevealPairingCode
@@ -117,6 +131,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         self.onToggleAutoLogin = onToggleAutoLogin
         self.offersPrivateDesktop = offersPrivateDesktop
         self.onTogglePrivateDesktop = onTogglePrivateDesktop
+        self.allowsLocalNetwork = allowsLocalNetwork
+        self.onToggleLocalNetwork = onToggleLocalNetwork
         self.now = now
         self.status = status
         pairedMachines.onToggleSharing = onToggleSharing
@@ -283,10 +299,29 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         privateDesktopExplanationLabel.maximumNumberOfLines = 0
         privateDesktopExplanationLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        localNetworkCheckbox.font = CanvasDesign.font(.primary, size: 13)
+        (localNetworkCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
+            string: "Allow connections from this network",
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 13),
+                .foregroundColor: CanvasDesign.ink.nsColor
+            ]
+        )
+        localNetworkCheckbox.target = self
+        localNetworkCheckbox.action = #selector(localNetworkToggled)
+        localNetworkCheckbox.translatesAutoresizingMaskIntoConstraints = false
+
+        localNetworkExplanationLabel.font = CanvasDesign.font(.primary, size: 12)
+        localNetworkExplanationLabel.textColor = CanvasDesign.muted.nsColor
+        localNetworkExplanationLabel.lineBreakMode = .byWordWrapping
+        localNetworkExplanationLabel.maximumNumberOfLines = 0
+        localNetworkExplanationLabel.translatesAutoresizingMaskIntoConstraints = false
+
         let groups: [NSView] = [
             panel, stopButton, permissionButton, tailscaleButton,
             retryIdentityButton, replaceIdentityButton, revealButton, pairingCodeView, hideCodeButton,
             autoLoginCheckbox, autoLoginStatusLabel, privateDesktopCheckbox, privateDesktopExplanationLabel,
+            localNetworkCheckbox, localNetworkExplanationLabel,
             pairedMachines
         ]
         for view in groups {
@@ -305,6 +340,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.setCustomSpacing(CanvasDesign.Space.lg, after: autoLoginStatusLabel)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: privateDesktopCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: privateDesktopExplanationLabel)
+        root.setCustomSpacing(CanvasDesign.Space.xs, after: localNetworkCheckbox)
+        root.setCustomSpacing(CanvasDesign.Space.lg, after: localNetworkExplanationLabel)
 
         let inset = CanvasDesign.Space.xl
         NSLayoutConstraint.activate([
@@ -418,6 +455,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         }
 
         privateDesktopCheckbox.state = offersPrivateDesktop() ? .on : .off
+        localNetworkCheckbox.state = allowsLocalNetwork() ? .on : .off
 
         refreshPairingSection(presentation)
 
@@ -536,6 +574,11 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
     @objc private func privateDesktopToggled() {
         onTogglePrivateDesktop(privateDesktopCheckbox.state == .on)
+        refresh()
+    }
+
+    @objc private func localNetworkToggled() {
+        onToggleLocalNetwork(localNetworkCheckbox.state == .on)
         refresh()
     }
 

@@ -256,6 +256,12 @@ private final class PairingServiceBox: @unchecked Sendable {
     var service: HostPairingService?
 }
 
+/// The running QUIC listener, so the host window's "Allow connections from
+/// this network" switch can change its mode. `nil` before hosting starts.
+private final class HostListenerBox: @unchecked Sendable {
+    var listener: HostNetworkListener?
+}
+
 /// Un-pairs through the running pairing service, which also writes the
 /// store, so the running host stops admitting the key at once. Before
 /// hosting has started there is no running service, and the store alone is
@@ -331,6 +337,13 @@ struct sensoriumd {
             .appendingPathComponent("private-desktop.json")
     }
 
+    private static func localNetworkSettingFileURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base
+            .appendingPathComponent("Sensorium", isDirectory: true)
+            .appendingPathComponent("local-network.json")
+    }
+
     private static func autoLoginDefaultAppliedFileURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base
@@ -401,7 +414,14 @@ struct sensoriumd {
         deviceConnectionRegistry sharedDeviceConnectionRegistry: HostDeviceConnectionRegistry? = nil,
         // The GUI reads the host's own "Offer a private desktop" setting. The
         // CLI verbs are run by hand at this machine and always offer one.
-        privateDesktopOffered: @escaping () -> Bool = { true }
+        privateDesktopOffered: @escaping () -> Bool = { true },
+        // The GUI's own, holding the host's "Allow connections from this
+        // network" setting and every live connection it let in. `nil` for
+        // the CLI verbs, which serve the tailnet alone.
+        localNetworkConnections: HostLocalNetworkConnectionRegistry? = nil,
+        // Filled in with the QUIC listener once it exists, so the GUI can
+        // change its mode later.
+        listenerBox: HostListenerBox? = nil
     ) throws -> HostPairingService {
         // Never asks macOS to present its approval UI. Approval is the
         // user's to give in System Settings; a host without it still serves
@@ -881,13 +901,20 @@ struct sensoriumd {
                 tailnetAddress: tailnetAddress,
                 port: port,
                 tlsIdentity: tlsIdentity,
-                transport: transport
+                transport: transport,
+                allowsLocalNetwork: localNetworkConnections?.allowsLocalNetwork ?? false
             )
+            listenerBox?.listener = listener
             listener.start { state in
                 switch state {
                 case let .ready(boundPort):
-                    print("Sensorium host bound \(tailnetAddress):\(boundPort); tailnet sources only")
                     Task { @MainActor in
+                        if localNetworkConnections?.allowsLocalNetwork == true {
+                            print("Sensorium host listening on port \(boundPort) on every interface; "
+                                + "tailnet sources and sources on this Mac\u{2019}s own subnets")
+                        } else {
+                            print("Sensorium host bound \(tailnetAddress):\(boundPort); tailnet sources only")
+                        }
                         operatorBox.status.recordHostedAddress(tailnetAddress)
                         operatorBox.status.setConnection(.hosting(address: tailnetAddress))
                     }
@@ -905,7 +932,28 @@ struct sensoriumd {
                     print("Sensorium host: \(HostOperatorLog.sourceRefused(address: address))")
                 }
             } onConnection: { connection in
-                serveChannel(NWByteChannel(connection: connection))
+                guard let localNetworkConnections,
+                      let source = HostConnectionAdmission.sourceHost(of: connection.endpoint),
+                      !SourceAddressPolicy.isTailnetSource(source) else {
+                    serveChannel(NWByteChannel(connection: connection))
+                    return
+                }
+                // Recorded so turning the setting off ends it; cancelling the
+                // connection ends its session the way a dropped link does.
+                Task { @MainActor in
+                    guard let claim = localNetworkConnections.admit(stop: { connection.cancel() }) else {
+                        return
+                    }
+                    connection.stateUpdateHandler = { state in
+                        switch state {
+                        case .cancelled, .failed:
+                            Task { @MainActor in localNetworkConnections.release(claim) }
+                        default:
+                            break
+                        }
+                    }
+                    serveChannel(NWByteChannel(connection: connection))
+                }
             }
             operatorBox.shutdown.register { listener.stop() }
         }
@@ -1047,6 +1095,11 @@ struct sensoriumd {
         let sessionLog = HostScreenSessionLogStore(url: hostScreenSessionLogFileURL())
         sessionLog.reconcileAbandonedSessionsAtLaunch()
         let privateDesktopSettingStore = HostPrivateDesktopSettingStore(url: privateDesktopSettingFileURL())
+        let localNetworkSettingStore = HostLocalNetworkSettingStore(url: localNetworkSettingFileURL())
+        let localNetworkConnections = HostLocalNetworkConnectionRegistry(
+            allowsLocalNetwork: localNetworkSettingStore.load().allowsLocalNetwork
+        )
+        let listenerBox = HostListenerBox()
 
         // A machine that cannot create a canvas, find its tailnet address,
         // or read its identity must say so on screen instead of listening.
@@ -1089,7 +1142,9 @@ struct sensoriumd {
                             hostScreenSessionLog: sessionLog,
                             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
                             deviceConnectionRegistry: deviceConnectionRegistry,
-                            privateDesktopOffered: { privateDesktopSettingStore.load().offersPrivateDesktop }
+                            privateDesktopOffered: { privateDesktopSettingStore.load().offersPrivateDesktop },
+                            localNetworkConnections: localNetworkConnections,
+                            listenerBox: listenerBox
                         )
                     } catch is HostStartupError {
                         print("Sensorium host failed to start: the file holding this machine\u{2019}s own key could not be read.")
@@ -1195,6 +1250,34 @@ struct sensoriumd {
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
                 }
+            },
+            allowsLocalNetwork: { localNetworkSettingStore.load().allowsLocalNetwork },
+            onToggleLocalNetwork: { isOn in
+                do {
+                    try localNetworkSettingStore.save(HostLocalNetworkSetting(allowsLocalNetwork: isOn))
+                } catch {
+                    let alert = NSAlert()
+                    alert.alertStyle = .warning
+                    alert.messageText = isOn
+                        ? "Could not allow connections from this network"
+                        : "Could not stop connections from this network"
+                    alert.informativeText = HostOperatorLog.describe(error)
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                    return
+                }
+                // Each order closes the gap between the two: turning on, the
+                // registry keeps what the new listener accepts; turning off,
+                // nothing new from this network is accepted before the live
+                // ones end.
+                if isOn {
+                    localNetworkConnections.setAllowsLocalNetwork(true)
+                    listenerBox.listener?.setAllowsLocalNetwork(true)
+                } else {
+                    listenerBox.listener?.setAllowsLocalNetwork(false)
+                    localNetworkConnections.setAllowsLocalNetwork(false)
+                }
+                print("Sensorium host: connections from this network are now \(isOn ? "allowed" : "refused")")
             }
         )
         // Every way of quitting goes through the one delegate below, so none
