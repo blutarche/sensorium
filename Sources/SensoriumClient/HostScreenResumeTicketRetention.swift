@@ -62,7 +62,8 @@ public enum HostScreenResumeTicketRetention {
     /// up for it. An automatic redial holding no ticket therefore stops and
     /// waits for the person at the viewer, rather than asking the person at
     /// the host once per backoff attempt, the same way a host's own refusal
-    /// already stops without retrying. `.offeredHostScreen` is gated exactly
+    /// already stops without retrying. `isPersonInitiated` stays true across
+    /// attempts that fail before a request could reach the host. `.offeredHostScreen` is gated exactly
     /// like `.hostScreen`: its own request reaches the same person at the
     /// host, so a transport failure after it was sent must stop the same
     /// way. A session-canvas target presents no ticket at all, so this is

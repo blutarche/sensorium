@@ -429,6 +429,10 @@ func testViewerApplicationTests() async {
     await testViewerApplicationQuitLatchStopsTheEventLoop()
     await testViewerApplicationEnterURLSelectsWithoutDialling()
     await testViewerApplicationBareEnterURLIsTheEnterVerb()
+    await testRedialAfterUnreachableFirstDialStillReachesHostScreen()
+    await testRowClickAfterUnreachableKeepsDiallingUntilHostAnswers()
+    await testRedialAfterRequestWasSentWithoutTicketStops()
+    await testRedialAfterLiveSessionDropPresentsHeldTicket()
 }
 
 /// docs/ux-spec.md line 61: a failed attempt keeps a short reason on the row,
@@ -652,4 +656,219 @@ private func testViewerApplicationBareEnterURLIsTheEnterVerb() async {
     harness.launch.onCloseRequested?()
     expect(await harness.settle(until: { harness.eventLoop.stopCount == 1 }), "and quitting ends the loop")
     print("PASS: a bare sensorium:// URL selects the machine it names, exactly as the enter verb does")
+}
+
+/// Counts every `start()` across all dials; the first `failingStarts` throw
+/// the way an unreachable host does, and later ones run the given script.
+final class StartLedger: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    let failingStarts: Int
+    init(failingStarts: Int) { self.failingStarts = failingStarts }
+    func next() -> Int { lock.lock(); defer { lock.unlock() }; count += 1; return count }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+}
+
+actor UnreachableThenScriptedConnection: ClientControlConnection {
+    let deferredPackets = DeferredPacketQueue()
+    private let ledger: StartLedger
+    private let dropsWhenScriptEnds: Bool
+    private var pending: [SensoriumTransportPacket]
+    private(set) var sentMessages: [SensoriumMessage] = []
+    private var waiter: CheckedContinuation<SensoriumTransportPacket, Never>?
+
+    init(ledger: StartLedger, responses: [SensoriumTransportPacket], dropsWhenScriptEnds: Bool = false) {
+        self.ledger = ledger
+        self.dropsWhenScriptEnds = dropsWhenScriptEnds
+        pending = responses
+    }
+
+    func start(timeout: TimeInterval) async throws {
+        if ledger.next() <= ledger.failingStarts {
+            throw ClientSessionError.notConnected
+        }
+    }
+    nonisolated func beginHostSilenceWatch() {}
+    nonisolated func endHostSilenceWatch() {}
+    nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
+    func send(_ message: SensoriumMessage) async throws { sentMessages.append(message) }
+    func send(_ packet: SensoriumTransportPacket) async throws {}
+    func receiveWirePacket() async throws -> SensoriumTransportPacket {
+        if !pending.isEmpty { return pending.removeFirst() }
+        if dropsWhenScriptEnds { throw ClientSessionError.notConnected }
+        return await withCheckedContinuation { waiter = $0 }
+    }
+    func close() async {}
+}
+
+private func hostScreenScript() -> [SensoriumTransportPacket] {
+    let entry = HostScreenListEntry(
+        opaqueToken: Data([0x0A]), label: "Built-in Display",
+        logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0, isBuiltin: true,
+        displayIdentity: "00000610-0000a038"
+    )
+    return [
+        .control(.hostScreenList(displays: [entry], canvasAvailable: false)),
+        .control(.hostScreenReady(
+            geometry: SessionSurfaceGeometry(logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0),
+            resumeTicket: Data([0x66])
+        ))
+    ]
+}
+
+/// A click on a machine whose network is still coming back: the first dial
+/// never reaches the host, so no one there was asked anything. The backoff's
+/// next dial must still ask for the host screen.
+@MainActor
+private func testRedialAfterUnreachableFirstDialStillReachesHostScreen() async {
+    let ledger = StartLedger(failingStarts: 1)
+    let made = ConnectionsMade()
+    let harness = ViewerApplicationHarness {
+        let c = UnreachableThenScriptedConnection(ledger: ledger, responses: hostScreenScript())
+        made.append(c)
+        return c
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([7]))
+    harness.store.save(machine)
+    await harness.viewer.run(arguments: [])
+    _ = await harness.settle(until: { harness.launch.showCount > 0 })
+    harness.launch.onConnect?(machine)
+
+    _ = await harness.settle(until: { ledger.value >= 2 || harness.launch.stoppedTryingCount > 0 })
+    var requested = false
+    for c in made.all {
+        if await c.sentMessages.contains(where: { if case .hostScreenRequest = $0 { return true } else { return false } }) {
+            requested = true
+        }
+    }
+    expect(
+        ledger.value >= 2 && requested,
+        "the redial after an unreachable first dial asks the host for its screen -- "
+            + "starts=\(ledger.value), hostScreenRequest sent=\(requested), row=\(harness.launch.attemptFailures.map(\.reason))"
+    )
+    harness.launch.onCloseRequested?()
+    _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
+    print("PASS: redial after unreachable first dial")
+}
+
+/// The row the stop leaves behind. Each click is the person asking; while
+/// the host stays unreachable each click must keep dialling with backoff, not
+/// stop after one failed start with the "needs someone" line.
+@MainActor
+private func testRowClickAfterUnreachableKeepsDiallingUntilHostAnswers() async {
+    let ledger = StartLedger(failingStarts: Int.max)
+    let harness = ViewerApplicationHarness {
+        UnreachableThenScriptedConnection(ledger: ledger, responses: [])
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([8]))
+    harness.store.save(machine)
+    await harness.viewer.run(arguments: [])
+    _ = await harness.settle(until: { harness.launch.showCount > 0 })
+
+    for click in 1...2 {
+        let before = ledger.value
+        let stoppedBefore = harness.launch.stoppedTryingCount
+        harness.launch.onConnect?(machine)
+        _ = await harness.settle(until: { harness.launch.stoppedTryingCount > stoppedBefore })
+        let stopped = harness.launch.stoppedTryingCount > stoppedBefore
+        expect(
+            !stopped && ledger.value - before >= 2,
+            "row click \(click): a click on an unreachable machine keeps dialling -- "
+                + "starts this click=\(ledger.value - before), run stopped=\(stopped), "
+                + "row=\(harness.launch.attemptFailures.last?.reason ?? "-")"
+        )
+        if !stopped { harness.launch.onCancelConnecting?(); _ = await harness.settle(until: { harness.launch.showCount > click }) }
+    }
+    harness.launch.onCloseRequested?()
+    _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
+    print("PASS: row click after unreachable")
+}
+
+final class ConnectionsMade: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [UnreachableThenScriptedConnection] = []
+    func append(_ c: UnreachableThenScriptedConnection) { lock.lock(); items.append(c); lock.unlock() }
+    var all: [UnreachableThenScriptedConnection] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
+private func hostScreenRequests(of connections: [UnreachableThenScriptedConnection]) async -> [Data?] {
+    var found: [Data?] = []
+    for c in connections {
+        for case let .hostScreenRequest(_, ticket) in await c.sentMessages { found.append(ticket) }
+    }
+    return found
+}
+
+/// A host set to ask first prompts its user on every unticketed request, so
+/// once a request has been sent, an automatic redial that holds no ticket
+/// must stop instead of sending another.
+@MainActor
+private func testRedialAfterRequestWasSentWithoutTicketStops() async {
+    let ledger = StartLedger(failingStarts: 0)
+    let made = ConnectionsMade()
+    let harness = ViewerApplicationHarness {
+        // The drop comes after the request and before any ticket is minted.
+        let c = UnreachableThenScriptedConnection(
+            ledger: ledger, responses: Array(hostScreenScript().prefix(1)), dropsWhenScriptEnds: true
+        )
+        made.append(c)
+        return c
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([9]))
+    harness.store.save(machine)
+    await harness.viewer.run(arguments: [])
+    _ = await harness.settle(until: { harness.launch.showCount > 0 })
+    harness.launch.onConnect?(machine)
+
+    _ = await harness.settle(until: { harness.launch.stoppedTryingCount > 0 })
+    let requests = await hostScreenRequests(of: made.all)
+    expect(
+        harness.launch.stoppedTryingCount > 0 && requests.count == 1,
+        "a drop after the request, with no ticket, ends the run without asking again -- "
+            + "requests=\(requests.count), stopped=\(harness.launch.stoppedTryingCount)"
+    )
+    harness.launch.onCloseRequested?()
+    _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
+    print("PASS: an automatic redial after an unticketed request was sent stops")
+}
+
+/// A live host-screen session that drops redials the same screen presenting
+/// the ticket it was given, so the host resumes it without asking.
+@MainActor
+private func testRedialAfterLiveSessionDropPresentsHeldTicket() async {
+    let ledger = StartLedger(failingStarts: 0)
+    let made = ConnectionsMade()
+    let harness = ViewerApplicationHarness {
+        let first = made.all.isEmpty
+        let c = UnreachableThenScriptedConnection(
+            ledger: ledger, responses: hostScreenScript(), dropsWhenScriptEnds: first
+        )
+        made.append(c)
+        return c
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([10]))
+    harness.store.save(machine)
+    await harness.viewer.run(arguments: [])
+    _ = await harness.settle(until: { harness.launch.showCount > 0 })
+    harness.launch.onConnect?(machine)
+
+    var requests: [Data?] = []
+    for _ in 0..<600 {
+        requests = await hostScreenRequests(of: made.all)
+        if requests.count >= 2 || harness.launch.stoppedTryingCount > 0 { break }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    expect(
+        requests.count == 2 && requests[0] == nil && requests[1] == Data([0x66]),
+        "the redial after a live session drops presents the held ticket -- "
+            + "requests=\(requests.map { $0.map { "\($0.count) bytes" } ?? "none" }), "
+            + "stopped=\(harness.launch.stoppedTryingCount)"
+    )
+    harness.launch.onCloseRequested?()
+    _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
+    print("PASS: a live session dropped mid-stream redials presenting its held ticket")
 }

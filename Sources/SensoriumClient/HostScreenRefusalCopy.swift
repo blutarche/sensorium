@@ -46,9 +46,9 @@ public enum HostScreenRefusalCopy {
             return "The screen you chose is no longer available there."
         case "host-screen-retry-needs-person":
             // Minted here rather than sent by the host: an automatic redial
-            // holding no resume ticket never reaches that machine at all.
-            return "The connection dropped, and showing a host screen again needs someone at this machine "
-                + "to ask for it."
+            // after a request was sent, holding no resume ticket, never
+            // reaches that machine at all.
+            return "The connection dropped before the screen came up. Connect again to ask for it."
         case "host-screen-resume-refused":
             return "The connection was interrupted and could not resume."
         case "host-screen-session-active":

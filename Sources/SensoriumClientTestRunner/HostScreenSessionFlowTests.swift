@@ -534,13 +534,9 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
-        // States the fact and leaves the recovery path to the on-screen
-        // button, which this build cannot name here -- it may or may not
-        // offer a virtual display.
         let retryNeedsPerson = HostScreenRefusalCopy.line(reason: "host-screen-retry-needs-person")
         expect(
-            retryNeedsPerson == "The connection dropped, and showing a host screen again needs someone at "
-                + "this machine to ask for it.",
+            retryNeedsPerson == "The connection dropped before the screen came up. Connect again to ask for it.",
             "host-screen-retry-needs-person asks the person at this machine, not the one at the host -- "
                 + "got \(retryNeedsPerson)"
         )
@@ -587,59 +583,6 @@ func testHostScreenSessionFlowTests() async {
         )
 
         print("PASS: an automatic redial with no ticket held stops without a second attempt")
-    }
-
-    do {
-        // A transport whose own start() throws once (a host briefly
-        // unreachable) and would then succeed, driven through the real
-        // `ClientReconnectDriver`, must stop on the automatic redial that
-        // follows. `ClientSessionHost`/`runOnce()` are internal to
-        // `SensoriumClient` and cannot be constructed here; this composes
-        // the same two pieces `runOnce()` composes -- `HostScreenConnectPlan`,
-        // computed first, and a `transport.start()` that can fail and be
-        // retried after it -- in the same order, to prove the flag's own
-        // consumption is what closes the gap.
-        let displayIdentity = "00000610-0000a038"
-        let attempts = AttemptCounter()
-        let dialled = AttemptCounter()
-        let isPersonInitiated = UncheckedFlag()
-        isPersonInitiated.set(true)
-        let hasTransportStarted = UncheckedFlag()
-        let driver = ClientReconnectDriver(
-            policy: ReconnectPolicy(initialDelay: 0.01, maximumDelay: 0.01, multiplier: 1, maximumAttempts: 3),
-            runSession: {
-                attempts.increment()
-                // Computed and consumed before the transport's own start(),
-                // exactly where `runOnce()` does it -- this line, not the
-                // throw below, is what decides whether this attempt dials.
-                let plan = HostScreenConnectPlan.compute(
-                    target: .hostScreen(displayIdentity: displayIdentity),
-                    heldTicket: nil,
-                    isPersonInitiated: isPersonInitiated.value
-                )
-                isPersonInitiated.set(false)
-                if !hasTransportStarted.value {
-                    hasTransportStarted.set(true)
-                    throw ClientSessionError.notConnected
-                }
-                if plan.mustStopWithoutTicket {
-                    throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
-                }
-                dialled.increment()
-            },
-            sleep: { _ in }
-        )
-
-        let outcome = await driver.runUntilConnectedSessionEnds()
-
-        expect(outcome == .stopped, "the automatic redial's own plan stops the run outright, got: \(outcome)")
-        expect(attempts.value == 2, "the first attempt's own transport failure, then the automatic redial that stops -- no third attempt")
-        expect(
-            dialled.value == 0,
-            "no attempt ever dials -- the first never got past start(), the second's own plan stopped it first"
-        )
-
-        print("PASS: a transport that fails once never lets the automatic redial that follows dial without a ticket")
     }
 
     do {

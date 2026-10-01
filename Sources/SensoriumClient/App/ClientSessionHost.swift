@@ -147,11 +147,13 @@ final class ClientSessionHost {
     /// becomes on a target change or a connect; this field is only ever set
     /// through it.
     private var heldResumeTicket: HostScreenResumeTicket?
-    /// True only for the one connect attempt following a person's own
-    /// action -- launch with a saved machine, the Connect with a virtual
-    /// display button, or a Host screen pick -- and consumed by the very
-    /// next `runOnce()`. An automatic redial holding no ticket for its
-    /// target stops instead of dialling; see `mustStopWithoutTicket`.
+    /// True while the next connect attempt is a person's own -- launch with
+    /// a saved machine, the Connect with a virtual display button, or a Host
+    /// screen pick. `runOnce()` consumes it and gives it back when the
+    /// attempt fails before a host-screen request went out, so a dial that
+    /// never reached the host does not turn the backoff's next try into an
+    /// automatic one. An automatic redial holding no ticket for its target
+    /// stops instead of dialling; see `mustStopWithoutTicket`.
     private var hostScreenConnectIsPersonInitiated = true
 
     init(
@@ -290,6 +292,7 @@ final class ClientSessionHost {
         let connectPlan = HostScreenConnectPlan.compute(
             target: currentTarget, heldTicket: heldResumeTicket, isPersonInitiated: hostScreenConnectIsPersonInitiated
         )
+        let attemptIsPersonInitiated = hostScreenConnectIsPersonInitiated
         hostScreenConnectIsPersonInitiated = false
         guard !quit.hasFired else { return }
         let transport = transports.makeConnection(
@@ -318,15 +321,22 @@ final class ClientSessionHost {
 
         if connectPlan.mustStopWithoutTicket {
             // An automatic redial (an inner backoff attempt, or a
-            // reconnect-after-drop) holding no ticket for this target. A
-            // host asking first would put its prompt up on every such
+            // reconnect-after-drop) holding no ticket for this target,
+            // after an earlier attempt already sent a host-screen request.
+            // A host asking first would put its prompt up on every such
             // attempt; stop instead and wait for the person here, the same
             // way a host's own refusal already ends the run without
-            // retrying. Decided above, before `transport.start()`, so a
-            // stale flag surviving a failed attempt can never reach this far.
+            // retrying. Decided above, before `transport.start()`.
             throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
         }
-        try await transport.start(timeout: SessionTimeouts.remoteDefault.handshake)
+        do {
+            try await transport.start(timeout: SessionTimeouts.remoteDefault.handshake)
+        } catch {
+            // Nothing reached the host, so no one there was asked anything:
+            // the backoff's next attempt is still the person's own.
+            if attemptIsPersonInitiated { hostScreenConnectIsPersonInitiated = true }
+            throw error
+        }
         await controller.setCanvasObserver(primaryWindow.canvasObserver())
         let connectOutcome: ConnectOutcome
         do {
@@ -340,7 +350,14 @@ final class ClientSessionHost {
                 target: currentTarget,
                 resumeTicket: connectPlan.ticketToPresent
             )
-        } catch let error as ClientSessionError {
+        } catch {
+            // A connect that failed before it asked for a screen (an
+            // unauthenticated refusal, a drop before the offer) asked the
+            // host nothing, so the next attempt is still the person's own.
+            if attemptIsPersonInitiated, await controller.hostScreenDisplayIdentity == nil {
+                hostScreenConnectIsPersonInitiated = true
+            }
+            guard let error = error as? ClientSessionError else { throw error }
             // Read before the refusal is reported, so the launch window and
             // the ended panel offer a virtual display only if this host has one.
             // Written back only when this attempt actually read an offer or

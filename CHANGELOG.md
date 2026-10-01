@@ -29,6 +29,11 @@ once it reaches 1.0.
   unchanged.
 - The Linux viewer no longer says it decodes in hardware when its
   video decoder is one that only decodes in software.
+- Clicking a machine whose host is briefly unreachable keeps trying until
+  the host answers, instead of stopping after one failed try with a line
+  saying the connection dropped.
+- That line now reads "The connection dropped before the screen came up.
+  Connect again to ask for it."
 
 ## [0.2.0] - 2026-09-29
 
