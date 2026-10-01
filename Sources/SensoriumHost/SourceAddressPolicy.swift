@@ -55,6 +55,14 @@ public struct LocalSubnet: Equatable, Sendable {
         guard address.count == mask.count, address.count == 4 || address.count == 16 else {
             return nil
         }
+        // A netmask the kernel reports short or empty reads as zero bytes, and
+        // a zero-length prefix contains every address there is. Anything wider
+        // than a /8 or a /32, or not a run of leading ones, is not a local
+        // network and is refused rather than trusted.
+        guard let prefix = Self.prefixLength(of: mask),
+              prefix >= (address.count == 4 ? 8 : 32) else {
+            return nil
+        }
         self.address = Self.withoutEmbeddedScope(address)
         self.mask = mask
     }
@@ -64,6 +72,23 @@ public struct LocalSubnet: Equatable, Sendable {
             return nil
         }
         self.init(address: addressBytes, mask: maskBytes)
+    }
+
+    /// The number of leading one bits, or `nil` when a one follows a zero.
+    private static func prefixLength(of mask: [UInt8]) -> Int? {
+        var length = 0
+        var seenZero = false
+        for byte in mask {
+            for bit in (0..<8).reversed() {
+                if byte & (1 << bit) != 0 {
+                    if seenZero { return nil }
+                    length += 1
+                } else {
+                    seenZero = true
+                }
+            }
+        }
+        return length
     }
 
     func contains(_ source: [UInt8]) -> Bool {

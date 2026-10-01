@@ -49,6 +49,46 @@ func runHostLocalNetworkAdmissionTests() {
     }
 
     do {
+        let v4 = [UInt8]([192, 0, 2, 10])
+        let v6 = [UInt8]([0x20, 0x01, 0x0d, 0xb8, 0, 1, 0, 2]) + Array(repeating: 0, count: 7) + [0x10]
+        func mask(_ prefix: Int, bytes: Int) -> [UInt8] {
+            (0..<bytes).map { index in
+                let bits = max(0, min(8, prefix - index * 8))
+                return bits == 0 ? 0 : UInt8(truncatingIfNeeded: 0xff << (8 - bits))
+            }
+        }
+        let refused: [(String, [UInt8], [UInt8])] = [
+            ("an all-zero IPv4 mask", v4, mask(0, bytes: 4)),
+            ("an all-zero IPv6 mask", v6, mask(0, bytes: 16)),
+            ("an IPv4 /4", v4, mask(4, bytes: 4)),
+            ("an IPv6 /16", v6, mask(16, bytes: 16)),
+            ("a non-contiguous IPv4 mask", v4, [255, 0, 255, 0]),
+        ]
+        for (label, address, netmask) in refused {
+            let subnet = LocalSubnet(address: address, mask: netmask)
+            expect(subnet == nil, "\(label) is not a subnet this host admits from")
+            expect(
+                !SourceAddressPolicy.isOnLinkSource("203.0.113.9", interfaces: subnet.map { [$0] } ?? [])
+                    && !SourceAddressPolicy.isOnLinkSource("2001:db8:ffff::9", interfaces: subnet.map { [$0] } ?? []),
+                "\(label) admits nothing"
+            )
+        }
+        expect(
+            LocalSubnet(address: "203.0.113.10", netmask: "0.0.0.0") == nil,
+            "a zero netmask read from text is refused too"
+        )
+        let narrowV4 = LocalSubnet(address: v4, mask: mask(24, bytes: 4))
+        let narrowV6 = LocalSubnet(address: v6, mask: mask(64, bytes: 16))
+        expect(narrowV4 != nil && narrowV6 != nil, "an IPv4 /24 and an IPv6 /64 are still subnets")
+        expect(
+            SourceAddressPolicy.isOnLinkSource("192.0.2.45", interfaces: [narrowV4!])
+                && SourceAddressPolicy.isOnLinkSource("2001:db8:1:2::99", interfaces: [narrowV6!]),
+            "and still admit their own neighbours"
+        )
+        print("PASS: an empty, too-wide or non-contiguous netmask is refused, so it never admits the internet")
+    }
+
+    do {
         // How the kernel hands back a link-local interface address: the
         // interface index (here 4) sits in bytes 2 and 3.
         var kernelForm: [UInt8] = [0xfe, 0x80, 0x00, 0x04] + Array(repeating: 0, count: 12)
