@@ -899,6 +899,8 @@ struct sensoriumd {
                     }
                 case .cancelled:
                     print("Sensorium host listener canceled")
+                case .rebuilding:
+                    print("Sensorium host: rebuilding the listener on \(tailnetAddress):\(port)")
                 case let .refusedSource(address):
                     print("Sensorium host: \(HostOperatorLog.sourceRefused(address: address))")
                 }

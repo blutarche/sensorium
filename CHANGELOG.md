@@ -34,6 +34,9 @@ once it reaches 1.0.
   saying the connection dropped.
 - That line now reads "The connection dropped before the screen came up.
   Connect again to ask for it."
+- The host keeps accepting connections after Tailscale restarts on its
+  machine. It had stopped answering until it was quit and opened
+  again.
 
 ## [0.2.0] - 2026-09-29
 

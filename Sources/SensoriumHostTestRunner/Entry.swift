@@ -131,6 +131,7 @@ struct SensoriumHostTestRunner {
             { await runHostViewerSilenceWatchdogTests() },
             { await runHostPingDisplayTests() },
             { await runHostOperatorStatusPingTests() },
+            { runHostListenerRecoveryPolicyTests() },
             // Kept last -- see the file-level comment above.
             { await runHostScreenPresenceWaitingTests() },
             { await runHostScreenPresencePromptTests() },

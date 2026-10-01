@@ -8,6 +8,9 @@ public enum HostListenerState: Equatable, Sendable {
     case ready(port: UInt16)
     case failed(String)
     case cancelled
+    /// The tailnet interface changed under the listener, or the listener
+    /// stopped serving it, so a new listener is being built in its place.
+    case rebuilding
     /// A connection turned away by the accept-time source policy. Reported so
     /// the person at this machine can tell a viewer dialling from the wrong
     /// network from a network that is down; both are otherwise silence.
@@ -93,8 +96,19 @@ public enum HostConnectionAdmission {
 }
 
 public final class HostNetworkListener: @unchecked Sendable {
-    private let listener: NWListener
+    /// Replaced when the QUIC listener is rebuilt; touched only on `queue`
+    /// once started.
+    private var listener: NWListener
     private let queue = DispatchQueue(label: "com.sensorium.host-listener")
+    private let tailnetAddress: String
+    private let port: UInt16
+    private let tlsIdentity: HostTLSIdentity
+    private var recovery: HostListenerRecoveryPolicy
+    private var generation = 0
+    private var pathMonitor: NWPathMonitor?
+    private var stopped = false
+    private var onState: (@Sendable (HostListenerState) -> Void)?
+    private var onConnection: (@Sendable (NWConnection) -> Void)?
 
     /// Scopes the socket to the interface that owns the tailnet address.
     ///
@@ -107,6 +121,18 @@ public final class HostNetworkListener: @unchecked Sendable {
     public static func parameters(
         boundToTailnetAddress address: String,
         tlsIdentity: HostTLSIdentity
+    ) throws -> NWParameters {
+        try parameters(
+            boundToTailnetAddress: address,
+            tlsIdentity: tlsIdentity,
+            requiredInterface: TailnetInterfaceLocator.interface(owningAddress: address)
+        )
+    }
+
+    static func parameters(
+        boundToTailnetAddress address: String,
+        tlsIdentity: HostTLSIdentity,
+        requiredInterface interface: NWInterface?
     ) throws -> NWParameters {
         guard SourceAddressPolicy.isTailnetSource(address) else {
             throw HostNetworkListenerError.nonTailnetBindAddress
@@ -133,7 +159,7 @@ public final class HostNetworkListener: @unchecked Sendable {
         }
         sec_protocol_options_set_local_identity(quic.securityProtocolOptions, identity)
         let parameters = NWParameters(quic: quic)
-        if let interface = TailnetInterfaceLocator.interface(owningAddress: address) {
+        if let interface {
             parameters.requiredInterface = interface
         }
         parameters.prohibitedInterfaceTypes = [.cellular]
@@ -190,6 +216,9 @@ public final class HostNetworkListener: @unchecked Sendable {
         transport: HostTransportKind = .quic
     ) throws {
         self.transport = transport
+        self.tailnetAddress = tailnetAddress
+        self.port = port
+        self.tlsIdentity = tlsIdentity
         switch transport {
         case .quicLocalVerification:
             guard let listenerPort = NWEndpoint.Port(rawValue: port) else {
@@ -232,41 +261,150 @@ public final class HostNetworkListener: @unchecked Sendable {
                 on: listenerPort
             )
         }
+        recovery = HostListenerRecoveryPolicy(
+            boundInterface: listener.parameters.requiredInterface.map(Self.identity(of:))
+        )
     }
 
     /// Refuses non-tailnet sources before any session state exists. The bound
     /// address is the first layer, the PF anchor the outermost, and this the one
     /// that survives either being missing.
+    ///
+    /// The QUIC transport also follows the tailnet interface: when it is
+    /// replaced, as it is whenever Tailscale restarts, the listener is rebuilt
+    /// on the new one. Only the listener is replaced; connections it already
+    /// accepted are left to end on their own.
     public func start(
         onState: (@Sendable (HostListenerState) -> Void)? = nil,
         onConnection: @escaping @Sendable (NWConnection) -> Void
     ) {
-        listener.stateUpdateHandler = { [weak listener] state in
+        queue.sync {
+            self.onState = onState
+            self.onConnection = onConnection
+            install(listener, generation: generation)
+            listener.start(queue: queue)
+            guard transport == .quic else { return }
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { [weak self] path in
+                self?.pathChanged(path)
+            }
+            pathMonitor = monitor
+            monitor.start(queue: queue)
+        }
+    }
+
+    public func stop() {
+        queue.sync {
+            stopped = true
+            pathMonitor?.cancel()
+            pathMonitor = nil
+            listener.cancel()
+        }
+    }
+
+    private func install(_ listener: NWListener, generation: Int) {
+        listener.stateUpdateHandler = { [weak self, weak listener] state in
+            guard let self else { return }
+            let event: HostListenerRecoveryPolicy.ListenerEvent
+            let reported: HostListenerState
             switch state {
             case .ready:
-                onState?(.ready(port: listener?.port?.rawValue ?? 0))
+                event = .ready
+                reported = .ready(port: listener?.port?.rawValue ?? 0)
             case let .failed(error):
-                onState?(.failed(HostListenerFailureDescription.describe(error)))
+                event = .failed
+                reported = .failed(HostListenerFailureDescription.describe(error))
             case .cancelled:
-                onState?(.cancelled)
+                event = .cancelled
+                reported = .cancelled
+            case .waiting:
+                event = .waiting
+                reported = .rebuilding
             default:
+                return
+            }
+            guard transport == .quic else {
+                if event != .waiting {
+                    onState?(reported)
+                }
+                return
+            }
+            switch recovery.listenerEvent(event, generation: generation) {
+            case .none:
                 break
+            case .report:
+                onState?(reported)
+            case let .rebuild(afterSeconds):
+                scheduleRebuild(afterSeconds: afterSeconds)
             }
         }
-        listener.newConnectionHandler = { [transport] connection in
+        listener.newConnectionHandler = { [weak self, transport] connection in
             guard HostConnectionAdmission.admits(endpoint: connection.endpoint, transport: transport) else {
-                onState?(.refusedSource(
+                self?.onState?(.refusedSource(
                     address: HostConnectionAdmission.sourceHost(of: connection.endpoint) ?? "an address it could not read"
                 ))
                 connection.cancel()
                 return
             }
-            onConnection(connection)
+            self?.onConnection?(connection)
         }
-        listener.start(queue: queue)
     }
 
-    public func stop() {
+    private func pathChanged(_ path: NWPath) {
+        guard !stopped else { return }
+        let interface = Self.interface(owning: tailnetAddress, in: path)
+        if case let .rebuild(afterSeconds) = recovery.interfaceObserved(interface.map(Self.identity(of:))) {
+            scheduleRebuild(afterSeconds: afterSeconds)
+        }
+    }
+
+    private func scheduleRebuild(afterSeconds: Double) {
+        guard !stopped else { return }
+        onState?(.rebuilding)
+        queue.asyncAfter(deadline: .now() + afterSeconds) { [weak self] in
+            self?.rebuild()
+        }
+    }
+
+    private func rebuild() {
+        guard !stopped else { return }
+        guard let path = pathMonitor?.currentPath,
+              let interface = Self.interface(owning: tailnetAddress, in: path) else {
+            recovery.rebuildFoundNoInterface()
+            return
+        }
         listener.cancel()
+        generation = recovery.rebuildBegan(on: Self.identity(of: interface))
+        do {
+            guard let listenerPort = NWEndpoint.Port(rawValue: port) else {
+                throw HostNetworkListenerError.invalidPort
+            }
+            let replacement = try NWListener(
+                using: Self.parameters(
+                    boundToTailnetAddress: tailnetAddress,
+                    tlsIdentity: tlsIdentity,
+                    requiredInterface: interface
+                ),
+                on: listenerPort
+            )
+            listener = replacement
+            install(replacement, generation: generation)
+            replacement.start(queue: queue)
+        } catch {
+            if case let .rebuild(afterSeconds) = recovery.listenerEvent(.failed, generation: generation) {
+                scheduleRebuild(afterSeconds: afterSeconds)
+            }
+        }
+    }
+
+    private static func interface(owning address: String, in path: NWPath) -> NWInterface? {
+        guard let name = TailnetInterfaceLocator.interfaceName(owningAddress: address) else {
+            return nil
+        }
+        return path.availableInterfaces.first { $0.name == name }
+    }
+
+    private static func identity(of interface: NWInterface) -> HostListenerInterfaceIdentity {
+        HostListenerInterfaceIdentity(name: interface.name, index: interface.index)
     }
 }
