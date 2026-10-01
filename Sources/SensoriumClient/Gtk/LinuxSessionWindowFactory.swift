@@ -7,12 +7,20 @@ import SensoriumCore
 @MainActor
 public final class LinuxSessionWindowFactory: SessionWindowFactory {
     private let tracesPresentation: Bool
+    private let pinMemoryStore: any ShortcutStripPinMemoryStoring
 
     /// `tracesPresentation` is `--trace`, which the viewer already takes for
     /// its latency trace file: a run asking for one wants the picture's own
     /// running counts too.
-    public init(tracesPresentation: Bool = false) {
+    ///
+    /// `pinMemoryStore` is where the shortcut strip's pin is kept, shared by
+    /// every window so a pin chosen in one holds in the next.
+    public init(
+        tracesPresentation: Bool = false,
+        pinMemoryStore: any ShortcutStripPinMemoryStoring = InMemoryShortcutStripPinMemoryStore()
+    ) {
         self.tracesPresentation = tracesPresentation
+        self.pinMemoryStore = pinMemoryStore
     }
 
     public func makeSessionWindow(
@@ -30,6 +38,7 @@ public final class LinuxSessionWindowFactory: SessionWindowFactory {
             session: session,
             surfaceID: surfaceID,
             initialStreamScalePreference: initialStreamScalePreference,
+            pinMemoryStore: pinMemoryStore,
             makeDecoder: AVCodecVideoDecoder.factory
         )
         // The compositor's own close control ends the session, the same way

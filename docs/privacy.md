@@ -32,6 +32,7 @@ Straight to the paired host over the existing tailnet. There is no cloud service
 | Host | Which machines may reach the host screen | `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-only |
 | Host | One line per host-screen session: the device, the display, and when it ran | `~/Library/Application Support/Sensorium/host-screen-sessions.log` |
 | Viewer | Saved host name, port, and pinned public key | `~/Library/Application Support/Sensorium/saved-host.json` |
+| Viewer | Whether the shortcut strip is pinned | `~/Library/Application Support/Sensorium/shortcut-strip-pin.json`, owner-only |
 
 On Linux the viewer keeps the same files, under the same names, in
 `$XDG_DATA_HOME/sensorium`, or in `~/.local/share/sensorium` where that

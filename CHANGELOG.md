@@ -16,8 +16,16 @@ once it reaches 1.0.
   says so and links to the install guide's steps for faster video on
   Fedora.
 
+### Changed
+
+- The shortcut strip is now pinned by default on both viewers. A viewer
+  that has never had the pin changed, or whose pin file cannot be read,
+  starts with the strip pinned.
+
 ### Fixed
 
+- The Linux viewer now remembers whether the shortcut strip is pinned,
+  so a pin set once stays set for the next session.
 - The first change after the host screen was still appears at once,
   without the short hold the viewer adds to keep motion smooth.
 - The Linux viewer sends keys, clicks and pointer moves to the host in

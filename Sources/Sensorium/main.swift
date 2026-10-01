@@ -330,7 +330,10 @@ struct Sensorium {
                 prompts: prompts,
                 eventLoop: GLibViewerEventLoop(),
                 windowFactory: LinuxSessionWindowFactory(
-                    tracesPresentation: CommandLine.arguments.contains("--trace")
+                    tracesPresentation: CommandLine.arguments.contains("--trace"),
+                    pinMemoryStore: FileShortcutStripPinMemoryStore(
+                        url: environment.applicationSupportDirectory().appendingPathComponent("shortcut-strip-pin.json")
+                    )
                 ),
                 windowRegistry: registry
             )

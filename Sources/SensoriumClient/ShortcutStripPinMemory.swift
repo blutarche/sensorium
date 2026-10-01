@@ -14,13 +14,12 @@ public struct ShortcutStripPinRecord: Codable, Equatable, Sendable {
 
 /// How the pin file is read and written -- the one decision that can lose a
 /// remembered pin, kept apart from the file store itself so it is verified
-/// without writing anything. A file that is not this shape at all -- corrupt,
-/// or simply absent -- reads as unpinned, the same restraint
-/// `HostScreenModeMemoryFileCoding` already takes with a mode-memory file
-/// that fails to decode.
+/// without writing anything. The strip is pinned by default, so a file that is
+/// not this shape at all -- corrupt, or simply absent -- reads as pinned; only
+/// a recorded unpin reads as unpinned.
 public enum ShortcutStripPinFileCoding {
     public static func decode(_ data: Data) -> Bool {
-        (try? JSONDecoder().decode(ShortcutStripPinRecord.self, from: data))?.isPinned ?? false
+        (try? JSONDecoder().decode(ShortcutStripPinRecord.self, from: data))?.isPinned ?? true
     }
 
     public static func encode(_ isPinned: Bool) -> Data? {
@@ -28,8 +27,8 @@ public enum ShortcutStripPinFileCoding {
     }
 }
 
-/// Where the strip's pin state is kept, so pinning it once means it is still
-/// pinned the next time this viewer opens a session.
+/// Where the strip's pin state is kept, so a choice to pin or unpin it holds
+/// the next time this viewer opens a session. Nothing remembered means pinned.
 public protocol ShortcutStripPinMemoryStoring: Sendable {
     func isPinned() -> Bool
     func remember(isPinned: Bool)
@@ -39,7 +38,7 @@ public final class InMemoryShortcutStripPinMemoryStore: ShortcutStripPinMemorySt
     private let lock = NSLock()
     private var pinned: Bool
 
-    public init(isPinned: Bool = false) {
+    public init(isPinned: Bool = true) {
         self.pinned = isPinned
     }
 
@@ -71,7 +70,7 @@ public final class FileShortcutStripPinMemoryStore: ShortcutStripPinMemoryStorin
     }
 
     public func isPinned() -> Bool {
-        guard let data = try? Data(contentsOf: url) else { return false }
+        guard let data = try? Data(contentsOf: url) else { return true }
         return ShortcutStripPinFileCoding.decode(data)
     }
 

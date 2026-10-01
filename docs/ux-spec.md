@@ -102,7 +102,7 @@ Open, it reads left to right:
 
 - The host's name, in grey.
 - Four icon-only clusters by intent: window management, virtual desktops, search and app switching, lock and quit. Each button is tooltipped with its action and target.
-- A pin that turns the strip's hover behaviour off, remembered across launches. Pinning gives the strip its own band across the top; the picture and the diagnostics panel move down below it, so neither is covered.
+- A pin that turns the strip's hover behaviour off. The strip is pinned by default, and the choice to unpin or pin it again is remembered across launches. Pinning gives the strip its own band across the top; the picture and the diagnostics panel move down below it, so neither is covered.
 
 Lock Screen and Quit App ask once first. Nothing on the strip takes keyboard focus.
 

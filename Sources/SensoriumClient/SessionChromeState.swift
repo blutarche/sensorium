@@ -27,6 +27,11 @@ public struct SessionChromeState: Equatable, Sendable {
         strip = ShortcutStripModel(isPinned: isStripPinned)
     }
 
+    /// A chrome whose strip starts as the person last left it.
+    public init(pinMemoryStore: any ShortcutStripPinMemoryStoring) {
+        self.init(isStripPinned: pinMemoryStore.isPinned())
+    }
+
     /// When `tick(now:)` next has something to do -- the earlier of the
     /// strip's own deadline and the notice's. `nil` when neither is waiting,
     /// so a live video window wakes exactly once rather than polling.
@@ -102,6 +107,13 @@ public struct SessionChromeState: Equatable, Sendable {
 
     public mutating func togglePinRequested(now: TimeInterval) {
         strip.togglePinRequested(now: now)
+    }
+
+    /// The pin button: toggles the pin and writes the result to `store`, so
+    /// the next session starts the same way.
+    public mutating func togglePinRequested(now: TimeInterval, remembering store: any ShortcutStripPinMemoryStoring) {
+        strip.togglePinRequested(now: now)
+        store.remember(isPinned: strip.isPinned)
     }
 
     public mutating func escapePressed() -> Bool {

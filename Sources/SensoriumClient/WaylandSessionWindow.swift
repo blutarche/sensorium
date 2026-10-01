@@ -212,6 +212,7 @@ public final class WaylandSessionWindow:
         pointerSink: any CanvasInputSending,
         surfaceID: UInt32 = 0,
         initialStreamScalePreference: StreamScalePreference = .automatic,
+        pinMemoryStore: (any ShortcutStripPinMemoryStoring)? = nil,
         makeDecoder: @escaping VideoDecoderFactory
     ) throws {
         self.title = title
@@ -222,6 +223,10 @@ public final class WaylandSessionWindow:
         guard let display = wl_display_connect(nil) else {
             throw WaylandSessionWindowError.displayUnavailable
         }
+        if let pinMemoryStore {
+            chrome.pinMemoryStore = pinMemoryStore
+        }
+        chrome.state = SessionChromeState(pinMemoryStore: chrome.pinMemoryStore)
         self.display = display
         try bringUp()
     }
@@ -233,6 +238,7 @@ public final class WaylandSessionWindow:
         session: ClientSessionController,
         surfaceID: UInt32 = 0,
         initialStreamScalePreference: StreamScalePreference = .automatic,
+        pinMemoryStore: (any ShortcutStripPinMemoryStoring)? = nil,
         makeDecoder: @escaping VideoDecoderFactory
     ) throws {
         try self.init(
@@ -240,6 +246,7 @@ public final class WaylandSessionWindow:
             pointerSink: surfaceID == 0 ? session : SurfaceScopedInputSink(session: session, surfaceID: surfaceID),
             surfaceID: surfaceID,
             initialStreamScalePreference: initialStreamScalePreference,
+            pinMemoryStore: pinMemoryStore,
             makeDecoder: makeDecoder
         )
     }

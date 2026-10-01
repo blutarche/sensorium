@@ -566,7 +566,7 @@ actor FailingAfterInputSink: CanvasInputSending {
 @MainActor
 func testShortcutStripHandleTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 600))
-    let strip = ShortcutStripView(hostName: "Studio")
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -677,7 +677,7 @@ func testShortcutStripHandleTests() {
 @MainActor
 func testShortcutStripHandleStaysCenteredWhenNarrow() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 700, height: 600))
-    let strip = ShortcutStripView(hostName: "Studio")
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -714,7 +714,7 @@ func testShortcutStripHandleStaysCenteredWhenNarrow() {
 @MainActor
 func testShortcutStripButtonAppearanceTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
-    let strip = ShortcutStripView(hostName: "Studio")
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -780,7 +780,7 @@ func testShortcutStripMetricsTests() {
 @MainActor
 func testShortcutStripPinButtonAppearanceTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
-    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore())
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -854,7 +854,7 @@ private func collectButtonsWithToolTipPrefix(_ prefix: String) -> (NSView) -> [N
 @MainActor
 func testShortcutStripAccessibilityLabelsTests() {
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
-    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore())
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
     container.addSubview(strip)
     NSLayoutConstraint.activate([
         strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),

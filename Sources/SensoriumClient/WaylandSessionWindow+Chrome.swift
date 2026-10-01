@@ -22,6 +22,8 @@ struct WaylandSessionChrome {
     /// What the chrome is showing, decided by the portable model and drawn
     /// from here.
     var state = SessionChromeState()
+    /// Where the strip's pin is remembered between sessions.
+    var pinMemoryStore: any ShortcutStripPinMemoryStoring = InMemoryShortcutStripPinMemoryStore()
     /// Which presses belong to the chrome and which to the far machine.
     var clicks = CanvasChromeClickPolicy()
     /// Where the pointer is inside whichever overlay it is on, in that
@@ -711,7 +713,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
         case .cancel:
             chrome.state.cancelPendingStripAction()
         case .pin:
-            chrome.state.togglePinRequested(now: chromeNow())
+            chrome.state.togglePinRequested(now: chromeNow(), remembering: chrome.pinMemoryStore)
         }
         relayoutChrome()
     }
