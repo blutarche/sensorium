@@ -360,17 +360,10 @@ public final class HostNetworkListener: @unchecked Sendable {
                     listener = replacement
                     install(replacement, generation: generation)
                     replacement.start(queue: queue)
+                } catch let error as NWError {
+                    fallBackToTailnet(reporting: HostListenerFailureDescription.describe(error))
                 } catch {
-                    // The tailnet must keep working whatever happened to the
-                    // unscoped listener, so the scoped one comes back.
-                    allowsLocalNetwork = false
-                    if let error = error as? NWError {
-                        onState?(.failed(HostListenerFailureDescription.describe(error)))
-                    } else {
-                        onState?(.failed("\(error)"))
-                    }
-                    onState?(.rebuilding)
-                    rebuild()
+                    fallBackToTailnet(reporting: "\(error)")
                 }
             } else {
                 listener.cancel()
@@ -378,6 +371,16 @@ public final class HostNetworkListener: @unchecked Sendable {
                 rebuild()
             }
         }
+    }
+
+    /// The tailnet must keep working whatever happened to the unscoped
+    /// listener, so the scoped one comes back. Runs on `queue`.
+    private func fallBackToTailnet(reporting failure: String) {
+        allowsLocalNetwork = false
+        listener.cancel()
+        onState?(.failed(failure))
+        onState?(.rebuilding)
+        rebuild()
     }
 
     public func stop() {
@@ -412,11 +415,24 @@ public final class HostNetworkListener: @unchecked Sendable {
             default:
                 return
             }
-            // `HostListenerRecoveryPolicy` follows the tailnet interface; an
-            // unscoped listener has no interface to follow.
-            guard transport == .quic, !allowsLocalNetwork else {
+            guard transport == .quic else {
                 if event != .waiting {
                     onState?(reported)
+                }
+                return
+            }
+            // `HostListenerRecoveryPolicy` follows the tailnet interface; an
+            // unscoped listener has no interface to follow.
+            if allowsLocalNetwork {
+                switch HostListenerRecoveryPolicy.unscopedListenerEvent(event) {
+                case .none:
+                    break
+                case .report:
+                    onState?(reported)
+                case .fallBackToTailnet:
+                    if case let .failed(failure) = reported {
+                        fallBackToTailnet(reporting: failure)
+                    }
                 }
                 return
             }

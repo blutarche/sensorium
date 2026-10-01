@@ -231,3 +231,25 @@ func runHostLocalSubnetInterfaceFilterTests() {
     )
     print("PASS: loopback, down, tailnet and point-to-point interfaces never count as this network")
 }
+
+/// An unscoped listener follows no interface, but one that fails must not
+/// leave the host with nothing listening: it falls back to the tailnet.
+func runHostUnscopedListenerEventTests() {
+    expect(
+        HostListenerRecoveryPolicy.unscopedListenerEvent(.failed) == .fallBackToTailnet,
+        "an unscoped listener that fails falls back to the scoped tailnet listener"
+    )
+    expect(
+        HostListenerRecoveryPolicy.unscopedListenerEvent(.ready) == .report,
+        "an unscoped listener becoming ready is reported"
+    )
+    expect(
+        HostListenerRecoveryPolicy.unscopedListenerEvent(.cancelled) == .report,
+        "an unscoped listener's cancellation is reported"
+    )
+    expect(
+        HostListenerRecoveryPolicy.unscopedListenerEvent(.waiting) == .none,
+        "an unscoped listener waiting for a network is not reported"
+    )
+    print("PASS: an unscoped listener that fails falls back to the tailnet instead of leaving nothing listening")
+}

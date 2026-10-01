@@ -122,3 +122,23 @@ public struct HostListenerRecoveryPolicy: Sendable {
         return .rebuild(afterSeconds: delay)
     }
 }
+
+extension HostListenerRecoveryPolicy {
+    public enum UnscopedDecision: Equatable, Sendable {
+        case none
+        case report
+        case fallBackToTailnet
+    }
+
+    /// For the unscoped listener "Allow connections from this network" runs,
+    /// which follows no interface and so bypasses the policy above. A failure
+    /// falls back to the scoped tailnet listener rather than leaving the host
+    /// with nothing listening at all.
+    public static func unscopedListenerEvent(_ event: ListenerEvent) -> UnscopedDecision {
+        switch event {
+        case .waiting: return .none
+        case .ready, .cancelled: return .report
+        case .failed: return .fallBackToTailnet
+        }
+    }
+}
