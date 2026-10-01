@@ -88,7 +88,8 @@ public enum ViewerSessionFailureCopy {
         case .unreachable:
             return "Could not reach \(hostLabel). Nothing answered at that address. Check that the "
                 + "other machine is awake, that Sensorium Host is running on it, and that both "
-                + "machines are on the same network."
+                + "machines are on the same network. If you connect by a name ending in .local, also turn on "
+                + "\u{201C}Allow connections from this network\u{201D} in Sensorium Host on the other Mac."
         case .unverifiedHost:
             // Security-relevant, and the one failure where trying again is the
             // wrong reflex: pairing again would pin whatever answered.

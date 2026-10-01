@@ -1646,8 +1646,8 @@ func testDualCanvasReconnectAndUITests() async {
         let gaveUp = abandoned.handle(.gaveUp)
         expect(gaveUp.phase == .lost, "giving up leaves the viewer in the lost state")
         expect(
-            gaveUp.detail == "Sensorium has stopped retrying. Check that it is awake and that Tailscale is "
-                + "connected on both machines, then choose Try Again.",
+            gaveUp.detail == "Sensorium has stopped retrying. Check that it is awake, and that both machines "
+                + "are on the same network or have Tailscale connected, then choose Try Again.",
             "giving up names what the user can actually do about it, without repeating the host the "
                 + "headline names, got: \(gaveUp.detail)"
         )

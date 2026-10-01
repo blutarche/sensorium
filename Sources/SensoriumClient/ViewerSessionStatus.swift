@@ -253,8 +253,8 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "SESSION LOST",
                 headline: "Cannot reach \(hostName).",
-                detail: "Sensorium has stopped retrying. Check that it is awake and that Tailscale "
-                    + "is connected on both machines, then choose Try Again.",
+                detail: "Sensorium has stopped retrying. Check that it is awake, and that both machines "
+                    + "are on the same network or have Tailscale connected, then choose Try Again.",
                 buttons: Self.recoveryButtons
             )
         case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay):
