@@ -336,8 +336,9 @@ public final class HostNetworkListener: @unchecked Sendable {
     /// Rebuilds the QUIC listener for the new mode: unscoped when on, scoped to
     /// the tailnet interface when off. Turning it off never leaves the
     /// unscoped listener running, even when the tailnet interface cannot be
-    /// found yet; the path monitor then rebuilds once it appears. Connections
-    /// already accepted are the caller's to end.
+    /// found yet; the path monitor then rebuilds once it appears. Turning it
+    /// on falls back to the scoped listener if the unscoped one cannot be
+    /// built. Connections already accepted are the caller's to end.
     public func setAllowsLocalNetwork(_ allows: Bool) {
         queue.sync {
             guard transport == .quic, !stopped, allows != allowsLocalNetwork else { return }
@@ -359,10 +360,17 @@ public final class HostNetworkListener: @unchecked Sendable {
                     listener = replacement
                     install(replacement, generation: generation)
                     replacement.start(queue: queue)
-                } catch let error as NWError {
-                    onState?(.failed(HostListenerFailureDescription.describe(error)))
                 } catch {
-                    onState?(.failed("\(error)"))
+                    // The tailnet must keep working whatever happened to the
+                    // unscoped listener, so the scoped one comes back.
+                    allowsLocalNetwork = false
+                    if let error = error as? NWError {
+                        onState?(.failed(HostListenerFailureDescription.describe(error)))
+                    } else {
+                        onState?(.failed("\(error)"))
+                    }
+                    onState?(.rebuilding)
+                    rebuild()
                 }
             } else {
                 listener.cancel()
