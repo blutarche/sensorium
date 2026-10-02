@@ -4,6 +4,13 @@
 # and proves the host's real VTCompressionSession/SCStream rebuild and the
 # client's real VideoToolboxDecoder resolution swap both actually recover, in
 # both directions, rather than only compiling.
+#
+# Every process this starts is pointed at a throwaway state directory under
+# .build. `HOME` alone does not do that: Foundation reads the home directory
+# from the password database, so the application-support directory ignores it,
+# and a rig that set only `HOME` would read and write the real
+# ~/Library/Application Support/Sensorium, including pairing records an
+# installed host trusts. `CFFIXED_USER_HOME` is the one CoreFoundation honours.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -77,11 +84,11 @@ mkdir -p "$HOST_HOME" "$CLIENT_HOME"
 swift Scripts/display_inventory.swift > "$STATE/display-inventory-pre.json"
 python3 Scripts/check-display-active.py "$STATE/display-inventory-pre.json" || exit 3
 
-env HOME="$HOST_HOME" "$HOST" pair "$ADDRESS" "$PORT" --transport tcp-local-verification > "$HOST_LOG" 2>&1 &
+env HOME="$HOST_HOME" CFFIXED_USER_HOME="$HOST_HOME" "$HOST" pair "$ADDRESS" "$PORT" --transport tcp-local-verification > "$HOST_LOG" 2>&1 &
 HOST_PID=$!
 wait_for_pattern 'Pairing code:' "$HOST_LOG" 10 || fail "timed out waiting for 'Pairing code:' in host log"
 CODE="$(python3 -c 'import re; print(re.search(r"Pairing code: (\d{6})", open("'"$HOST_LOG"'").read()).group(1))')"
-env HOME="$CLIENT_HOME" "$PROBE" pair "$ADDRESS" "$PORT" "$CODE" > "$PROBE_LOG" 2>&1 \
+env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" pair "$ADDRESS" "$PORT" "$CODE" > "$PROBE_LOG" 2>&1 \
   || fail "the probe's 'pair' step failed"
 grep -q 'local_input_probe_paired=yes' "$PROBE_LOG" || fail "probe did not report local_input_probe_paired=yes"
 
@@ -89,11 +96,11 @@ kill -TERM "$HOST_PID" 2>/dev/null || true
 wait "$HOST_PID" 2>/dev/null || true
 HOST_PID=""
 : > "$HOST_LOG"
-env HOME="$HOST_HOME" "$HOST" serve "$ADDRESS" "$PORT" --transport tcp-local-verification > "$HOST_LOG" 2>&1 &
+env HOME="$HOST_HOME" CFFIXED_USER_HOME="$HOST_HOME" "$HOST" serve "$ADDRESS" "$PORT" --transport tcp-local-verification > "$HOST_LOG" 2>&1 &
 HOST_PID=$!
 wait_for_pattern 'Sensorium host bound' "$HOST_LOG" 10 || fail "timed out waiting for 'Sensorium host bound' in host log"
 
-env HOME="$CLIENT_HOME" SENSORIUM_ALLOW_RESIZE_SMOKE=1 "$PROBE" enter-resize "$ADDRESS" "$PORT" >> "$PROBE_LOG" 2>&1 &
+env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" SENSORIUM_ALLOW_RESIZE_SMOKE=1 "$PROBE" enter-resize "$ADDRESS" "$PORT" >> "$PROBE_LOG" 2>&1 &
 PROBE_PID=$!
 
 wait_for_pattern 'workspace started on session canvas' "$HOST_LOG" 20 \

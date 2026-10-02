@@ -2,6 +2,13 @@
 # Real same-machine viewer/input smoke: a normal Sensorium viewer window presents the
 # product workspace, routes a key through the client surface router, and proves
 # the host injected it into the editable workspace on the owned canvas.
+#
+# Every process this starts is pointed at a throwaway state directory under
+# .build. `HOME` alone does not do that: Foundation reads the home directory
+# from the password database, so the application-support directory ignores it,
+# and a rig that set only `HOME` would read and write the real
+# ~/Library/Application Support/Sensorium, including pairing records an
+# installed host trusts. `CFFIXED_USER_HOME` is the one CoreFoundation honours.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -117,18 +124,18 @@ mkdir -p "$HOST_HOME" "$CLIENT_HOME"
 swift Scripts/display_inventory.swift > "$STATE/display-inventory-pre.json"
 python3 Scripts/check-display-active.py "$STATE/display-inventory-pre.json" || exit 3
 
-/usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" "$HOST_APP" --args pair "$ADDRESS" 7781 --transport tcp-local-verification &
+/usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args pair "$ADDRESS" 7781 --transport tcp-local-verification &
 HOST_PID=$!
 wait_for_text 'Pairing code:' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'Pairing code:' in host log"
 CODE="$(python3 -c 'import re; print(re.search(r"Pairing code: (\d{6})", open("'"$HOST_LOG"'").read()).group(1))')"
-env HOME="$CLIENT_HOME" "$PROBE" pair "$ADDRESS" 7781 "$CODE" > "$PROBE_LOG" 2>&1
+env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" pair "$ADDRESS" 7781 "$CODE" > "$PROBE_LOG" 2>&1
 wait_for_text 'local_input_probe_paired=yes' "$PROBE_LOG" 5 || fail_with_diagnosis "timed out waiting for 'local_input_probe_paired=yes' in probe log"
 stop_host
 : > "$HOST_LOG"
-/usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" "$HOST_APP" --args serve "$ADDRESS" 7781 --transport tcp-local-verification &
+/usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args serve "$ADDRESS" 7781 --transport tcp-local-verification &
 HOST_PID=$!
 wait_for_text 'Sensorium host bound' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'Sensorium host bound' in host log"
-if ! env HOME="$CLIENT_HOME" "$PROBE" enter "$ADDRESS" 7781 >> "$PROBE_LOG" 2>&1; then
+if ! env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" enter "$ADDRESS" 7781 >> "$PROBE_LOG" 2>&1; then
   fail_with_diagnosis "the probe's 'enter' step failed"
 fi
 

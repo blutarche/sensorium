@@ -71,4 +71,8 @@ if grep -Ei 'SensoriumCanvasExerciser|screencapture|zip|unzip|sudo|system_profil
   exit 1
 fi
 
+# Throwaway state must never alias the real Application Support or the installed
+# host's port.
+sh "$ROOT/Scripts/assert-smoke-isolated.sh" "$SMOKE"
+
 printf 'PASS: real local workspace input smoke harness contract\n'

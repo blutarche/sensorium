@@ -36,4 +36,8 @@ if grep -Ei 'SensoriumCanvasExerciser|package-apps\.sh|zip|unzip|sudo|system_pro
   exit 1
 fi
 
+# Throwaway state must never alias the real Application Support or the installed
+# host's port.
+sh "$ROOT/Scripts/assert-smoke-isolated.sh" "$SMOKE"
+
 printf 'PASS: real local resize smoke harness contract\n'
