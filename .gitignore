@@ -51,4 +51,10 @@ __pycache__/
 
 # Local agent-orchestration state
 .orca/
-.claude/
+
+# Personal Claude Code state. Shared config under .claude/ is committed.
+.claude/settings.local.json
+.claude/agent-memory-local/
+.claude/worktrees/
+.claude/.cc-writes/
+CLAUDE.local.md
