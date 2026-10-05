@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-06
+
 ### Added
 
 - The host window has a new setting, **Allow connections from this
@@ -16,11 +18,6 @@ once it reaches 1.0.
   without Tailscale. Pairing works the same way as before. Turning it off
   ends every session that did not come over Tailscale. The host still
   needs Tailscale to start.
-
-## [0.2.1] - 2026-10-02
-
-### Added
-
 - A paired machine can be renamed from the **…** menu on its row in Your
   Machines, on both viewers. The name is kept on the viewer only,
   survives pairing again, and an empty name puts the original back.
@@ -325,7 +322,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
-[0.2.1]: https://github.com/blutarche/sensorium/releases/tag/v0.2.1
+[0.3.0]: https://github.com/blutarche/sensorium/releases/tag/v0.3.0
 [0.2.0]: https://github.com/blutarche/sensorium/releases/tag/v0.2.0
 [0.1.3]: https://github.com/blutarche/sensorium/releases/tag/v0.1.3
 [0.1.2]: https://github.com/blutarche/sensorium/releases/tag/v0.1.2
