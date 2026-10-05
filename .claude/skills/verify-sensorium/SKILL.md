@@ -17,7 +17,7 @@ The machine you are on may be the owner's real host. An installed `/Applications
 | Loopback | Authenticated handshake of an already-approved viewer, session lifecycle, input path, resize, recovery, over an in-memory transport and a fake display | None. Always allowed |
 | Real-machine smoke | Real capture, encode, decode, input injection, host-screen mode change and restore | Explicit approval for an opt-in macOS integration test, plus doctor's smoke verdict |
 
-Agents do not screenshot or script a live window here: `screencapture` is forbidden by `CLAUDE.md`, and UI scripting would need a permission granted on the development machine, which `CLAUDE.md` also forbids. So the visual proof is the renders, and the behavioral proof is loopback output or smoke logs. Say which one you used; never present a render as a driven user action.
+Outside an approved opt-in macOS integration test, agents do not screenshot or script a live window: `CLAUDE.md` forbids `screencapture` except in such a test. Inside one, an agent may click a live window through an Accessibility grant that already exists and capture it with `screencapture`, but never requests or grants a new permission. When no grant exists, the visual proof is the renders, and the behavioral proof is loopback output or smoke logs. Say which one you used; never present a render as a driven user action.
 
 ## Launch
 
