@@ -526,6 +526,20 @@ func testViewerUpdaterInstallAtQuitTests() async {
     print("PASS: quitting installs a staged update, and only a staged one, and records how it went")
 }
 
+/// A release held back until the next scheduled check, after a failure that
+/// could pass on another try, is not downloaded and says nothing.
+@MainActor
+func testViewerUpdaterHeldBackRetryTests() async {
+    let harness = ViewerUpdaterHarness(checkResult: .heldBack(viewerTestOffer("0.5.0")))
+    defer { harness.cleanUp() }
+    harness.updater.start()
+    expect(await harness.settle(until: { harness.checks == 1 }), "launch checks once")
+    await harness.pause()
+    expect(harness.updater.stagedUpdate == nil, "a release held back until the next check is not downloaded")
+    expect(harness.updater.line == nil, "and the line says nothing, got \(String(describing: harness.updater.line))")
+    print("PASS: a release held back until the next check is not downloaded and says nothing")
+}
+
 /// The app delegate wired to the updater the way the viewer wires it, with
 /// AppKit's answer recorded instead of sent.
 @MainActor

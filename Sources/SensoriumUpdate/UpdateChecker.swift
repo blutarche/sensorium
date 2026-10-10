@@ -25,6 +25,9 @@ public enum UpdateCheckResult: Equatable, Sendable {
     case available(UpdateOffer)
     /// A release already recorded as bad, with the recorded reason.
     case givenUp(UpdateOffer, reason: String)
+    /// A release that failed in a way that could pass on another try, and
+    /// waits for the next scheduled check before it is tried again.
+    case heldBack(UpdateOffer)
 }
 
 /// One check, as section 3.1 of `docs/self-update-design.md` describes:
@@ -98,6 +101,8 @@ public struct UpdateChecker: Sendable {
         case .update:
             if let record = state.failure(version: offer.version, sha256: offer.app.sha256), record.kind == .badRelease {
                 result = .givenUp(offer, reason: record.reason)
+            } else if state.isHeldBack(version: offer.version, sha256: offer.app.sha256, now: now()) {
+                result = .heldBack(offer)
             } else {
                 result = .available(offer)
             }

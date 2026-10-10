@@ -84,6 +84,7 @@ func runDarwinClientTests() async {
     await testViewerUpdaterAutomaticPreferenceTests()
     await testViewerUpdaterRestartNowTests()
     await testViewerUpdaterInstallAtQuitTests()
+    await testViewerUpdaterHeldBackRetryTests()
     await testViewerUpdaterQuitThroughAppKitTests()
     await testViewerUpdaterQuitDuringRestartNowTests()
     await testViewerUpdaterManualCheckTests()

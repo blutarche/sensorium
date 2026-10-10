@@ -4,19 +4,24 @@ import Foundation
 import SensoriumUpdate
 
 /// A clock that never moves on its own: every sleep waits until the test
-/// calls `advance()`.
+/// calls `advance()`, which moves `elapsed` on by the time slept.
 final class FakeSleeper: @unchecked Sendable {
     private let lock = NSLock()
-    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var waiting: [(continuation: CheckedContinuation<Void, Never>, duration: Duration)] = []
     private var calls = 0
+    private var slept: Duration = .zero
 
     var sleepCalls: Int { lock.withLock { calls } }
+
+    /// Seconds slept so far, which the harness adds to the real time a check
+    /// sees.
+    var elapsed: TimeInterval { lock.withLock { slept / .seconds(1) } }
 
     func sleep(_ duration: Duration) async throws {
         await withCheckedContinuation { continuation in
             lock.withLock {
                 calls += 1
-                waiting.append(continuation)
+                waiting.append((continuation, duration))
             }
         }
         try Task.checkCancellation()
@@ -25,9 +30,10 @@ final class FakeSleeper: @unchecked Sendable {
     func advance() {
         let sleepers = lock.withLock {
             defer { waiting = [] }
+            slept += waiting.map(\.duration).max() ?? .zero
             return waiting
         }
-        sleepers.forEach { $0.resume() }
+        sleepers.forEach { $0.continuation.resume() }
     }
 }
 
@@ -76,14 +82,15 @@ private final class SchedulerHarness {
         automaticUpdates: Bool,
         installability: UpdateInstallability = .updatable
     ) -> UpdateScheduler {
+        let sleeper = sleeper
         let checker = UpdateChecker(
             role: .host,
             runningVersion: UpdateVersion("0.4.0")!,
             transport: page,
             stateStore: store,
-            publicKey: key.publicKey.rawRepresentation
+            publicKey: key.publicKey.rawRepresentation,
+            now: { Date().addingTimeInterval(sleeper.elapsed) }
         )
-        let sleeper = sleeper
         return UpdateScheduler(
             flavor: flavor,
             installability: installability,
@@ -290,6 +297,49 @@ func testHostInstallsOnlyWhenIdleAndRechecksRightBeforeInstalling() async {
     host.outcome = .handedOff
     await scheduler.checkForUpdates()
     expect(host.installs.count == 2, "a manual check on an idle host stages and installs at once")
+}
+
+@MainActor
+func testARolledBackHostWaitsForTheNextScheduledCheckBeforeTryingAgain() async {
+    let harness = SchedulerHarness()
+    harness.publish("0.5.0")
+    let version = UpdateVersion("0.5.0")!
+    let host = HostProbe()
+    host.outcome = .rolledBack(.readyLate)
+    let flavor = UpdateScheduler.Flavor.host(
+        isIdle: { host.idle },
+        install: { staged in
+            host.installs.append(staged)
+            return host.outcome
+        }
+    )
+
+    let replaced = harness.scheduler(flavor: flavor, automaticUpdates: true)
+    replaced.start()
+    await eventually("an idle host installs at launch") { host.installs.count == 1 }
+    await eventually("the rolled-back install is recorded") { harness.store.load().failures.first?.tries == 1 }
+    await eventually("the replaced host's schedule sleeps") { harness.sleeper.sleepCalls == 1 }
+    replaced.stop()
+
+    let restored = harness.scheduler(flavor: flavor, automaticUpdates: true)
+    restored.start()
+    await eventually("the restored copy checks at launch") { harness.page.requests.count == 4 }
+    await settle()
+    expect(harness.stageCalls == 1, "the restored copy does not download the release again at launch")
+    expect(host.installs.count == 1, "nor install it again")
+    expect(restored.status == .waiting(version), "it shows the waiting line for that version")
+
+    await eventually("the restored copy sleeps until its next check") { harness.sleeper.sleepCalls == 2 }
+    harness.sleeper.advance()
+    await eventually("the next scheduled check installs again") { host.installs.count == 2 }
+    await eventually("the second try is recorded") { harness.store.load().failures.first?.tries == 2 }
+    expect(restored.status == .waiting(version), "between tries the waiting line stays")
+
+    host.outcome = .handedOff
+    await restored.checkForUpdates()
+    expect(host.installs.count == 3, "Check for Updates tries a held-back release at once")
+    restored.stop()
+    harness.sleeper.advance()
 }
 
 @MainActor

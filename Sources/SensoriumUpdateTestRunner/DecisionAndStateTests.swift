@@ -111,6 +111,80 @@ func testStateRecordsFailuresWithAThreeTryCapAndClears() {
     expect(bad.failures.isEmpty, "no failure is left after clearing")
 }
 
+func testARetryIsHeldBackUntilACheckIntervalAfterItsLastFailure() {
+    let release = (version: version("0.5.0"), sha256: sampleDigest)
+    let failedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let sixHours: TimeInterval = 6 * 60 * 60
+    var state = UpdateState()
+
+    state.recordFailure(.readyLate, version: release.version, sha256: release.sha256, now: failedAt)
+    expect(state.failure(version: release.version, sha256: release.sha256)?.lastFailed == failedAt, "the time of the failure is recorded")
+    expect(
+        state.isHeldBack(version: release.version, sha256: release.sha256, now: failedAt.addingTimeInterval(60)),
+        "a relaunch minutes after a failure does not try the release again"
+    )
+    expect(
+        state.isHeldBack(version: release.version, sha256: release.sha256, now: failedAt.addingTimeInterval(sixHours - 1)),
+        "the next try waits a whole check interval"
+    )
+    expect(
+        !state.isHeldBack(version: release.version, sha256: release.sha256, now: failedAt.addingTimeInterval(sixHours)),
+        "the next scheduled check tries again"
+    )
+    expect(
+        !state.isHeldBack(version: release.version, sha256: String(repeating: "cd", count: 32), now: failedAt),
+        "the same version with a different zip is not held back"
+    )
+
+    let secondTry = failedAt.addingTimeInterval(sixHours)
+    state.recordFailure(.readyLate, version: release.version, sha256: release.sha256, now: secondTry)
+    expect(state.failure(version: release.version, sha256: release.sha256)?.lastFailed == secondTry, "each failure records its own time")
+    expect(
+        state.isHeldBack(version: release.version, sha256: release.sha256, now: secondTry.addingTimeInterval(60)),
+        "the wait starts again from the latest failure"
+    )
+
+    state.recordFailure(.readyLate, version: release.version, sha256: release.sha256, now: secondTry.addingTimeInterval(sixHours))
+    expect(
+        !state.isHeldBack(version: release.version, sha256: release.sha256, now: secondTry.addingTimeInterval(sixHours + 60)),
+        "after the third try the release is given up on, not held back"
+    )
+
+    var bad = UpdateState()
+    bad.recordFailure(.requirementFailed, version: release.version, sha256: release.sha256, now: failedAt)
+    expect(!bad.isHeldBack(version: release.version, sha256: release.sha256, now: failedAt), "a bad release is given up on, not held back")
+}
+
+func testAFailureSavedWithoutItsTimeStillReads() {
+    let directory = makeTemporaryDirectory("state-without-time")
+    defer { removeTemporaryDirectory(directory) }
+    let store = UpdateStateStore(role: .host, directory: directory)
+    let saved = """
+    {
+      "failures" : [
+        {
+          "kind" : "couldPassOnAnotherTry",
+          "reason" : "the new version did not start in time",
+          "sha256" : "\(sampleDigest)",
+          "tries" : 1,
+          "version" : "0.5.0"
+        }
+      ],
+      "highestVersionSeen" : "0.5.0"
+    }
+    """
+    try! Data(saved.utf8).write(to: store.url)
+
+    let state = store.load()
+    let record = state.failure(version: version("0.5.0"), sha256: sampleDigest)
+    expect(record?.tries == 1, "a failure saved without its time still reads")
+    expect(record != nil && record?.lastFailed == nil, "with no time")
+    expect(
+        !state.isHeldBack(version: version("0.5.0"), sha256: sampleDigest, now: Date(timeIntervalSince1970: 1_800_000_000)),
+        "a failure with no recorded time may be tried"
+    )
+}
+
 func testStateStoreRoundTripsOwnerOnly() {
     let directory = makeTemporaryDirectory("state")
     defer { removeTemporaryDirectory(directory) }
@@ -123,7 +197,7 @@ func testStateStoreRoundTripsOwnerOnly() {
     var state = UpdateState()
     state.highestVersionSeen = version("0.5.0")
     state.lastCheck = Date(timeIntervalSince1970: 1_800_000_000)
-    state.recordFailure(.selfTestTimedOut, version: version("0.5.0"), sha256: sampleDigest)
+    state.recordFailure(.selfTestTimedOut, version: version("0.5.0"), sha256: sampleDigest, now: Date(timeIntervalSince1970: 1_800_000_060))
     try! store.save(state)
 
     expect(store.url.lastPathComponent == "host-update-state.json", "the host's file is host-update-state.json")

@@ -151,4 +151,32 @@ func testCheckDoesNotOfferAReleaseThatWasGivenUpOn() async {
     expect(offer.version == UpdateVersion("0.5.0")!, "the given-up result names the version")
     expect(reason == "the new version is not signed like this one", "the given-up result carries the recorded reason")
 }
+
+func testCheckHoldsBackARetryUntilACheckIntervalAfterItsLastFailure() async {
+    let directory = makeTemporaryDirectory("check-held-back")
+    defer { removeTemporaryDirectory(directory) }
+    let store = UpdateStateStore(role: .host, directory: directory)
+    let key = Curve25519.Signing.PrivateKey()
+    let page = FakeReleasePage()
+    page.publish(serialized(sampleManifestObject(version: "0.5.0")), signedWith: key)
+    let checkTime = Date(timeIntervalSince1970: 1_800_000_000)
+
+    func check(afterFailingAt failedAt: Date) async -> UpdateCheckResult {
+        var state = UpdateState()
+        state.recordFailure(.readyLate, version: UpdateVersion("0.5.0")!, sha256: sampleDigest, now: failedAt)
+        try! store.save(state)
+        return await makeChecker(page: page, key: key, store: store).check()
+    }
+
+    let soon = await check(afterFailingAt: checkTime.addingTimeInterval(-60 * 60))
+    guard case let .heldBack(offer) = soon else {
+        return expect(false, "a release that failed an hour ago is held back, got \(soon)")
+    }
+    expect(offer.version == UpdateVersion("0.5.0")!, "the held-back result names the version")
+
+    let due = await check(afterFailingAt: checkTime.addingTimeInterval(-6 * 60 * 60))
+    guard case .available = due else {
+        return expect(false, "a release that failed six hours ago is offered again, got \(due)")
+    }
+}
 #endif

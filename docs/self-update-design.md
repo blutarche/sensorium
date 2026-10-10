@@ -178,7 +178,7 @@ A failure either means the release itself is bad, or it could pass on another tr
 | Kind | Failures | Then | *Failed* line reason |
 | --- | --- | --- | --- |
 | Bad release | A download that matched the signed manifest, then failed: wrong bundle contents, requirement check fails, or the self-test exits with an error. | That version with that zip's SHA-256 is never tried again. A release with a different zip is. | *the new version is not signed like this one* or *the new version did not start* |
-| Could pass on another try | Download fails, times out, or does not match the signed manifest's size or SHA-256. Self-test times out. Swap fails. Ready file late, or its values differ. New instance does not quit when asked. | Tried again at the next check, up to three tries for that version. After the third it counts as a bad release. | *the download did not match the release* or *the new version did not start in time* |
+| Could pass on another try | Download fails, times out, or does not match the signed manifest's size or SHA-256. Self-test times out. Swap fails. Ready file late, or its values differ. New instance does not quit when asked. | Tried again at the next check, up to three tries for that version. A retry waits for the next scheduled check, not a relaunch. After the third it counts as a bad release. | *the download did not match the release* or *the new version did not start in time* |
 
 The *Failed* line shows after a bad release, or after the third try. Between tries the *Waiting* line stays. **Check for Updates…** clears every recorded failure and tries at once.
 

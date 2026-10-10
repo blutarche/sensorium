@@ -27,6 +27,9 @@ public struct UpdateFailureRecord: Codable, Equatable, Sendable {
     /// The last failure's `UpdateFailure.reason`, so the *Failed* line can
     /// name it after a relaunch.
     public var reason: String
+    /// When the last failure happened. Nil in a state file that does not
+    /// record it.
+    public var lastFailed: Date?
 }
 
 /// What an app remembers between checks.
@@ -62,11 +65,25 @@ public struct UpdateState: Codable, Equatable, Sendable {
         !mayTry(version: version, sha256: sha256)
     }
 
-    public mutating func recordFailure(_ failure: UpdateFailure, version: UpdateVersion, sha256: String) {
+    /// Whether a release that could pass on another try waits for the next
+    /// scheduled check: it is not tried again until
+    /// `UpdateScheduler.checkInterval` has passed since its last failure, so
+    /// a relaunch does not retry it at once.
+    public func isHeldBack(version: UpdateVersion, sha256: String, now: Date) -> Bool {
+        guard let record = failure(version: version, sha256: sha256),
+              record.kind == .couldPassOnAnotherTry,
+              let lastFailed = record.lastFailed else {
+            return false
+        }
+        return now.timeIntervalSince(lastFailed) < UpdateScheduler.checkInterval / .seconds(1)
+    }
+
+    public mutating func recordFailure(_ failure: UpdateFailure, version: UpdateVersion, sha256: String, now: Date = Date()) {
         var record = self.failure(version: version, sha256: sha256)
             ?? UpdateFailureRecord(version: version, sha256: sha256, kind: failure.kind, tries: 0, reason: failure.reason)
         record.tries += 1
         record.reason = failure.reason
+        record.lastFailed = now
         if failure.kind == .badRelease || record.tries >= Self.maximumTries {
             record.kind = .badRelease
         }

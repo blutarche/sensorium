@@ -39,7 +39,7 @@ public final class UpdateScheduler {
         )
     }
 
-    public static let checkInterval: Duration = .seconds(6 * 60 * 60)
+    public nonisolated static let checkInterval: Duration = .seconds(6 * 60 * 60)
 
     public private(set) var status: UpdateStatus {
         didSet {
@@ -235,6 +235,8 @@ public final class UpdateScheduler {
             status = .failed(reason: failure.reason)
         case let .givenUp(_, reason):
             status = .failed(reason: reason)
+        case let .heldBack(offer):
+            status = .waiting(offer.version)
         case let .available(offer):
             status = .downloading(offer.version)
             switch await stage(offer) {

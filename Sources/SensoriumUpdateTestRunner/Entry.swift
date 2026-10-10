@@ -16,6 +16,8 @@ struct SensoriumUpdateTestRunner {
             ("the decision table's first matching row decides", testDecisionTableFirstMatchingRowDecides),
             ("failure kinds and reasons match the design table", testFailureKindsAndReasonsMatchTheDesignTable),
             ("the state records failures with a three-try cap and clears", testStateRecordsFailuresWithAThreeTryCapAndClears),
+            ("a retry is held back until a check interval after its last failure", testARetryIsHeldBackUntilACheckIntervalAfterItsLastFailure),
+            ("a failure saved without its time still reads", testAFailureSavedWithoutItsTimeStillReads),
             ("the state store round-trips, owner-only", testStateStoreRoundTripsOwnerOnly),
             ("release addresses are built from constants and manifest fields", testReleaseAddressesAreBuiltFromConstantsAndManifestFields),
             ("the real transport is ephemeral, cookieless, uncached and named", testRealTransportIsEphemeralCookielessUncachedAndNamed),
@@ -23,6 +25,7 @@ struct SensoriumUpdateTestRunner {
             ("a check stops on any failure before trusting the manifest", testCheckStopsOnAnyFailureBeforeTrustingTheManifest),
             ("a check reports the release page going backwards", testCheckReportsTheReleasePageGoingBackwards),
             ("a check does not offer a release that was given up on", testCheckDoesNotOfferAReleaseThatWasGivenUpOn),
+            ("a check holds back a retry until a check interval after its last failure", testCheckHoldsBackARetryUntilACheckIntervalAfterItsLastFailure),
             ("a download is checked for size and digest", testDownloadIsCheckedForSizeAndDigest),
             ("the staging folder is owner-only, beside the installed app", testStagingFolderIsOwnerOnlyBesideTheInstalledApp),
             ("bundle validation refuses anything but one matching app", testBundleValidationRefusesAnythingButOneMatchingApp),
@@ -52,6 +55,7 @@ struct SensoriumUpdateTestRunner {
             ("a download that does not match is tried three times", testADownloadThatDoesNotMatchIsTriedThreeTimes),
             ("the scheduler makes no request when not updatable", testSchedulerMakesNoRequestWhenNotUpdatable),
             ("the host installs only when idle and rechecks right before installing", testHostInstallsOnlyWhenIdleAndRechecksRightBeforeInstalling),
+            ("a rolled-back host waits for the next scheduled check before trying again", testARolledBackHostWaitsForTheNextScheduledCheckBeforeTryingAgain),
             ("the viewer holds a ready update until asked to install", testViewerHoldsAReadyUpdateUntilAskedToInstall)
         ]
 

@@ -28,6 +28,8 @@ public enum HostUpdateLog {
             "update check: Sensorium Host \(offer.version) is available"
         case let .givenUp(offer, reason):
             "update check: Sensorium Host \(offer.version) was given up on: \(reason)"
+        case let .heldBack(offer):
+            "update check: Sensorium Host \(offer.version) failed recently and is tried again at the next check"
         }
     }
 

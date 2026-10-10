@@ -288,6 +288,23 @@ func runHostUpdaterTests() async {
     do {
         let probe = Probe()
         let host = updater(probe)
+        probe.result = .heldBack(offer(newer))
+        host.start()
+        expect(
+            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.5.0 will install when no machine is connected" },
+            "a release held back until the next check keeps the waiting line, got \(host.line)"
+        )
+        expect(probe.stages == 0 && probe.installs == 0, "and is neither downloaded nor installed")
+        expect(
+            probe.logged.contains("update check: Sensorium Host 0.5.0 failed recently and is tried again at the next check"),
+            "a held-back release is logged, got \(probe.logged)"
+        )
+        print("PASS: a release held back until the next check keeps the waiting line and downloads nothing")
+    }
+
+    do {
+        let probe = Probe()
+        let host = updater(probe)
         probe.result = .givenUp(offer(newer), reason: "the new version is not signed like this one")
         host.start()
         expect(
