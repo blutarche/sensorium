@@ -14,6 +14,7 @@ import Foundation
 /// the same wherever a list comes from.
 public enum SharpScreen {
     public static let identity = CanvasDisplayIdentity.sharpScreen
+    public static let configuration = VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2)
 
     /// Whether `display` carries the sharp screen's identity: the one this
     /// process manages, or one an earlier host left behind.
