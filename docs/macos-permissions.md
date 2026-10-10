@@ -32,7 +32,7 @@ If a screen does not come back within five seconds, the host says so and refuses
 
 ### Grants expire
 
-macOS ties a grant to the exact binary. Rebuilding the app drops the grant. Since macOS Sequoia, grants also expire about weekly and after a restart.
+macOS ties a grant to the app's bundle identifier and the certificate that signed it. A rebuild signed with the same certificate keeps the grant. A rebuild signed ad hoc, or with a different certificate, drops it. Since macOS Sequoia, grants also expire about weekly and after a restart.
 
 The host checks both permissions every 30 seconds while it runs. A lost permission logs which System Settings pane to reopen.
 

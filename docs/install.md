@@ -9,9 +9,28 @@ What you need, and how to pair the two apps.
 - The viewer runs macOS 13 or later, or Fedora 44 with KDE Plasma on Wayland.
 - Both machines joined to the same Tailscale tailnet.
 
-## Build the two apps
+## Download the two apps
 
-There are no prebuilt downloads. Build on either machine with the Swift toolchain from Command Line Tools.
+Each Mac downloads only its own app from the latest release on the project's GitHub releases page.
+
+| Mac | Download | App inside |
+| --- | --- | --- |
+| The laptop you work from | `Sensorium-<version>.zip` | `Sensorium.app` |
+| The Mac that hosts | `Sensorium-Host-<version>.zip` | `Sensorium Host.app` |
+
+1. Download the zip for that Mac.
+2. Open the zip. Drag the app into Applications.
+3. Open the app from Applications. macOS refuses it, because the app is not notarized. Click **Done**.
+4. Open System Settings, then Privacy & Security. Click **Open Anyway** next to the app. The button stays there for about an hour after the refusal.
+5. Open the app again and confirm.
+
+Run the app from Applications, not from Downloads. Each release also lists `SHA256SUMS`, which you can compare against the zips.
+
+Do not disable Gatekeeper or strip the quarantine attribute.
+
+## Build from source
+
+This is for contributors. Build on either machine with the Swift toolchain from Command Line Tools.
 
 ```sh
 SENSORIUM_ALLOW_ADHOC=1 ./Scripts/package-apps.sh
@@ -21,7 +40,7 @@ SENSORIUM_ALLOW_ADHOC=1 ./Scripts/package-apps.sh
 2. Put `Sensorium Host.app` on the machine that will host.
 3. Put `Sensorium.app` on the machine you will work from.
 
-The apps are not notarized. If macOS blocks one, do not disable Gatekeeper or strip its quarantine attribute.
+A build you make yourself is not quarantined, so macOS does not ask for **Open Anyway**.
 
 ### Keeping permissions across rebuilds
 

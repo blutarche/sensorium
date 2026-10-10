@@ -35,10 +35,15 @@ Top to bottom:
    - A line naming its key fingerprint and why sharing is or is not available now.
 4. **Last screen session.** Machine, display, and when, if there has been one.
 5. **Open at login.** A checkbox, on by default, so an unattended host comes back reachable after a restart; turning it off is the person at the host's own choice and stands until they change it again.
+6. **Install updates automatically.** A checkbox, on by default. Beneath it, one line says where updates stand:
+   - *Sensorium Host `<version>`, up to date*.
+   - *Sensorium Host `<new version>` will install when no machine is connected*.
+   - *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.*
+   - *Move Sensorium Host to Applications and open it again to receive updates.*
 
 ### Menu bar
 
-The status item mirrors the status line. It names the connected machine while a session runs, and offers Stop.
+The status item mirrors the status line. It names the connected machine while a session runs, and offers Stop. Its menu also offers **Check for Updates…**.
 
 ### While a host screen is being streamed
 
@@ -65,6 +70,10 @@ Nothing is dialled until a row is clicked. One click connects. Return connects t
 Each row also offers **Pair again**, **Rename…** and **Forget**, from a right-click or its **…** button. **Rename…** replaces the window's list with a short step: a field holding the current name, **Rename** and **Cancel**. Return renames and Escape cancels. The name is trimmed, loses any invisible or text-reversing characters, becomes one line, and is kept to 64 characters. An empty name puts back the one pairing gave the machine, which is its address when it was paired by address. The name is kept on this machine only and is never sent to the other one, and it shows everywhere the viewer names the machine. Pairing the machine again keeps it. Forgetting removes the entry and changes nothing on the machine it named. A row whose last host-screen attempt, tried through this machine's own **Start with** preference, failed to connect adds **Connect with a virtual display**, the one explicit retry on a virtual display.
 
 There is no Quit button here. Command-Q quits, and closing the window is the same choice. **Your machines…** (Command-1) opens it at any time.
+
+When a newer Sensorium has downloaded, the window shows one line beneath the list: *Sensorium `<version>` is ready.*, with **Restart Now** while no session window is open. Otherwise the update installs the next time Sensorium quits. The Sensorium menu offers **Check for Updates…** and **Check for Updates Automatically**, which is on by default. With it off, Sensorium asks for nothing until **Check for Updates…** is chosen.
+
+**Check for Updates…** brings this window forward. The line reads *Checking for updates…*, then *Sensorium `<version>` is up to date.* until the window is shown again. A check that cannot reach the release page leaves the line empty. An update that fails reads *Sensorium could not update: `<reason>`.* A copy that cannot replace itself, such as one opened from the Downloads folder, reads *Move Sensorium to Applications and open it again to receive updates.*
 
 ### Adding a machine
 
