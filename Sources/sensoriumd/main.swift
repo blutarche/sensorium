@@ -683,6 +683,7 @@ struct sensoriumd {
             onPairingRequested: { deviceName in
                 operatorBox.status.recordPairingRequest(deviceName: deviceName) {
                     let code = pairing.issueCode()
+                    print("Sensorium host: \(deviceName) asked to pair. Pairing code: \(code)")
                     return (code, Date().addingTimeInterval(PairingAuthority.defaultLifetime))
                 }
             },
