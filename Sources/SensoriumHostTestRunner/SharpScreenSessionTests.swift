@@ -192,6 +192,32 @@ func runSharpScreenSessionTests() async {
     print("PASS: a session moved onto the sharp screen streams it at 2x, posts input to it, and never changes its mode")
 
     do {
+        // A sharp screen an earlier host left behind, which this process
+        // does not manage, admitted directly.
+        let list = FakeDisplayList([sharpScreenSnapshot(id: 30)])
+        let modes = FakeHostScreenModeController()
+        modes.modesByDisplay[30] = [sharpModeEntry, sharpOtherModeEntry]
+        modes.currentModeIDByDisplay[30] = sharpModeEntry.modeID
+        let wake = DisplayWakeController(power: FakeDisplayPower(), displays: { list.read() }, wait: { _ in })
+        let controller = armedHostScreenController(
+            displays: list, displayWake: wake, log: { _ in }, modeController: modes
+        )
+        let admitted = admitFirstOffered(controller)
+        expect(
+            admitted == SessionSurfaceGeometry(logicalWidth: 1920, logicalHeight: 1080, backingScale: 2),
+            "the leftover sharp screen is admitted at its own 2x geometry, got \(String(describing: admitted))"
+        )
+        expect(controller.hostScreenModeListMessage() == nil, "a leftover sharp screen offers the viewer no display modes")
+        let reply = try! controller.handle(.hostScreenModeRequest(modeID: sharpOtherModeEntry.modeID))
+        expect(
+            reply == .hostScreenModeRefused(reason: HostScreenModeRefusalReason.unknown),
+            "a mode change on it is refused, got \(String(describing: reply))"
+        )
+        expect(modes.applied.isEmpty, "and its mode is never touched")
+    }
+    print("PASS: a sharp screen an earlier host left behind streams at its one size, with no mode changes")
+
+    do {
         let host = FakeHeadlessHost()
         let injectors = FakeInputInjectorFactory()
         let wake = DisplayWakeController(power: FakeDisplayPower(), displays: { host.read() }, wait: { _ in })

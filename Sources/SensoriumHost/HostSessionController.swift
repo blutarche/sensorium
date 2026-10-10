@@ -130,9 +130,10 @@ private struct HostScreenSurfaceState {
     var heldButtons: [CanvasPointerButton: CanvasInputLocation] = [:]
     var heldKeys: Set<UInt16> = []
     var isPointerCaptured = false
-    /// Set while this surface streams the sharp screen (`SharpScreen`)
-    /// rather than the display it was admitted on. The sharp screen has
-    /// one fixed size, so no mode is offered or changed for it.
+    /// Set while this surface streams a sharp screen (`SharpScreen`): one
+    /// this process moved it onto, or one an earlier host left behind that
+    /// it was admitted on. A sharp screen has one fixed size, so no mode is
+    /// offered or changed for it.
     var isSharpScreen = false
 }
 
@@ -1939,7 +1940,8 @@ public final class HostSessionController {
                         ? nil
                         : pairing?.reportedName(for: clientKey),
                     displayLabel: HostScreenArmingPresentation.displayLabel(for: display),
-                    inputInjector: injector
+                    inputInjector: injector,
+                    isSharpScreen: SharpScreen.isSharpScreen(display)
                 )
                 // `armingFingerprint` is never nil here: admission's own success
                 // already required an arming record for this device to exist,
