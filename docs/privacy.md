@@ -4,7 +4,7 @@ What Sensorium sends over the wire, and what it stores.
 
 ## What leaves the host
 
-Video of the session canvas. If clipboard sharing is on, the host's pasteboard contents too. The host never captures a physical display outside host screen mode. A request for any display but the one the session owns is refused.
+Video of the one target the session streams: a host screen, or the private desktop when the person at the host has turned it on. If clipboard sharing is on, the host's pasteboard contents too. The host never captures a physical display outside host screen mode. A request for any display but the one the session owns is refused.
 
 After the host applies an event the viewer sent, it echoes back the tag the viewer put on it. Nothing else rides along.
 
