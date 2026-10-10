@@ -33,10 +33,11 @@ explicitly when the session is set up:
 - **Session canvas**: a session-owned virtual display this host
   created. It is removed at disconnect. It exists only when the person at
   the host has turned on "Offer a private desktop", which is off by
-  default. With it off, the host creates no virtual display at all. A
-  session starts here only when the viewer asks for it by name.
+  default. With it off, the host creates no session canvas. A session
+  starts here only when the viewer asks for it by name.
 - **Host screen**: one existing display of this machine, captured as it
-  is. It is never created and never removed. Pairing arms it. The person
+  is. It is never created and never removed, except for the sharp screen
+  below. Pairing arms it. The person
   at the host can turn it off afterward. The session starts here. If the
   host offers no host screen, the viewer says so and streams nothing. Its
   display mode (resolution and scaling) may be
@@ -44,6 +45,16 @@ explicitly when the session is set up:
   session, choosing among the modes macOS already offers for that display
   through public CoreGraphics display-mode APIs, and the mode it had
   before is restored when the session ends or the host quits.
+
+One exception covers a host with no physical display. There macOS shows
+its own placeholder screen. A host-screen session on it replaces the
+placeholder with a sharp screen: a session-owned virtual display, 1920x1080
+points at 2x, offered to the viewer as the placeholder was and with no
+display modes. macOS restores the placeholder when the sharp screen is
+released: 10 seconds after the last session on it ends, when the host
+quits, or at once when a monitor is connected. Sensorium still never
+creates, destroys, resizes, re-arranges, mirrors or blanks a physical
+display.
 
 Beyond that one mode change, reconfiguration is forbidden in both modes.
 Sensorium must never create, destroy, resize, re-arrange, mirror, or blank
@@ -65,7 +76,8 @@ person at the host can turn off arming for one device, and can turn it
 back on. The record persists across restarts, so an unattended host stays
 reachable. It is stored on this machine alone. No message on the wire can
 create, re-arm, or widen it. The target display is one Sensorium did not
-create. The person at the host can also turn on asking first. Someone who
+create, or the sharp screen standing in for the placeholder. The person at
+the host can also turn on asking first. Someone who
 used this machine in the last few minutes is then asked, and must agree
 first. Asking first is off by default.
 

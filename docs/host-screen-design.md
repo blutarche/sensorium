@@ -1,6 +1,6 @@
 # Host screen mode
 
-Sensorium streams one of two targets. Session canvas is the default: a virtual display the host creates for the session and removes when the session ends. Host screen is the second target: one display the host already had, captured as it is. Capturing a display is allowed. Configuring one is not. No private display APIs. No resolution, arrangement, or mirroring change. No display created or destroyed. The capability is ScreenCaptureKit capturing an `SCDisplay` under a granted Screen Recording permission.
+Sensorium streams one of two targets. Session canvas is the default: a virtual display the host creates for the session and removes when the session ends. Host screen is the second target: one display the host already had, captured as it is. Capturing a display is allowed. Configuring one is not. No private display APIs. No resolution, arrangement, or mirroring change. No display created or destroyed, except the sharp screen a host with no monitor streams in place of macOS's placeholder (§10). The capability is ScreenCaptureKit capturing an `SCDisplay` under a granted Screen Recording permission.
 
 A session may wake this machine's displays and keep them awake while it runs. macOS draws nothing at all to a sleeping display, virtual displays included, so a session that starts against a sleeping machine captures a picture that never arrives. Section 8 says what that permits and what it still forbids.
 
@@ -30,7 +30,7 @@ Pairing arms a paired machine for screen control at once. A machine that pairs a
 
 - **Host-set only.** Only a pairing ceremony the person at the host started, completed with a signed request carrying the code shown there, can create an arming record; nothing else on the wire can create, re-arm, or widen it. A `pairRequest` without a signature over `sensorium-pair-request-v2` is refused as malformed before the code is read, and one whose signature does not verify against the key it names ends the connection. Beyond that ceremony, only the host's own interface writes the arming store, and the session controller and coordinator hold a read-only view.
 - **Named machines.** Arming names the machine's public key. Pairing a second machine does not extend screen control to it.
-- **Per machine, not per display.** Arming names no display. A display qualifies when the host has it at session time and Sensorium did not create it, so a monitor attached after the host started can be shared, exactly as it can with the screen sharing macOS ships. A session canvas the host created never qualifies.
+- **Per machine, not per display.** Arming names no display. A display qualifies when the host has it at session time and Sensorium did not create it, so a monitor attached after the host started can be shared, exactly as it can with the screen sharing macOS ships. A session canvas the host created never qualifies. The sharp screen of §10 is the one display Sensorium created that does.
 
 The record lives at `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-readable only. It holds armed machine keys and the arming time. A record written by an earlier version that also named displays still loads; the display list is ignored and dropped when the record is written back. This is a separate file from `approved-devices.json`. That file means "this machine may connect." This file means "this machine may drive my screen." It sits beside the identity files in the same directory and is owner-readable in the same way. Its owner can read it with `cat` and revoke it with `rm`. A file that is there but cannot be decoded arms nothing and is named once in the host's log: it is never read as an empty record, which would let the one-time arming below run again and re-arm machines the person at the host had turned off.
 
@@ -100,7 +100,7 @@ The viewer never names a raw display ID. `CGDirectDisplayID` is not stable acros
 
 `opaqueToken` and `displayIdentity` answer different questions. The token is a one-shot capability, minted fresh per offer, meaningless outside the session that minted it. `displayIdentity` is a stable encoding of the same display across every offer this host makes, including across a restart. It is opaque to the viewer, not secret. It lets a viewer recognize "the same display as last time" once a token is gone.
 
-A display is admitted only when every one of these holds: this machine's key is armed, the token was minted in this session, the display is still present, online, awake, and unmirrored, it does not carry this host's own canvas identity, and it is not macOS's headless stand-in sitting beside another display. One display streams per session. Serving two at once is architecturally possible but not built.
+A display is admitted only when every one of these holds: this machine's key is armed, the token was minted in this session, the display is still present, online, awake, and unmirrored, it does not carry this host's own canvas identity unless it is the sharp screen of §10 standing alone, and it is not macOS's headless stand-in sitting beside another display. One display streams per session. Serving two at once is architecturally possible but not built.
 
 ### 5.5 Remembering a chosen mode
 
@@ -194,7 +194,7 @@ The assertion is named "Sensorium session is live", which is what macOS shows an
 - **While a session is live.** One prevent-sleep assertion, taken once however many surfaces the session has. A prevent-sleep assertion keeps a display that is already awake from sleeping; it does not wake one that already has. So a live host-screen session also re-declares user activity on its own, on an interval well under macOS's shortest display-off timeout, for as long as it is streaming, and stops the moment it is not. A session canvas already reads the whole machine rather than one display it alone answers for, so it has no equivalent need and keeps declaring only at the two points above.
 - **At session end.** The assertion is released on every path that ends a session, the ones that end it on an error and the one that ends it because the host is quitting included.
 - **Nothing on the wire.** Only an authenticated, armed device's offer wakes the displays, and only a request carrying a token this host itself minted wakes them at session start. A message naming anything else reaches no power call.
-- **Still forbidden.** No display is created, destroyed, resized, re-arranged, mirrored, or blanked. The machine itself is never woken from sleep. An activity declaration wakes a display, not a sleeping machine.
+- **Still forbidden.** No physical display is created, destroyed, resized, re-arranged, mirrored, or blanked. The one display a host-screen session may create is the sharp screen of §10. The machine itself is never woken from sleep. An activity declaration wakes a display, not a sleeping machine.
 
 A capture that delivers nothing while the display it captures is asleep is answered by waking that display and building the stream once more, rather than by giving up on this process's ability to capture. A host-screen session reads only the display it is streaming. A session canvas reads the machine, since display sleep is machine-wide.
 
@@ -237,3 +237,48 @@ The relock itself posts macOS's own Lock Screen shortcut, Control-Command-Q, at 
 ### 9.6 Locking at launch
 
 Because the host can open itself at login, it locks the screen shortly after launch too, through the same relock, whenever it finds the screen unlocked with no local input since before the process started -- this closes the unlocked window a fresh boot would otherwise leave open, but does not by itself make an unattended reboot fully safe.
+
+---
+
+## 10. A host with no monitor
+
+A host with no monitor still has one display online: macOS's own placeholder screen, the stand-in of §8. It is 1920x1080 pixels at 1x, with a single mode. A viewer on a high-density screen has to scale that picture up, and it looks soft.
+
+A host-screen session that starts on the placeholder streams a sharp screen instead. The host creates it for the purpose: a virtual display fixed at 1920x1080 points at 2x, which is 3840x2160 pixels. macOS takes the placeholder away while it exists, and brings it back under a new display ID once it is released. There is no setting for this.
+
+### 10.1 When it is used
+
+The session must have been admitted on a display that is all of these:
+
+- the only online display;
+- one Sensorium did not create;
+- reporting the placeholder's vendor and model;
+- in a display list where nothing else could be a monitor.
+
+The virtual-display runtime must be present too. Any doubt leaves the session on the display it was admitted on.
+
+### 10.2 Ready, or not used
+
+The host waits up to 5 seconds for the sharp screen to read online with a display mode and a place on the desktop, and for ScreenCaptureKit to find it. If any of that is missing, the host releases it and logs one line saying why. The session then streams the placeholder as before, under the new display ID macOS gives it.
+
+### 10.3 What the viewer sees
+
+The sharp screen is offered as "External Display", with the placeholder's own `displayIdentity`. A remembered **Start with** choice and a resume ticket still find it. It offers no display modes, so the viewer's **Resolution** submenu is disabled. A mode request is refused through the usual refusal, and there is no mode to put back.
+
+Nothing else changes. The badge sits on the sharp screen. The session record, asking first, Screen Recording, arming and lock-screen input all apply as on any host screen.
+
+### 10.4 One per host
+
+A host process has at most one sharp screen, shared by every session that needs it. It stays for 10 seconds after the last session on it ends, so a viewer that reconnects finds the same display. Then it is released. Quitting the host, or a termination signal, releases it along with any canvases.
+
+It has its own serial number, distinct from every session canvas. A sharp screen left behind by an earlier host is offered and streamed the same way while it is the only online display. The host that finds it never removes it. No other display Sensorium created is ever offered as a host screen.
+
+### 10.5 When displays change
+
+A session follows its role, not a display ID.
+
+- **On the sharp screen.** A capture that stops is rebuilt on the sharp screen. The host wakes no monitors first, since it has none. If the sharp screen has gone, the session ends at once: "The host's sharp screen went away."
+- **On the placeholder.** When the placeholder comes back under a new display ID, the session follows it there. If none comes back, the recovery bound of §8 applies.
+- **A monitor is connected.** Every session on the sharp screen ends: "A monitor was connected to the host." The sharp screen is released at once, grace period or not. A session on the placeholder ends the same way when a monitor replaces it.
+
+These reasons go to the host log. The viewer is told the host stopped the session, and does not redial. Connecting again reaches the monitor.

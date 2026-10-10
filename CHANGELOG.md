@@ -8,6 +8,16 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- A host with no monitor now streams a sharp picture. macOS gives such a
+  host a placeholder screen of 1920x1080 pixels at 1x, which looks soft on
+  a high-density viewer. A session on it now streams a screen of 1920x1080
+  points at 2x, which the host creates in its place. The viewer still sees
+  "External Display", with no resolution choices. Connecting a monitor
+  ends the session, and macOS brings the placeholder back once the host
+  lets that screen go.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added
