@@ -30,7 +30,9 @@ public struct DisplaySnapshot: Equatable, Hashable, Sendable {
     public let modelNumber: UInt32
     /// `NSScreen.localizedName` for this display, when macOS can match a
     /// screen to this id -- a canvas Sensorium created, or a display no
-    /// screen in `NSScreen.screens` currently claims, leaves this `nil`.
+    /// screen in `NSScreen.screens` currently claims, leaves this `nil`. So
+    /// does an empty or whitespace-only name, which is what macOS reports
+    /// for the placeholder display it presents when no monitor is attached.
     public let name: String?
 
     public init(
@@ -66,7 +68,7 @@ public struct DisplaySnapshot: Equatable, Hashable, Sendable {
         self.main = main
         self.vendorNumber = vendorNumber
         self.modelNumber = modelNumber
-        self.name = name
+        self.name = name.flatMap { $0.allSatisfy(\.isWhitespace) ? nil : $0 }
     }
 }
 

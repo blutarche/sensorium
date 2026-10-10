@@ -360,6 +360,34 @@ func runHostScreenArmingTests() async {
     }
 
     do {
+        // With no monitor attached macOS presents a placeholder display
+        // whose localized name is the empty string; a blank or
+        // whitespace-only name is no name at all.
+        func unnamed(id: UInt32, name: String) -> DisplaySnapshot {
+            DisplaySnapshot(
+                id: id, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
+                modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
+                builtin: false, main: false, vendorNumber: 0x02, modelNumber: 0x02, name: name
+            )
+        }
+        expect(
+            unnamed(id: 2, name: "").name == nil && unnamed(id: 2, name: "  \n").name == nil,
+            "an empty or whitespace-only display name reads as no name"
+        )
+        expect(
+            HostScreenArmingPresentation.displayLabel(for: unnamed(id: 2, name: "")) == "External Display"
+                && HostScreenArmingPresentation.displayLabel(for: unnamed(id: 2, name: "  ")) == "External Display",
+            "a display macOS names with an empty string labels as its kind, not as a blank"
+        )
+        expect(
+            HostScreenArmingPresentation.displayLabels(for: [unnamed(id: 7, name: ""), unnamed(id: 8, name: " ")])
+                == ["External Display (7)", "External Display (8)"],
+            "two blank-named displays are told apart exactly as two unnamed displays are"
+        )
+        print("PASS: a blank display name falls back to the display's kind")
+    }
+
+    do {
         // The row shows what the person already granted, with no
         // picker of its own -- naming the displays an armed
         // device may capture, matched against this machine's own
