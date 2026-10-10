@@ -255,6 +255,9 @@ Still to test:
 - Accessibility used directly after an update. It rests on the permissions check above.
 - That host machine restarting afterwards and the host coming back serving.
 - A host updating after its screen was unlocked from a viewer does not lock the screen again on relaunch.
+- A real app downloaded through a browser, approved with **Open Anyway**, then updating itself. The real apps above were installed without quarantine; the quarantined case rests on the throwaway app.
+- The viewer's **Restart Now**, and a viewer installed in `/Applications`.
+- A host update waiting on a pairing code installing once the code expires, on a running host.
 - macOS 27.
 
 ---
