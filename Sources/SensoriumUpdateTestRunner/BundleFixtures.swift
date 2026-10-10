@@ -22,7 +22,7 @@ func runTool(_ path: String, _ arguments: [String]) -> Int32 {
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
     try! process.run()
-    process.waitUntilExit()
+    endProcess(process, terminating: false, grace: 120)
     return process.terminationStatus
 }
 

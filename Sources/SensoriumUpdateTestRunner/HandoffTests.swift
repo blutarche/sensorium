@@ -49,7 +49,7 @@ func testWaitingForTheOldProcessReturnsOnceItExits() async {
     let gone = Process()
     gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
     try! gone.run()
-    gone.waitUntilExit()
+    endProcess(gone, terminating: false)
     let goneStart = Date()
     await UpdateHandoff.waitForExit(of: gone.processIdentifier)
     expect(Date().timeIntervalSince(goneStart) < 2, "a process that already exited is not waited for")
@@ -74,7 +74,7 @@ func testFinishingTheHandoffRemovesOnlyAStagingFolder() async {
     let gone = Process()
     gone.executableURL = URL(fileURLWithPath: "/usr/bin/true")
     try! gone.run()
-    gone.waitUntilExit()
+    endProcess(gone, terminating: false)
     let finished = await UpdateHandoff.finishReplacing(
         oldProcess: gone.processIdentifier,
         readyFile: ready,
@@ -153,10 +153,7 @@ func testAReplacedProcessStillRunningAfterThirtySecondsIsEndedOnlyIfItIsThisApp(
         let folders = makeHandoffFolders("still-running")
         defer { removeTemporaryDirectory(folders.directory) }
         let child = startSleeping(seconds: "60")
-        defer {
-            child.terminate()
-            child.waitUntilExit()
-        }
+        defer { endProcess(child) }
         let sleeps = RequestedSleeps()
         var ended: [pid_t] = []
         var stagingAtEnd: [Bool] = []

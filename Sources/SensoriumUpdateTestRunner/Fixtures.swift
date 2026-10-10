@@ -9,6 +9,32 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
     }
 }
 
+/// Waits for a child process to stop, ending it first when `terminating`.
+/// `Process.waitUntilExit()` spins the calling thread's run loop and can
+/// wait forever on a Swift concurrency thread even after the child is gone,
+/// so this polls `isRunning` instead. A child still running after `grace`
+/// seconds is killed; one that survives that fails the test.
+func endProcess(_ process: Process, terminating: Bool = true, grace: TimeInterval = 5) {
+    if terminating {
+        process.terminate()
+    }
+    func stopped(within seconds: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while process.isRunning {
+            if Date() >= deadline {
+                return false
+            }
+            usleep(10_000)
+        }
+        return true
+    }
+    if stopped(within: grace) {
+        return
+    }
+    kill(process.processIdentifier, SIGKILL)
+    expect(stopped(within: 5), "the child process \(process.processIdentifier) did not stop after \(grace) seconds or after SIGKILL")
+}
+
 /// A fresh, empty directory under the system's temporary folder. Every test
 /// works inside one and removes it when it ends.
 func makeTemporaryDirectory(_ label: String) -> URL {
