@@ -45,6 +45,8 @@ public final class HostUpdater {
     private let preferences: any HostUpdatePreferenceStoring
     private let log: (String) -> Void
     private var idleWatch = HostUpdateIdleWatch()
+    private var recheckGeneration = 0
+    private var currentStatus: HostOperatorStatus?
     private var installFailureReason: String?
 
     /// `makeScheduler` receives the saved checkbox state and the log, and is
@@ -97,6 +99,25 @@ public final class HostUpdater {
     /// moment the host becomes idle, whether or not the checkbox is on: it
     /// is already downloaded, so installing it makes no request.
     public func hostStatusChanged(_ status: HostOperatorStatus, now: Date = Date()) {
+        recheckGeneration += 1
+        let generation = recheckGeneration
+        if let recheck = HostUpdateIdleWatch.recheckDate(for: status, now: now) {
+            // The store reports nothing when a code expires, so look again
+            // just after. A newer status change supersedes this look.
+            let delay = max(0, recheck.timeIntervalSince(now)) + 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.recheckGeneration == generation,
+                          let current = self.currentStatus else { return }
+                    self.observeIdle(current, now: Date())
+                }
+            }
+        }
+        currentStatus = status
+        observeIdle(status, now: now)
+    }
+
+    private func observeIdle(_ status: HostOperatorStatus, now: Date) {
         guard idleWatch.observe(status, now: now) else { return }
         Task {
             await scheduler.installIfIdle()

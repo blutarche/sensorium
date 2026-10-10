@@ -80,6 +80,29 @@ func runHostUpdateIdleRuleTests() {
     expect(watch.observe(status(.hosting(address: "100.64.1.2")), now: now), "the code hidden makes the host idle")
     expect(!watch.observe(status(.pairingApproved(deviceName: "Kestrel Laptop")), now: now), "an approval is not idle")
     expect(watch.observe(status(.hosting(address: "100.64.1.2")), now: now), "the pairing finishing makes the host idle")
+
+    let hostingStatus = status(.hosting(address: "100.64.1.2"))
+    let expiry = now.addingTimeInterval(60)
+    let showingStatus = status(.hosting(address: "100.64.1.2"), pairing: .showing(code: "418297", expiresAt: expiry))
+    expect(
+        HostUpdateIdleWatch.recheckDate(for: showingStatus, now: now) == expiry,
+        "a code showing with a future expiry is looked at again when it expires"
+    )
+    expect(
+        HostUpdateIdleWatch.recheckDate(for: showingStatus, now: expiry) == nil,
+        "an expired code needs no later look"
+    )
+    expect(HostUpdateIdleWatch.recheckDate(for: hostingStatus, now: now) == nil, "no code needs no later look")
+    expect(
+        HostUpdateIdleWatch.recheckDate(for: status(.serving(peerName: "Kestrel Laptop")), now: now) == nil,
+        "a live session needs no later look"
+    )
+    var expiryWatch = HostUpdateIdleWatch()
+    expect(!expiryWatch.observe(showingStatus, now: now), "a code showing is not idle")
+    expect(
+        expiryWatch.observe(showingStatus, now: expiry.addingTimeInterval(1)),
+        "the same status after the code expires reports the host idle"
+    )
     print("PASS: the idle watch reports each moment a session or pairing ends, and nothing else")
 }
 

@@ -27,6 +27,16 @@ public struct HostUpdateIdleWatch: Sendable {
 
     public init() {}
 
+    /// When to feed the watch again with no status change: the expiry of a
+    /// pairing code still on screen, since the store reports nothing when
+    /// a code simply expires.
+    public static func recheckDate(for status: HostOperatorStatus, now: Date) -> Date? {
+        if case let .showing(_, expiresAt, _) = status.pairing, expiresAt > now {
+            return expiresAt
+        }
+        return nil
+    }
+
     /// True when `status` is idle and the one before it was not.
     public mutating func observe(_ status: HostOperatorStatus, now: Date) -> Bool {
         let isIdle = HostUpdateIdleRule.isIdle(status, now: now)
