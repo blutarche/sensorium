@@ -10,7 +10,7 @@ This repository will be published as open source. Write every comment, document 
 ## Clean-room boundary
 - Do NOT copy, import, vendor, fork, invoke, or inspect source from any other remote desktop or display configuration implementation.
 - The platform vendor's public framework documentation and independently written, small compatibility experiments are allowed.
-- Do not add telemetry, analytics, crash reporting SDKs, webviews, accounts, cloud APIs, TURN/STUN, or a backend.
+- Do not add telemetry, analytics, crash reporting SDKs, webviews, accounts, cloud APIs, TURN/STUN, or a backend. The one exception is the macOS apps' update check: fetching the signed update manifest from this project's GitHub releases, and the release files it names (`docs/self-update-design.md`).
 
 ## Safety boundary — strict
 - Do NOT call private display APIs, third-party display tools, `displayplacer`, `screencapture`, `system_profiler`, System Settings, `launchctl`, `defaults`, PF, `sudo`, network/firewall commands, or write outside this repository unless the task explicitly says it is an approved opt-in macOS integration test.

@@ -12,6 +12,8 @@ let package = Package(
         .executable(name: "SensoriumHostTestRunner", targets: ["SensoriumHostTestRunner"]),
         .executable(name: "SensoriumClientTestRunner", targets: ["SensoriumClientTestRunner"]),
         .executable(name: "SensoriumIntegrationTestRunner", targets: ["SensoriumIntegrationTestRunner"]),
+        .library(name: "SensoriumUpdate", targets: ["SensoriumUpdate"]),
+        .executable(name: "SensoriumUpdateTestRunner", targets: ["SensoriumUpdateTestRunner"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -108,11 +110,12 @@ let package = Package(
         ),
         .executableTarget(name: "SensoriumCoreTestRunner", dependencies: ["SensoriumCore"]),
         .target(name: "SensoriumVirtualDisplayBridge", path: "Sources/SensoriumVirtualDisplayBridge", publicHeadersPath: "include"),
-        .target(name: "SensoriumHost", dependencies: ["SensoriumCore", "SensoriumVirtualDisplayBridge"]),
+        .target(name: "SensoriumHost", dependencies: ["SensoriumCore", "SensoriumVirtualDisplayBridge", "SensoriumUpdate"]),
         .target(
             name: "SensoriumClient",
             dependencies: [
                 "SensoriumCore",
+                .target(name: "SensoriumUpdate", condition: .when(platforms: [.macOS])),
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "CWayland", condition: .when(platforms: [.linux])),
@@ -127,11 +130,12 @@ let package = Package(
                 .target(name: "CVASurfaceExport", condition: .when(platforms: [.linux]))
             ]
         ),
-        .executableTarget(name: "SensoriumHostTestRunner", dependencies: ["SensoriumHost"]),
+        .executableTarget(name: "SensoriumHostTestRunner", dependencies: ["SensoriumHost", "SensoriumUpdate"]),
         .executableTarget(
             name: "SensoriumClientTestRunner",
             dependencies: [
                 "SensoriumClient",
+                .target(name: "SensoriumUpdate", condition: .when(platforms: [.macOS])),
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "CGLib", condition: .when(platforms: [.linux])),
@@ -140,12 +144,17 @@ let package = Package(
             exclude: ["Fixtures"]
         ),
         .executableTarget(name: "SensoriumIntegrationTestRunner", dependencies: ["SensoriumClient", "SensoriumHost", "SensoriumCore"]),
-        .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore"]),
+        // macOS only: every source is inside `#if os(macOS)`. The Linux viewer
+        // updates through its package and never links it.
+        .target(name: "SensoriumUpdate", dependencies: ["SensoriumCore"]),
+        .executableTarget(name: "SensoriumUpdateTestRunner", dependencies: ["SensoriumUpdate", "SensoriumCore"]),
+        .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(
             name: "Sensorium",
             dependencies: [
                 "SensoriumClient",
                 "SensoriumCore",
+                .target(name: "SensoriumUpdate", condition: .when(platforms: [.macOS])),
                 .target(name: "CGtk4", condition: .when(platforms: [.linux]))
             ]
         ),

@@ -20,7 +20,7 @@ python3 Scripts/test-documentation-status.py
 for configuration in debug release; do
     swift build -c "$configuration"
 
-    for runner in Core Host Client Integration; do
+    for runner in Core Host Client Integration Update; do
         printf '== [%s] Sensorium%sTestRunner\n' "$configuration" "$runner"
         if [ "$runner" = "Host" ]; then
             # A real NSApplication window can leave this runner's own async
