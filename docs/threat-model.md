@@ -9,6 +9,7 @@ The host is a workstation with someone logged in. Remote control of it is full c
 1. **Another machine on the tailnet.** The realistic adversary. It can reach the host's port and speak the protocol.
 2. **A machine on the same LAN or the public internet.** A public source should not reach the port at all. A LAN machine reaches it only while the person at the host has turned on **Allow connections from this network**, which is off by default, and only from the same subnet as the host. It then has to pair and sign exactly as a tailnet machine does.
 3. **A process on the viewer machine.** Out of scope. A compromised viewer machine means a compromised session.
+4. **Someone who can change this project's release page.** Both macOS apps install their updates from it. Replacing a file there is not enough to ship an update, as the controls below show.
 
 There is no cloud account, backend, relay, or vendor control plane to attack, because none exists.
 
@@ -26,6 +27,8 @@ There is no cloud account, backend, relay, or vendor control plane to attack, be
 | Canvas-bounded input validation | `HostSessionController` and `ClientSessionController` | Input aimed outside the session canvas |
 | Held-input release | `HostSessionController.releaseHeldInput`, plus an explicit viewer release at disconnect | A modifier or button stuck down after a lost session |
 | Host-screen arming | `HostScreenArming`, `ApprovedDeviceStore`, host-local and host-set only | Host screen granted to a machine the person at the host has not armed |
+| Signed update manifest, then the zip's SHA-256 | `UpdateSignature` against the Ed25519 key in `UpdatePublicKey`, then `UpdateStager` | An update the maintainer did not publish |
+| Same signing certificate as the running app | `CodeRequirementCheck`, the running app's designated requirement | An update signed by anyone else, even with a valid manifest |
 
 The source check stands on its own. The PF anchor is one more layer for anyone who adds it. While the setting is off, the listener is also bound to the tailnet interface alone. While it is on, the listener is on every interface, and the source check is what keeps public and off-subnet sources out. Both viewer and host check input bounds independently.
 
@@ -59,6 +62,8 @@ On Linux the viewer keeps the same files under `~/.local/share/sensorium`, or un
 - **Spending a shown pairing code from the local network.** The same machine can use up a shown code's 10-guess budget, which retires it before the intended viewer enters it. The person at the host then shows a new code. This denial of service is accepted. Leaving the setting off on shared networks avoids both.
 - **Traffic analysis inside the tailnet.** WireGuard encrypts payloads. Volume and timing are visible to the tailnet coordination path.
 - **Pre-boot (FileVault) access.** Not supported at all. FileVault's own unlock screen runs before the host's login window, and before any session can start.
+- **The maintainer's own machine.** It holds the update key, the release certificate, and access to the release page. Whoever controls it can ship an update. [Self-update](self-update-design.md#4-trust) explains how each is kept.
+- **The first download of each macOS app.** The zips are signed with a self-signed certificate and not notarized. `SHA256SUMS` beside them detects a damaged download, not a substituted one. Every later update is checked as above. The first install is not.
 - **The Linux package's authenticity.** The Fedora RPM is unsigned. Only a SHA-256 checksum is published beside it, which detects a damaged download, not a substituted one. Anyone who can replace the file on the release page can replace the checksum with it.
 
 ## Privacy

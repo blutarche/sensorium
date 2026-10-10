@@ -107,34 +107,49 @@ rest.
 
 ## Requirements
 
-- **Host:** macOS 13 or later. Built and tested only on macOS 26.
+- **Host:** macOS 13 or later, on Apple silicon. Built and tested only on macOS 26.
 - **Viewer:** macOS 13 or later, or Fedora 44 with KDE Plasma on Wayland.
 - **Network:** both machines on the same Tailscale tailnet. The host needs
   Tailscale even when the local network setting is on.
 
 ## Get it
 
-There is no prebuilt macOS download yet. Build both apps with the Swift
-toolchain from Command Line Tools. Xcode is not needed.
+Download each app on its own machine from the
+[latest release](../../releases/latest):
+
+- `Sensorium-Host-<version>.zip` on the machine you want to reach.
+- `Sensorium-<version>.zip` on the machine you sit at.
+
+Drag the app into Applications and open it. The apps are not notarized, so
+macOS refuses the first open. Click **Open Anyway** in System Settings,
+Privacy & Security, once per app. [Install](docs/install.md) has the steps.
+
+After that, both apps update themselves. Each checks this project's GitHub
+releases when it opens and every six hours. It installs a release only if
+it carries the project's update signature and the same signing certificate
+as the app already running. The host waits until no machine is connected,
+and goes back to the old version if the new one does not start.
+
+For Fedora, download the RPM from the [release page](../../releases). It
+updates through its package. [Install on Linux](docs/install.md#linux-fedora-44-kde-plasma-on-wayland)
+has the steps, including hardware video decoding.
+
+To build from source instead:
 
 ```sh
 SENSORIUM_ALLOW_ADHOC=1 ./Scripts/package-apps.sh
 ```
 
-The apps land in `Artifacts/Sensorium/`. They are not signed with an Apple
-Team ID or notarized. [Install](docs/install.md) explains how to keep macOS
-permissions across rebuilds.
-
-For Fedora, download the RPM from the [latest release](../../releases/latest).
-[Install on Linux](docs/install.md#linux-fedora-44-kde-plasma-on-wayland) has
-the steps, including hardware video decoding.
+The apps land in `Artifacts/Sensorium/`.
+[Build from source](docs/install.md#build-from-source) explains how to keep
+macOS permissions across rebuilds.
 
 ## Status
 
 It works between the machines it was built on. Pairing, the
 pinned-identity QUIC transport, H.264 video, input, clipboard, reconnect, the
-host screen and its lock-screen unlock, the private desktop, and the Fedora
-viewer all run. It is not yet tested on other hardware.
+host screen and its lock-screen unlock, the private desktop, self-update on
+macOS, and the Fedora viewer all run. It is not yet tested on other hardware.
 
 ## FAQ
 
@@ -146,6 +161,10 @@ new app. A self-signed certificate fixes that. See
 **Does it need Screen Sharing turned on?**
 No. The host uses Screen Recording to capture and Accessibility to type and
 click. See [macOS permissions](docs/macos-permissions.md).
+
+**Does it talk to anything besides my other machine?**
+Only GitHub, on macOS, to check for and download updates. Turning automatic
+updates off stops that. See [Privacy](docs/privacy.md#update-checks).
 
 **Can I connect from Windows, a phone or a browser?**
 No. The viewer runs on macOS and Fedora only.
@@ -163,8 +182,8 @@ screen.
 - [Host screen mode](docs/host-screen-design.md)
 - [Wire protocol](docs/protocol.md)
 - [User interface spec](docs/ux-spec.md) and [design system](docs/design-system.md)
+- [Self-update](docs/self-update-design.md) and [releasing](docs/releasing.md)
 - [Testing](docs/testing.md)
-- [Releasing](docs/releasing.md)
 
 ## Development
 

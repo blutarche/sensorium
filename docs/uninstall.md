@@ -1,6 +1,6 @@
 # Uninstall
 
-Reversible by design. Nothing installs a launch agent, background service, or auto-updater, so there is nothing hidden to find. The only login item is the host's own **Open at login**, which is on by default. There is no dedicated uninstaller, so these steps are manual.
+Reversible by design. Nothing installs a launch agent or background service, so there is nothing hidden to find. Each macOS app checks for its own updates while it runs, and there is no separate updater. The only login item is the host's own **Open at login**, which is on by default. There is no dedicated uninstaller, so these steps are manual.
 
 1. **Turn off Open at login** in Sensorium Host, so the host app leaves Login Items.
 2. **Stop both apps.** Quitting the host releases its canvas. If it was killed instead, the canvas releases when the process exits and its handle drops.
@@ -13,12 +13,12 @@ Reversible by design. Nothing installs a launch agent, background service, or au
    ```sh
    rm -rf ~/Library/Application\ Support/Sensorium
    ```
-   The files inside are `device-identity.json` and `saved-host.json`.
+   The files inside are `device-identity.json`, `saved-host.json`, `shortcut-strip-pin.json` and, on macOS, `viewer-update-state.json`.
 5. **Remove everything the host wrote**, on the host machine.
    ```sh
    rm -rf ~/Library/Application\ Support/Sensorium
    ```
-   This holds its keys (`device-identity.json`, `host-tls-identity.json`), the record of which machines may reach the host screen (`host-screen-arming.json`), the local log of host-screen sessions (`host-screen-sessions.log`), and small UI and display-mode preferences.
+   This holds its keys (`device-identity.json`, `host-tls-identity.json`), the record of which machines may reach the host screen (`host-screen-arming.json`), the local log of host-screen sessions (`host-screen-sessions.log`), what it knows about updates (`host-update-state.json`), and small UI and display-mode preferences.
 6. **Delete `Sensorium.app` and `Sensorium Host.app`.**
 
 On Linux the viewer is a Fedora package instead of an app bundle. Remove it in

@@ -5,7 +5,7 @@ What you need, and how to pair the two apps.
 ## Requirements
 
 - One viewer machine and one host machine.
-- The host runs macOS 13 or later. Built and tested only on macOS 26.
+- The host runs macOS 13 or later, on Apple silicon. Built and tested only on macOS 26.
 - The viewer runs macOS 13 or later, or Fedora 44 with KDE Plasma on Wayland.
 - Both machines joined to the same Tailscale tailnet.
 
