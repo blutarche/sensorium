@@ -30,6 +30,7 @@ import AppKit
 @testable import SensoriumClient
 import SensoriumCore
 @testable import SensoriumHost
+import SensoriumUpdate
 
 // MARK: - Output layout
 
@@ -891,6 +892,65 @@ MainActor.assumeIsolated {
         )
     }
 
+    // A packaged host's Install updates automatically checkbox and the
+    // update line under it, in each of the line's states, with the words
+    // `HostUpdateStatusLine` gives them.
+    let runningHostVersion = UpdateVersion("0.4.0")!
+    let hostUpdateStates: [(String, String, Bool, UpdateStatus)] = [
+        (
+            "host-window-21-update-up-to-date",
+            "automatic updates on, and the running version is the latest",
+            true,
+            .current
+        ),
+        (
+            "host-window-22-update-waiting",
+            "a newer version downloaded and checked, waiting until no machine is connected",
+            true,
+            .waiting(UpdateVersion("0.5.0")!)
+        ),
+        (
+            "host-window-23-update-failed",
+            "an update that could not install, saying why in plain words and which version keeps running",
+            true,
+            .failed(reason: UpdateFailure.readyLate.reason)
+        ),
+        (
+            "host-window-24-update-not-updatable",
+            "run from a place it cannot replace itself in, asking to be moved to Applications",
+            true,
+            .notUpdatable
+        ),
+        (
+            "host-window-25-automatic-updates-off",
+            "Install updates automatically turned off, the line still saying where the running version stands",
+            false,
+            .current
+        )
+    ]
+    for (prefix, description, installsAutomatically, updateStatus) in hostUpdateStates {
+        let controller = HostSetupWindowController(
+            status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
+            onRevealPairingCode: {},
+            onStop: {},
+            onOpenPermissionSettings: { _ in },
+            tailscaleAppURLLookup: { nil },
+            onOpenTailscaleApp: { _ in },
+            onToggleSharing: { _, _ in },
+            onRemovePairedDevice: { _ in },
+            autoLoginStatus: { .enabled },
+            installsUpdatesAutomatically: { installsAutomatically }
+        )
+        controller.updatePairedMachines(onePairedRow)
+        controller.setUpdateLine(HostUpdateStatusLine.line(for: updateStatus, runningVersion: runningHostVersion))
+        write(
+            render(hostWindowContent(controller)),
+            named: "\(prefix).png",
+            state: "HostSetupWindowController — \(description); 360pt wide at the height its content needs;"
+                + " no stream pass, it never leaves the host"
+        )
+    }
+
     // A paired machine's Rename sheet, drawn where macOS drops a sheet: centred
     // at the top of the host window's content, over the paired list.
     do {
@@ -1169,6 +1229,72 @@ MainActor.assumeIsolated {
         named: "viewer-machines-7-long-name.png",
         state: "YourMachinesWindowController with one machine whose name and address are longer than the row"
     )
+
+    // The update line beneath the list, each text taken from the same
+    // `ViewerUpdateLine.make` the running viewer calls.
+    let runningVersion = UpdateVersion("0.4.0")!
+    let updateLines: [(String, ViewerUpdateLine?, String)] = [
+        (
+            "viewer-update-1-ready",
+            ViewerUpdateLine.make(
+                status: .ready(UpdateVersion("0.5.0")!), runningVersion: runningVersion, manualCheck: .none,
+                sessionInProgress: false, isRestarting: false, restartFailureReason: nil
+            ),
+            "a newer version has downloaded and no session runs, so Restart Now is offered"
+        ),
+        (
+            "viewer-update-2-ready-in-session",
+            ViewerUpdateLine.make(
+                status: .ready(UpdateVersion("0.5.0")!), runningVersion: runningVersion, manualCheck: .none,
+                sessionInProgress: true, isRestarting: false, restartFailureReason: nil
+            ),
+            "the same update while a session runs: the line stays and Restart Now does not"
+        ),
+        (
+            "viewer-update-3-checking",
+            ViewerUpdateLine.make(
+                status: .checking, runningVersion: runningVersion, manualCheck: .pending,
+                sessionInProgress: false, isRestarting: false, restartFailureReason: nil
+            ),
+            "after Check for Updates\u{2026}, while the release page is asked"
+        ),
+        (
+            "viewer-update-4-up-to-date",
+            ViewerUpdateLine.make(
+                status: .current, runningVersion: runningVersion, manualCheck: .answered(upToDate: true),
+                sessionInProgress: false, isRestarting: false, restartFailureReason: nil
+            ),
+            "after Check for Updates\u{2026} found nothing newer, until the window is shown again"
+        ),
+        (
+            "viewer-update-5-failed",
+            ViewerUpdateLine.make(
+                status: .failed(reason: UpdateFailure.digestMismatch.reason), runningVersion: runningVersion,
+                manualCheck: .none, sessionInProgress: false, isRestarting: false, restartFailureReason: nil
+            ),
+            "after an update failed, naming why"
+        ),
+        (
+            "viewer-update-6-not-updatable",
+            ViewerUpdateLine.make(
+                status: .notUpdatable, runningVersion: runningVersion, manualCheck: .none,
+                sessionInProgress: false, isRestarting: false, restartFailureReason: nil
+            ),
+            "when this copy cannot replace itself, such as one opened from Downloads"
+        )
+    ]
+    for (name, line, description) in updateLines {
+        guard let line else {
+            fail("\(name) has no update line")
+        }
+        let window = machinesWindow(hosts: [miniHost, studioHost])
+        window.setUpdateLine(line)
+        write(
+            render(machinesContent(window)),
+            named: "\(name).png",
+            state: "YourMachinesWindowController with the update line beneath the list, \(description)"
+        )
+    }
 
     // The add step's first screen, and every state the tailnet answer can put
     // in it. Rows inside this same window, never a window of their own.
@@ -1961,6 +2087,10 @@ lines += [
     "  content is ViewerMenuPlan.pointerCaptureTitle, ClipboardSharingToggle,",
     "  DisplayScaleMenuPlan, DisplayCountMenuPlan, and ScreenMenuPlan, all pure and",
     "  covered by SensoriumClientTestRunner.",
+    "  The Sensorium menu's Check for Updates\u{2026} and Check for Updates",
+    "  Automatically, for the same reason. ViewerMenuPlan builds both from",
+    "  ViewerMenuBarState.checksForUpdatesAutomatically, and SensoriumClientTestRunner",
+    "  checks the model and the built NSMenu against each other.",
     "",
     pad("FILE", 46) + padLeft("BYTES", 10) + "  " + pad("PIXELS", 11) + padLeft("NON-BG", 7)
         + padLeft("COLOURS", 9) + "  STATE"
@@ -2061,7 +2191,7 @@ var compile = [
     URL(fileURLWithPath: #filePath, relativeTo: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
         .standardizedFileURL.path
 ]
-for target in ["SensoriumCore", "SensoriumHost", "SensoriumClient"] {
+for target in ["SensoriumCore", "SensoriumUpdate", "SensoriumHost", "SensoriumClient"] {
     compile += objects(target: target, sourceExtension: ".swift", objectSuffix: ".o")
 }
 compile += objects(target: "SensoriumVirtualDisplayBridge", sourceExtension: ".m", objectSuffix: ".o")
