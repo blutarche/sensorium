@@ -47,6 +47,12 @@ public final class BridgeVirtualDisplayCreator: VirtualDisplayCreating {
         self.displayName = displayName
     }
 
+    /// Whether this machine has the virtual-display runtime classes at all.
+    /// A class lookup only; nothing is created.
+    public nonisolated static var isRuntimeAvailable: Bool {
+        sensorium_virtual_display_runtime_available() != 0
+    }
+
     public func create(
         configuration: VirtualCanvasConfiguration,
         identity: CanvasDisplayIdentity

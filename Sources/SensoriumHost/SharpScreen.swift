@@ -15,6 +15,9 @@ import Foundation
 public enum SharpScreen {
     public static let identity = CanvasDisplayIdentity.sharpScreen
     public static let configuration = VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2)
+    /// What the display is called on the host while it exists. A viewer is
+    /// never shown this; it is offered under the placeholder's own label.
+    public static let displayName = "Sensorium Sharp Screen"
 
     /// Whether `display` carries the sharp screen's identity: the one this
     /// process manages, or one an earlier host left behind.

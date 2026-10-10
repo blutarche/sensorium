@@ -31,8 +31,14 @@ private final class HostOperatorBox: @unchecked Sendable {
     let shutdown: HostShutdownRegistry
     /// Every canvas display this process created and has not released. Held
     /// here so the adapters `beginHosting` builds, the capability probe, the
-    /// quit path and the termination-signal handlers all share one list.
+    /// sharp screen, the quit path and the termination-signal handlers all
+    /// share one list.
     let canvas: CanvasShutdown
+    /// This process's one sharp screen, shared by every connection however
+    /// many times hosting starts. Recorded in `canvas`, so quitting releases
+    /// it with the canvases.
+    let sharpScreens: SharpScreenManager
+    @MainActor
     init(
         status: HostOperatorStatusStore,
         shutdown: HostShutdownRegistry,
@@ -41,6 +47,15 @@ private final class HostOperatorBox: @unchecked Sendable {
         self.status = status
         self.shutdown = shutdown
         self.canvas = canvas
+        sharpScreens = SharpScreenManager(
+            creator: BridgeVirtualDisplayCreator(displayName: SharpScreen.displayName),
+            displays: DisplayInventory.online,
+            isRuntimeAvailable: { BridgeVirtualDisplayCreator.isRuntimeAvailable },
+            isCaptureResolvable: { await HostScreenCapture.isShareable(displayID: $0) },
+            shutdown: canvas,
+            log: { print("Sensorium host: \($0)") }
+        )
+        sharpScreens.observeDisplayChanges()
     }
 }
 
@@ -917,7 +932,8 @@ struct sensoriumd {
                         session?.stop()
                     },
                     hostScreenMediaFactory: hostScreenAccountableMedia.makeMedia,
-                    hostScreenRelockActivitySignal: hostScreenActivitySignals.relock
+                    hostScreenRelockActivitySignal: hostScreenActivitySignals.relock,
+                    sharpScreens: operatorBox.sharpScreens
                 )
                 session.attach(coordinator: coordinator)
                 // Quitting from the menu bar ends a live session the same

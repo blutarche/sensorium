@@ -40,6 +40,18 @@ public enum HostScreenCapture {
         return SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
     }
 
+    /// Whether ScreenCaptureKit lists `displayID` among the displays it can
+    /// capture right now.
+    public static func isShareable(displayID: UInt32) async -> Bool {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: false
+        ) else {
+            return false
+        }
+        return content.displays.contains { $0.displayID == displayID }
+    }
+
     public static func contentFilter(displayID: UInt32) async throws -> SCContentFilter {
         let content = try await SCShareableContent.excludingDesktopWindows(
             false,

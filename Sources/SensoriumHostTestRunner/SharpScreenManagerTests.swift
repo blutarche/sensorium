@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -447,4 +448,23 @@ func runSharpScreenManagerTests() async {
         )
     }
     print("PASS: a sharp screen that goes away on its own ends every session on it with a plain reason")
+
+    do {
+        let host = FakeHeadlessHost()
+        let manager = makeSharpScreenManager(host: host)
+        let loss = SharpScreenLossRecorder()
+        guard case .leased = await manager.lease(forAdmittedDisplayID: host.placeholderID, onLost: { loss.record($0) }) else {
+            expect(false, "a session leases the sharp screen")
+            return
+        }
+        manager.observeDisplayChanges()
+        host.monitorConnected = true
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        expect(
+            loss.reasons == [SharpScreenManager.monitorConnectedReason],
+            "the display change macOS reports is what tells the manager a monitor came online, got \(loss.reasons)"
+        )
+        expect(host.destroyedHandles.count == 1, "and the sharp screen is released")
+    }
+    print("PASS: the manager hears about a monitor through the display-change notification macOS posts")
 }

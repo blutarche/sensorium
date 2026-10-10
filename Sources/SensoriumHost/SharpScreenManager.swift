@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SensoriumCore
 
@@ -71,6 +72,7 @@ public final class SharpScreenManager {
     private var leases: [Int: @MainActor (String) -> Void] = [:]
     private var nextLeaseKey = 0
     private var graceRelease: Task<Void, Never>?
+    private var displayChangeObserver: (any NSObjectProtocol)?
 
     /// - Parameters:
     ///   - isRuntimeAvailable: whether this machine has the virtual-display
@@ -177,6 +179,24 @@ public final class SharpScreenManager {
             log("sharp screen \(handle.rawValue) went away on its own; ending every session on it")
             endEveryLease(reason: Self.vanishedReason)
             release(handle)
+        }
+    }
+
+    /// Calls `displaysChanged()` on every display change AppKit reports, for
+    /// as long as this manager lives. Called once by the host process that
+    /// owns it; calling it again adds nothing.
+    public func observeDisplayChanges() {
+        guard displayChangeObserver == nil else {
+            return
+        }
+        // No queue, so it is delivered on the thread that posts it, which for
+        // this notification is AppKit's main thread.
+        displayChangeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: nil
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.displaysChanged()
+            }
         }
     }
 
