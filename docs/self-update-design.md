@@ -246,6 +246,8 @@ The real apps were then tested through published releases, on macOS 26.6.2.
 | --- | --- |
 | Host 0.4.0 installed from its release zip over an earlier host | Kept its identity and paired machines, served on the same port, and found itself up to date. |
 | Host 0.4.0 updating itself to 0.4.1 | Downloaded, staged, swapped, and the new copy reported ready in under a second, serving on the same port. A paired viewer then streamed the host screen, so Screen Recording was kept. The old copy did not exit: it called `NSApplication.terminate` from inside a main-queue block and waited forever for its own shutdown. Fixed in 0.4.2, which also ends such an old copy after 30 seconds. |
+| Host 0.4.1 updating itself to 0.4.2 | The old copy stuck the same way, and the new copy ended it 30 seconds after reporting ready, removed the old app, and served alone. |
+| Host 0.4.2 updating itself to 0.4.3 | The old copy quit 30 milliseconds after the new one reported ready. A paired viewer then streamed the host screen. |
 | Viewer 0.4.0 updating itself to 0.4.1 | Downloaded and staged while open, installed when asked to quit from outside the app, and the new copy opened and found itself up to date. |
 
 Still to test:
