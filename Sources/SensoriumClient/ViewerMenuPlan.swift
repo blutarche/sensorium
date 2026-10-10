@@ -16,6 +16,10 @@ public enum ViewerMenuCommand: Equatable, Sendable {
     /// menu uses.
     case showAll
     case quit
+    /// **Check for Updates\u{2026}** and **Check for Updates Automatically**,
+    /// present only where the viewer updates itself: a macOS release build.
+    case checkForUpdates
+    case toggleAutomaticUpdates
     /// Brings the launch window -- the list of machines this one has paired with
     /// -- to the front, whether or not a session is running. It is the only
     /// way to reach a different machine from inside a live session.
@@ -146,6 +150,9 @@ public struct ViewerMenuBarState: Equatable, Sendable {
     public var minimizeEnabled: Bool
     public var zoomEnabled: Bool
     public var bringAllToFrontEnabled: Bool
+    /// Whether automatic update checks are on; `nil` where nothing updates
+    /// itself, which leaves both update items out.
+    public var checksForUpdatesAutomatically: Bool?
 
     public init(
         streamScale: DisplayScaleMenuState = Self.initial.streamScale,
@@ -157,7 +164,8 @@ public struct ViewerMenuBarState: Equatable, Sendable {
         canFullScreen: Bool = true,
         minimizeEnabled: Bool = true,
         zoomEnabled: Bool = true,
-        bringAllToFrontEnabled: Bool = true
+        bringAllToFrontEnabled: Bool = true,
+        checksForUpdatesAutomatically: Bool? = nil
     ) {
         self.streamScale = streamScale
         self.displayCount = displayCount
@@ -169,6 +177,7 @@ public struct ViewerMenuBarState: Equatable, Sendable {
         self.minimizeEnabled = minimizeEnabled
         self.zoomEnabled = zoomEnabled
         self.bringAllToFrontEnabled = bringAllToFrontEnabled
+        self.checksForUpdatesAutomatically = checksForUpdatesAutomatically
     }
 
     /// Before any window has had focus: the canvas geometry every session
@@ -334,9 +343,19 @@ public enum ViewerMenuPlan {
     /// workstation. The close button, not a chord, is how a window is closed.
     private static func fixedMenus(_ state: ViewerMenuBarState) -> [ViewerMenu] {
         let fullScreen = fullScreenItem(isFullscreen: state.isFullscreen, canFullScreen: state.canFullScreen)
+        var updateItems: [ViewerMenuItem] = []
+        if let checksAutomatically = state.checksForUpdatesAutomatically {
+            updateItems = [
+                ViewerMenuItem(title: "Check for Updates\u{2026}", command: .checkForUpdates),
+                ViewerMenuItem(
+                    title: "Check for Updates Automatically",
+                    command: .toggleAutomaticUpdates,
+                    isSelected: checksAutomatically
+                )
+            ]
+        }
         return [
-            ViewerMenu(title: appName, items: [
-                ViewerMenuItem(title: "About \(appName)", command: .about),
+            ViewerMenu(title: appName, items: [ViewerMenuItem(title: "About \(appName)", command: .about)] + updateItems + [
                 .separator,
                 ViewerMenuItem(
                     title: "Your Machines\u{2026}",

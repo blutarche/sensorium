@@ -4,6 +4,7 @@ import Foundation
 import Network
 import SensoriumClient
 import SensoriumCore
+import SensoriumUpdate
 
 /// macOS's own answers to `ViewerPlatformEnvironment`: where the four viewer
 /// files live, what this machine calls itself, and the two local facilities a
@@ -201,10 +202,17 @@ struct Sensorium {
     // `NSApplication.delegate` does not retain its delegate, and nothing
     // else in this run holds one either.
     private static var applicationDelegate: ViewerApplicationDelegate?
+    /// Nil in a build with no release version, and for the `pair` verb.
+    private static var updater: ViewerUpdater?
 
     static func main() async {
         setvbuf(stdout, nil, _IOLBF, 0)
         let environment = AppKitViewerEnvironment()
+        guard case let .viewer(arguments, replacing) = ViewerLaunchRoute.route(Array(CommandLine.arguments.dropFirst())) else {
+            UpdateLaunchCommand.runSelfTest {
+                ViewerUpdateSelfTest.run(applicationSupportDirectory: environment.applicationSupportDirectory())
+            }
+        }
         let quit = QuitSignal()
         let application = NSApplication.shared
         let viewer = ViewerApplication(
@@ -222,6 +230,19 @@ struct Sensorium {
             launch.loadTailnet = {
                 await TailnetDevicePickerLoader(provider: LocalTailscaleStatusProvider()).load()
             }
+            let updater = ViewerUpdater.make(
+                bundle: .main,
+                applicationSupportDirectory: environment.applicationSupportDirectory(),
+                replacing: replacing,
+                onTerminate: { quit.fire() }
+            )
+            Self.updater = updater
+            if let updater {
+                launch.setUpdateLine(updater.line)
+                updater.onLineChange = { launch.setUpdateLine($0) }
+                launch.onDidShow = { updater.windowDidShow() }
+                launch.onRestartNow = { Task { await updater.restartNow() } }
+            }
             // Installed before the first window is on screen: the menu bar is
             // how a person quits, and a viewer that has no machine yet, or
             // cannot reach the one it has, must still be quittable.
@@ -230,6 +251,17 @@ struct Sensorium {
                 onShowYourMachines: {
                     launch.showList()
                     launch.show()
+                },
+                updates: updater.map { updater in
+                    ViewerUpdateMenuActions(
+                        checksAutomatically: { updater.checksAutomatically },
+                        // Your Machines is where the answer is shown.
+                        checkForUpdates: {
+                            launch.show()
+                            Task { await updater.checkForUpdates() }
+                        },
+                        setChecksAutomatically: { updater.setChecksAutomatically($0) }
+                    )
                 }
             )
             menu.install(into: application)
@@ -237,8 +269,12 @@ struct Sensorium {
                 launch.showList()
                 launch.show()
             })
+            if let updater {
+                delegate.beforeTerminate = { updater.prepareToTerminate(then: $0) }
+            }
             applicationDelegate = delegate
             application.delegate = delegate
+            updater?.start()
             return ViewerGUI(
                 launch: launch,
                 prompts: AppKitViewerPrompts(),
@@ -247,7 +283,12 @@ struct Sensorium {
                 windowRegistry: AppKitViewerWindowRegistry(menu: menu)
             )
         }
-        await viewer.run(arguments: Array(CommandLine.arguments.dropFirst()))
+        viewer.onSessionRunChange = { Self.updater?.sessionRunChanged($0) }
+        await viewer.run(arguments: arguments)
+        // The event loop has ended. A quit from the Dock, a logout or an
+        // Apple Event never reaches this line; the delegate's
+        // `beforeTerminate` covers those.
+        await Self.updater?.finishBeforeQuit()
     }
 }
 #else

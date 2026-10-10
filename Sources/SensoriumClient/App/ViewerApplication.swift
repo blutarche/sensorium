@@ -24,6 +24,11 @@ public final class ViewerApplication {
     private let makeGUI: @MainActor () -> ViewerGUI
     private var quitSources: [DispatchSourceSignal] = []
 
+    /// True when a machine chosen from the list starts its session run,
+    /// before anything is dialled; false once that run has ended and every
+    /// window it built has closed.
+    public var onSessionRunChange: (@MainActor (Bool) -> Void)?
+
     public init(
         environment: any ViewerPlatformEnvironment,
         transports: any ViewerTransportFactory,
@@ -228,6 +233,7 @@ public final class ViewerApplication {
                     // screen back to the list, which is where the next one is
                     // chosen -- including the machine that was just paired.
                     while let host = await choice.next() {
+                        onSessionRunChange?(true)
                         let sessionExit = await runHostSession(
                             saved: host,
                             savedHostStore: store,
@@ -239,6 +245,7 @@ public final class ViewerApplication {
                             gui: gui,
                             active: active
                         )
+                        onSessionRunChange?(false)
                         if case .quit = sessionExit { break }
                         // Whatever step the session left this window on -- the
                         // list, or a code step "Pair again" opened -- is the
@@ -618,12 +625,17 @@ public final class ViewerApplication {
     }
 
     private func identityFileURL() -> URL {
-        environment.applicationSupportDirectory().appendingPathComponent("device-identity.json")
+        environment.applicationSupportDirectory().appendingPathComponent(Self.identityFileName)
     }
 
     private func savedHostURL() -> URL {
-        environment.applicationSupportDirectory().appendingPathComponent("saved-host.json")
+        environment.applicationSupportDirectory().appendingPathComponent(Self.savedHostFileName)
     }
+
+    /// The two files a session cannot start without, in the viewer's
+    /// Application Support folder.
+    nonisolated static let identityFileName = "device-identity.json"
+    nonisolated static let savedHostFileName = "saved-host.json"
 
     /// Next to `savedHostURL()`, in the same directory every other
     /// per-machine viewer file already lives in -- see

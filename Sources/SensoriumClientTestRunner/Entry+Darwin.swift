@@ -34,9 +34,11 @@ func runDarwinClientTests() async {
     await testViewerMainMenuUnregisterTests()
     testViewerMainMenuStandardMenusTests()
     testViewerMainMenuMatchesSharedModelTests()
+    testViewerMainMenuUpdateItemsTests()
     testViewerMainMenuFullScreenItemTests()
     testViewerMainMenuWindowStateWiringTests()
     testViewerApplicationDelegateTests()
+    testViewerApplicationDelegateTerminateTests()
     testShortcutStripTests()
     testShortcutStripVisibilityTests()
     testShortcutStripPinTests()
@@ -56,6 +58,7 @@ func runDarwinClientTests() async {
     await testShortcutStripSendsWholeChordsTests()
     await testYourMachinesWindowTests()
     testYourMachinesWindowMoreButtonAccessibilityLabelTests()
+    testYourMachinesWindowUpdateLineTests()
     testViewerFormActionButtonPaddingTests()
     testYourMachinesCodeStepFieldsSitOnTheColumnTests()
     testViewerFormControlsButtonFontSizeTests()
@@ -70,6 +73,23 @@ func runDarwinClientTests() async {
     testAboutPanelCreditTests()
     testViewerNewKeyAlertTests()
     await testHostScreenUnlockClientTests()
+    testViewerLaunchRouteTests()
+    do {
+        try testViewerUpdateSelfTestTests()
+    } catch {
+        expect(false, "the self-test fixture could not be written: \(error)")
+    }
+    testViewerUpdatePreferencesTests()
+    testViewerUpdateLineTests()
+    await testViewerUpdaterAutomaticPreferenceTests()
+    await testViewerUpdaterRestartNowTests()
+    await testViewerUpdaterInstallAtQuitTests()
+    await testViewerUpdaterQuitThroughAppKitTests()
+    await testViewerUpdaterQuitDuringRestartNowTests()
+    await testViewerUpdaterManualCheckTests()
+    await testViewerUpdaterNotUpdatableTests()
+    await testViewerUpdaterReportsReadyOnceTests()
+    testViewerUpdaterInertWithoutVersionTests()
 }
 #else
 /// Nothing to run where those frameworks do not exist.

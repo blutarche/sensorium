@@ -45,6 +45,34 @@ func menuBarFixtureState() -> ViewerMenuBarState {
     )
 }
 
+/// The two update items appear only where an updater runs, and their
+/// checkmark reads the preference.
+func testViewerMenuUpdateItemsTests() {
+    func appMenu(_ checksAutomatically: Bool?) -> [ViewerMenuItem] {
+        var state = ViewerMenuBarState.initial
+        state.checksForUpdatesAutomatically = checksAutomatically
+        return ViewerMenuPlan.bar(state).first { $0.title == "Sensorium" }?.items ?? []
+    }
+    let withoutUpdater = appMenu(nil)
+    expect(
+        !withoutUpdater.contains { $0.command == .checkForUpdates || $0.command == .toggleAutomaticUpdates },
+        "with no updater there are no update items"
+    )
+    expect(withoutUpdater.map(\.title).prefix(3) == ["About Sensorium", "", "Your Machines\u{2026}"], "and the app menu reads as before")
+
+    let on = appMenu(true)
+    expect(
+        on.map(\.title).prefix(5) == [
+            "About Sensorium", "Check for Updates\u{2026}", "Check for Updates Automatically", "", "Your Machines\u{2026}"
+        ],
+        "the update items follow About, got \(on.map(\.title))"
+    )
+    expect(on[1].command == .checkForUpdates && on[1].keyEquivalent.isEmpty && on[1].isEnabled, "Check for Updates\u{2026} has no chord")
+    expect(on[2].command == .toggleAutomaticUpdates && on[2].isSelected, "automatic updates on is checked")
+    expect(appMenu(false)[2].isSelected == false, "and off is unchecked")
+    print("PASS: the Sensorium menu offers Check for Updates\u{2026} and Check for Updates Automatically only where an updater runs")
+}
+
 /// The one menu bar both platforms build: its menus in macOS order, and every
 /// state-dependent item reading the state it was given.
 func testViewerMenuBarModelTests() {

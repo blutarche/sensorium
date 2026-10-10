@@ -6,8 +6,12 @@ import SensoriumCore
 public enum LinuxViewerMenu {
     /// Hide Others, Show All and Bring All to Front act on every other
     /// application's windows through macOS's own application services. A
-    /// Wayland client can neither hide nor raise another application.
-    public static let omitted: [ViewerMenuCommand] = [.hideOthers, .showAll, .bringAllToFront]
+    /// Wayland client can neither hide nor raise another application. The
+    /// update items are left out because the Linux viewer is updated by its
+    /// package, never by itself.
+    public static let omitted: [ViewerMenuCommand] = [
+        .hideOthers, .showAll, .bringAllToFront, .checkForUpdates, .toggleAutomaticUpdates
+    ]
 
     public static func bar(_ state: ViewerMenuBarState) -> [ViewerMenu] {
         ViewerMenuPlan.bar(state).map(withoutOmitted)
@@ -148,7 +152,8 @@ public enum LinuxViewerMenu {
         case let .selectRealScreen(token): .sessionChoice(.selectRealScreen(token))
         case let .selectHostScreenMode(modeID): .sessionChoice(.selectHostScreenMode(modeID))
         case let .selectStartTarget(target): .sessionChoice(.selectStartTarget(target))
-        case .hideOthers, .showAll, .bringAllToFront, .undo, .redo, .cut, .copy, .paste, .selectAll,
+        case .hideOthers, .showAll, .bringAllToFront, .checkForUpdates, .toggleAutomaticUpdates,
+             .undo, .redo, .cut, .copy, .paste, .selectAll,
              .streamScaleClampNotice, .escapeGestureHint, .separator, .submenu:
             .none
         }

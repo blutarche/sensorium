@@ -57,6 +57,10 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     /// The code step was left without pairing. Whatever was opened to announce
     /// this machine has nobody left to announce it to.
     public var onCodeStepAbandoned: (() -> Void)?
+    /// The window is on screen, at the end of every `show()`.
+    public var onDidShow: (() -> Void)?
+    /// The update line's **Restart Now**.
+    public var onRestartNow: (() -> Void)?
     /// Looked up fresh whenever the tailscaled-unreachable state is drawn,
     /// never cached: whether Tailscale is installed can change while this
     /// window is open.
@@ -69,6 +73,13 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     private let window: NSWindow
     private let root = NSStackView()
     private let contentContainer = NSView()
+    /// Beneath whichever step is showing, so it is never cleared with one.
+    private let updateLine = NSStackView()
+    private let updateLabel = ViewerFormControls.label(
+        "", font: ViewerDesign.font(mono: false, size: 12),
+        color: ViewerDesign.muted, width: YourMachinesWindowController.contentWidth
+    )
+    private let restartNowButton = ViewerFormControls.actionButton(ViewerUpdateLine.restartNowTitle)
     private var step: Step = .list
     private var model = YourMachinesWindowModel(hosts: [])
     private var reachability: [Data: Bool] = [:]
@@ -178,6 +189,11 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         renameButton.action = #selector(confirmRename)
         renameCancelButton.target = self
         renameCancelButton.action = #selector(cancelRename)
+        ViewerFormControls.style(
+            restartNowButton, title: ViewerUpdateLine.restartNowTitle, isPrimary: false, isEnabled: true
+        )
+        restartNowButton.target = self
+        restartNowButton.action = #selector(restartNow)
 
         buildFrame()
         reloadFromStore()
@@ -206,6 +222,18 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         window.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         reloadTailnet()
+        onDidShow?()
+    }
+
+    /// The one line about updates, or none.
+    public func setUpdateLine(_ line: ViewerUpdateLine?) {
+        updateLabel.stringValue = line?.text ?? ""
+        restartNowButton.isHidden = line?.offersRestartNow != true
+        updateLabel.preferredMaxLayoutWidth = restartNowButton.isHidden
+            ? Self.contentWidth
+            : Self.contentWidth - restartNowButton.fittingSize.width - updateLine.spacing
+        updateLine.isHidden = line == nil
+        resizeToFit()
     }
 
     /// Orders the window away without ending anything. The picture is up, so
@@ -354,6 +382,16 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         root.addArrangedSubview(contentContainer)
         contentContainer.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+
+        updateLine.orientation = .horizontal
+        updateLine.alignment = .centerY
+        updateLine.spacing = ViewerDesign.Space.sm
+        updateLine.addArrangedSubview(updateLabel)
+        updateLine.addArrangedSubview(restartNowButton)
+        updateLine.isHidden = true
+        restartNowButton.isHidden = true
+        root.addArrangedSubview(updateLine)
+        root.setCustomSpacing(ViewerDesign.Space.md, after: contentContainer)
 
         let inset = ViewerDesign.Space.xl
         NSLayoutConstraint.activate([
@@ -640,6 +678,10 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
     @objc private func cancelRename() {
         showList()
+    }
+
+    @objc private func restartNow() {
+        onRestartNow?()
     }
 
     // MARK: - Add a Machine, step one: which machine

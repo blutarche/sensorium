@@ -26,6 +26,15 @@ private final class ParityTarget: ViewerMenuCommandTarget {
 /// if macOS and the model, and so macOS and Linux, drift apart.
 @MainActor
 func testViewerMainMenuMatchesSharedModelTests() {
+    // Without an updater, and with one whose automatic checks are on or off.
+    for checksAutomatically in [nil, true, false] as [Bool?] {
+        compareViewerMainMenuWithSharedModel(checksAutomatically: checksAutomatically)
+    }
+    print("PASS: the macOS menu bar lists exactly the shared model's menus, items, chords, checks and enablement")
+}
+
+@MainActor
+private func compareViewerMainMenuWithSharedModel(checksAutomatically: Bool?) {
     let application = NSApplication.shared
     let originalMainMenu = application.mainMenu
     let originalWindowsMenu = application.windowsMenu
@@ -35,7 +44,13 @@ func testViewerMainMenuMatchesSharedModelTests() {
         application.windowsMenu = originalWindowsMenu
         application.helpMenu = originalHelpMenu
     }
-    let controller = ViewerMainMenuController(onQuit: {}, onShowYourMachines: {})
+    let controller = ViewerMainMenuController(
+        onQuit: {},
+        onShowYourMachines: {},
+        updates: checksAutomatically.map { value in
+            ViewerUpdateMenuActions(checksAutomatically: { value }, checkForUpdates: {}, setChecksAutomatically: { _ in })
+        }
+    )
     controller.windowMenuTargetWindow = { nil }
     controller.install(into: application)
     let target = ParityTarget()
@@ -46,6 +61,7 @@ func testViewerMainMenuMatchesSharedModelTests() {
     }
 
     var state = target.state
+    state.checksForUpdatesAutomatically = checksAutomatically
     state.minimizeEnabled = false
     state.zoomEnabled = false
     state.bringAllToFrontEnabled = application.windows.contains { $0.isVisible }
@@ -86,7 +102,55 @@ func testViewerMainMenuMatchesSharedModelTests() {
         expect(false, "row \(index) differs: model \(pair.0), macOS \(pair.1)")
     }
     expect(expected.count == actual.count, "the model has \(expected.count) rows, macOS \(actual.count)")
-    print("PASS: the macOS menu bar lists exactly the shared model's menus, items, chords, checks and enablement")
+}
+
+/// Check for Updates\u{2026} checks now, and the checkmark item turns automatic
+/// checks off and on and shows which they are each time the menu opens.
+@MainActor
+func testViewerMainMenuUpdateItemsTests() {
+    let application = NSApplication.shared
+    let originalMainMenu = application.mainMenu
+    let originalWindowsMenu = application.windowsMenu
+    let originalHelpMenu = application.helpMenu
+    defer {
+        application.mainMenu = originalMainMenu
+        application.windowsMenu = originalWindowsMenu
+        application.helpMenu = originalHelpMenu
+    }
+    var checksAutomatically = true
+    var checks = 0
+    let controller = ViewerMainMenuController(
+        onQuit: {},
+        onShowYourMachines: {},
+        updates: ViewerUpdateMenuActions(
+            checksAutomatically: { checksAutomatically },
+            checkForUpdates: { checks += 1 },
+            setChecksAutomatically: { checksAutomatically = $0 }
+        )
+    )
+    controller.install(into: application)
+    guard let appMenu = application.mainMenu?.items.first?.submenu,
+          let check = appMenu.items.first(where: { $0.title == "Check for Updates\u{2026}" }),
+          let automatic = appMenu.items.first(where: { $0.title == "Check for Updates Automatically" }),
+          let checkAction = check.action, let automaticAction = automatic.action else {
+        expect(false, "the Sensorium menu carries both update items, with actions")
+        return
+    }
+    expect(appMenu.delegate === controller, "the Sensorium menu refreshes when it opens")
+    expect(automatic.state == .on, "automatic checks start checked when they are on")
+
+    _ = (check.target as? NSObject)?.perform(checkAction, with: check)
+    expect(checks == 1, "Check for Updates\u{2026} checks now")
+
+    _ = (automatic.target as? NSObject)?.perform(automaticAction, with: automatic)
+    expect(!checksAutomatically, "choosing the checked item turns automatic checks off")
+    controller.menuNeedsUpdate(appMenu)
+    expect(automatic.state == .off, "and the menu shows them off the next time it opens")
+    _ = (automatic.target as? NSObject)?.perform(automaticAction, with: automatic)
+    expect(checksAutomatically, "choosing it again turns them back on")
+    controller.menuNeedsUpdate(appMenu)
+    expect(automatic.state == .on, "and checked")
+    print("PASS: the Sensorium menu's update items check now and turn automatic checks off and on")
 }
 
 private func modifiers(_ mask: NSEvent.ModifierFlags) -> ViewerMenuModifiers {

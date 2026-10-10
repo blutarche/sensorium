@@ -1152,4 +1152,66 @@ func testYourMachinesCodeStepFieldsSitOnTheColumnTests() {
     }
     print("PASS: the code step's fields sit on the window's 24pt column")
 }
+
+@MainActor
+private func isShown(_ view: NSView) -> Bool {
+    var current: NSView? = view
+    while let candidate = current {
+        if candidate.isHidden { return false }
+        current = candidate.superview
+    }
+    return true
+}
+
+/// The update line sits beneath the list, on every step, and carries
+/// **Restart Now** only when it is asked to.
+@MainActor
+func testYourMachinesWindowUpdateLineTests() {
+    let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini]))
+    let window = storedValue("window", of: controller, as: NSWindow.self)
+    let heightWithoutLine = window.frame.height
+    let ready = "Sensorium 0.5.0 is ready."
+    expect(label(containing: ready, in: content(of: controller)).map(isShown) != true, "there is no update line until there is something to say")
+    expect(
+        button(titled: "Restart Now", in: content(of: controller)).map(isShown) != true,
+        "and no Restart Now"
+    )
+
+    var restarts = 0
+    controller.onRestartNow = { restarts += 1 }
+    controller.setUpdateLine(ViewerUpdateLine(text: ready, offersRestartNow: true))
+    guard let line = label(containing: ready, in: content(of: controller)),
+          let restart = button(titled: "Restart Now", in: content(of: controller)) else {
+        print("FAIL: the update line or its Restart Now button is missing")
+        Foundation.exit(1)
+        return
+    }
+    expect(isShown(line) && isShown(restart), "a ready update shows its line with Restart Now")
+    expect(window.frame.height > heightWithoutLine, "and the window grows to hold it rather than clipping the list")
+    content(of: controller).layoutSubtreeIfNeeded()
+    if let row = label(containing: "Loft", in: content(of: controller)) {
+        let lineTop = line.convert(line.bounds, to: nil).maxY
+        let rowBottom = row.convert(row.bounds, to: nil).minY
+        expect(lineTop <= rowBottom, "the line sits beneath the list, got line top \(lineTop) and row bottom \(rowBottom)")
+    } else {
+        expect(false, "the saved machine's row is missing")
+    }
+    tap(restart)
+    expect(restarts == 1, "Restart Now asks for the restart")
+
+    controller.setUpdateLine(ViewerUpdateLine(text: ready, offersRestartNow: false))
+    expect(isShown(line), "during a session the line stays")
+    expect(!isShown(restart), "and Restart Now does not")
+
+    controller.showAddAMachine()
+    expect(
+        label(containing: ready, in: content(of: controller)).map(isShown) == true,
+        "the line stays on every step of adding a machine"
+    )
+
+    controller.setUpdateLine(nil)
+    expect(!isShown(line), "nothing to say hides the line")
+    print("PASS: Your Machines shows the update line beneath the list on every step, with Restart Now only when offered")
+}
 #endif

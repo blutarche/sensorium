@@ -44,6 +44,7 @@ struct SensoriumClientTestRunner {
         await testViewerFrameCoalescingTests()
         testViewerPresentationPacingTests()
         testViewerMenuBarModelTests()
+        testViewerMenuUpdateItemsTests()
         testLinuxViewerMenuMatchesMacOSTests()
         testLinuxViewerMenuAcceleratorTests()
         testLinuxViewerMenuChordLabelsTests()

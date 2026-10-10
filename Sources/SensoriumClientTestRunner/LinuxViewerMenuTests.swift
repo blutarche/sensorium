@@ -2,14 +2,26 @@ import Foundation
 import SensoriumClient
 import SensoriumCore
 
-/// The Linux menu bar is the macOS one less the items that only call a macOS
-/// app service, and nothing else: the test that fails if the two platforms'
-/// item lists drift apart.
+/// Every item only the macOS bar carries, and why. Anything not listed here
+/// must appear on Linux exactly as it does on macOS.
+private let macOSOnlyMenuItems: [(command: ViewerMenuCommand, title: String, reason: String)] = [
+    (.hideOthers, "Hide Others", "acts on other applications' windows, which a Wayland client cannot"),
+    (.showAll, "Show All", "acts on other applications' windows, which a Wayland client cannot"),
+    (.bringAllToFront, "Bring All to Front", "raises windows through a macOS application service"),
+    (.checkForUpdates, "Check for Updates\u{2026}", "the Linux viewer is updated by its package, never by itself"),
+    (.toggleAutomaticUpdates, "Check for Updates Automatically", "the Linux viewer is updated by its package, never by itself")
+]
+
+/// The Linux menu bar is the macOS one less the items that only exist on
+/// macOS, and nothing else: the test that fails if the two platforms' item
+/// lists drift apart.
 func testLinuxViewerMenuMatchesMacOSTests() {
-    for state in [ViewerMenuBarState.initial, menuBarFixtureState()] {
+    var withUpdater = menuBarFixtureState()
+    withUpdater.checksForUpdatesAutomatically = true
+    for state in [ViewerMenuBarState.initial, menuBarFixtureState(), withUpdater] {
         let macOS = ViewerMenuPlan.rows(of: ViewerMenuPlan.bar(state))
         let linux = ViewerMenuPlan.rows(of: LinuxViewerMenu.bar(state))
-        let omittedTitles = ["Hide Others", "Show All", "Bring All to Front"]
+        let omittedTitles = macOSOnlyMenuItems.map(\.title)
         let kept = macOS.filter { !omittedTitles.contains($0.title) }
         // A separator left with nothing after it in its menu goes too.
         let expected = kept.enumerated().filter { index, row in
@@ -21,10 +33,11 @@ func testLinuxViewerMenuMatchesMacOSTests() {
         expect(expected.count == linux.count, "macOS less the omissions has \(expected.count) rows, Linux \(linux.count)")
     }
     expect(
-        LinuxViewerMenu.omitted == [.hideOthers, .showAll, .bringAllToFront],
-        "only the three macOS app-service items are left out"
+        LinuxViewerMenu.omitted == macOSOnlyMenuItems.map(\.command),
+        "only the listed macOS-only items are left out, got \(LinuxViewerMenu.omitted)"
     )
-    print("PASS: the Linux menu bar is the macOS one less Hide Others, Show All and Bring All to Front")
+    expect(macOSOnlyMenuItems.allSatisfy { !$0.reason.isEmpty }, "each with its reason")
+    print("PASS: the Linux menu bar is the macOS one less the macOS app-service items and the self-update items")
 }
 
 /// Each macOS chord in the GTK accelerator syntax, Ctrl standing in for
@@ -166,6 +179,8 @@ func testLinuxSessionMenuActionsTests() {
         (.selectHostScreenMode("m1"), .sessionChoice(.selectHostScreenMode("m1"))),
         (.selectStartTarget(.virtualDisplay), .sessionChoice(.selectStartTarget(.virtualDisplay))),
         (.copy, .none),
+        (.checkForUpdates, .none),
+        (.toggleAutomaticUpdates, .none),
         (.streamScaleClampNotice, .none),
         (.escapeGestureHint, .none)
     ]

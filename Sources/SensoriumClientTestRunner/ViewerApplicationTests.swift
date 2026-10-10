@@ -425,6 +425,7 @@ private func savedTestMachine(
 @MainActor
 func testViewerApplicationTests() async {
     await testViewerApplicationFailedDialReturnsToTheList()
+    await testViewerApplicationReportsEachSessionRun()
     await testViewerApplicationLiveSessionAndHostEnding()
     await testViewerApplicationQuitLatchStopsTheEventLoop()
     await testViewerApplicationEnterURLSelectsWithoutDialling()
@@ -488,6 +489,45 @@ private func testViewerApplicationFailedDialReturnsToTheList() async {
     harness.launch.onCloseRequested?()
     expect(await harness.settle(until: { harness.eventLoop.stopCount == 1 }), "and quitting ends the loop")
     print("PASS: a dial that fails before any picture is reported on the launch window's row and hands back the list")
+}
+
+/// The update line offers **Restart Now** only outside a session run, so the
+/// run is reported from before anything is dialled until every window it
+/// built has closed.
+@MainActor
+private func testViewerApplicationReportsEachSessionRun() async {
+    let harness = ViewerApplicationHarness {
+        ScriptedControlConnection(responses: [
+            .control(.hostScreenRefused(reason: "host-screen-not-armed")),
+            .control(.canvasRefused(reason: CanvasRefusalReason.canvasUnavailable, surfaceID: 0))
+        ])
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([7]), startTargetPreference: .virtualDisplay)
+    harness.store.save(machine)
+    var changes: [(inProgress: Bool, dials: Int, unclosedWindows: Int)] = []
+    harness.viewer.onSessionRunChange = { inProgress in
+        changes.append((
+            inProgress,
+            harness.transports.dialCount,
+            harness.windowFactory.made.filter { $0.closeCount == 0 }.count
+        ))
+    }
+
+    await harness.viewer.run(arguments: [])
+    expect(await harness.settle(until: { harness.launch.showCount > 0 }), "the launch window is shown")
+    expect(changes.isEmpty, "no session run is reported before a machine is chosen")
+
+    harness.launch.onConnect?(machine)
+    expect(await harness.settle(until: { harness.launch.showCount > 1 }), "the failed run hands back the list")
+    expect(changes.map(\.inProgress) == [true, false], "one run is reported starting and ending, got \(changes.map(\.inProgress))")
+    expect(changes.first?.dials == 0, "the run is reported before anything is dialled")
+    expect(!harness.windowFactory.made.isEmpty, "the run built a session window")
+    expect(changes.last?.unclosedWindows == 0, "and its end is reported once every window it built has closed")
+
+    harness.launch.onCloseRequested?()
+    expect(await harness.settle(until: { harness.eventLoop.stopCount == 1 }), "and quitting ends the loop")
+    print("PASS: each session run is reported from before its dial until its windows have closed")
 }
 
 /// docs/ux-spec.md lines 78-80: the session window appears when the session

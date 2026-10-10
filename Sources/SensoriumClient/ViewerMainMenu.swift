@@ -77,6 +77,24 @@ public extension ViewerMenuCommandTarget {
     func selectStartTarget(_ target: StartTarget) {}
 }
 
+/// What the Sensorium menu's two update items reach. Given only where the
+/// viewer updates itself; without it neither item is built.
+public struct ViewerUpdateMenuActions {
+    public var checksAutomatically: @MainActor () -> Bool
+    public var checkForUpdates: @MainActor () -> Void
+    public var setChecksAutomatically: @MainActor (Bool) -> Void
+
+    public init(
+        checksAutomatically: @escaping @MainActor () -> Bool,
+        checkForUpdates: @escaping @MainActor () -> Void,
+        setChecksAutomatically: @escaping @MainActor (Bool) -> Void
+    ) {
+        self.checksAutomatically = checksAutomatically
+        self.checkForUpdates = checkForUpdates
+        self.setChecksAutomatically = setChecksAutomatically
+    }
+}
+
 /// Builds `ViewerMenuPlan` into a real menu bar and points each item at
 /// something that already exists.
 ///
@@ -96,6 +114,7 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     /// this item brings the same window a session's own "Your machines" button
     /// returns to.
     private let onShowYourMachines: () -> Void
+    private let updates: ViewerUpdateMenuActions?
     private var targets: [any ViewerMenuCommandTarget] = []
     /// The single item `menuNeedsUpdate` retitles; found once at build time
     /// rather than re-searched on every open.
@@ -103,6 +122,10 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     /// The single item `menuNeedsUpdate` checks on, found once the same way
     /// `pointerCaptureItem` is.
     private var clipboardSharingItem: NSMenuItem?
+    /// Check for Updates Automatically, whose checkmark the Sensorium menu
+    /// refreshes each time it opens.
+    private var automaticUpdatesItem: NSMenuItem?
+    private var appMenu: NSMenu?
     /// The single item `menuNeedsUpdate` retitles and enables/disables to
     /// match the key window's actual full-screen state, found once the same
     /// way `pointerCaptureItem` is. Explicit rather than automatic: the View
@@ -129,9 +152,14 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     private var displayCountMenu: NSMenu?
     private var screenMenu: NSMenu?
 
-    public init(onQuit: @escaping () -> Void, onShowYourMachines: @escaping () -> Void) {
+    public init(
+        onQuit: @escaping () -> Void,
+        onShowYourMachines: @escaping () -> Void,
+        updates: ViewerUpdateMenuActions? = nil
+    ) {
         self.onQuit = onQuit
         self.onShowYourMachines = onShowYourMachines
+        self.updates = updates
         super.init()
     }
 
@@ -153,12 +181,20 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
 
     public func install(into application: NSApplication) {
         let bar = NSMenu()
-        for menu in ViewerMenuPlan.bar(.initial) {
+        var state = ViewerMenuBarState.initial
+        state.checksForUpdatesAutomatically = updates?.checksAutomatically()
+        for menu in ViewerMenuPlan.bar(state) {
             let holder = NSMenuItem()
             let built = submenu(for: menu)
             holder.submenu = built
             bar.addItem(holder)
             switch menu.title {
+            case ViewerMenuPlan.appName:
+                appMenu = built
+                automaticUpdatesItem = built.items.first { $0.action == #selector(toggleAutomaticUpdates(_:)) }
+                if automaticUpdatesItem != nil {
+                    built.delegate = self
+                }
             case "View":
                 pointerCaptureItem = built.items.first { $0.action == #selector(togglePointerCapture(_:)) }
                 clipboardSharingItem = built.items.first { $0.action == #selector(toggleClipboardSharing(_:)) }
@@ -250,6 +286,8 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         case .hideOthers: #selector(NSApplication.hideOtherApplications(_:))
         case .showAll: #selector(NSApplication.unhideAllApplications(_:))
         case .quit: #selector(quitSession(_:))
+        case .checkForUpdates: #selector(checkForUpdates(_:))
+        case .toggleAutomaticUpdates: #selector(toggleAutomaticUpdates(_:))
         case .showYourMachines: #selector(showYourMachines(_:))
         // Nil-target standard editing selectors, resolved by the responder
         // chain -- AppKit implements none of these on `NSResponder` itself,
@@ -283,7 +321,8 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     private func target(for command: ViewerMenuCommand) -> AnyObject? {
         switch command {
         case .hide, .hideOthers, .showAll, .bringAllToFront: NSApplication.shared
-        case .about, .quit, .showYourMachines, .toggleTelemetryOverlay, .togglePointerCapture,
+        case .about, .quit, .checkForUpdates, .toggleAutomaticUpdates, .showYourMachines,
+             .toggleTelemetryOverlay, .togglePointerCapture,
              .toggleClipboardSharing, .minimize, .setStreamScale, .selectDisplayCount, .selectRealScreen,
              .selectHostScreenMode, .selectStartTarget: self
         // Nil: found by the responder chain, starting at the key window's
@@ -305,6 +344,15 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
 
     @objc private func showYourMachines(_ sender: Any?) {
         onShowYourMachines()
+    }
+
+    @objc private func checkForUpdates(_ sender: Any?) {
+        updates?.checkForUpdates()
+    }
+
+    @objc private func toggleAutomaticUpdates(_ sender: Any?) {
+        guard let updates else { return }
+        updates.setChecksAutomatically(!updates.checksAutomatically())
     }
 
     @objc private func toggleTelemetryOverlay(_ sender: Any?) {
@@ -405,6 +453,9 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
         if let fullScreenItem, menu.items.contains(where: { $0 === fullScreenItem }) {
             refresh(fullScreenItem, from: view.first { $0.command == .toggleFullScreen })
         }
+        if menu === appMenu {
+            refresh(automaticUpdatesItem, from: items(ViewerMenuPlan.appName).first { $0.command == .toggleAutomaticUpdates })
+        }
         // AppKit calls `menuNeedsUpdate` on `NSApp.windowsMenu` too, before
         // showing it and before matching Cmd-M or Cmd-` against the window
         // list it appends below these three items.
@@ -435,7 +486,8 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
             isPointerCaptured: focused?.isPointerCaptured ?? false,
             isClipboardSharingEnabled: focused?.isClipboardSharingEnabled ?? ClipboardSyncEngine.sharingEnabledByDefault,
             isFullscreen: focused?.viewerWindowState.isFullscreen ?? false,
-            canFullScreen: focused != nil
+            canFullScreen: focused != nil,
+            checksForUpdatesAutomatically: updates?.checksAutomatically()
         )
         if readingWindowMenu {
             let target = windowMenuTargetWindow()
