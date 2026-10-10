@@ -8,6 +8,29 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+### Added
+
+- Both macOS apps now update themselves. Download them once from the
+  release page and later versions arrive on their own. Each app checks
+  this project's GitHub releases when it opens and every six hours. It
+  installs a release only if it is signed with the project's update key
+  and the same certificate as the running app.
+- Sensorium Host installs an update only while no machine is connected
+  and no pairing is under way. It keeps its paired machines, its
+  identity, its address, **Open at login**, and its Screen Recording and
+  Accessibility permissions. If the new version does not start and serve
+  the same way, the host puts the old version back.
+- The viewer installs a downloaded update the next time it quits, or at
+  once with **Restart Now** in Your Machines while no session is open.
+- **Install updates automatically** in the host window and **Check for
+  Updates Automatically** in the viewer's Sensorium menu, both on by
+  default. **Check for Updates…** sits in the host's menu bar item and the
+  viewer's Sensorium menu.
+- Releases carry `Sensorium-<version>.zip` and
+  `Sensorium-Host-<version>.zip`, ready to unzip into Applications.
+
 ## [0.3.0] - 2026-10-06
 
 ### Added
@@ -322,6 +345,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.4.0]: https://github.com/blutarche/sensorium/releases/tag/v0.4.0
 [0.3.0]: https://github.com/blutarche/sensorium/releases/tag/v0.3.0
 [0.2.0]: https://github.com/blutarche/sensorium/releases/tag/v0.2.0
 [0.1.3]: https://github.com/blutarche/sensorium/releases/tag/v0.1.3
