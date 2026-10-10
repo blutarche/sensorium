@@ -20,7 +20,7 @@ public struct CodeRequirementCheck: UpdateRequirementChecking, @unchecked Sendab
     private let requirement: SecRequirement
 
     /// Every slice of a universal binary is checked, not only the one this
-    /// Mac would run, as is any code nested in the bundle.
+    /// machine would run, as is any code nested in the bundle.
     static let validityFlags = SecCSFlags(
         rawValue: kSecCSCheckAllArchitectures | kSecCSStrictValidate | kSecCSCheckNestedCode
     )

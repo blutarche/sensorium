@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are built on the maintainer's Mac, not in CI. Each release carries two zips, `SHA256SUMS`, and a signed update manifest.
+Releases are built on the maintainer's own machine, which runs macOS, not in CI. Each release carries two zips, `SHA256SUMS`, and a signed update manifest.
 
 ## What you need
 

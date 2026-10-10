@@ -1190,10 +1190,10 @@ struct sensoriumd {
         }
 
         // The installed app is the version just refused, and this process
-        // no longer listens: launch that app anyway, so this Mac still has a
+        // no longer listens: launch that app anyway, so this machine still has a
         // serving host, and quit once it reports ready.
         func recoverFromFailedSwapBack(_ staged: StagedUpdate, requirement: CodeRequirementCheck) async {
-            HostUpdateLog.record("launching the installed app anyway, so this Mac keeps a serving host")
+            HostUpdateLog.record("launching the installed app anyway, so this machine keeps a serving host")
             switch await HostUpdateSwapBackRecovery.relaunchInstalled(
                 installedAppURL: installedAppURL,
                 readyFile: staged.readyFileURL,

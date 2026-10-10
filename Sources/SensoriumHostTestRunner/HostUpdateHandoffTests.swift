@@ -111,7 +111,7 @@ private struct FixedRequirement: UpdateRequirementChecking {
 }
 
 /// After a swap back failed, the installed app is the refused new version.
-/// The host launches it anyway through the same handoff, so the Mac still
+/// The host launches it anyway through the same handoff, so the machine still
 /// gets a serving host, and quits only once it reports ready.
 @MainActor
 func runHostUpdateSwapBackRecoveryTests() async {

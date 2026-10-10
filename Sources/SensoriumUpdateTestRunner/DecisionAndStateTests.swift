@@ -128,7 +128,7 @@ func testStateStoreRoundTripsOwnerOnly() {
 
     expect(store.url.lastPathComponent == "host-update-state.json", "the host's file is host-update-state.json")
     expect(viewerStore.url.lastPathComponent == "viewer-update-state.json", "the viewer's file is viewer-update-state.json")
-    expect(viewerStore.load() == UpdateState(), "the host's state is not the viewer's: both apps share the folder on a Mac with both")
+    expect(viewerStore.load() == UpdateState(), "the host's state is not the viewer's: both apps share the folder on a machine with both")
     expect(store.load() == state, "the state reads back as it was saved")
     expect(posixMode(of: store.url) == 0o600, "the state file is owner read-write only")
     expect(posixMode(of: store.url.deletingLastPathComponent()) == 0o700, "its folder is owner-only")

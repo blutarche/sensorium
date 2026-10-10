@@ -2,7 +2,7 @@
 
 Installing Sensorium takes two downloads and one approval per app. After that, both apps keep themselves current. Nobody opens Terminal or builds from source, and an update never costs a permission grant.
 
-Sensorium is signed with a self-signed code signing certificate, not an Apple Developer ID, and it is not notarized. That costs one **Open Anyway** per app per Mac at first install. It costs nothing after that, because macOS checks downloads the person opens, not files an app writes for itself.
+Sensorium is signed with a self-signed code signing certificate, not an Apple Developer ID, and it is not notarized. That costs one **Open Anyway** per app per machine at first install. It costs nothing after that, because macOS checks downloads the person opens, not files an app writes for itself.
 
 ---
 
@@ -10,7 +10,7 @@ Sensorium is signed with a self-signed code signing certificate, not an Apple De
 
 ### 1.1 First install
 
-1. On the laptop, download `Sensorium-<version>.zip` from the latest release. On the Mac that will host, download `Sensorium-Host-<version>.zip`.
+1. On the laptop, download `Sensorium-<version>.zip` from the latest release. On the machine that will host, download `Sensorium-Host-<version>.zip`.
 2. Open the zip. Drag the app into Applications.
 3. Open the app. macOS refuses it. Click **Done**.
 4. In System Settings, open Privacy & Security, then click **Open Anyway** next to the app. The button stays there for about an hour after the refusal.
@@ -94,7 +94,7 @@ Each release carries four files for macOS beside the Linux package:
 }
 ```
 
-`Scripts/release-macos.sh` builds a release on the maintainer's Mac:
+`Scripts/release-macos.sh` builds a release on the maintainer's own machine:
 
 1. Build both apps with `Scripts/package-apps.sh`, signed with the release certificate. It produces one kit holding both apps.
 2. Zip each app from that kit on its own, with `ditto -c -k --keepParent`, so each zip holds exactly one app.
@@ -105,7 +105,7 @@ Each release carries four files for macOS beside the Linux package:
 
 The manifest goes last so no app ever reads a manifest whose zips are missing. A release that is already marked latest but has no manifest yet reads as "no update".
 
-Releases are built on the maintainer's Mac, not in CI. CI would need both signing secrets from section 4.
+Releases are built on the maintainer's own machine, not in CI. CI would need both signing secrets from section 4.
 
 ---
 
@@ -116,7 +116,7 @@ Releases are built on the maintainer's Mac, not in CI. CI would need both signin
 1. Fetch `https://github.com/blutarche/sensorium/releases/latest/download/sensorium-update.json` and its `.sig`. GitHub documents this address as a stable link to the latest release's file, and it does not count against the REST API's rate limit.
 2. Use an ephemeral `URLSession`: no cookies, no cache, a 30 second timeout, at most 64 KB per file, and a fixed `User-Agent` of `Sensorium-Update/1`.
 3. Verify the signature with `Curve25519.Signing.PublicKey.isValidSignature(_:for:)` against the public key compiled into the app. Stop on any failure.
-4. Parse the manifest. Stop unless `format` is 1 and this Mac meets `minimumMacOS`.
+4. Parse the manifest. Stop unless `format` is 1 and this machine meets `minimumMacOS`.
 5. Compare `version` with the running version and with the highest version this app has seen in a valid manifest, which it stores.
 
 The first row that matches decides:
@@ -161,7 +161,7 @@ At quit, the viewer does steps 1 to 5 and opens nothing. The next time the perso
 
 Between step 4 and step 8 the old process reads its bundle by path, and that path now holds the new app. It loads nothing from its bundle during those seconds.
 
-The ready file is the new version's own report. The old instance cannot test the new listener itself: the host admits no connection from this same Mac on its product transport, and a dial to its own tailnet address does not come back to it. So a release that listens wrongly but reports the right values passes. What catches it is the next release. The update check and install depend on no session code, so a host whose listener started but serves wrongly still checks and installs a fixed release. A host whose listener never started checks but does not install: it has no values for a new version to match, and a new version on the same Mac would most likely fail to listen too.
+The ready file is the new version's own report. The old instance cannot test the new listener itself: the host admits no connection from this same machine on its product transport, and a dial to its own tailnet address does not come back to it. So a release that listens wrongly but reports the right values passes. What catches it is the next release. The update check and install depend on no session code, so a host whose listener started but serves wrongly still checks and installs a fixed release. A host whose listener never started checks but does not install: it has no values for a new version to match, and a new version on the same machine would most likely fail to listen too.
 
 ### 3.5 Host idle rule
 
@@ -169,7 +169,7 @@ The host installs only while no session is live and no pairing is in progress. I
 
 A host whose session never ends never installs. The host window's *Waiting* line says so.
 
-A relaunch for an update is not a login. `HostAutoLoginLockAtStart` locks the screen of a Mac that logged in on its own at startup, and a host started with `--replacing` skips it, so an update leaves the screen locked or unlocked as it was.
+A relaunch for an update is not a login. `HostAutoLoginLockAtStart` locks the screen of a host that logged in on its own at startup, and a host started with `--replacing` skips it, so an update leaves the screen locked or unlocked as it was.
 
 ### 3.6 When an install fails
 
@@ -195,12 +195,12 @@ An update installs only when two independent checks pass:
 
 | Secret | Kept | If lost |
 | --- | --- | --- |
-| Ed25519 update key | A file outside the repository on the maintainer's Mac, readable only by the maintainer's account, with an offline backup | Installed apps accept no further update. Everyone installs once by hand a release that carries a new public key. |
+| Ed25519 update key | A file outside the repository on the maintainer's own machine, readable only by the maintainer's account, with an offline backup | Installed apps accept no further update. Everyone installs once by hand a release that carries a new public key. |
 | Release certificate | The maintainer's login keychain, with an offline backup of the certificate and key | Updates fail the requirement check. Everyone installs once by hand, and every host grants Screen Recording and Accessibility again. |
 
-Someone who obtains one secret cannot ship an update. They need both, and a way to put files on the release page. All three meet on the maintainer's Mac, so a compromise of that Mac could yield all three. Whoever controls that Mac can also change the source the maintainer builds, so no handling of the keys closes this. The update key has no passphrase, so a release can be signed without anyone typing one. A copy of the key file alone, from a backup for example, still cannot ship an update. A stolen paired device gains nothing here: updates never travel between the two apps.
+Someone who obtains one secret cannot ship an update. They need both, and a way to put files on the release page. All three meet on the maintainer's own machine, so a compromise of that machine could yield all three. Whoever controls that machine can also change the source the maintainer builds, so no handling of the keys closes this. The update key has no passphrase, so a release can be signed without anyone typing one. A copy of the key file alone, from a backup for example, still cannot ship an update. A stolen paired device gains nothing here: updates never travel between the two apps.
 
-A hardware key was not chosen. A key that cannot leave its chip cannot be backed up, and losing it costs every Mac a manual install.
+A hardware key was not chosen. A key that cannot leave its chip cannot be backed up, and losing it costs every machine a manual install.
 
 Key rotation is out of scope for this version.
 
@@ -243,7 +243,7 @@ A second check covered the permissions. A different program was built under the 
 Required before the host updates itself on its own:
 
 - The real host updating itself, keeping Screen Recording and Accessibility.
-- That host Mac restarting afterwards and the host coming back serving.
+- That host machine restarting afterwards and the host coming back serving.
 - A host updating after its screen was unlocked from a viewer does not lock the screen again on relaunch.
 - macOS 27.
 
@@ -252,7 +252,7 @@ Required before the host updates itself on its own:
 ## 8. Out of scope
 
 - The Linux viewer's own update. It updates through its package.
-- A Mac whose user cannot write to Applications. The app shows the *Not updatable* line.
+- A machine whose user cannot write to Applications. The app shows the *Not updatable* line.
 - An Intel Mac as the host. The host is built for Apple silicon only, as before.
 - Delta updates, beta channels, and key rotation.
 

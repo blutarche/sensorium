@@ -11,14 +11,14 @@ What you need, and how to pair the two apps.
 
 ## Download the two apps
 
-Each Mac downloads only its own app from the latest release on the project's GitHub releases page.
+Each machine downloads only its own app from the latest release on the project's GitHub releases page.
 
-| Mac | Download | App inside |
+| Machine | Download | App inside |
 | --- | --- | --- |
-| The laptop you work from | `Sensorium-<version>.zip` | `Sensorium.app` |
-| The Mac that hosts | `Sensorium-Host-<version>.zip` | `Sensorium Host.app` |
+| The viewer, the machine you sit at | `Sensorium-<version>.zip` | `Sensorium.app` |
+| The host, the machine you reach | `Sensorium-Host-<version>.zip` | `Sensorium Host.app` |
 
-1. Download the zip for that Mac.
+1. Download the zip for that machine.
 2. Open the zip. Drag the app into Applications.
 3. Open the app from Applications. macOS refuses it, because the app is not notarized. Click **Done**.
 4. Open System Settings, then Privacy & Security. Click **Open Anyway** next to the app. The button stays there for about an hour after the refusal.

@@ -49,7 +49,7 @@ public final class HostUpdateRelaunchReporter {
 
 /// After a failed swap back the installed app is the refused new version
 /// and this process's listener is stopped. Launching that app through the
-/// ordinary handoff still gets the Mac a serving host.
+/// ordinary handoff still gets this machine a serving host.
 @MainActor
 public enum HostUpdateSwapBackRecovery {
     public enum Outcome: Equatable, Sendable {

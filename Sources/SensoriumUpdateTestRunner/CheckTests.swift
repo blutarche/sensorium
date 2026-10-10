@@ -113,7 +113,7 @@ func testCheckStopsOnAnyFailureBeforeTrustingTheManifest() async {
     newerMacOS.publish(serialized(sampleManifestObject(version: "0.5.0").merging(["minimumMacOS": "15.0"]) { $1 }), signedWith: key)
     let newerMacOSResult = await makeChecker(page: newerMacOS, key: key, store: store).check()
     expect(newerMacOSResult == .upToDate, "a release for a newer macOS offers nothing")
-    expect(store.load().highestVersionSeen == nil, "a release this Mac cannot run is not remembered as seen")
+    expect(store.load().highestVersionSeen == nil, "a release this machine cannot run is not remembered as seen")
 }
 
 func testCheckReportsTheReleasePageGoingBackwards() async {

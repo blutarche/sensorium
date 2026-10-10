@@ -81,7 +81,7 @@ public struct UpdateState: Codable, Equatable, Sendable {
 }
 
 /// `<role>-update-state.json`, owner-only, written atomically. One file per
-/// app, since a Mac with both apps installed shares one Application Support
+/// app, since a machine with both apps installed shares one Application Support
 /// folder between them.
 public struct UpdateStateStore: Sendable {
     public static func fileName(for role: UpdateAppRole) -> String {

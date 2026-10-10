@@ -8,7 +8,7 @@ public enum UpdateDecision: Equatable, Sendable {
     case wentBackwards(highestSeen: UpdateVersion)
     case upToDate
     case update
-    /// The release needs a newer macOS than this Mac runs. Nothing to do.
+    /// The release needs a newer macOS than this machine runs. Nothing to do.
     case requiresNewerMacOS
 
     /// The first matching row of the table in section 3.1 of
