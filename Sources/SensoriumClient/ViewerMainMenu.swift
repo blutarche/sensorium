@@ -21,11 +21,10 @@ public protocol ViewerMenuCommandTarget: AnyObject {
     /// so every window in a session answers the same rows; see
     /// `ClientCanvasWindowController.updateDisplayCount(_:)`.
     var displayCountMenuState: DisplayCountMenuState { get }
-    /// docs/ux-spec.md's "Screen: Virtual display (default) or Host screen"
-    /// -- session-wide, like `displayCountMenuState`. Defaulted below to
-    /// "Virtual display only, nothing else offered" so a target that
-    /// predates this control keeps compiling and shows the one row every
-    /// session already has.
+    /// docs/ux-spec.md's Screen menu -- session-wide, like
+    /// `displayCountMenuState`. Defaulted below to "Virtual display only,
+    /// nothing else offered" so a target that predates this control keeps
+    /// compiling and shows the one row every session already has.
     var screenMenuState: ScreenMenuState { get }
     func toggleTelemetryOverlay()
     func togglePointerCapture()

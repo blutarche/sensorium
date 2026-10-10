@@ -2,8 +2,7 @@ import Foundation
 import SensoriumCore
 
 /// One row of the Screen menu: the display it selects (`nil` for Virtual
-/// display, the default), its title, and whether it is the session's
-/// current choice.
+/// display), its title, and whether it is the session's current choice.
 public struct ScreenMenuItem: Equatable, Sendable {
     public let token: Data?
     public let title: String
@@ -94,9 +93,10 @@ public struct ScreenMenuState: Equatable, Sendable {
     /// states nothing about modes.
     public let modes: HostScreenModeMenuState
     /// The "Start with" submenu that hangs off this menu -- which target
-    /// this machine starts on next time. Defaulted to "Last used", nothing
-    /// else offered, so a caller with no saved preference or host-screen
-    /// offer in sight states nothing beyond the current default.
+    /// this machine starts on next time. Defaulted to Host Screen When
+    /// Offered, nothing else offered, so a caller with no saved preference
+    /// or host-screen offer in sight states nothing beyond the current
+    /// default.
     public let startWith: StartWithMenuState
 
     public init(
@@ -115,13 +115,13 @@ public struct ScreenMenuState: Equatable, Sendable {
 }
 
 public enum ScreenMenuPlan {
-    /// docs/ux-spec.md: "Virtual display (default) or Host screen, one of
-    /// the host's screens, offered only when the host has allowed this machine
-    /// to see a host screen." `displays` is empty for every machine that has
-    /// never received a `hostScreenList` offer, in which case Virtual
-    /// display is the only row -- there is nothing else to offer, not a
-    /// permission this menu can guess at. `canvasAvailable` false, when the
-    /// host said it opens no session canvas, drops the Virtual display row.
+    /// docs/ux-spec.md's Screen menu: each host screen the host has allowed
+    /// this machine to see, and Virtual display. `displays` is empty for
+    /// every machine that has never received a `hostScreenList` offer, in
+    /// which case Virtual display is the only row -- there is nothing else
+    /// to offer, not a permission this menu can guess at. `canvasAvailable`
+    /// false, when the host said it opens no session canvas, drops the
+    /// Virtual display row.
     public static func items(
         displays: [HostScreenListEntry],
         selectedToken: Data?,

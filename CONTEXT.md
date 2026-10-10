@@ -11,7 +11,8 @@ on a session canvas the host creates instead.
 
 **Host**:
 The Sensorium Host app, and the unattended machine it runs on, that streams its
-screens and, when its person offers a private desktop, creates canvases.
+screens and, when the person at the host offers a private desktop, creates
+canvases.
 _Avoid_: server, mini, daemon
 
 **Viewer**:

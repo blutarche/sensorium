@@ -6,7 +6,7 @@ This document says what each of the two apps shows and who decides what.
 
 The person is at the viewer. The host is an unattended machine.
 
-The host decides permission only: which machines may connect, and whether a connected machine may see one of its host screens.
+The host decides permission only: which machines may connect, whether a connected machine may see one of its host screens, and whether a viewer may open a private desktop.
 
 The viewer decides everything else about a session: how many displays, their resolution, a host screen or a virtual display, and clipboard sharing. These apply while the session runs, not at the next launch.
 
@@ -30,7 +30,7 @@ Top to bottom:
 3. **Paired machines.** One row per machine, named by the name it gave when it paired or the name chosen for it with **Rename**, never a key fingerprint. Each row has:
    - The name, with **Rename** and **Remove** right-aligned. Removing a machine ends every connection it has at once and refuses it from then on until it pairs again.
    - **Rename** opens a small sheet: a field holding the current name, **Cancel** and **Rename**. Return renames and Escape cancels. The name is trimmed, loses any invisible or text-reversing characters, becomes one line, and is kept to 64 characters. An empty name puts back the name the machine reports. The name is kept on this machine only. It is what the host shows everywhere it names that machine: this list, the status line, the menu bar, the ask-first prompt, the badge and the session record. The name a machine reports when it connects or pairs again never replaces it. Renaming changes nothing about what the machine may do.
-   - **Share host screen**, the only session-shaping control on the host. It arms the machine, not one screen, and a line beneath it names the screens this machine can share right now.
+   - **Share host screen**. It arms the machine, not one screen, and a line beneath it names the screens this machine can share right now.
    - **Ask me first if this machine is in use**, shown while sharing is on, off by default.
    - A line naming its key fingerprint and why sharing is or is not available now.
 4. **Last screen session.** Machine, display, and when, if there has been one.
@@ -40,6 +40,8 @@ Top to bottom:
    - *Sensorium Host `<new version>` will install when no machine is connected*.
    - *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.*
    - *Move Sensorium Host to Applications and open it again to receive updates.*
+7. **Offer a private desktop.** A checkbox, off by default. While it is off, the host creates no virtual display, and a viewer can only work on a host screen.
+8. **Allow connections from this network.** A checkbox, off by default. It lets a viewer on the same Wi-Fi or wired network connect by name, such as `mini.local`, without Tailscale. Anyone on that network can then ask to pair.
 
 ### Menu bar
 
