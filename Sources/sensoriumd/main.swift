@@ -2,6 +2,7 @@ import AppKit
 import CoreMedia
 import SensoriumCore
 import SensoriumHost
+import SensoriumUpdate
 import Foundation
 import Network
 
@@ -272,6 +273,18 @@ private final class HostListenerBox: @unchecked Sendable {
     var listener: HostNetworkListener?
 }
 
+/// The updater and what its install reads, filled in at launch and as the
+/// listener comes up. Every access is on the main actor.
+@MainActor
+private final class HostUpdateBox {
+    var updater: HostUpdater?
+    /// Set for a launch that replaces an earlier host for an update.
+    var relaunchReporter: HostUpdateRelaunchReporter?
+    /// The last listener ready, which an install's baseline report is built
+    /// from.
+    var lastListenerReady: HostListenerReady?
+}
+
 /// Un-pairs through the running pairing service, which also writes the
 /// store, so the running host stops admitting the key at once. Before
 /// hosting has started there is no running service, and the store alone is
@@ -354,6 +367,22 @@ struct sensoriumd {
             .appendingPathComponent("local-network.json")
     }
 
+    private static func hostUpdatePreferencesFileURL() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return base
+            .appendingPathComponent("Sensorium", isDirectory: true)
+            .appendingPathComponent(FileHostUpdatePreferenceStore.fileName)
+    }
+
+    /// What `--update-self-test` reads: the files the host serves with.
+    private static func updateSelfTestFiles() -> HostUpdateSelfTest.Files {
+        HostUpdateSelfTest.Files(
+            deviceIdentity: identityFileURL(),
+            tlsIdentity: tlsIdentityFileURL(),
+            approvedDevices: approvedDevicesURL()
+        )
+    }
+
     private static func autoLoginDefaultAppliedFileURL() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base
@@ -431,7 +460,10 @@ struct sensoriumd {
         localNetworkConnections: HostLocalNetworkConnectionRegistry? = nil,
         // Filled in with the QUIC listener once it exists, so the GUI can
         // change its mode later.
-        listenerBox: HostListenerBox? = nil
+        listenerBox: HostListenerBox? = nil,
+        // Every QUIC listener ready, before the status reports hosting: the
+        // GUI's updater builds its ready reports from these values.
+        onListenerReady: (@MainActor @Sendable (HostListenerReady) -> Void)? = nil
     ) throws -> HostPairingService {
         // Never asks macOS to present its approval UI. Approval is the
         // user's to give in System Settings; a host without it still serves
@@ -926,6 +958,11 @@ struct sensoriumd {
                         } else {
                             print("Sensorium host bound \(tailnetAddress):\(boundPort); tailnet sources only")
                         }
+                        onListenerReady?(HostListenerReady(
+                            address: tailnetAddress,
+                            port: boundPort,
+                            certificateHash: tlsIdentity.certificateHash
+                        ))
                         operatorBox.status.recordHostedAddress(tailnetAddress)
                         operatorBox.status.setConnection(.hosting(address: tailnetAddress))
                     }
@@ -1010,20 +1047,24 @@ struct sensoriumd {
     /// connection and reveals a pairing code only when asked. See
     /// `TailnetAddressEnumerator.autoSelect` for what "silently" refuses to
     /// guess, and `HostSetupWindowController` for the one window this is.
+    ///
+    /// `updateRelaunch` is set when an earlier host started this one to
+    /// replace it for an update.
     @MainActor
-    private static func runGUI() {
+    private static func runGUI(updateRelaunch: HostUpdateRelaunch? = nil) {
         // Auto-login can bring this machine up unlocked with nobody there.
         // Checked once, here, before anything else this launch does: if the
         // screen is unlocked with no local input reaching back to boot, or
         // none at all for the last minute, this locks it again the way a
         // person at the keyboard would. Never on the CLI verb path below --
         // starting `pair` or `serve` by hand is itself a person at this
-        // machine.
+        // machine -- and never for an update relaunch, which is not a login.
         switch HostAutoLoginLockAtStart.applyIfNeeded(
             lockStateReader: CGSessionScreenLockState(),
             activitySignal: SelfPostDiscountingLocalActivitySignal(raw: CoreGraphicsLocalActivitySignal()),
             systemUptime: ProcessInfo.processInfo.systemUptime,
-            relockPoster: CoreGraphicsHostScreenRelockPoster()
+            relockPoster: CoreGraphicsHostScreenRelockPoster(),
+            isUpdateRelaunch: updateRelaunch != nil
         ) {
         case .notNeeded:
             break
@@ -1031,6 +1072,8 @@ struct sensoriumd {
             print("Sensorium host: locked the screen at launch -- no local input since before this process started")
         case .lockFailed:
             print("Sensorium host: no local input since before this process started, but the relock post failed")
+        case .skippedForUpdateRelaunch:
+            HostUpdateLog.record("this launch replaces an earlier host for an update, so the screen is left as it was")
         }
 
         // Open at login, on by default: applied exactly once, the first
@@ -1112,6 +1155,188 @@ struct sensoriumd {
         )
         let listenerBox = HostListenerBox()
 
+        // Self-update. Everything an install needs from this app's own
+        // bundle is read here, at launch: from the swap until this process
+        // quits, the bundle's path holds another version, and nothing may be
+        // loaded from it. A build without a bundle version, as `swift run`
+        // makes, has no updater at all.
+        let updateBox = HostUpdateBox()
+        let installedAppURL = Bundle.main.bundleURL
+        let installedAppName = installedAppURL.lastPathComponent
+        let updateBundle = HostUpdateBundle.read(infoDictionary: Bundle.main.infoDictionary)
+
+        // One function for the old version's baseline and the new version's
+        // report, so an unchanged host reports identical values.
+        func updateReadyReport(version: UpdateVersion, ready: HostListenerReady) -> UpdateReadyReport {
+            HostUpdateReadyReport.make(
+                version: version,
+                permissions: HostPermissionRequestResult(
+                    screenCapture: ScreenCapturePermissionGate().currentStatus,
+                    accessibility: AccessibilityPermissionGate().currentStatus
+                ),
+                loginItemStatus: UpdateReadyReport.LoginItemStatus.current(),
+                certificateHash: ready.certificateHash,
+                approvedDeviceKeys: FileApprovedDeviceStore(url: approvedDevicesURL()).load(),
+                listening: HostListeningValues.current(
+                    tailnetAddress: ready.address,
+                    port: ready.port,
+                    allowsLocalNetwork: localNetworkConnections.allowsLocalNetwork
+                )
+            )
+        }
+
+        func reportUpdateProblem() {
+            operatorBox.status.reportProblem(HostUpdateProblemCopy.stoppedListening)
+        }
+
+        // The installed app is the version just refused, and this process
+        // no longer listens: launch that app anyway, so this Mac still has a
+        // serving host, and quit once it reports ready.
+        func recoverFromFailedSwapBack(_ staged: StagedUpdate, requirement: CodeRequirementCheck) async {
+            HostUpdateLog.record("launching the installed app anyway, so this Mac keeps a serving host")
+            switch await HostUpdateSwapBackRecovery.relaunchInstalled(
+                installedAppURL: installedAppURL,
+                readyFile: staged.readyFileURL,
+                requirement: requirement,
+                launcher: WorkspaceUpdateAppLauncher()
+            ) {
+            case .ready:
+                HostUpdateLog.record("the installed app reported ready; quitting")
+                application.terminate(nil)
+            case .requirementFailed:
+                HostUpdateLog.record("UPDATE FAILED: the installed app is not signed like this one, so it was not launched")
+                reportUpdateProblem()
+            case .launchFailed:
+                HostUpdateLog.record("UPDATE FAILED: the installed app could not be launched")
+                reportUpdateProblem()
+            case .readyLate:
+                // This process can no longer listen, and the launched copy
+                // waits for it to exit before it updates again.
+                HostUpdateLog.record("UPDATE FAILED: the installed app did not report ready in time; quitting so it can take over")
+                application.terminate(nil)
+            }
+        }
+
+        func installUpdate(
+            _ staged: StagedUpdate,
+            version: UpdateVersion,
+            requirement: CodeRequirementCheck
+        ) async -> UpdateHandoffOutcome {
+            // The scheduler checked the idle rule just before calling this,
+            // on this same actor, and a listener ready always comes before
+            // the status reads as hosting, so neither guard fails in practice.
+            guard HostUpdateIdleRule.isIdle(operatorBox.status.status, now: Date()),
+                  let ready = updateBox.lastListenerReady else {
+                try? FileManager.default.removeItem(at: staged.directory)
+                return .failed(.launchFailed)
+            }
+            // Checked before stopping the listener, which never starts again
+            // in this process.
+            if case let .notUpdatable(reason) = UpdateInstaller.installability(of: installedAppURL) {
+                try? FileManager.default.removeItem(at: staged.directory)
+                HostUpdateLog.record(HostUpdateLog.describe(UpdateHandoffOutcome.notUpdatable(reason)))
+                return .notUpdatable(reason)
+            }
+            HostUpdateLog.record("installing Sensorium Host \(staged.version): stopping the listener")
+            listenerBox.listener?.stop()
+            let baseline = updateReadyReport(version: version, ready: ready)
+            HostUpdateLog.record("swapping in Sensorium Host \(staged.version) and waiting for it to report ready")
+            let installer = UpdateInstaller(
+                installedAppURL: installedAppURL,
+                requirement: requirement,
+                launcher: WorkspaceUpdateAppLauncher()
+            )
+            let outcome = await installer.installAndHandOff(staged, baseline: baseline, rollback: .relaunchPrevious)
+            HostUpdateLog.record(HostUpdateLog.describe(outcome))
+            switch outcome {
+            case .handedOff, .rolledBack:
+                // Next turn of the main queue, once the scheduler has
+                // recorded a rollback's failure for the copy taking over.
+                DispatchQueue.main.async { application.terminate(nil) }
+            case let .swapBackFailed(failure):
+                updateBox.updater?.showInstallFailure(reason: failure.reason)
+                Task { @MainActor in
+                    await recoverFromFailedSwapBack(staged, requirement: requirement)
+                }
+            case .notUpdatable, .failed, .rollbackRelaunchFailed:
+                reportUpdateProblem()
+            }
+            return outcome
+        }
+
+        updateBox.updater = HostUpdateBundle.makeUpdater(infoDictionary: Bundle.main.infoDictionary) { bundle -> HostUpdater? in
+            // Read once, now: it is read through the app's path, which a
+            // swap gives to another version.
+            guard let requirement = CodeRequirementCheck.runningApp() else {
+                HostUpdateLog.record("this copy of the app has no code signature to check updates against; not updating")
+                return nil
+            }
+            let stateStore = UpdateStateStore(role: .host)
+            let checker = UpdateChecker(role: .host, runningVersion: bundle.version, stateStore: stateStore)
+            let stager = UpdateStager(
+                installedAppURL: installedAppURL,
+                bundleIdentifier: bundle.bundleIdentifier,
+                requirement: requirement
+            )
+            return HostUpdater(
+                version: bundle.version,
+                preferences: FileHostUpdatePreferenceStore(url: hostUpdatePreferencesFileURL())
+            ) { automaticUpdates, log in
+                HostUpdater.makeScheduler(
+                    automaticUpdates: automaticUpdates,
+                    installability: UpdateInstaller.installability(of: installedAppURL),
+                    stateStore: stateStore,
+                    check: { await checker.check() },
+                    stage: { await stager.stage($0) },
+                    isIdle: { HostUpdateIdleRule.isIdle(operatorBox.status.status, now: Date()) },
+                    install: { staged in
+                        await installUpdate(staged, version: bundle.version, requirement: requirement)
+                    },
+                    log: log
+                )
+            }
+        } ?? nil
+
+        if let updateRelaunch {
+            if let version = updateBundle?.version {
+                updateBox.relaunchReporter = HostUpdateRelaunchReporter(
+                    relaunch: updateRelaunch,
+                    makeReport: { ready in updateReadyReport(version: version, ready: ready) }
+                )
+            } else {
+                HostUpdateLog.record("started to replace an earlier host, but this build has no version to report")
+            }
+        }
+
+        // The first listener ready of an update relaunch writes the ready
+        // report. The updater starts only once the replaced process has
+        // exited, so the two never write the update state at once.
+        let bundleIdentifier = updateBundle?.bundleIdentifier
+        let onListenerReady: @MainActor @Sendable (HostListenerReady) -> Void = { ready in
+            updateBox.lastListenerReady = ready
+            guard let updateRelaunch, let reporter = updateBox.relaunchReporter, reporter.listenerReady(ready) else {
+                return
+            }
+            Task.detached {
+                let removed = await UpdateHandoff.finishReplacing(
+                    oldProcess: updateRelaunch.replacedProcess,
+                    readyFile: updateRelaunch.readyFile,
+                    appName: installedAppName,
+                    bundleIdentifier: bundleIdentifier,
+                    runningAppURL: installedAppURL,
+                    log: { HostUpdateLog.record($0) }
+                )
+                await MainActor.run {
+                    HostUpdateLog.record(
+                        removed
+                            ? "the replaced host has exited and its copy of the app is removed"
+                            : "the replaced host has exited"
+                    )
+                    updateBox.updater?.start()
+                }
+            }
+        }
+
         // A machine that cannot create a canvas, find its tailnet address,
         // or read its identity must say so on screen instead of listening.
         // Called at launch and after an identity replacement, so both paths
@@ -1155,7 +1380,8 @@ struct sensoriumd {
                             deviceConnectionRegistry: deviceConnectionRegistry,
                             privateDesktopOffered: { privateDesktopSettingStore.load().offersPrivateDesktop },
                             localNetworkConnections: localNetworkConnections,
-                            listenerBox: listenerBox
+                            listenerBox: listenerBox,
+                            onListenerReady: onListenerReady
                         )
                     } catch is HostStartupError {
                         print("Sensorium host failed to start: the file holding this machine\u{2019}s own key could not be read.")
@@ -1173,6 +1399,14 @@ struct sensoriumd {
             }
         }
 
+        // Both nil for a build with no updater, which then shows no update
+        // checkbox, line or menu item.
+        var installsUpdatesAutomatically: (@MainActor () -> Bool)?
+        var checkForUpdates: (@MainActor () -> Void)?
+        if let updater = updateBox.updater {
+            installsUpdatesAutomatically = { updater.installsAutomatically }
+            checkForUpdates = { updater.checkForUpdates() }
+        }
         let hostWindow = HostSetupWindowController(
             status: operatorBox.status.status,
             onRevealPairingCode: {
@@ -1290,6 +1524,21 @@ struct sensoriumd {
                     localNetworkConnections.setAllowsLocalNetwork(false)
                 }
                 print("Sensorium host: connections from this network are now \(isOn ? "allowed" : "refused")")
+            },
+            installsUpdatesAutomatically: installsUpdatesAutomatically,
+            onToggleAutomaticUpdates: { isOn in
+                do {
+                    try updateBox.updater?.setInstallsAutomatically(isOn)
+                } catch {
+                    let alert = NSAlert()
+                    alert.alertStyle = .warning
+                    alert.messageText = isOn
+                        ? "Could not turn on automatic updates"
+                        : "Could not turn off automatic updates"
+                    alert.informativeText = HostOperatorLog.describe(error)
+                    alert.addButton(withTitle: "OK")
+                    alert.runModal()
+                }
             }
         )
         // Every way of quitting goes through the one delegate below, so none
@@ -1299,6 +1548,7 @@ struct sensoriumd {
             openSetup: { hostWindow.show() },
             onStop: { currentSession.session?.stop() },
             onTurnOffSharing: { key in armingCoordinator.turnOff(devicePublicKey: key) },
+            onCheckForUpdates: checkForUpdates,
             quit: { application.terminate(nil) }
         )
         applicationDelegate = HostApplicationDelegate(
@@ -1316,7 +1566,7 @@ struct sensoriumd {
         // visible bar for it -- see `HostMainMenuController`'s own doc
         // comment. Its Quit item goes through the same clean-quit path the
         // status item's own Quit does.
-        mainMenu = HostMainMenuController(quit: { application.terminate(nil) })
+        mainMenu = HostMainMenuController(quit: { application.terminate(nil) }, checkForUpdates: checkForUpdates)
         mainMenu?.install(into: application)
         installTerminationSignalHandlers {
             print("Sensorium host: stopping, and releasing every virtual display this host created")
@@ -1329,6 +1579,16 @@ struct sensoriumd {
         }
         operatorBox.status.addObserver { [weak hostWindow] status in
             hostWindow?.update(status)
+        }
+        // A session or pairing ending is when a waiting update installs.
+        operatorBox.status.addObserver { status in
+            updateBox.updater?.hostStatusChanged(status)
+        }
+        if let updater = updateBox.updater {
+            hostWindow.setUpdateLine(updater.line)
+            updater.onLineChange = { [weak hostWindow] line in
+                hostWindow?.setUpdateLine(line)
+            }
         }
         presence.install()
         armingCoordinator.attach(hostWindow: hostWindow, presence: presence)
@@ -1343,12 +1603,26 @@ struct sensoriumd {
         hostWindow.show()
 
         startHosting()
+        if updateRelaunch == nil {
+            updateBox.updater?.start()
+        }
 
         application.run()
     }
 
     static func main() {
         setvbuf(stdout, nil, _IOLBF, 0)
+        // Before any other argument: the parsing below ends a launch it does
+        // not recognise with a usage message.
+        switch HostLaunchRoute.route(Array(CommandLine.arguments.dropFirst())) {
+        case .selfTest:
+            UpdateLaunchCommand.runSelfTest { HostUpdateSelfTest.run(updateSelfTestFiles()) }
+        case let .updateRelaunch(relaunch):
+            runGUI(updateRelaunch: relaunch)
+            return
+        case .normal:
+            break
+        }
         var arguments = Array(CommandLine.arguments.dropFirst())
         if arguments == ["request-permissions"] {
             let result = HostPermissionRequester.request()

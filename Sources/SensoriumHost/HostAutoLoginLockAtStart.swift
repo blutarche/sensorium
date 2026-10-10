@@ -42,6 +42,10 @@ public enum HostAutoLoginLockAtStart {
         /// `shouldLock` said to lock, but `relockPoster.relock()` reported
         /// it could not post the shortcut.
         case lockFailed
+        /// This launch replaces an earlier host for an update, which is not
+        /// a login: nothing was read and nothing posted, so the screen stays
+        /// locked or unlocked as the earlier host left it.
+        case skippedForUpdateRelaunch
     }
 
     /// Reads the current lock state and activity, decides through
@@ -54,8 +58,12 @@ public enum HostAutoLoginLockAtStart {
         lockStateReader: any ScreenLockStateReading,
         activitySignal: any HostLocalActivitySignal,
         systemUptime: TimeInterval,
-        relockPoster: any HostScreenRelocking
+        relockPoster: any HostScreenRelocking,
+        isUpdateRelaunch: Bool = false
     ) -> Outcome {
+        guard !isUpdateRelaunch else {
+            return .skippedForUpdateRelaunch
+        }
         guard shouldLock(
             isScreenLocked: lockStateReader.isScreenLocked(),
             reading: activitySignal.currentReading(),

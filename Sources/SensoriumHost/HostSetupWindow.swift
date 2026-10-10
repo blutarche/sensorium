@@ -21,6 +21,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let onTogglePrivateDesktop: @MainActor (Bool) -> Void
     private let allowsLocalNetwork: @MainActor () -> Bool
     private let onToggleLocalNetwork: @MainActor (Bool) -> Void
+    /// `nil` for a build with no updater, which shows neither the checkbox
+    /// nor the update line.
+    private let installsUpdatesAutomatically: (@MainActor () -> Bool)?
+    private let onToggleAutomaticUpdates: @MainActor (Bool) -> Void
     /// The clock this window reads, so a test can hold time still.
     private let now: @MainActor () -> Date
     /// Looked up fresh on every `refresh()`, never cached across it: whether
@@ -56,6 +60,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// it takes effect, and `.notFound` means the platform will not do this
     /// at all -- neither reads as the checkbox simply being off.
     private let autoLoginStatusLabel = NSTextField(labelWithString: "")
+    private let automaticUpdatesCheckbox = NSButton(
+        checkboxWithTitle: "Install updates automatically", target: nil, action: nil
+    )
+    private let updateLineLabel = NSTextField(labelWithString: "")
     /// Whether a viewer may open a session canvas on this host instead of one
     /// of its own screens. Reflects the stored setting, which is off unless
     /// the person here turned it on.
@@ -123,6 +131,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         onTogglePrivateDesktop: @escaping @MainActor (Bool) -> Void = { _ in },
         allowsLocalNetwork: @escaping @MainActor () -> Bool = { false },
         onToggleLocalNetwork: @escaping @MainActor (Bool) -> Void = { _ in },
+        // Read fresh on every `refresh()`, as `autoLoginStatus` is.
+        installsUpdatesAutomatically: (@MainActor () -> Bool)? = nil,
+        onToggleAutomaticUpdates: @escaping @MainActor (Bool) -> Void = { _ in },
         now: @escaping @MainActor () -> Date = { Date() }
     ) {
         self.onRevealPairingCode = onRevealPairingCode
@@ -139,6 +150,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         self.onTogglePrivateDesktop = onTogglePrivateDesktop
         self.allowsLocalNetwork = allowsLocalNetwork
         self.onToggleLocalNetwork = onToggleLocalNetwork
+        self.installsUpdatesAutomatically = installsUpdatesAutomatically
+        self.onToggleAutomaticUpdates = onToggleAutomaticUpdates
         self.now = now
         self.status = status
         pairedMachines.onToggleSharing = onToggleSharing
@@ -187,6 +200,14 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
     public func updateLastHostScreenSession(_ line: String?) {
         pairedMachines.updateLastSession(line)
+        resizeToFit()
+    }
+
+    /// The update line under **Install updates automatically**; nil hides
+    /// it. Never shown by a build with no updater.
+    public func setUpdateLine(_ line: String?) {
+        updateLineLabel.stringValue = line ?? ""
+        updateLineLabel.isHidden = line == nil || installsUpdatesAutomatically == nil
         resizeToFit()
     }
 
@@ -294,6 +315,26 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         autoLoginStatusLabel.maximumNumberOfLines = 0
         autoLoginStatusLabel.translatesAutoresizingMaskIntoConstraints = false
 
+        automaticUpdatesCheckbox.font = CanvasDesign.font(.primary, size: 13)
+        (automaticUpdatesCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
+            string: "Install updates automatically",
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 13),
+                .foregroundColor: CanvasDesign.ink.nsColor
+            ]
+        )
+        automaticUpdatesCheckbox.target = self
+        automaticUpdatesCheckbox.action = #selector(automaticUpdatesToggled)
+        automaticUpdatesCheckbox.translatesAutoresizingMaskIntoConstraints = false
+        automaticUpdatesCheckbox.isHidden = installsUpdatesAutomatically == nil
+
+        updateLineLabel.font = CanvasDesign.font(.primary, size: 12)
+        updateLineLabel.textColor = CanvasDesign.muted.nsColor
+        updateLineLabel.lineBreakMode = .byWordWrapping
+        updateLineLabel.maximumNumberOfLines = 0
+        updateLineLabel.translatesAutoresizingMaskIntoConstraints = false
+        updateLineLabel.isHidden = true
+
         privateDesktopCheckbox.font = CanvasDesign.font(.primary, size: 13)
         (privateDesktopCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
             string: "Offer a private desktop",
@@ -333,7 +374,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         let groups: [NSView] = [
             panel, stopButton, permissionButton, tailscaleButton,
             retryIdentityButton, replaceIdentityButton, revealButton, pairingCodeView, hideCodeButton,
-            autoLoginCheckbox, autoLoginStatusLabel, privateDesktopCheckbox, privateDesktopExplanationLabel,
+            autoLoginCheckbox, autoLoginStatusLabel, automaticUpdatesCheckbox, updateLineLabel,
+            privateDesktopCheckbox, privateDesktopExplanationLabel,
             localNetworkCheckbox, localNetworkExplanationLabel,
             pairedMachines
         ]
@@ -351,6 +393,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.setCustomSpacing(CanvasDesign.Space.lg, after: hideCodeButton)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: autoLoginCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: autoLoginStatusLabel)
+        root.setCustomSpacing(CanvasDesign.Space.xs, after: automaticUpdatesCheckbox)
+        root.setCustomSpacing(CanvasDesign.Space.lg, after: updateLineLabel)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: privateDesktopCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: privateDesktopExplanationLabel)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: localNetworkCheckbox)
@@ -467,6 +511,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             autoLoginStatusLabel.isHidden = false
         }
 
+        if let installsUpdatesAutomatically {
+            automaticUpdatesCheckbox.state = installsUpdatesAutomatically() ? .on : .off
+        }
         privateDesktopCheckbox.state = offersPrivateDesktop() ? .on : .off
         localNetworkCheckbox.state = allowsLocalNetwork() ? .on : .off
 
@@ -582,6 +629,11 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
     @objc private func autoLoginToggled() {
         onToggleAutoLogin(autoLoginCheckbox.state == .on)
+        refresh()
+    }
+
+    @objc private func automaticUpdatesToggled() {
+        onToggleAutomaticUpdates(automaticUpdatesCheckbox.state == .on)
         refresh()
     }
 

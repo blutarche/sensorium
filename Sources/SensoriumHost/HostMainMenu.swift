@@ -13,9 +13,12 @@ import SensoriumCore
 @MainActor
 public final class HostMainMenuController: NSObject {
     private let quit: () -> Void
+    /// `nil` for a build with no updater.
+    private let checkForUpdates: (() -> Void)?
 
-    public init(quit: @escaping () -> Void) {
+    public init(quit: @escaping () -> Void, checkForUpdates: (() -> Void)? = nil) {
         self.quit = quit
+        self.checkForUpdates = checkForUpdates
         super.init()
     }
 
@@ -42,6 +45,11 @@ public final class HostMainMenuController: NSObject {
         let aboutItem = NSMenuItem(title: "About Sensorium Host", action: #selector(performAbout), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
+        if checkForUpdates != nil {
+            let checkItem = NSMenuItem(title: "Check for Updates\u{2026}", action: #selector(performCheckForUpdates), keyEquivalent: "")
+            checkItem.target = self
+            menu.addItem(checkItem)
+        }
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Hide Sensorium Host", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         let hideOthers = NSMenuItem(
@@ -95,6 +103,11 @@ public final class HostMainMenuController: NSObject {
     @objc
     private func performAbout() {
         NSApplication.shared.orderFrontStandardAboutPanel(options: SensoriumCredit.standardAboutPanelOptions)
+    }
+
+    @objc
+    private func performCheckForUpdates() {
+        checkForUpdates?()
     }
 
     @objc

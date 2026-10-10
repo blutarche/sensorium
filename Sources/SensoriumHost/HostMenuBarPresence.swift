@@ -26,6 +26,8 @@ public final class HostMenuBarPresence: NSObject {
     /// here is a one-click path -- someone who armed this months ago must
     /// be able to end it without opening a window first.
     private let onTurnOffSharing: (@MainActor (Data) -> Void)?
+    /// `nil` for a build with no updater and on the CLI paths.
+    private let onCheckForUpdates: (@MainActor () -> Void)?
     private let quit: () -> Void
     private let activate: () -> Void
     private let panel = HostOperatorPanelView()
@@ -52,6 +54,7 @@ public final class HostMenuBarPresence: NSObject {
         openSetup: (@MainActor () -> Void)? = nil,
         onStop: (@MainActor () -> Void)? = nil,
         onTurnOffSharing: (@MainActor (Data) -> Void)? = nil,
+        onCheckForUpdates: (@MainActor () -> Void)? = nil,
         quit: @escaping () -> Void,
         activate: @escaping () -> Void = { NSApplication.shared.activate(ignoringOtherApps: true) }
     ) {
@@ -60,6 +63,7 @@ public final class HostMenuBarPresence: NSObject {
         self.openSetup = openSetup
         self.onStop = onStop
         self.onTurnOffSharing = onTurnOffSharing
+        self.onCheckForUpdates = onCheckForUpdates
         self.quit = quit
         self.activate = activate
     }
@@ -195,6 +199,11 @@ public final class HostMenuBarPresence: NSObject {
         let aboutItem = NSMenuItem(title: "About Sensorium Host", action: #selector(openAboutPanel), keyEquivalent: "")
         aboutItem.target = self
         menu.addItem(aboutItem)
+        if onCheckForUpdates != nil {
+            let checkItem = NSMenuItem(title: "Check for Updates\u{2026}", action: #selector(checkForUpdates), keyEquivalent: "")
+            checkItem.target = self
+            menu.addItem(checkItem)
+        }
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit Sensorium Host", action: #selector(quitHost), keyEquivalent: "q")
         quitItem.target = self
@@ -229,6 +238,11 @@ public final class HostMenuBarPresence: NSObject {
     private func openAboutPanel() {
         activate()
         NSApplication.shared.orderFrontStandardAboutPanel(options: SensoriumCredit.standardAboutPanelOptions)
+    }
+
+    @objc
+    private func checkForUpdates() {
+        onCheckForUpdates?()
     }
 
     @objc
