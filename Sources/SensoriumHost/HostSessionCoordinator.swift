@@ -486,6 +486,11 @@ public final class HostSessionCoordinator {
     /// retry, and the bound must count that time rather than treat every
     /// retry as instant.
     private let hostScreenNowSecondsProvider: () -> Double
+    /// This host process's one owner of the sharp screen, shared with every
+    /// other connection. `nil` where no session may ever stream one.
+    private let sharpScreens: SharpScreenManager?
+    /// This session's hold on the sharp screen while it streams it.
+    private var sharpScreenLease: SharpScreenLease?
 
     public init(
         controller: HostSessionController,
@@ -513,13 +518,15 @@ public final class HostSessionCoordinator {
         hostScreenKeepAwakeRedeclareIntervalSeconds: Double = 5,
         hostScreenNowSecondsProvider: @escaping () -> Double = {
             Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
-        }
+        },
+        sharpScreens: SharpScreenManager? = nil
     ) {
         self.hostScreenCaptureRecoveryBoundSeconds = hostScreenCaptureRecoveryBoundSeconds
         self.hostScreenCaptureRecoveryPollSeconds = hostScreenCaptureRecoveryPollSeconds
         self.hostScreenCaptureRecoveryWait = hostScreenCaptureRecoveryWait
         self.hostScreenKeepAwakeRedeclareIntervalSeconds = hostScreenKeepAwakeRedeclareIntervalSeconds
         self.hostScreenNowSecondsProvider = hostScreenNowSecondsProvider
+        self.sharpScreens = sharpScreens
         self.lockStateReader = lockStateReader
         self.lockScreenUnlocker = lockScreenUnlocker
         self.hostScreenRelockPoster = hostScreenRelockPoster
@@ -807,7 +814,22 @@ public final class HostSessionCoordinator {
             }
         }
 
-        if let response, case let .hostScreenReady(geometry, _) = response {
+        if let admittedResponse = response,
+           case let .hostScreenReady(admittedGeometry, resumeTicket) = admittedResponse {
+            // Decided before the viewer is told anything, so the geometry
+            // it is told is the one it gets.
+            var geometry = admittedGeometry
+            var readyResponse = admittedResponse
+            let hadEnded = hasEnded
+            if let moved = await moveOntoSharpScreenIfPlaceholder() {
+                geometry = moved
+                readyResponse = .hostScreenReady(geometry: moved, resumeTicket: resumeTicket)
+            }
+            if hasEnded, !hadEnded {
+                // The transport died while the sharp screen was being set
+                // up, and its teardown has already run.
+                return nil
+            }
             // No workspace step at all -- the only two steps are telling
             // the viewer and starting capture, in that order for the same
             // reason canvas bring-up orders its own two: a viewer told
@@ -818,7 +840,7 @@ public final class HostSessionCoordinator {
             var stage = HostScreenBringUpStage.readyWrite
             do {
                 holdDisplaysAwakeForSession()
-                try await writeResponse(response)
+                try await writeResponse(readyResponse)
                 didWriteResponse = true
                 stage = .captureStart
                 try await startHostScreenStreaming(geometry: geometry)
@@ -1175,6 +1197,68 @@ public final class HostSessionCoordinator {
         displayWake.releaseDisplaysAwake()
     }
 
+    /// A session admitted on macOS's placeholder screen streams the sharp
+    /// screen instead (`SharpScreenManager`). Returns the geometry the
+    /// session is on after moving, or `nil` when it streams the display it
+    /// was admitted on. A sharp screen that could not be made ready leaves
+    /// the session on the placeholder, following it when releasing the
+    /// sharp screen brought it back under a new ID.
+    private func moveOntoSharpScreenIfPlaceholder() async -> SessionSurfaceGeometry? {
+        guard let sharpScreens, let admitted = controller.hostScreenDisplayID else {
+            return nil
+        }
+        let hadEnded = hasEnded
+        let outcome = await sharpScreens.lease(forAdmittedDisplayID: admitted) { [weak self] reason in
+            self?.sharpScreenWentAway(reason: reason)
+        }
+        switch outcome {
+        case .notNeeded:
+            return nil
+        case let .leased(lease):
+            guard hasEnded == hadEnded,
+                  let geometry = controller.rebindHostScreen(toDisplayID: lease.displayID, isSharpScreen: true) else {
+                lease.release()
+                return nil
+            }
+            sharpScreenLease = lease
+            return geometry
+        case .failed:
+            guard case .rebound = controller.rebindHostScreenToReplacedPlaceholder() else {
+                return nil
+            }
+            return controller.hostScreenGeometry
+        }
+    }
+
+    /// The sharp screen this session streams went away, or a monitor came
+    /// online beside it. Ends the session with `reason`, a plain sentence
+    /// for the host log, rather than waiting for a display that is not
+    /// coming back. `hasEnded` is set before this returns, so the capture
+    /// stopping as the display goes is never mistaken for one to recover.
+    private func sharpScreenWentAway(reason: String) {
+        sharpScreenLease = nil
+        endSessionForLostDisplay(reason: reason)
+    }
+
+    /// Ends a host-screen session whose display is gone for good, with
+    /// `reason`, a plain sentence for the host log. `hasEnded` is set before
+    /// this returns; the teardown runs in the task it returns, `nil` when
+    /// the session had already ended.
+    @discardableResult
+    private func endSessionForLostDisplay(reason: String) -> Task<Void, Never>? {
+        guard !hasEnded else {
+            return nil
+        }
+        hasEnded = true
+        onEvent?("host screen ended for \(hostScreenLogName()): \(reason)")
+        return Task { @MainActor [weak self] in
+            guard let self else { return }
+            await tearDownSurfaces()
+            _ = try? controller.handle(.goodbye(reason: GoodbyeReason.hostDisplaysAsleep))
+            onStreamUnrecoverable?(reason)
+        }
+    }
+
     /// Called when the transport dies without a goodbye.
     ///
     /// Idempotent: `hasEnded` is set synchronously, before the first `await`
@@ -1226,6 +1310,11 @@ public final class HostSessionCoordinator {
         // media stream itself to tear down. No workspace either,
         // so this has no equivalent of the loop just below.
         let stoppedHostScreen = await stopHostScreenStreaming()
+        // Given back only once capture of it has stopped. The manager keeps
+        // it for a grace period, so a viewer reconnecting straight away
+        // finds the same display.
+        sharpScreenLease?.release()
+        sharpScreenLease = nil
         for surface in CanvasSurfaceID.allCases where didStartWorkspace[surface] {
             // By owner, never unconditionally: a connection whose socket died
             // unnoticed can reach here long after a reconnect took the surface
@@ -1950,9 +2039,29 @@ public final class HostSessionCoordinator {
             guard isCurrent() else {
                 return
             }
-            await displayWake?.wakeAndSettleDisplays()
-            guard isCurrent() else {
+            if sharpScreenLease != nil {
+                // The sharp screen is this process's own display: waking
+                // monitors does nothing for it, and the manager knows
+                // whether it is still there. Gone, or a monitor connected,
+                // ends this session through `sharpScreenWentAway`.
+                sharpScreens?.displaysChanged()
+                guard isCurrent() else {
+                    return
+                }
+                await restartRecoveredHostScreenCapture()
                 return
+            }
+            switch controller.rebindHostScreenToReplacedPlaceholder() {
+            case let .rebound(displayID):
+                onEvent?("\(surfaceName) followed macOS's placeholder screen to display \(displayID)")
+            case .replacedByMonitor:
+                await endSessionForLostDisplay(reason: SharpScreenManager.monitorConnectedReason)?.value
+                return
+            case .notNeeded, .notFound:
+                await displayWake?.wakeAndSettleDisplays()
+                guard isCurrent() else {
+                    return
+                }
             }
             let gap = controller.hostScreenTargetAvailability()
             switch gap {

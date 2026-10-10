@@ -136,6 +136,22 @@ private struct HostScreenSurfaceState {
     var isSharpScreen = false
 }
 
+/// What `HostSessionController.rebindHostScreenToReplacedPlaceholder()`
+/// found.
+public enum HostScreenPlaceholderRebind: Equatable, Sendable {
+    /// The session is not on the placeholder, or its display is still online
+    /// under the same ID.
+    case notNeeded
+    /// The session now streams the placeholder under this new ID.
+    case rebound(displayID: UInt32)
+    /// The session's display is gone and a monitor is connected, so the
+    /// placeholder is not coming back while it stays.
+    case replacedByMonitor
+    /// The session's display is gone and no single placeholder is online
+    /// right now.
+    case notFound
+}
+
 /// Where a *canvas* connection's key events are allowed to land.
 ///
 /// A key event carries no location, so macOS delivers it to whatever holds
@@ -678,21 +694,27 @@ public final class HostSessionController {
     /// it does whenever a display it gave way to is released. Only when the
     /// session's own ID is gone and `SharpScreen.placeholder` finds exactly
     /// one placeholder now; a session on any other display, or on the sharp
-    /// screen, is never moved. `true` when the session was moved.
-    public func rebindHostScreenToReplacedPlaceholder() -> Bool {
+    /// screen, is never moved.
+    public func rebindHostScreenToReplacedPlaceholder() -> HostScreenPlaceholderRebind {
         guard let surface = hostScreenSurface, !surface.isSharpScreen,
               surface.displayIdentity == HostScreenDisplayIdentity(
                   vendorNumber: PhysicalDisplayEvidence.headlessStandInVendor,
                   modelNumber: PhysicalDisplayEvidence.headlessStandInModel
               ) else {
-            return false
+            return .notNeeded
         }
         let current = hostScreenCurrentDisplaysProvider()
-        guard !current.contains(where: { $0.id == surface.displayID && $0.online }),
-              let placeholder = SharpScreen.placeholder(among: current) else {
-            return false
+        guard !current.contains(where: { $0.id == surface.displayID && $0.online }) else {
+            return .notNeeded
         }
-        return rebindHostScreen(toDisplayID: placeholder.id, isSharpScreen: false) != nil
+        if SharpScreen.hasMonitor(current) {
+            return .replacedByMonitor
+        }
+        guard let placeholder = SharpScreen.placeholder(among: current),
+              rebindHostScreen(toDisplayID: placeholder.id, isSharpScreen: false) != nil else {
+            return .notFound
+        }
+        return .rebound(displayID: placeholder.id)
     }
 
     /// The largest stream scale this connection's live host-screen surface
