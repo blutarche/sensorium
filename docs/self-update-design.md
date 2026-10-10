@@ -100,11 +100,11 @@ Each release carries seven files for macOS beside the Linux package:
 `Scripts/release-macos.sh` builds a release on the maintainer's own machine:
 
 1. Build both apps with `Scripts/package-apps.sh`, signed with the release certificate. It produces one kit holding both apps.
-2. Zip each app from that kit on its own, with `ditto -c -k --keepParent`, so each zip holds exactly one app.
+2. Zip each app from that kit on its own, with `ditto -c -k --keepParent`, so each zip holds exactly one app. Put each app in a disk image beside a link to Applications, and check that the app in each disk image is the app in its zip, slice by slice.
 3. Write the manifest with each zip's size and SHA-256.
 4. Sign the manifest with the update key, through `Scripts/sign-update.swift` (CryptoKit, no dependency). The key is a file only the maintainer's account can read, outside the repository. It holds the 32 byte private key in base64 on one line.
 5. Check the result as an app would: verify the signature with the public key compiled into the apps, unzip each app into a scratch folder, and run every check in section 3.3.
-6. Upload the two zips with `gh release upload`, then the manifest and its signature last.
+6. Upload the two zips, the two disk images and `SHA256SUMS` with `gh release upload`, then the manifest and its signature last.
 
 The manifest goes last so no app ever reads a manifest whose zips are missing. A release that is already marked latest but has no manifest yet reads as "no update".
 

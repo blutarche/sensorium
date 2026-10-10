@@ -63,7 +63,7 @@ On Linux the viewer keeps the same files under `~/.local/share/sensorium`, or un
 - **Traffic analysis inside the tailnet.** WireGuard encrypts payloads. Volume and timing are visible to the tailnet coordination path.
 - **Pre-boot (FileVault) access.** Not supported at all. FileVault's own unlock screen runs before the host's login window, and before any session can start.
 - **The maintainer's own machine.** It holds the update key, the release certificate, and access to the release page. Whoever controls it can ship an update. [Self-update](self-update-design.md#4-trust) explains how each is kept.
-- **The first download of each macOS app.** The zips are signed with a self-signed certificate and not notarized. `SHA256SUMS` beside them detects a damaged download, not a substituted one. Every later update is checked as above. The first install is not.
+- **The first download of each macOS app.** The app inside the disk image is signed with a self-signed certificate and not notarized. The disk image itself is not signed. `SHA256SUMS` beside it detects a damaged download, not a substituted one. Every later update is checked as above. The first install is not.
 - **The Linux package's authenticity.** The Fedora RPM is unsigned. Only a SHA-256 checksum is published beside it, which detects a damaged download, not a substituted one. Anyone who can replace the file on the release page can replace the checksum with it.
 
 ## Privacy
