@@ -1393,6 +1393,21 @@ MainActor.assumeIsolated {
         )
     }
 
+    // The code step as it fills in, one digit at a time, through the real
+    // field and its real change callback.
+    let typedCode = "418297"
+    for typed in 1...typedCode.count {
+        let typing = machinesWindow(hosts: [miniHost])
+        typing.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Workstation"))
+        fill(typing, code: String(typedCode.prefix(typed)))
+        write(
+            render(machinesContent(typing)),
+            named: "viewer-add-2b-code-typed-\(typed).png",
+            state: "YourMachinesWindowController on the add step's second screen with the first \(typed) of"
+                + " \(typedCode.count) code digits typed — the field and the Pair button as they stand"
+        )
+    }
+
     let refused = machinesWindow(hosts: [miniHost]) { _, _ in .failed(.refused(reason: "invalid-code")) }
     refused.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
     fill(refused, code: "418297")

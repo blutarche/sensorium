@@ -47,6 +47,7 @@ for configuration in debug release; do
 done
 
 Scripts/test-render-ui-previews.sh
+Scripts/test-make-readme-media.sh
 Scripts/test-clipboard-sharing-gui-reachable.sh
 Scripts/test-real-local-video-smoke.sh
 Scripts/test-real-local-workspace-input-smoke.sh
