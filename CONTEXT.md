@@ -1,16 +1,17 @@
 # Sensorium
 
 A private remote workstation for two machines: a person at the viewer works on
-a session canvas the host creates for them, or, with permission granted at the
-host, on one of the host's own screens.
+one of the host's own screens, with permission granted at the host. If the
+person at the host has turned on "Offer a private desktop", the viewer can work
+on a session canvas the host creates instead.
 
 ## Language
 
 ### The two sides
 
 **Host**:
-The Sensorium Host app, and the unattended machine it runs on, that creates
-canvases and streams them.
+The Sensorium Host app, and the unattended machine it runs on, that streams its
+screens and, when its person offers a private desktop, creates canvases.
 _Avoid_: server, mini, daemon
 
 **Viewer**:
@@ -33,12 +34,12 @@ _Avoid_: PIN, passcode, token
 
 **Start with**:
 A per-machine viewer setting naming which target a fresh connection to that
-machine opens on: a virtual display, one of its host screens, or
-*host screen when offered* (the default), which starts directly on
-whichever screen that machine's host most recently offered, falling back to
-a virtual display for a machine never offered one -- and, for a connection
-that starts there only for lack of anything remembered, switching itself to
-the first screen offered the moment that offer arrives.
+machine opens on: *Host Screen When Offered* (the default), one of its host
+screens, or *Virtual Display*. *Host Screen When Offered* starts on the screen
+that machine last showed a picture on, or on the first screen the host offers
+if that one is not offered. If the host offers no screen, the viewer says so
+and streams nothing. *Virtual Display* is listed only when the host has turned
+on "Offer a private desktop".
 _Avoid_: start target, default target, launch preference, last used
 
 ### What is streamed
@@ -48,8 +49,11 @@ One connection during which the host streams exactly one target to one viewer.
 _Avoid_: stream, link, call
 
 **Session canvas**:
-A virtual display the host creates for a session and removes at its end. On
-screen it is called a "virtual display"; "canvas" never appears in a window.
+A virtual display the host creates for a session and removes at its end. It
+exists only when the person at the host has turned on "Offer a private
+desktop", which is off by default. A session starts on it only when the viewer
+asks for it by name. On screen it is called a "virtual display"; "canvas" never
+appears in a window.
 _Avoid_: virtual screen, canvas display, workspace display
 
 **Host screen**:
@@ -113,7 +117,8 @@ _Avoid_: display serial, EDID
 
 **Capability probe**:
 The canvas the host creates and releases at startup to prove this machine can
-create one at all.
+create one at all. With "Offer a private desktop" off, the host creates
+nothing.
 _Avoid_: preflight, startup check
 
 ### Picture quality

@@ -8,7 +8,7 @@ The person is at the viewer. The host is an unattended machine.
 
 The host decides permission only: which machines may connect, and whether a connected machine may see one of its host screens.
 
-The viewer decides everything else about a session: how many displays, their resolution, a virtual display or a host screen, and clipboard sharing. These apply while the session runs, not at the next launch.
+The viewer decides everything else about a session: how many displays, their resolution, a host screen or a virtual display, and clipboard sharing. These apply while the session runs, not at the next launch.
 
 A setting on the host that shapes a session is a defect. So is a choice the viewer cannot make from its own window, or text that names a command, a flag, a file path, or an internal state.
 
@@ -92,9 +92,9 @@ Title: `<machine name> @ <tailnet name>`, falling back to the address when the t
 
 Controls, in the menu bar, reachable while connected, applying live:
 
-- **Displays: 1 or 2** session displays the host creates. Changing it mid-session adds or removes a window.
+- **Displays: 1 or 2** session displays the host creates. It applies to a virtual display session only. Changing it mid-session adds or removes a window.
 - **Resolution:** per display, each scale listed with its pixel size. Automatic is the default and only fidelity setting. A link that cannot sustain it shows the HUD naming the frame rate and encoder quality in use, as a measured limit, not a pick.
-- **Screen: Virtual display (default) or Host screen**, one of the host's screens, offered only when the host allowed this machine to see one. Live, the menu also carries a **Resolution** submenu of that screen's own display modes, and a **Start with** submenu naming the target tried first next time: *Host screen when offered*, the default, *Virtual display*, or a screen. Whether of a mode change or an unavailable screen, a refusal must be said in the window in plain words, never left silent. **Screen** and **Displays** are both disabled while a host screen is live.
+- **Screen: Host screen or Virtual Display**. Each of the host's screens is listed when the host allowed this machine to see it. **Virtual Display** is listed only when the person at the host has turned on "Offer a private desktop", which is off by default. Live, the menu also carries a **Resolution** submenu of that screen's own display modes, and a **Start with** submenu naming the target tried first next time: **Host Screen When Offered**, the default, **Virtual Display**, or a screen. **Host Screen When Offered** starts on the screen last shown, or the first screen the host offers. If the host offers no screen, the window says so and streams nothing. Whether of a mode change or an unavailable screen, a refusal must be said in the window in plain words, never left silent. **Screen** and **Displays** are both disabled while a host screen is live.
 - **Clipboard: on or off**, on by default. A copy that is not shared says why in the session window.
 - **Pointer capture**, its shortcut named next to it. Leaving the window releases it, and outside capture this machine's own pointer draws locally, not waiting on the video.
 
