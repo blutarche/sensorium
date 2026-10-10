@@ -38,12 +38,17 @@ jobs:
         run: swift build -c release
 
       # SensoriumHostTestRunner and SensoriumClientTestRunner open real
-      # AppKit windows and hang on a headless runner; only
-      # SensoriumCoreTestRunner is free of that dependency, so it is the
-      # only runner CI executes. Run the full suite locally with
+      # AppKit windows and hang on a headless runner, so CI runs only the
+      # runners free of that dependency. Run the full suite locally with
       # ./Scripts/run-unit-tests.sh before opening a pull request.
       - name: SensoriumCoreTestRunner (release)
         run: swift run -c release SensoriumCoreTestRunner
+
+      - name: SensoriumUpdateTestRunner (release)
+        run: swift run -c release SensoriumUpdateTestRunner
+
+      - name: Release script
+        run: sh Scripts/test-release-macos.sh
 
   # Only SensoriumCoreTestRunner and SensoriumClientTestRunner are
   # portable to Linux; SensoriumHostTestRunner and

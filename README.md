@@ -38,6 +38,7 @@ Docs:
 - [User interface spec](docs/ux-spec.md)
 - [Design system](docs/design-system.md)
 - [Testing](docs/testing.md)
+- [Releasing](docs/releasing.md)
 - [Uninstall](docs/uninstall.md)
 
 ## Uninstall

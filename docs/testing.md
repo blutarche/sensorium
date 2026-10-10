@@ -1,6 +1,6 @@
 # How this repository is verified
 
-Four executables assert and exit non-zero on the first failure, instead of XCTest.
+Five executables assert and exit non-zero on the first failure, instead of XCTest.
 
 ## Runners
 
@@ -16,8 +16,9 @@ The toolchain this project targets is Swift from Command Line Tools without Xcod
 | `SensoriumHostTestRunner` | Canvas ownership, capture guard, input gate, pairing ceremony, ingress policy, unlock throttle, the loopback RFB unlock client |
 | `SensoriumClientTestRunner` | Viewport, surface events, frame admission, saved host, key pinning, locked-host key routing, and that no unlock request is sent |
 | `SensoriumIntegrationTestRunner` | Authenticated loopback, recovery scenarios, end-to-end input path |
+| `SensoriumUpdateTestRunner` | The macOS update core: manifest, signature, version decision, failure record, staging, swap and handoff, against a local fake of the release page. Signs temporary app bundles ad hoc with `codesign -s -`; makes no network request and launches no app |
 
-The script builds and runs all four twice, once in `debug` and once in `release`. An optimized build can release an object at its last use, so assertions that depend on a pipeline's lifetime hold it with `withExtendedLifetime`.
+The script builds and runs all five twice, once in `debug` and once in `release`. An optimized build can release an object at its last use, so assertions that depend on a pipeline's lifetime hold it with `withExtendedLifetime`.
 
 The runners never open a window, start `NSApplication`, bind a socket, capture a screen, inject an event, read a stored key, or touch a display. Every such boundary goes through a fake.
 
@@ -33,6 +34,7 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 | `Scripts/verify-tailscale-route.sh` | Prints the `tailscale ping --verbose` command to run by hand before a latency claim, and how to read direct versus DERP-relayed |
 | `Scripts/benchmark-session.sh` | A placeholder that does nothing yet and exits non-zero, naming the steps a real benchmark needs, rather than publish a number this project has not measured |
 | `Scripts/test-package-apps.sh` | The packager, `Scripts/package-apps.sh`, run only with signing identities guaranteed absent from the machine, so it never touches a real keychain identity |
+| `Scripts/test-release-macos.sh` | The release script `Scripts/release-macos.sh` in a scratch copy, with a stub packager and a generated key: zips, the signed manifest, and every refusal. Signs nothing with a real identity |
 | `Scripts/test-package-linux.sh` | The Fedora package `Scripts/package-linux.sh` builds: its desktop entry, its metainfo, its icons, the libraries it asks for, and that removing it leaves nothing behind. Runs only inside the CI Fedora container, where installing a package is safe |
 | `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-machine boundaries, and do not regress to an earlier, stale claim |
 
