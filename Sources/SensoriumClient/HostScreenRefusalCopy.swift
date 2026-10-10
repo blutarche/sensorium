@@ -30,7 +30,7 @@ public enum HostScreenRefusalCopy {
     public static func line(reason: String) -> String {
         switch reason {
         case noneAvailableReason:
-            return "This Mac has no screen available to share right now."
+            return "The host has no screen available to share right now."
         case "canvas-session-active":
             return "That machine was already showing this machine a virtual display. That session has ended."
         case "host-screen-not-allowed":

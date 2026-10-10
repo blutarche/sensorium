@@ -4,7 +4,7 @@ import SensoriumCore
 import SensoriumHost
 
 /// "Allow connections from this network" admits a source on the same subnet
-/// as one of this Mac's own non-tailnet interfaces, and nothing else beyond
+/// as one of this host's own non-tailnet interfaces, and nothing else beyond
 /// the tailnet. Off, admission is exactly the tailnet rule.
 func runHostLocalNetworkAdmissionTests() {
     let homeV4 = LocalSubnet(address: "192.0.2.10", netmask: "255.255.255.0")!
@@ -15,11 +15,11 @@ func runHostLocalNetworkAdmissionTests() {
     do {
         expect(
             SourceAddressPolicy.isOnLinkSource("192.0.2.45", interfaces: subnets),
-            "a source in this Mac's own IPv4 /24 is on-link"
+            "a source in this host's own IPv4 /24 is on-link"
         )
         expect(
             SourceAddressPolicy.isOnLinkSource("2001:db8:1:2::99", interfaces: subnets),
-            "a source in this Mac's own global IPv6 /64 is on-link"
+            "a source in this host's own global IPv6 /64 is on-link"
         )
         expect(
             SourceAddressPolicy.isOnLinkSource("fe80::aa:bbff:fecc:ddee%en0", interfaces: subnets),
@@ -45,7 +45,7 @@ func runHostLocalNetworkAdmissionTests() {
             !SourceAddressPolicy.isOnLinkSource("not an address", interfaces: subnets),
             "an unreadable source is not on-link"
         )
-        print("PASS: the on-link classifier admits only this Mac's own subnets, IPv4, IPv6 and link-local")
+        print("PASS: the on-link classifier admits only this host's own subnets, IPv4, IPv6 and link-local")
     }
 
     do {
@@ -103,7 +103,7 @@ func runHostLocalNetworkAdmissionTests() {
         for loopback in ["127.0.0.1", "::1"] {
             expect(
                 !SourceAddressPolicy.isOnLinkSource(loopback, interfaces: current),
-                "this Mac's own interface list never makes \(loopback) on-link"
+                "this host's own interface list never makes \(loopback) on-link"
             )
         }
         print("PASS: link-local interface addresses compare without the kernel's embedded scope, and loopback is never on-link")
@@ -148,7 +148,7 @@ func runHostLocalNetworkAdmissionTests() {
                 allowLocalNetwork: true,
                 localSubnets: subnets
             ),
-            "an endpoint on this Mac's own subnet is admitted with the setting on"
+            "an endpoint on this host's own subnet is admitted with the setting on"
         )
         print("PASS: admission takes this network's sources only while the setting is on, and the tailnet always")
     }
@@ -196,7 +196,7 @@ func runHostLocalNetworkListenerParameterTests() {
     print("PASS: the listener is unscoped only while the setting is on, and still needs a tailnet address")
 }
 
-/// Which of this Mac's interfaces count as "this network": not loopback, not
+/// Which of this host's interfaces count as "this network": not loopback, not
 /// a down interface, not the tailnet, and not a point-to-point tunnel.
 func runHostLocalSubnetInterfaceFilterTests() {
     let up = UInt32(IFF_UP)

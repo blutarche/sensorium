@@ -94,9 +94,9 @@ public enum HostOperatorLog {
         // Without this line a machine dialling from the wrong network is
         // silence, and silence looks exactly like a network that is down.
         // True whichever way the setting is: on, a refused source is one
-        // outside this Mac's own subnets too.
-        "Refused a connection from \(address): only machines on this Mac\u{2019}s tailnet may connect, or, "
-            + "while \u{201C}Allow connections from this network\u{201D} is on, machines on the same subnet as this Mac."
+        // outside this host's own subnets too.
+        "Refused a connection from \(address): only machines on this host\u{2019}s tailnet may connect, or, "
+            + "while \u{201C}Allow connections from this network\u{201D} is on, machines on the same subnet as this host."
     }
 
     /// A message macOS itself wrote, or nothing.

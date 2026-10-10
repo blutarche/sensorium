@@ -121,7 +121,7 @@ The offer also says whether the host opens a private canvas at all. The person a
 | Offer | What the viewer does |
 | --- | --- |
 | At least one screen | Starts on the remembered screen, or the first one |
-| No screen | Ends the attempt and says "This Mac has no screen available to share right now." |
+| No screen | Ends the attempt and says "The host has no screen available to share right now." |
 | Refused, as for a machine that is not armed | Ends the attempt with the host's reason |
 
 A refusal ends the attempt the ordinary way. Trying again, or choosing a private canvas the host offers, is a person's own decision.

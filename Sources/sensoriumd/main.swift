@@ -970,7 +970,7 @@ struct sensoriumd {
                     Task { @MainActor in
                         if localNetworkConnections?.allowsLocalNetwork == true {
                             print("Sensorium host listening on port \(boundPort) on every interface; "
-                                + "tailnet sources and sources on this Mac\u{2019}s own subnets")
+                                + "tailnet sources and sources on this host\u{2019}s own subnets")
                         } else {
                             print("Sensorium host bound \(tailnetAddress):\(boundPort); tailnet sources only")
                         }

@@ -173,7 +173,7 @@ public enum LocalSubnetEnumerator {
         return subnets(from: entries)
     }
 
-    /// The subnets among `entries` that count as this Mac's own network.
+    /// The subnets among `entries` that count as this host's own network.
     /// Every address of an interface that carries a tailnet address is
     /// skipped, its link-local one included.
     public static func subnets(from entries: [Entry]) -> [LocalSubnet] {

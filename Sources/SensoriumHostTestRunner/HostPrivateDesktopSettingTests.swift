@@ -233,7 +233,7 @@ func runHostPrivateDesktopSwitchTests() {
     let explanation = stored("privateDesktopExplanationLabel", in: controller, as: NSTextField.self)
     expect(checkbox.title == "Offer a private desktop", "the checkbox is titled for what it offers, got \(checkbox.title)")
     expect(
-        explanation.stringValue == "Lets a viewer open a separate desktop that isn\u{2019}t shown on this Mac\u{2019}s screens.",
+        explanation.stringValue == "Lets a viewer open a separate desktop that isn\u{2019}t shown on this machine\u{2019}s screens.",
         "the one-line explanation sits under it, got \(explanation.stringValue)"
     )
     expect(checkbox.state == .off, "the stored setting off reads as an off checkbox")

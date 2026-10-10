@@ -69,9 +69,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// the person here turned it on.
     private let privateDesktopCheckbox = NSButton(checkboxWithTitle: "Offer a private desktop", target: nil, action: nil)
     private let privateDesktopExplanationLabel = NSTextField(
-        labelWithString: "Lets a viewer open a separate desktop that isn\u{2019}t shown on this Mac\u{2019}s screens."
+        labelWithString: "Lets a viewer open a separate desktop that isn\u{2019}t shown on this machine\u{2019}s screens."
     )
-    /// Whether a viewer on this Mac's own network may connect without
+    /// Whether a viewer on this host's own network may connect without
     /// Tailscale. Reflects the stored setting, which is off unless the person
     /// here turned it on.
     private let localNetworkCheckbox = NSButton(
@@ -507,7 +507,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             // than silently doing nothing when clicked.
             autoLoginCheckbox.state = .off
             autoLoginCheckbox.isEnabled = false
-            autoLoginStatusLabel.stringValue = "Not available on this Mac."
+            autoLoginStatusLabel.stringValue = "Not available on this machine."
             autoLoginStatusLabel.isHidden = false
         }
 

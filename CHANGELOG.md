@@ -8,6 +8,13 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- When the host offers no screen, the viewer now says "The host has no
+  screen available to share right now."
+- Windows and messages in both apps say "machine" or "the host" where
+  they said "Mac".
+
 ## [0.4.3] - 2026-10-10
 
 ### Fixed
@@ -130,7 +137,7 @@ once it reaches 1.0.
   locks the screen again before doing anything else.
 - Offer a private desktop, a switch in the host window, off by default.
   It lets a viewer open a separate desktop that isn't shown on this
-  Mac's screens. While it is off, the host creates no virtual display at
+  machine's screens. While it is off, the host creates no virtual display at
   all, refuses a viewer that asks for one, and tells the viewer none is
   available so its menus do not offer one.
 - The menus a Mac app is expected to have. The viewer gets a standard
@@ -138,7 +145,7 @@ once it reaches 1.0.
   fields, a Window menu (Minimize, Zoom, Bring All to Front), Show All in
   the app menu, a full screen item that reads Enter or Exit Full Screen,
   and reopens the Your Machines list from the Dock icon when no window
-  is open. Every one of these keys still reaches the remote Mac while a
+  is open. Every one of these keys still reaches the host while a
   session window is key, exactly as before. Sensorium Host gets the same
   standard menus for its own Host Setup window, with Quit going through
   its usual clean shutdown, and its About panel now comes to the front
@@ -254,11 +261,11 @@ once it reaches 1.0.
 - A host unlocked from the viewer locks again when the session ends,
   even after the viewer typed or clicked while it was unlocked. That
   input no longer counts as a person at the host.
-- The host no longer keeps the Mac marked as in use once a connection
+- The host no longer keeps the machine marked as in use once a connection
   or session is over, so it can sleep and lock on its own again.
 - A host-screen session no longer loses its picture right after it
   starts on a machine whose monitors had already idle-timed-out. The
-  host now keeps the Mac marked as in use from the moment it wakes a
+  host now keeps the machine marked as in use from the moment it wakes a
   display for a request through to the end of the session that
   request starts, instead of letting go the instant the wake itself
   returns -- the gap that let the monitors go back to sleep with the

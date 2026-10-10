@@ -12,7 +12,7 @@ public final class PairedMachineRenameView: NSView {
     private let titleLabel = NSTextField(labelWithString: "Rename this machine")
     private let nameField = NSTextField()
     private let hintLabel = NSTextField(
-        wrappingLabelWithString: "Only this Mac uses this name. Leave it empty to use the name the machine reports."
+        wrappingLabelWithString: "Only this host uses this name. Leave it empty to use the name the machine reports."
     )
     private let cancelButton = NSButton()
     private let renameButton = NSButton()
