@@ -8,10 +8,12 @@ import SensoriumHost
 /// away, and releasing it brings the placeholder back under a new display ID.
 /// No real display is created; every wait is a few milliseconds.
 
-/// A host with no monitor, as the window server presents it.
+/// A host with no monitor, as the window server presents it. `list` always
+/// holds what `read()` would return, for code that reads a `FakeDisplayList`.
 final class FakeHeadlessHost: VirtualDisplayCreating {
-    private(set) var placeholderID: UInt32 = 4
-    private(set) var sharpID: UInt32?
+    let list = FakeDisplayList([])
+    private(set) var placeholderID: UInt32 = 4 { didSet { sync() } }
+    private(set) var sharpID: UInt32? { didSet { sync() } }
     private var nextSharpID: UInt32 = 20
     private(set) var attemptedIdentities: [CanvasDisplayIdentity] = []
     private(set) var attemptedConfigurations: [VirtualCanvasConfiguration] = []
@@ -19,12 +21,26 @@ final class FakeHeadlessHost: VirtualDisplayCreating {
     var refusesCreation = false
     /// The sharp screen reads online but with no display mode, the way a
     /// bare process once read a new virtual display back.
-    var sharpScreenReportsNoMode = false
-    var sharpScreenNeverComesOnline = false
-    var monitorConnected = false
+    var sharpScreenReportsNoMode = false { didSet { sync() } }
+    var sharpScreenNeverComesOnline = false { didSet { sync() } }
+    var monitorConnected = false { didSet { sync() } }
     /// The sharp screen is gone from the display list while this process
     /// still holds it.
-    var sharpScreenVanished = false
+    var sharpScreenVanished = false { didSet { sync() } }
+
+    init() {
+        sync()
+    }
+
+    /// The placeholder comes back under a new display ID, as it does after
+    /// any display it gave way to is released.
+    func renumberPlaceholder() {
+        placeholderID += 2
+    }
+
+    private func sync() {
+        list.displays = read()
+    }
 
     func create(
         configuration: VirtualCanvasConfiguration,

@@ -134,7 +134,8 @@ func armedHostScreenController(
     displays: FakeDisplayList,
     displayWake: DisplayWakeController,
     log: @escaping @MainActor (String) -> Void,
-    modeController: (any HostScreenModeControlling)? = nil
+    modeController: (any HostScreenModeControlling)? = nil,
+    inputInjectorFactory: (any InputInjectingFactory)? = nil
 ) -> HostSessionController {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
@@ -149,6 +150,7 @@ func armedHostScreenController(
         sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
         approvedPublicKeys: [deviceKey],
         requireAuthentication: true,
+        inputInjectorFactory: inputInjectorFactory,
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { displays.read() },

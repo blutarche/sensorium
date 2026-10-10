@@ -59,6 +59,7 @@ struct SensoriumHostTestRunner {
             { await runHostScreenSelectionGuardTests() },
             { await runSharpScreenTests() },
             { await runSharpScreenManagerTests() },
+            { await runSharpScreenSessionTests() },
             { await runHostScreenPresenceRuleTests() },
             { await runHostLocalActivitySignalTests() },
             { await runHostScreenPresenceGateTests() },

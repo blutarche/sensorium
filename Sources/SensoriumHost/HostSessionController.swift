@@ -130,6 +130,10 @@ private struct HostScreenSurfaceState {
     var heldButtons: [CanvasPointerButton: CanvasInputLocation] = [:]
     var heldKeys: Set<UInt16> = []
     var isPointerCaptured = false
+    /// Set while this surface streams the sharp screen (`SharpScreen`)
+    /// rather than the display it was admitted on. The sharp screen has
+    /// one fixed size, so no mode is offered or changed for it.
+    var isSharpScreen = false
 }
 
 /// Where a *canvas* connection's key events are allowed to land.
@@ -623,6 +627,74 @@ public final class HostSessionController {
         return HostScreenOfferEligibility.offerGapReason(for: display, among: current)
     }
 
+    /// Moves this connection's live host-screen surface onto `displayID`,
+    /// which a fresh display read must show online: the sharp screen
+    /// standing in for the placeholder this session was admitted on, or the
+    /// placeholder itself come back under a new ID. What the viewer and the
+    /// person at the host were told stays as admitted: the display's label
+    /// and identity, the device, the arming record. Only what belongs to the
+    /// display itself follows it: its ID, its geometry, and the input
+    /// injector, which posts against one display's bounds. Keys and buttons
+    /// still held are let go on the old display first.
+    ///
+    /// `isSharpScreen` marks a surface on the sharp screen, whose display
+    /// mode no session ever changes. Returns the geometry the surface is on
+    /// now, or `nil`, changing nothing, when no surface is live, the display
+    /// is not online, or no injector can be built for it.
+    @discardableResult
+    public func rebindHostScreen(toDisplayID displayID: UInt32, isSharpScreen: Bool) -> SessionSurfaceGeometry? {
+        guard let current = hostScreenSurface,
+              let display = hostScreenCurrentDisplaysProvider().first(where: { $0.id == displayID && $0.online }) else {
+            return nil
+        }
+        var injector = current.inputInjector
+        if current.displayID != displayID {
+            do {
+                injector = try inputInjectorFactory?.make(canvasDisplayID: displayID, sessionKind: .hostScreen)
+            } catch {
+                log("Sensorium host: no input injector for display \(displayID): \(HostOperatorLog.describe(error))")
+                return nil
+            }
+            releaseHostScreenHeldInput()
+        }
+        guard var surface = hostScreenSurface else {
+            return nil
+        }
+        surface.displayID = displayID
+        surface.inputInjector = injector
+        surface.isSharpScreen = isSharpScreen
+        surface.geometry = SessionSurfaceGeometry(
+            logicalWidth: display.modeWidth,
+            logicalHeight: display.modeHeight,
+            backingScale: display.modeWidth > 0
+                ? Double(display.modePixelWidth) / Double(display.modeWidth) : 1.0
+        )
+        hostScreenSurface = surface
+        return surface.geometry
+    }
+
+    /// Moves a session admitted on macOS's placeholder screen onto the
+    /// placeholder again after it came back under a new display ID, which
+    /// it does whenever a display it gave way to is released. Only when the
+    /// session's own ID is gone and `SharpScreen.placeholder` finds exactly
+    /// one placeholder now; a session on any other display, or on the sharp
+    /// screen, is never moved. `true` when the session was moved.
+    public func rebindHostScreenToReplacedPlaceholder() -> Bool {
+        guard let surface = hostScreenSurface, !surface.isSharpScreen,
+              surface.displayIdentity == HostScreenDisplayIdentity(
+                  vendorNumber: PhysicalDisplayEvidence.headlessStandInVendor,
+                  modelNumber: PhysicalDisplayEvidence.headlessStandInModel
+              ) else {
+            return false
+        }
+        let current = hostScreenCurrentDisplaysProvider()
+        guard !current.contains(where: { $0.id == surface.displayID && $0.online }),
+              let placeholder = SharpScreen.placeholder(among: current) else {
+            return false
+        }
+        return rebindHostScreen(toDisplayID: placeholder.id, isSharpScreen: false) != nil
+    }
+
     /// The largest stream scale this connection's live host-screen surface
     /// may be encoded at, or `nil` when none is live. Read by
     /// `HostSessionCoordinator` so a scale reaching the encoder by any route
@@ -1037,9 +1109,11 @@ public final class HostSessionController {
     /// acts unless a host-screen session is live on this very connection,
     /// which is also the only thing that names a display this may touch:
     /// there is no path here that reaches any display but the one this
-    /// session was already admitted for.
+    /// session was already admitted for. A session on the sharp screen is
+    /// refused as if the mode were unknown: that display has one fixed size.
     private func hostScreenModeChange(toModeID modeID: String) -> SensoriumMessage {
-        guard var surface = hostScreenSurface, let modeController = hostScreenModeController else {
+        guard var surface = hostScreenSurface, !surface.isSharpScreen,
+              let modeController = hostScreenModeController else {
             return .hostScreenModeRefused(
                 reason: hostScreenSurface == nil
                     ? HostScreenModeRefusalReason.notLive
@@ -1070,13 +1144,13 @@ public final class HostSessionController {
     }
 
     /// Every mode this session's host screen can be set to, and the one it
-    /// is on right now, or `nil` when there is no live host-screen session
-    /// or no mode controller to ask. Built here rather than sent from here:
+    /// is on right now, or `nil` when there is no live host-screen session,
+    /// no mode controller to ask, or the session streams the sharp screen. Built here rather than sent from here:
     /// what reaches the wire, and when, is the caller's
     /// (`HostSessionCoordinator`), exactly as `offerHostScreenList` already
     /// works.
     public func hostScreenModeListMessage() -> SensoriumMessage? {
-        guard let surface = hostScreenSurface,
+        guard let surface = hostScreenSurface, !surface.isSharpScreen,
               let modeController = hostScreenModeController,
               let currentModeID = modeController.currentModeID(for: surface.displayID) else {
             return nil
