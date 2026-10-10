@@ -8,6 +8,13 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- Each release carries a disk image for each macOS app,
+  `Sensorium-<version>.dmg` and `Sensorium-Host-<version>.dmg`. Open it
+  and drag the app onto the Applications shortcut. The zips stay on the
+  release for self-update.
+
 ### Changed
 
 - When the host offers no screen, the viewer now says "The host has no

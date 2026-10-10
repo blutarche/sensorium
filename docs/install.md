@@ -15,16 +15,16 @@ Each machine downloads only its own app from the latest release on the project's
 
 | Machine | Download | App inside |
 | --- | --- | --- |
-| The viewer, the machine you sit at | `Sensorium-<version>.zip` | `Sensorium.app` |
-| The host, the machine you reach | `Sensorium-Host-<version>.zip` | `Sensorium Host.app` |
+| The viewer, the machine you sit at | `Sensorium-<version>.dmg` | `Sensorium.app` |
+| The host, the machine you reach | `Sensorium-Host-<version>.dmg` | `Sensorium Host.app` |
 
-1. Download the zip for that machine.
-2. Open the zip. Drag the app into Applications.
+1. Download the disk image for that machine.
+2. Open it. Drag the app onto the Applications shortcut beside it, then eject the disk image.
 3. Open the app from Applications. macOS refuses it, because the app is not notarized. Click **Done**.
 4. Open System Settings, then Privacy & Security. Click **Open Anyway** next to the app. The button stays there for about an hour after the refusal.
 5. Open the app again and confirm.
 
-Run the app from Applications, not from Downloads. Each release also lists `SHA256SUMS`, which you can compare against the zips.
+Run the app from Applications, not from the disk image or Downloads. Each release also lists `SHA256SUMS`, which you can compare against the downloads. The zips on the release page are what the apps fetch to update themselves.
 
 Do not disable Gatekeeper or strip the quarantine attribute.
 

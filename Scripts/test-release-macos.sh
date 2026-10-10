@@ -12,7 +12,12 @@ RELEASE="$ROOT/Scripts/release-macos.sh"
 [ -f "$RELEASE" ] || { echo "Scripts/release-macos.sh is missing" >&2; exit 1; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/sensorium-release-test.XXXXXX")"
-trap 'rm -rf "$WORK"' EXIT INT TERM
+MOUNTS=""
+cleanup() {
+  for mnt in $MOUNTS; do hdiutil detach -force "$mnt" >/dev/null 2>&1 || true; done
+  rm -rf "$WORK"
+}
+trap cleanup EXIT INT TERM
 
 REPO="$WORK/repo"
 STUBS="$WORK/stubs"
@@ -132,7 +137,9 @@ export STUB_SELFTEST_LOG="$WORK/selftest.log"
 [ "$(cat "$WORK/packager-adhoc")" = "0" ] || fail "packager must run with SENSORIUM_ALLOW_ADHOC=0"
 [ -f "$REL/Sensorium-9.8.7.zip" ] || fail "viewer zip name"
 [ -f "$REL/Sensorium-Host-9.8.7.zip" ] || fail "host zip name"
-[ "$(ls -A "$REL" | wc -l | tr -d ' ')" = "5" ] || fail "release folder should hold two zips, SHA256SUMS, the manifest and its signature"
+[ -f "$REL/Sensorium-9.8.7.dmg" ] || fail "viewer disk image name"
+[ -f "$REL/Sensorium-Host-9.8.7.dmg" ] || fail "host disk image name"
+[ "$(ls -A "$REL" | wc -l | tr -d ' ')" = "7" ] || fail "release folder should hold two zips, two disk images, SHA256SUMS, the manifest and its signature"
 for zip in Sensorium-9.8.7.zip Sensorium-Host-9.8.7.zip; do
   mkdir "$WORK/unz-$zip"
   ditto -x -k "$REL/$zip" "$WORK/unz-$zip"
@@ -140,6 +147,23 @@ for zip in Sensorium-9.8.7.zip Sensorium-Host-9.8.7.zip; do
 done
 [ -d "$WORK/unz-Sensorium-9.8.7.zip/Sensorium.app" ] || fail "viewer zip should hold Sensorium.app"
 [ -d "$WORK/unz-Sensorium-Host-9.8.7.zip/Sensorium Host.app" ] || fail "host zip should hold Sensorium Host.app"
+# Each disk image holds the app and a link to /Applications, nothing else.
+check_image() {
+  DMG="$1"; APP_NAME="$2"
+  MNT="$WORK/mnt-$DMG"
+  mkdir "$MNT"
+  MOUNTS="$MOUNTS $MNT"
+  hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$MNT" "$REL/$DMG" >/dev/null || fail "$DMG should attach"
+  [ "$(ls "$MNT" | wc -l | tr -d ' ')" = "2" ] || fail "$DMG should show exactly two items"
+  [ -d "$MNT/$APP_NAME" ] && [ ! -L "$MNT/$APP_NAME" ] || fail "$DMG should hold $APP_NAME as a directory"
+  [ -L "$MNT/Applications" ] || fail "$DMG should hold an Applications link"
+  [ "$(readlink "$MNT/Applications")" = "/Applications" ] || fail "$DMG Applications link should point to /Applications"
+  [ "$(plutil -extract CFBundleShortVersionString raw -o - "$MNT/$APP_NAME/Contents/Info.plist")" = "9.8.7" ] || fail "$DMG app version should be 9.8.7"
+  hdiutil detach "$MNT" >/dev/null || fail "$DMG should detach"
+}
+check_image Sensorium-9.8.7.dmg "Sensorium.app"
+check_image Sensorium-Host-9.8.7.dmg "Sensorium Host.app"
+[ "$(wc -l < "$REL/SHA256SUMS" | tr -d ' ')" = "4" ] || fail "SHA256SUMS should list four files"
 (cd "$REL" && shasum -a 256 -c SHA256SUMS >/dev/null) || fail "SHA256SUMS should verify from inside the release folder"
 grep -q '/' "$REL/SHA256SUMS" && fail "SHA256SUMS should list file names only"
 [ ! -e "$WORK/gh.log" ] || fail "nothing may reach gh without --upload"
@@ -226,12 +250,12 @@ grep -qF "v9.8.7" "$WORK/out" || fail "missing-release message should name the t
 rm -f "$WORK/gh.log"
 run_release --upload || fail "--upload should succeed when the release exists"
 [ "$(grep -c '^release upload' "$WORK/gh.log")" = "2" ] || fail "upload should be two gh calls"
-grep '^release upload' "$WORK/gh.log" | sed -n 1p | grep -q '^release upload v9.8.7 .*Sensorium-9.8.7.zip .*Sensorium-Host-9.8.7.zip .*SHA256SUMS$' || fail "first upload call carries the zips and SHA256SUMS"
+grep '^release upload' "$WORK/gh.log" | sed -n 1p | grep -q '^release upload v9.8.7 .*Sensorium-9.8.7.zip .*Sensorium-Host-9.8.7.zip .*Sensorium-9.8.7.dmg .*Sensorium-Host-9.8.7.dmg .*SHA256SUMS$' || fail "first upload call carries the zips, the disk images and SHA256SUMS"
 grep '^release upload' "$WORK/gh.log" | sed -n 1p | grep -q 'sensorium-update' && fail "the manifest must not be in the first upload call"
 grep '^release upload' "$WORK/gh.log" | sed -n 2p | grep -q '^release upload v9.8.7 .*sensorium-update.json .*sensorium-update.json.sig$' || fail "last upload call carries the manifest and its signature"
-grep '^release upload' "$WORK/gh.log" | sed -n 2p | grep -q '\.zip' && fail "the last upload call must hold only the manifest and signature"
+grep '^release upload' "$WORK/gh.log" | sed -n 2p | grep -q '\.zip\|\.dmg' && fail "the last upload call must hold only the manifest and signature"
 ! grep -q -- '--clobber' "$WORK/gh.log" || fail "upload must not clobber"
 
 run_release --bogus && fail "unknown arguments must be refused"
 
-printf 'PASS: release zips, manifest, signature, checks and upload gate\n'
+printf 'PASS: release zips, disk images, manifest, signature, checks and upload gate\n'

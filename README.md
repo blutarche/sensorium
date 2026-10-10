@@ -117,12 +117,13 @@ rest.
 Download each app on its own machine from the
 [latest release](../../releases/latest):
 
-- `Sensorium-Host-<version>.zip` on the machine you want to reach.
-- `Sensorium-<version>.zip` on the machine you sit at.
+- `Sensorium-Host-<version>.dmg` on the machine you want to reach.
+- `Sensorium-<version>.dmg` on the machine you sit at.
 
-Drag the app into Applications and open it. The apps are not notarized, so
-macOS refuses the first open. Click **Open Anyway** in System Settings,
-Privacy & Security, once per app. [Install](docs/install.md) has the steps.
+Open the disk image, drag the app onto the Applications shortcut, and open
+it from Applications. The apps are not notarized, so macOS refuses the first
+open. Click **Open Anyway** in System Settings, Privacy & Security, once per
+app. [Install](docs/install.md) has the steps.
 
 After that, both apps update themselves. Each checks this project's GitHub
 releases when it opens and every six hours. It installs a release only if

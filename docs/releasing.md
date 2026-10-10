@@ -1,6 +1,8 @@
 # Releasing
 
-Releases are built on the maintainer's own machine, which runs macOS, not in CI. Each release carries two zips, `SHA256SUMS`, and a signed update manifest.
+Releases are built on the maintainer's own machine, which runs macOS, not in CI. Each release carries two disk images for people to download, two zips that only self-update uses, `SHA256SUMS`, and a signed update manifest.
+
+Each disk image holds one app and a link to Applications. The disk image itself is not signed. The app inside it is the signed app, and it is the same app as the one in the matching zip.
 
 ## What you need
 
@@ -38,8 +40,11 @@ The script refuses to continue when:
 - either app is signed with a certificate other than the pinned release certificate
 - a zip does not unpack to one app, or holds a link that points outside it
 - an app fails `--update-self-test`
+- a disk image does not attach, or shows anything but the app and a link named `Applications` that points to `/Applications`
+- an app in a disk image fails the same checks as its zip
+- an app in a disk image is not the same build as the app in its zip, by code directory hash
 
-It uploads the zips and `SHA256SUMS` first, then the manifest and its signature in a separate call. It never replaces a file that is already on the release.
+It uploads the zips, the disk images and `SHA256SUMS` first, then the manifest and its signature in a separate call. It never replaces a file that is already on the release.
 
 ## Forks
 

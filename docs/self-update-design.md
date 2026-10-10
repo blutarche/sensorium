@@ -10,12 +10,12 @@ Sensorium is signed with a self-signed code signing certificate, not an Apple De
 
 ### 1.1 First install
 
-1. On the laptop, download `Sensorium-<version>.zip` from the latest release. On the machine that will host, download `Sensorium-Host-<version>.zip`.
-2. Open the zip. Drag the app into Applications.
+1. On the laptop, download `Sensorium-<version>.dmg` from the latest release. On the machine that will host, download `Sensorium-Host-<version>.dmg`.
+2. Open the disk image. Drag the app onto the Applications shortcut beside it.
 3. Open the app. macOS refuses it. Click **Done**.
 4. In System Settings, open Privacy & Security, then click **Open Anyway** next to the app. The button stays there for about an hour after the refusal.
 
-The app has to run from Applications, or from another folder this user can write to. An app opened straight from Downloads runs from a temporary copy macOS makes for it, and that copy cannot be updated. The app says so in its window and asks to be moved.
+The app has to run from Applications, or from another folder this user can write to. An app opened straight from Downloads runs from a temporary copy macOS makes for it, and that copy cannot be updated. An app opened from the disk image cannot be updated either, because the disk image is read-only. In both cases the app says so in its window and asks to be moved.
 
 ### 1.2 Viewer updates
 
@@ -63,14 +63,17 @@ With automatic updates off, the app makes no update request at all until **Check
 
 ## 2. Release
 
-Each release carries four files for macOS beside the Linux package:
+Each release carries seven files for macOS beside the Linux package:
 
 | File | Contents |
 | --- | --- |
 | `Sensorium-<version>.zip` | The viewer alone, universal |
 | `Sensorium-Host-<version>.zip` | The host alone, arm64 |
+| `Sensorium-<version>.dmg` | Disk image of the viewer, for people to download. The updater does not use it. |
+| `Sensorium-Host-<version>.dmg` | Disk image of the host, for people to download. The updater does not use it. |
 | `sensorium-update.json` | The manifest below |
 | `sensorium-update.json.sig` | An Ed25519 signature over the manifest's exact bytes |
+| `SHA256SUMS` | The SHA-256 of each zip and disk image, for people to compare |
 
 ```json
 {
