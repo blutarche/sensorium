@@ -8,6 +8,15 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-10
+
+### Fixed
+
+- After an update, the old host could stay open without serving, and the
+  new one would not update again until it was gone. The old host now
+  quits. A host updating from 0.4.0 or 0.4.1 has its stuck old copy ended
+  after 30 seconds.
+
 ## [0.4.1] - 2026-10-10
 
 ### Fixed
@@ -355,6 +364,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.4.2]: https://github.com/blutarche/sensorium/releases/tag/v0.4.2
 [0.4.1]: https://github.com/blutarche/sensorium/releases/tag/v0.4.1
 [0.4.0]: https://github.com/blutarche/sensorium/releases/tag/v0.4.0
 [0.3.0]: https://github.com/blutarche/sensorium/releases/tag/v0.3.0
