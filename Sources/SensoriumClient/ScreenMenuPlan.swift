@@ -177,9 +177,9 @@ public enum ScreenMenuPlan {
     /// "Virtual display" always, then one row per host screen this machine
     /// most recently offered -- the same list the Screen menu's own items
     /// already read, so a display can be picked as a starting point before
-    /// it has ever been offered to this exact session. Each row's own
-    /// `isEnabled` follows `DisplayCountMenuItem`'s rule, not a menu-wide
-    /// disable: the row is still legible while it cannot be acted on.
+    /// it has ever been offered to this exact session. Every row stays
+    /// enabled, including while a host screen is live, because a pick only
+    /// sets what the next session starts on.
     public static func startWithMenu(
         preference: StartTarget,
         offeredHostScreens: [HostScreenListEntry],
@@ -191,7 +191,7 @@ public enum ScreenMenuPlan {
                 target: .hostScreenWhenOffered,
                 title: "Host Screen When Offered",
                 isSelected: preference == .hostScreenWhenOffered,
-                isEnabled: !isHostScreenSessionLive
+                isEnabled: true
             )
         ]
         if canvasAvailable {
@@ -199,7 +199,7 @@ public enum ScreenMenuPlan {
                 target: .virtualDisplay,
                 title: "Virtual Display",
                 isSelected: preference == .virtualDisplay,
-                isEnabled: !isHostScreenSessionLive
+                isEnabled: true
             ))
         }
         for display in offeredHostScreens {
@@ -207,7 +207,7 @@ public enum ScreenMenuPlan {
                 target: .hostScreen(displayIdentity: display.displayIdentity, label: display.label),
                 title: display.label,
                 isSelected: isSameHostScreen(preference, displayIdentity: display.displayIdentity),
-                isEnabled: !isHostScreenSessionLive
+                isEnabled: true
             ))
         }
         return StartWithMenuState(title: "Start with", items: items)

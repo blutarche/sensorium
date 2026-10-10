@@ -145,18 +145,18 @@ func testStartTargetTests() {
     }
 
     do {
-        // Disabled, like Displays, while a host screen is live:
-        // there is nothing a pick here could do about it.
+        // A pick here only sets what the next session starts on, so it
+        // stays available while a host screen is live.
         let menu = ScreenMenuPlan.startWithMenu(
             preference: .hostScreenWhenOffered, offeredHostScreens: [office], isHostScreenSessionLive: true
         )
-        expect(!menu.items.contains { $0.isEnabled }, "every row is disabled while a host screen is live")
+        expect(menu.items.allSatisfy(\.isEnabled), "every row stays enabled while a host screen is live")
         expect(
             menu.items.map(\.title) == ["Host Screen When Offered", "Virtual Display", "Office"],
             "but the rows themselves are unchanged"
         )
         expect(menu.items[0].isSelected, "the default is the row checked when it is the saved preference")
-        print("PASS: the \u{2018}Start with’ submenu disables every row while a host screen is live, the same rule Displays follows")
+        print("PASS: the \u{2018}Start with’ submenu keeps every row enabled while a host screen is live")
     }
 
     do {
