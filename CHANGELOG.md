@@ -8,6 +8,16 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-10
+
+### Fixed
+
+- When an update fails in a way that could pass on another try, and the
+  app puts the old version back, the app now waits for its next scheduled
+  check before trying that release again. It had tried again as soon as
+  the old version opened, so a host could go offline up to three times in
+  a row within minutes. **Check for Updates…** still tries at once.
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
@@ -345,6 +355,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.4.1]: https://github.com/blutarche/sensorium/releases/tag/v0.4.1
 [0.4.0]: https://github.com/blutarche/sensorium/releases/tag/v0.4.0
 [0.3.0]: https://github.com/blutarche/sensorium/releases/tag/v0.3.0
 [0.2.0]: https://github.com/blutarche/sensorium/releases/tag/v0.2.0
