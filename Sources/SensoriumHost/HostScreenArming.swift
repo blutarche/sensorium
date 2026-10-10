@@ -17,9 +17,18 @@ public struct HostScreenDisplayIdentity: Codable, Equatable, Hashable, Sendable 
         self.modelNumber = modelNumber
     }
 
+    /// A sharp screen answers to the placeholder's identity, since it only
+    /// ever stands in for the placeholder: a viewer that chose the
+    /// placeholder last time finds the same entry on its next offer, and a
+    /// resume ticket minted for one admits the other.
     public init(_ snapshot: DisplaySnapshot) {
-        vendorNumber = snapshot.vendorNumber
-        modelNumber = snapshot.modelNumber
+        if SharpScreen.isSharpScreen(snapshot) {
+            vendorNumber = PhysicalDisplayEvidence.headlessStandInVendor
+            modelNumber = PhysicalDisplayEvidence.headlessStandInModel
+        } else {
+            vendorNumber = snapshot.vendorNumber
+            modelNumber = snapshot.modelNumber
+        }
     }
 
     /// Opaque to a viewer and not secret: an EDID vendor/model pair
@@ -99,7 +108,9 @@ public enum HostScreenOfferEligibility {
 
     /// Why `display` cannot be offered right now, `nil` when it can. A
     /// canvas answers `.createdBySensorium` rather than `nil`, so a caller
-    /// that hands one in is never told it is offerable.
+    /// that hands one in is never told it is offerable. The one display
+    /// Sensorium created that can be offered is a sharp screen standing
+    /// where the placeholder would (`SharpScreen.standsInForPlaceholder`).
     ///
     /// Mirroring is answered before sleep, so `.asleep` means sleep is the
     /// only thing in the way. That is what lets the wake path treat this one
@@ -113,7 +124,8 @@ public enum HostScreenOfferEligibility {
         for display: DisplaySnapshot,
         among displays: [DisplaySnapshot]
     ) -> HostScreenOfferGapReason? {
-        if PhysicalDisplayEvidence.isSensoriumCanvas(display) {
+        if PhysicalDisplayEvidence.isSensoriumCanvas(display),
+           !SharpScreen.standsInForPlaceholder(display, among: displays) {
             return .createdBySensorium
         }
         if !display.online {
@@ -609,6 +621,11 @@ public enum HostScreenArmingPresentation {
     /// not here -- this function alone has no sibling displays to compare
     /// against.
     public static func displayLabel(for display: DisplaySnapshot) -> String {
-        display.name ?? (display.builtin ? "Built-in Display" : "External Display")
+        // The placeholder it stands in for has no name, so it reads as the
+        // placeholder does rather than by the name it was created with.
+        if SharpScreen.isSharpScreen(display) {
+            return "External Display"
+        }
+        return display.name ?? (display.builtin ? "Built-in Display" : "External Display")
     }
 }

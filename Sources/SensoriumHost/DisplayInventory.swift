@@ -28,6 +28,10 @@ public struct DisplaySnapshot: Equatable, Hashable, Sendable {
     /// canvas Sensorium created reports `CanvasDisplayIdentity`'s pair back.
     public let vendorNumber: UInt32
     public let modelNumber: UInt32
+    /// `CGDisplaySerialNumber`. A canvas or sharp screen Sensorium created
+    /// reports its `CanvasDisplayIdentity` serial back; `0` when the display
+    /// reports none.
+    public let serialNumber: UInt32
     /// `NSScreen.localizedName` for this display, when macOS can match a
     /// screen to this id -- a canvas Sensorium created, or a display no
     /// screen in `NSScreen.screens` currently claims, leaves this `nil`. So
@@ -51,6 +55,7 @@ public struct DisplaySnapshot: Equatable, Hashable, Sendable {
         main: Bool,
         vendorNumber: UInt32,
         modelNumber: UInt32,
+        serialNumber: UInt32 = 0,
         name: String? = nil
     ) {
         self.id = id
@@ -68,6 +73,7 @@ public struct DisplaySnapshot: Equatable, Hashable, Sendable {
         self.main = main
         self.vendorNumber = vendorNumber
         self.modelNumber = modelNumber
+        self.serialNumber = serialNumber
         self.name = name.flatMap { $0.allSatisfy(\.isWhitespace) ? nil : $0 }
     }
 }
@@ -125,6 +131,7 @@ public enum DisplayInventory {
                 main: CGDisplayIsMain(id) != 0,
                 vendorNumber: CGDisplayVendorNumber(id),
                 modelNumber: CGDisplayModelNumber(id),
+                serialNumber: CGDisplaySerialNumber(id),
                 name: names[id]
             )
         }

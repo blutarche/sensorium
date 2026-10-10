@@ -57,6 +57,7 @@ struct SensoriumHostTestRunner {
             { await runHelloChannelBindingHostTests() },
             { await runHostScreenDeclineIsFinalTests() },
             { await runHostScreenSelectionGuardTests() },
+            { await runSharpScreenTests() },
             { await runHostScreenPresenceRuleTests() },
             { await runHostLocalActivitySignalTests() },
             { await runHostScreenPresenceGateTests() },

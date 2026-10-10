@@ -61,4 +61,19 @@ public struct CanvasDisplayIdentity: Equatable, Sendable {
         serialNumber = UInt32(surface.index) + 1 + bounded * Self.attemptStride
         self.attempt = Int(bounded)
     }
+
+    /// The one identity `SharpScreen` presents. Fixed, like a canvas's stable
+    /// identity, so macOS meets the same display every time a headless host
+    /// creates it. Every canvas serial leaves 1 or 2 over a whole multiple of
+    /// `attemptStride`; this one leaves 0, so no canvas attempt of any surface
+    /// can ever ask for it, and a leftover sharp screen is never mistaken for
+    /// a canvas or the other way round.
+    public static let sharpScreen = CanvasDisplayIdentity(sharpScreenSerial: 0x5300)
+
+    private init(sharpScreenSerial: UInt32) {
+        vendorID = Self.vendorID
+        productID = Self.productID
+        serialNumber = sharpScreenSerial
+        attempt = 0
+    }
 }
