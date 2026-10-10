@@ -87,6 +87,117 @@ func testFinishingTheHandoffRemovesOnlyAStagingFolder() async {
     expect(marker(of: running) == "new", "the running app is untouched")
 }
 
+/// What a fake sleeper was asked to wait for, from whichever task asked.
+private final class RequestedSleeps: @unchecked Sendable {
+    private let lock = NSLock()
+    private var durations: [Duration] = []
+
+    var all: [Duration] {
+        lock.withLock { durations }
+    }
+
+    func record(_ duration: Duration) {
+        lock.withLock { durations.append(duration) }
+    }
+}
+
+/// A running app in its own folder, and a staging folder holding the ready
+/// file and the old app, as an install leaves them.
+private func makeHandoffFolders(_ label: String) -> (directory: URL, running: URL, staging: URL, ready: URL) {
+    let directory = makeTemporaryDirectory(label)
+    let running = makeAppBundle(in: makeOwnerOnlyFolder(directory.appendingPathComponent("Applications", isDirectory: true)), signingIdentifier: nil, marker: "new")
+    let staging = makeOwnerOnlyFolder(directory.appendingPathComponent("stage", isDirectory: true))
+    makeAppBundle(in: staging, signingIdentifier: nil, marker: "old")
+    let ready = staging.appendingPathComponent(UpdateHandoff.readyFileName)
+    try! UpdateHandoff.reportReady(sampleReport(version: "0.5.0"), to: ready)
+    return (directory, running, staging, ready)
+}
+
+private func startSleeping(seconds: String) -> Process {
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: "/bin/sleep")
+    child.arguments = [seconds]
+    try! child.run()
+    return child
+}
+
+func testAReplacedProcessThatQuitsInTimeIsNotEnded() async {
+    let folders = makeHandoffFolders("quits-in-time")
+    defer { removeTemporaryDirectory(folders.directory) }
+    let child = startSleeping(seconds: "0.3")
+    var lookedUp: [pid_t] = []
+    var ended: [pid_t] = []
+    var lines: [String] = []
+
+    let finished = await UpdateHandoff.finishReplacing(
+        oldProcess: child.processIdentifier,
+        readyFile: folders.ready,
+        appName: fixtureAppName,
+        bundleIdentifier: fixtureIdentifier,
+        runningAppURL: folders.running,
+        log: { lines.append($0) },
+        sleep: { try? await Task.sleep(for: $0) },
+        runningBundleIdentifier: { pid in
+            lookedUp.append(pid)
+            return fixtureIdentifier
+        },
+        forceQuit: { ended.append($0) }
+    )
+    expect(lookedUp.isEmpty && ended.isEmpty, "a process that quits within the limit is neither looked up nor ended")
+    expect(lines.isEmpty, "nothing is logged, got \(lines)")
+    expect(finished && !FileManager.default.fileExists(atPath: folders.staging.path), "the staging folder is removed")
+}
+
+func testAReplacedProcessStillRunningAfterThirtySecondsIsEndedOnlyIfItIsThisApp() async {
+    func finish(runningBundleIdentifier: String?) async -> (finished: Bool, child: pid_t, ended: [pid_t], stagingAtEnd: [Bool], lines: [String], sleeps: [Duration], stagingRemains: Bool) {
+        let folders = makeHandoffFolders("still-running")
+        defer { removeTemporaryDirectory(folders.directory) }
+        let child = startSleeping(seconds: "60")
+        defer {
+            child.terminate()
+            child.waitUntilExit()
+        }
+        let sleeps = RequestedSleeps()
+        var ended: [pid_t] = []
+        var stagingAtEnd: [Bool] = []
+        var lines: [String] = []
+        let finished = await UpdateHandoff.finishReplacing(
+            oldProcess: child.processIdentifier,
+            readyFile: folders.ready,
+            appName: fixtureAppName,
+            bundleIdentifier: fixtureIdentifier,
+            runningAppURL: folders.running,
+            log: { lines.append($0) },
+            sleep: { sleeps.record($0) },
+            runningBundleIdentifier: { pid in
+                expect(pid == child.processIdentifier, "the replaced process is the one looked up")
+                return runningBundleIdentifier
+            },
+            forceQuit: { pid in
+                ended.append(pid)
+                stagingAtEnd.append(FileManager.default.fileExists(atPath: folders.staging.path))
+            }
+        )
+        expect(child.isRunning, "the replaced process was still running when the limit passed")
+        return (finished, child.processIdentifier, ended, stagingAtEnd, lines, sleeps.all, FileManager.default.fileExists(atPath: folders.staging.path))
+    }
+
+    let same = await finish(runningBundleIdentifier: fixtureIdentifier)
+    expect(same.sleeps == [.seconds(30)], "the replaced process is given 30 seconds, got \(same.sleeps)")
+    expect(same.ended == [same.child], "a replaced process still running this app after 30 seconds is ended once")
+    expect(same.stagingAtEnd == [true], "it is ended before the staging folder is removed")
+    expect(same.lines.count == 1 && same.lines[0].contains("30 seconds"), "ending it is logged in one line, got \(same.lines)")
+    expect(same.finished && !same.stagingRemains, "then the staging folder is removed")
+
+    let reused = await finish(runningBundleIdentifier: "com.example.other")
+    expect(reused.ended.isEmpty, "a process identifier now used by another app is not ended")
+    expect(reused.finished && !reused.stagingRemains, "the replaced process is gone, so the staging folder is removed")
+
+    let gone = await finish(runningBundleIdentifier: nil)
+    expect(gone.ended.isEmpty, "a process identifier with no running app behind it is not ended")
+    expect(gone.finished && !gone.stagingRemains, "the replaced process is gone, so the staging folder is removed")
+}
+
 func testTheReadyFileIsWrittenOnlyIntoAnOwnerOnlyFolder() {
     let directory = makeTemporaryDirectory("ready-folder")
     defer { removeTemporaryDirectory(directory) }

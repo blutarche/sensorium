@@ -47,6 +47,8 @@ struct SensoriumUpdateTestRunner {
             ("the command line parses the two update modes before anything else", testCommandLineParsesTheTwoUpdateModesBeforeAnythingElse),
             ("waiting for the old process returns once it exits", testWaitingForTheOldProcessReturnsOnceItExits),
             ("finishing the handoff removes only a staging folder", testFinishingTheHandoffRemovesOnlyAStagingFolder),
+            ("a replaced process that quits in time is not ended", testAReplacedProcessThatQuitsInTimeIsNotEnded),
+            ("a replaced process still running after 30 seconds is ended only if it is this app", testAReplacedProcessStillRunningAfterThirtySecondsIsEndedOnlyIfItIsThisApp),
             ("the ready file is written only into an owner-only folder", testTheReadyFileIsWrittenOnlyIntoAnOwnerOnlyFolder),
             ("the staging folder is removed only when it is one", testTheStagingFolderIsRemovedOnlyWhenItIsOne),
             ("the scheduler makes no request when automatic updates are off", testSchedulerMakesNoRequestWhenAutomaticUpdatesAreOff),

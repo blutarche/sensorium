@@ -154,7 +154,7 @@ Both apps handle `--update-self-test` and `--replacing` before any other argumen
 5. Check the installed path again as in section 3.3, step 4. On any failure, swap back.
 6. Open the new app with `NSWorkspace.openApplication(at:configuration:)`, with `createsNewApplicationInstance` set and the arguments `--replacing <pid> <ready file>`. The ready file is a path inside the staging folder.
 7. The new instance starts normally. The host's port is already free. Once its listener reports ready (host) or its window is up (viewer), it writes the ready file with its version and every value from step 3, read from its own running state.
-8. The old instance waits up to 60 seconds for that file. It accepts it only if it names the process it launched, the version is the new one, no permission or login item state got worse, and every host value equals its own. It then quits through `NSApplication.terminate`. The new instance deletes the old app once that process has exited, and only from a folder that is owner-only, holds exactly the ready file and one copy of this app, and is not the folder the app runs from. The ready file is written only into a folder that already exists and is owner-only.
+8. The old instance waits up to 60 seconds for that file. It accepts it only if it names the process it launched, the version is the new one, no permission or login item state got worse, and every host value equals its own. It then quits through `NSApplication.terminate`, scheduled from the run loop and never from inside a main-queue block, where AppKit's wait for the shutdown would block the shutdown itself. If the old process has not exited 30 seconds after the ready file, the new instance ends it, once it has confirmed that process still runs this app. The new instance deletes the old app once that process has exited, and only from a folder that is owner-only, holds exactly the ready file and one copy of this app, and is not the folder the app runs from. The ready file is written only into a folder that already exists and is owner-only.
 9. Otherwise the old instance asks the new one to quit, forces it after 10 seconds, swaps back, records the failure as section 3.6 says, and opens the restored old app through the same handoff. It quits once that copy is serving. The fresh copy reads the recorded failure and shows the *Failed* line.
 
 At quit, the viewer does steps 1 to 5 and opens nothing. The next time the person opens Sensorium, it is the new version. **Restart Now** goes through every step.
@@ -240,9 +240,17 @@ A throwaway app was signed like the host (self-signed certificate, no Team ID, n
 
 A second check covered the permissions. A different program was built under the host's bundle identifier and signed with the host's certificate, then opened through LaunchServices beside the running host. It shared none of the host's code. It found Accessibility and Screen Recording both granted, from the host's existing grants. The same kind of program under a bundle identifier with no grants, opened the same way, found both off.
 
-Required before the host updates itself on its own:
+The real apps were then tested through published releases, on macOS 26.6.2.
 
-- The real host updating itself, keeping Screen Recording and Accessibility.
+| Case | Result |
+| --- | --- |
+| Host 0.4.0 installed from its release zip over an earlier host | Kept its identity and paired machines, served on the same port, and found itself up to date. |
+| Host 0.4.0 updating itself to 0.4.1 | Downloaded, staged, swapped, and the new copy reported ready in under a second, serving on the same port. A paired viewer then streamed the host screen, so Screen Recording was kept. The old copy did not exit: it called `NSApplication.terminate` from inside a main-queue block and waited forever for its own shutdown. Fixed in 0.4.2, which also ends such an old copy after 30 seconds. |
+| Viewer 0.4.0 updating itself to 0.4.1 | Downloaded and staged while open, installed when asked to quit from outside the app, and the new copy opened and found itself up to date. |
+
+Still to test:
+
+- Accessibility used directly after an update. It rests on the permissions check above.
 - That host machine restarting afterwards and the host coming back serving.
 - A host updating after its screen was unlocked from a viewer does not lock the screen again on relaunch.
 - macOS 27.

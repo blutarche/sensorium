@@ -77,17 +77,20 @@ private final class HostApplicationDelegate: NSObject, NSApplicationDelegate {
             await self?.teardown()
             self?.reply(sender)
         }
-        Task { @MainActor [weak self] in
-            guard let timeoutNanoseconds = self?.timeoutNanoseconds else {
-                return
+        // A run loop timer in the common modes, not a main-actor task. AppKit
+        // waits for the reply in a nested run loop in the modal panel mode,
+        // and when `terminate(_:)` was called from inside a main-queue block
+        // that loop cannot run main-queue work, so no main-actor task runs.
+        let timeout = Timer(timeInterval: TimeInterval(timeoutNanoseconds) / 1_000_000_000, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.hasReplied else {
+                    return
+                }
+                self.forceRelease()
+                self.reply(sender)
             }
-            try? await Task.sleep(nanoseconds: timeoutNanoseconds)
-            guard let self, !self.hasReplied else {
-                return
-            }
-            self.forceRelease()
-            self.reply(sender)
         }
+        RunLoop.main.add(timeout, forMode: .common)
         return .terminateLater
     }
 
@@ -98,6 +101,19 @@ private final class HostApplicationDelegate: NSObject, NSApplicationDelegate {
         hasReplied = true
         sender.reply(toApplicationShouldTerminate: true)
     }
+}
+
+/// Quits through `HostApplicationDelegate` from a run loop timer, never
+/// from the caller's own stack. Called inside a main-queue block or a
+/// main-actor task, `terminate(_:)` waits for the `.terminateLater` reply in
+/// a nested run loop that cannot run main-queue work while that block is
+/// still on the stack, so the teardown that replies never runs. The timer
+/// fires only once the caller's main-actor job has ended, so anything that
+/// job records first, such as the scheduler recording a rollback's failure,
+/// is already done.
+@MainActor
+private func terminateFromRunLoop(_ application: NSApplication) {
+    application.perform(#selector(NSApplication.terminate(_:)), with: nil, afterDelay: 0)
 }
 
 /// Every connection's record of who is on it, so the terminal can name the
@@ -1202,7 +1218,7 @@ struct sensoriumd {
             ) {
             case .ready:
                 HostUpdateLog.record("the installed app reported ready; quitting")
-                application.terminate(nil)
+                terminateFromRunLoop(application)
             case .requirementFailed:
                 HostUpdateLog.record("UPDATE FAILED: the installed app is not signed like this one, so it was not launched")
                 reportUpdateProblem()
@@ -1213,7 +1229,7 @@ struct sensoriumd {
                 // This process can no longer listen, and the launched copy
                 // waits for it to exit before it updates again.
                 HostUpdateLog.record("UPDATE FAILED: the installed app did not report ready in time; quitting so it can take over")
-                application.terminate(nil)
+                terminateFromRunLoop(application)
             }
         }
 
@@ -1250,9 +1266,9 @@ struct sensoriumd {
             HostUpdateLog.record(HostUpdateLog.describe(outcome))
             switch outcome {
             case .handedOff, .rolledBack:
-                // Next turn of the main queue, once the scheduler has
+                // Once the scheduler, later in this same main-actor job, has
                 // recorded a rollback's failure for the copy taking over.
-                DispatchQueue.main.async { application.terminate(nil) }
+                terminateFromRunLoop(application)
             case let .swapBackFailed(failure):
                 updateBox.updater?.showInstallFailure(reason: failure.reason)
                 Task { @MainActor in

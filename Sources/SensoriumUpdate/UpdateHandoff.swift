@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Foundation
 
 /// What a launch was asked to do. Both apps parse this before any other
@@ -84,38 +85,73 @@ public enum UpdateHandoff {
 
     /// Waits for the replaced process to exit, then removes the staging
     /// folder, which holds the old app. True if the folder was removed.
+    ///
+    /// Called once the ready report is written. A replaced process still
+    /// running 30 seconds later, and still this app by `bundleIdentifier`,
+    /// is ended with `forceQuit`, and the folder is removed as if it had
+    /// exited.
     public static func finishReplacing(
         oldProcess pid: pid_t,
         readyFile: URL,
         appName: String,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier,
         runningAppURL: URL = Bundle.main.bundleURL,
-        log: (String) -> Void = { print("Sensorium update: \($0)") }
+        log: (String) -> Void = { print("Sensorium update: \($0)") },
+        sleep: @escaping @Sendable (Duration) async -> Void = { try? await Task.sleep(for: $0) },
+        runningBundleIdentifier: (pid_t) -> String? = { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier },
+        forceQuit: (pid_t) -> Void = { _ = kill($0, SIGKILL) }
     ) async -> Bool {
-        await waitForExit(of: pid)
+        let exited = await waitForExit(of: pid, pollInterval: .milliseconds(500)) {
+            await sleep(.seconds(30))
+        }
+        // The replaced process has handed over and is idle: the host
+        // installs only with no session live, no pairing under way and no
+        // code showing, then stops its listener, and it holds no canvas.
+        // A process identifier that is gone or names another app means the
+        // replaced process has exited, and nothing is signalled.
+        if !exited, let bundleIdentifier, runningBundleIdentifier(pid) == bundleIdentifier {
+            forceQuit(pid)
+            log("the replaced process \(pid) had not quit 30 seconds after this one reported ready, so it was ended")
+        }
         return removeStagingFolder(holding: readyFile, appName: appName, bundleIdentifier: bundleIdentifier, runningAppURL: runningAppURL, log: log)
     }
 
     /// Returns once process `pid` has exited.
     public static func waitForExit(of pid: pid_t, pollInterval: Duration = .milliseconds(500)) async {
+        _ = await waitForExit(of: pid, pollInterval: pollInterval, giveUp: nil)
+    }
+
+    /// True once process `pid` has exited, or false if `giveUp` returns
+    /// first.
+    private static func waitForExit(
+        of pid: pid_t,
+        pollInterval: Duration,
+        giveUp: (@Sendable () async -> Void)?
+    ) async -> Bool {
         if hasExited(pid) {
-            return
+            return true
         }
         let waiter = ExitWaiter()
-        await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { continuation in
             let source = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: .global())
             waiter.arm(continuation, source: source)
-            source.setEventHandler { waiter.finish() }
+            source.setEventHandler { waiter.finish(exited: true) }
             source.resume()
             // A process that exited before the source was armed raises no
             // event, and a source that cannot watch it raises none either.
             Task.detached {
                 while !waiter.isFinished {
                     if hasExited(pid) {
-                        waiter.finish()
+                        waiter.finish(exited: true)
                         return
                     }
                     try? await Task.sleep(for: pollInterval)
+                }
+            }
+            if let giveUp {
+                Task.detached {
+                    await giveUp()
+                    waiter.finish(exited: false)
                 }
             }
         }
@@ -199,11 +235,11 @@ public enum UpdateHandoff {
     }
 }
 
-/// Resumes one waiter once, from whichever of the exit source and the poll
-/// fires first.
+/// Resumes one waiter once, from whichever of the exit source, the poll and
+/// the time limit fires first.
 private final class ExitWaiter: @unchecked Sendable {
     private let lock = NSLock()
-    private var continuation: CheckedContinuation<Void, Never>?
+    private var continuation: CheckedContinuation<Bool, Never>?
     private var source: (any DispatchSourceProcess)?
     private var finished = false
 
@@ -211,14 +247,14 @@ private final class ExitWaiter: @unchecked Sendable {
         lock.withLock { finished }
     }
 
-    func arm(_ continuation: CheckedContinuation<Void, Never>, source: any DispatchSourceProcess) {
+    func arm(_ continuation: CheckedContinuation<Bool, Never>, source: any DispatchSourceProcess) {
         lock.withLock {
             self.continuation = continuation
             self.source = source
         }
     }
 
-    func finish() {
+    func finish(exited: Bool) {
         let (continuation, source) = lock.withLock {
             defer {
                 finished = true
@@ -228,7 +264,7 @@ private final class ExitWaiter: @unchecked Sendable {
             return (self.continuation, self.source)
         }
         source?.cancel()
-        continuation?.resume()
+        continuation?.resume(returning: exited)
     }
 }
 #endif
