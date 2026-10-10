@@ -13,11 +13,20 @@ RELEASE="$ROOT/Scripts/release-macos.sh"
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/sensorium-release-test.XXXXXX")"
 MOUNTS=""
+detach_volume() {
+  for attempt in 1 2 3; do
+    hdiutil detach "$1" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  hdiutil detach -force "$1" >/dev/null 2>&1
+}
 cleanup() {
-  for mnt in $MOUNTS; do hdiutil detach -force "$mnt" >/dev/null 2>&1 || true; done
+  for mnt in $MOUNTS; do detach_volume "$mnt" || true; done
   rm -rf "$WORK"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 REPO="$WORK/repo"
 STUBS="$WORK/stubs"
@@ -130,6 +139,35 @@ REL="$REPO/Artifacts/release"
 rm -f "$WORK/gh.log" "$WORK/packager-adhoc" "$WORK/selftest.log"
 export STUB_SELFTEST_LOG="$WORK/selftest.log"
 
+# Two universal apps with the same arm64 code and different x86_64 code. The
+# default CDHash reports only the native slice, so only a per-slice comparison
+# tells them apart. The comparison functions are taken from the release script.
+sed -n '/^cdhash_of() {/,/^}/p;/^same_slices() {/,/^}/p' "$RELEASE" > "$WORK/slices.sh"
+cat > "$WORK/x86.c" <<'C'
+int main(void) { return 7; }
+C
+cc -arch x86_64 -o "$WORK/x86-other" "$WORK/x86.c"
+cc -arch x86_64 -o "$WORK/x86-main" "$WORK/main.c"
+lipo -create -arch arm64 "$WORK/arm64" -arch x86_64 "$WORK/x86-main" -output "$WORK/mixed-a"
+lipo -create -arch arm64 "$WORK/arm64" -arch x86_64 "$WORK/x86-other" -output "$WORK/mixed-b"
+for name in a b a2; do
+  mkdir -p "$WORK/slice-$name"
+  cp "$WORK/mixed-${name%2}" "$WORK/slice-$name/app"
+  codesign --force --sign - --identifier x "$WORK/slice-$name/app" >/dev/null 2>&1
+done
+cat > "$WORK/slices-check.sh" <<'SH'
+set -eu
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+. "$1"
+same_slices "$2" "$3" Viewer first.zip second.dmg "arm64 x86_64"
+SH
+(sh "$WORK/slices-check.sh" "$WORK/slices.sh" "$WORK/slice-a/app" "$WORK/slice-a2/app" > "$WORK/out" 2>&1) ||
+  fail "identical apps must pass the per-slice comparison"
+(sh "$WORK/slices-check.sh" "$WORK/slices.sh" "$WORK/slice-a/app" "$WORK/slice-b/app" > "$WORK/out" 2>&1) &&
+  fail "apps whose x86_64 slices differ must be refused"
+grep -qF "x86_64 slice" "$WORK/out" || fail "slice refusal should name the architecture"
+grep -qF "first.zip" "$WORK/out" && grep -qF "second.dmg" "$WORK/out" || fail "slice refusal should name both files"
+
 # Per-call variables are set inside a subshell so they cannot leak into later
 # runs; some shells keep a prefix assignment on a function call.
 # Happy path. The caller's ad hoc permission must not reach the packager.
@@ -159,7 +197,7 @@ check_image() {
   [ -L "$MNT/Applications" ] || fail "$DMG should hold an Applications link"
   [ "$(readlink "$MNT/Applications")" = "/Applications" ] || fail "$DMG Applications link should point to /Applications"
   [ "$(plutil -extract CFBundleShortVersionString raw -o - "$MNT/$APP_NAME/Contents/Info.plist")" = "9.8.7" ] || fail "$DMG app version should be 9.8.7"
-  hdiutil detach "$MNT" >/dev/null || fail "$DMG should detach"
+  detach_volume "$MNT" || fail "$DMG should detach"
 }
 check_image Sensorium-9.8.7.dmg "Sensorium.app"
 check_image Sensorium-Host-9.8.7.dmg "Sensorium Host.app"

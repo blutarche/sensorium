@@ -76,13 +76,25 @@ ditto -c -k --keepParent "$KIT/Sensorium Host.app" "$OUT/$HOST_ZIP"
 
 SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/sensorium-release.XXXXXX")"
 ATTACHED=""
+# A volume can stay busy for a moment after its last reader closes, so retry
+# before forcing. Returns non-zero only when every attempt failed.
+detach_volume() {
+  for attempt in 1 2 3; do
+    hdiutil detach "$1" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  hdiutil detach -force "$1" >/dev/null 2>&1
+}
+
 cleanup() {
   if [ -n "$ATTACHED" ]; then
-    hdiutil detach "$ATTACHED" >/dev/null 2>&1 || hdiutil detach -force "$ATTACHED" >/dev/null 2>&1 || true
+    detach_volume "$ATTACHED" || true
   fi
   rm -rf "$SCRATCH"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 leaf_of() {
   codesign -d -r- "$1" 2>&1 | sed -n 's/.*certificate leaf = \(H"[0-9a-fA-F]*"\).*/\1/p' | head -n 1
@@ -92,8 +104,20 @@ plist_value() {
   plutil -extract "$2" raw -o - "$1/Contents/Info.plist" 2>/dev/null || true
 }
 
+# cdhash_of <app> <architecture>: codesign reports one slice at a time.
 cdhash_of() {
-  codesign -dvvv "$1" 2>&1 | sed -n 's/^CDHash=//p' | head -n 1
+  codesign -dvvv --arch "$2" "$1" 2>&1 | sed -n 's/^CDHash=//p' | head -n 1
+}
+
+# same_slices <first app> <second app> <label> <first file> <second file> <architectures>
+# Dies unless every listed architecture has the same non-empty CDHash in both apps.
+same_slices() {
+  for arch in $6; do
+    FIRST_HASH="$(cdhash_of "$1" "$arch")"
+    SECOND_HASH="$(cdhash_of "$2" "$arch")"
+    [ -n "$FIRST_HASH" ] && [ "$FIRST_HASH" = "$SECOND_HASH" ] ||
+      die "$3: the $arch slice of the app in $5 (CDHash '$SECOND_HASH') is not the one in $4 (CDHash '$FIRST_HASH')"
+  done
 }
 
 # verify_app <app path> <file holding it> <app file name> <app label> <expected architectures>
@@ -175,11 +199,8 @@ verify_dmg() {
   [ "$(readlink "$MNT/Applications")" = "/Applications" ] ||
     die "$LABEL: Applications in $DMG must point to /Applications"
   verify_app "$MNT/$APP_NAME" "$DMG" "$APP_NAME" "$LABEL" "$ARCHS"
-  ZIP_HASH="$(cdhash_of "$SCRATCH/$SRC_ZIP/$APP_NAME")"
-  DMG_HASH="$(cdhash_of "$MNT/$APP_NAME")"
-  [ -n "$ZIP_HASH" ] && [ "$ZIP_HASH" = "$DMG_HASH" ] ||
-    die "$LABEL: the app in $DMG (CDHash '$DMG_HASH') is not the app in $SRC_ZIP (CDHash '$ZIP_HASH')"
-  hdiutil detach "$MNT" >/dev/null || die "$LABEL: $DMG could not be detached"
+  same_slices "$SCRATCH/$SRC_ZIP/$APP_NAME" "$MNT/$APP_NAME" "$LABEL" "$SRC_ZIP" "$DMG" "$ARCHS"
+  detach_volume "$MNT" || die "$LABEL: $DMG could not be detached"
   ATTACHED=""
 }
 
