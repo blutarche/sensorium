@@ -18,7 +18,7 @@ Reversible by design. Nothing installs a launch agent or background service, so 
    ```sh
    rm -rf ~/Library/Application\ Support/Sensorium
    ```
-   This holds its keys (`device-identity.json`, `host-tls-identity.json`), the record of which machines may reach the host screen (`host-screen-arming.json`), the local log of host-screen sessions (`host-screen-sessions.log`), what it knows about updates (`host-update-state.json`), and small UI and display-mode preferences.
+   This holds its keys (`device-identity.json`, `host-tls-identity.json`), the machines it has paired (`approved-devices.json`), the record of which machines may reach the host screen (`host-screen-arming.json`), the local log of host-screen sessions (`host-screen-sessions.log`), what it knows about updates (`host-update-state.json`), and small UI and display-mode preferences.
 6. **Delete `Sensorium.app` and `Sensorium Host.app`.**
 
 On Linux the viewer is a Fedora package instead of an app bundle. Remove it in
