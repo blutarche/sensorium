@@ -8,6 +8,13 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-10
+
+### Fixed
+
+- A host update that was waiting on a pairing code now installs once the
+  code expires, not at the next check up to six hours later.
+
 ## [0.4.2] - 2026-10-10
 
 ### Fixed
@@ -364,6 +371,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.4.3]: https://github.com/blutarche/sensorium/releases/tag/v0.4.3
 [0.4.2]: https://github.com/blutarche/sensorium/releases/tag/v0.4.2
 [0.4.1]: https://github.com/blutarche/sensorium/releases/tag/v0.4.1
 [0.4.0]: https://github.com/blutarche/sensorium/releases/tag/v0.4.0
