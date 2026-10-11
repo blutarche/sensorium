@@ -282,6 +282,37 @@ func runHostScreenFidelityTests() async {
     print("PASS: sustained pressure on a host-screen session steps its fidelity down through the media it is streaming")
 
     do {
+        // The viewer's decoder is named with the device and the display
+        let events = DiagnosticsRecorder()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            onEvent: { events.record($0) },
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
+        )
+        await startFidelitySession(fixture)
+        _ = try! await fixture.coordinator.handleWritingResponse(
+            .viewerTelemetry(
+                ViewerTelemetrySample(
+                    surfaceID: surfaceZero.wireValue,
+                    endToEnd: nil,
+                    receive: nil,
+                    decode: nil,
+                    presentedFramesPerSecond: 30,
+                    decodedFramesPerSecond: 30,
+                    receivedBitsPerSecond: nil,
+                    decodesInHardware: false
+                )
+            )
+        )
+        let decoderLines = events.messages.filter { $0.contains("decodes in") }
+        expect(
+            decoderLines == ["viewer Kestrel Laptop Pro decodes in software on host-screen display 7"],
+            "the line names the armed device and the display it is watching, got \(decoderLines)"
+        )
+    }
+    print("PASS: a host-screen session names the viewer's decoder with the device and the display it streams")
+
+    do {
         // Stopping the session stops the ticking with it
         let hostScreenMedia = FakeScalableCanvasMedia()
         let events = DiagnosticsRecorder()

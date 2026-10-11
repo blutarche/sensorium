@@ -164,6 +164,102 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: a fidelity change line carries the viewer's own decode time and frame rates when it has reported them")
 
+    // A fidelity change names the viewer's decoder and its decode time split
+    do {
+        let media = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(media: onlyOnSurfaceZero(media), onEvent: { events.record($0) })
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .viewerTelemetry(
+                ViewerTelemetrySample(
+                    surfaceID: 0,
+                    endToEnd: nil,
+                    receive: nil,
+                    decode: StageLatencySample(p50Nanoseconds: 3_000_000, p95Nanoseconds: 4_250_000),
+                    presentedFramesPerSecond: 59.6,
+                    decodedFramesPerSecond: 60,
+                    receivedBitsPerSecond: nil,
+                    decodesInHardware: true,
+                    decoderOnly: StageLatencySample(p50Nanoseconds: 2_500_000, p95Nanoseconds: 3_400_000),
+                    decodeQueueWait: StageLatencySample(p50Nanoseconds: 300_000, p95Nanoseconds: 800_000)
+                )
+            )
+        )
+        for tick in 0...8 {
+            media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
+            await coordinator.tickFidelity(atSeconds: Double(tick))
+        }
+        let fidelityLines = events.messages.filter { $0.hasPrefix("fidelity now") }
+        expect(
+            fidelityLines.last
+                == "fidelity now 30 fps, quality 100%, 1.00x on canvas 0 (limited by the encoder)"
+                + "; viewer decode p95 4.2ms, decoded 60 fps, presented 60 fps"
+                + ", hardware decoder, decoder p50 2.5ms p95 3.4ms, queue wait p95 0.8ms",
+            "the line names the decoder and splits its time from the wait ahead of it, got \(fidelityLines.last ?? "nothing")"
+        )
+    }
+    print("PASS: a fidelity change line names the viewer's decoder and splits the decoder's own time from the wait ahead of it")
+
+    // The viewer's decoder is named once per surface it streams
+    do {
+        let surfaceOne = CanvasSurfaceID.allCases[1]
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(
+            media: CanvasSurfaceSlots(surface0: FakeScalableCanvasMedia(), surface1: FakeScalableCanvasMedia()),
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        _ = try! await coordinator.handleWritingResponse(.displayCount(2))
+        func report(surfaceID: UInt32, decodesInHardware: Bool?) async {
+            _ = try! await coordinator.handleWritingResponse(
+                .viewerTelemetry(
+                    ViewerTelemetrySample(
+                        surfaceID: surfaceID,
+                        endToEnd: nil,
+                        receive: nil,
+                        decode: nil,
+                        presentedFramesPerSecond: 60,
+                        decodedFramesPerSecond: 60,
+                        receivedBitsPerSecond: nil,
+                        decodesInHardware: decodesInHardware
+                    )
+                )
+            )
+        }
+        func decoderLines() -> [String] {
+            events.messages.filter { $0.contains("decodes in") }
+        }
+
+        await report(surfaceID: 0, decodesInHardware: nil)
+        expect(decoderLines().isEmpty, "a report that does not say which decoder runs names none, got \(decoderLines())")
+
+        await report(surfaceID: 0, decodesInHardware: true)
+        await report(surfaceID: 0, decodesInHardware: true)
+        await report(surfaceID: 0, decodesInHardware: false)
+        await report(surfaceID: surfaceOne.wireValue, decodesInHardware: false)
+        expect(
+            decoderLines() == [
+                "the viewer decodes in hardware on canvas 0",
+                "the viewer decodes in software on canvas 1",
+            ],
+            "the first report that names the decoder is logged once per surface, got \(decoderLines())"
+        )
+
+        _ = try! await coordinator.handleWritingResponse(.displayCount(1))
+        _ = try! await coordinator.handleWritingResponse(.displayCount(2))
+        await report(surfaceID: surfaceOne.wireValue, decodesInHardware: false)
+        expect(
+            decoderLines().count == 3 && decoderLines().last == "the viewer decodes in software on canvas 1",
+            "a surface that stopped and came back names its decoder again, got \(decoderLines())"
+        )
+    }
+    print("PASS: the viewer's decoder is logged once per surface, the first time the viewer names it")
+
     // A screen nobody is changing gets its quality back at once
     do {
         let media = FakeScalableCanvasMedia()

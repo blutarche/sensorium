@@ -351,6 +351,10 @@ public final class HostSessionCoordinator {
     /// Read against a baseline rather than against zero: the counters may be
     /// a machine's whole run rather than this session's.
     private var captureDeliveryBaseline = CanvasSurfaceSlots<HostFrameCounts?> { _ in nil }
+    /// Which decoder the viewer said it runs for this surface, once that has
+    /// been logged; `nil` until then and again once the surface stops. A
+    /// later change shows on the fidelity line rather than a line of its own.
+    private var loggedViewerDecoderKind = CanvasSurfaceSlots<Bool?> { _ in nil }
     /// How many capture-delivery reports in a row have found this surface's
     /// stream delivering nothing whatsoever.
     private var silentCaptureReports = CanvasSurfaceSlots { _ in 0 }
@@ -695,6 +699,20 @@ public final class HostSessionCoordinator {
 
         if case let .hostScreenRefused(reason) = response {
             onEvent?("host screen refused for \(hostScreenLogName()): \(reason)")
+        }
+
+        if case let .viewerTelemetry(sample) = message,
+           let surface = CanvasSurfaceID(wireValue: sample.surfaceID),
+           loggedViewerDecoderKind[surface] == nil,
+           let decodesInHardware = controller.latestViewerTelemetry(for: surface, atSeconds: Self.nowSeconds())?
+               .decodesInHardware {
+            // Read back from the controller rather than from the message: the
+            // store is what refused a report from an unauthenticated viewer
+            // or one with impossible numbers.
+            loggedViewerDecoderKind[surface] = decodesInHardware
+            onEvent?(
+                "\(viewerLogName()) decodes in \(decodesInHardware ? "hardware" : "software") on \(surfaceLogName(surface))"
+            )
         }
 
         if case .viewerFocus = message {
@@ -2378,15 +2396,31 @@ public final class HostSessionCoordinator {
 
     /// The viewer's own report behind a fidelity change, so a "limited by
     /// the viewer" line can be checked against the numbers it rests on.
-    /// Empty when no fresh report has arrived.
+    /// Empty when no fresh report has arrived. The decoder and the split of
+    /// its decode time are added only when the viewer reported them.
     private static func viewerTelemetryDescription(_ sample: ViewerTelemetrySample?) -> String {
         guard let sample else {
             return ""
         }
-        let decode = sample.decode.map { String(format: "%.1fms", Double($0.p95Nanoseconds) / 1_000_000) } ?? "?"
+        let decode = sample.decode.map { milliseconds($0.p95Nanoseconds) } ?? "?"
         let decoded = sample.decodedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
         let presented = sample.presentedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
-        return "; viewer decode p95 \(decode), decoded \(decoded) fps, presented \(presented) fps"
+        var description = "; viewer decode p95 \(decode), decoded \(decoded) fps, presented \(presented) fps"
+        if let decodesInHardware = sample.decodesInHardware {
+            description += decodesInHardware ? ", hardware decoder" : ", software decoder"
+        }
+        if let decoderOnly = sample.decoderOnly {
+            description += ", decoder p50 \(milliseconds(decoderOnly.p50Nanoseconds))"
+                + " p95 \(milliseconds(decoderOnly.p95Nanoseconds))"
+        }
+        if let queueWait = sample.decodeQueueWait {
+            description += ", queue wait p95 \(milliseconds(queueWait.p95Nanoseconds))"
+        }
+        return description
+    }
+
+    private static func milliseconds(_ nanoseconds: Int64) -> String {
+        String(format: "%.1fms", Double(nanoseconds) / 1_000_000)
     }
 
     /// What the log calls the message that failed, in the words the rest of
@@ -2439,6 +2473,17 @@ public final class HostSessionCoordinator {
             return "the connected machine"
         }
         return name
+    }
+
+    /// The name a line about the viewer's own decoding uses: the device a
+    /// host-screen session was admitted for, else the name chosen here for
+    /// the device this connection authenticated as.
+    private func viewerLogName() -> String {
+        guard let name = controller.hostScreenDeviceName ?? controller.authenticatedDeviceDisplayName,
+              !name.isEmpty else {
+            return "the viewer"
+        }
+        return "viewer \(name)"
     }
 
     private static func nowSeconds() -> Double {
@@ -2564,6 +2609,7 @@ public final class HostSessionCoordinator {
                 // The stream those counters described is gone, and the next
                 // one gets the same benefit of the doubt as the first.
                 captureDeliveryBaseline[surface] = nil
+                loggedViewerDecoderKind[surface] = nil
                 silentCaptureReports[surface] = 0
                 didRebuildSilentCapture[surface] = false
                 didRebuildStoppedCanvasCapture[surface] = false
