@@ -26,6 +26,13 @@ once it reaches 1.0.
 
 ### Fixed
 
+- On a slow link, a mostly still host screen could stall for about half a
+  second every few seconds. Each time the screen settled, the host sent a
+  large sharp picture of it, and the next change waited behind it. The
+  host now times each of these pictures. After one that took more than a
+  tenth of a second to send, the next waits at least 30 seconds, twice as
+  long after each slow one in a row, up to four minutes. The host log
+  shows how long each one took to send.
 - The host could lower the picture for a viewer that was keeping up.
   Time a frame spent waiting before the viewer began to decode it counted
   as slow decoding. On a quiet screen, the viewer takes a little longer
