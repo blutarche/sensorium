@@ -164,6 +164,54 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: a fidelity change line carries the viewer's own decode time and frame rates when it has reported them")
 
+    // The viewer's decode budget is judged on its decoder's own time when it reports one
+    do {
+        /// A viewer whose receipt-to-decoded p95 is over a 60 fps budget
+        /// while its decoder alone, when reported, is well inside it: the
+        /// wait ahead of the decoder is not decode time.
+        func limitReason(decoderOnly: StageLatencySample?) async -> String? {
+            let media = FakeScalableCanvasMedia()
+            let coordinator = makeCoordinator(media: onlyOnSurfaceZero(media))
+            _ = try! await coordinator.handleWritingResponse(
+                .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+            )
+            for tick in 0...8 {
+                _ = try! await coordinator.handleWritingResponse(
+                    .viewerTelemetry(
+                        ViewerTelemetrySample(
+                            surfaceID: 0,
+                            endToEnd: nil,
+                            receive: nil,
+                            decode: StageLatencySample(p50Nanoseconds: 20_000_000, p95Nanoseconds: 35_000_000),
+                            presentedFramesPerSecond: 60,
+                            decodedFramesPerSecond: 60,
+                            receivedBitsPerSecond: nil,
+                            decodesInHardware: decoderOnly == nil ? nil : true,
+                            decoderOnly: decoderOnly
+                        )
+                    )
+                )
+                media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 0)
+                await coordinator.tickFidelity(atSeconds: Double(tick))
+            }
+            return coordinator.fidelityLimitReason(for: surfaceZero)
+        }
+
+        let withoutSplit = await limitReason(decoderOnly: nil)
+        expect(
+            withoutSplit == FidelityLimitReason.viewer,
+            "a viewer reporting only its receipt-to-decoded time is still judged on it, got \(String(describing: withoutSplit))"
+        )
+        let withSplit = await limitReason(
+            decoderOnly: StageLatencySample(p50Nanoseconds: 4_000_000, p95Nanoseconds: 5_000_000)
+        )
+        expect(
+            withSplit == nil,
+            "a viewer whose decoder takes 5 ms is not behind at 60 fps, however long frames waited for it, got \(String(describing: withSplit))"
+        )
+    }
+    print("PASS: the viewer's decode budget is judged on its decoder's own time when the viewer reports it")
+
     // A fidelity change names the viewer's decoder and its decode time split
     do {
         let media = FakeScalableCanvasMedia()

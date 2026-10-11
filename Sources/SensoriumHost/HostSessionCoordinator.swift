@@ -2257,7 +2257,12 @@ public final class HostSessionCoordinator {
             // a decision must infer no viewer-side health from.
             viewer: controller.latestViewerTelemetry(for: surface, atSeconds: now).map {
                 StreamFidelityViewerObservation(
-                    decodeP95Nanoseconds: $0.decode?.p95Nanoseconds,
+                    // The decoder's own recent time where the viewer reports
+                    // it. `decode` runs from receipt, so it also counts the
+                    // wait ahead of the decoder, and its p95 spans thousands
+                    // of frames: a viewer that once fell behind would read
+                    // as behind long after it caught up.
+                    decodeP95Nanoseconds: ($0.decoderOnly ?? $0.decode)?.p95Nanoseconds,
                     presentedFramesPerSecond: $0.presentedFramesPerSecond,
                     decodedFramesPerSecond: $0.decodedFramesPerSecond,
                     receivedBitsPerSecond: $0.receivedBitsPerSecond
