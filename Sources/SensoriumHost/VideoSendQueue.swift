@@ -67,6 +67,12 @@ public struct VideoFrameAdmissionQueue<Frame: VideoFrameAdmissible & Sendable>: 
         return .replacedStaleFrame
     }
 
+    /// Counts a frame as dropped that a caller refused before offering it, by
+    /// a policy of its own stricter than `offerToWaitingSlot`'s.
+    public mutating func recordDroppedIncoming() {
+        droppedFrameCount += 1
+    }
+
     /// Removes and returns the waiting frame, without touching the in-flight
     /// slot. The counterpart to `offerToWaitingSlot`.
     public mutating func takeWaiting() -> Frame? {
@@ -109,8 +115,8 @@ public enum VideoSendPriority: Int, Comparable, Sendable {
 /// is in flight either way. Focus preference is bounded by
 /// `maximumConsecutivePriorityWins` and never reorders a waiting keyframe.
 ///
-/// A surface that loses a delta here, displaced, refused or failed on the
-/// wire, takes only key frames until one arrives. Losses are rare: a
+/// A surface that loses a delta here, refused or failed on the wire, takes
+/// only key frames until one arrives. Losses are rare: a
 /// surface's encode gate holds its captures while that surface's waiting slot
 /// is full, through `VideoSendFeedback`.
 public struct SurfaceVideoSendQueues: Sendable {
@@ -136,8 +142,9 @@ public struct SurfaceVideoSendQueues: Sendable {
     /// Surfaces that lost a delta on the way out. Every delta after a lost
     /// one is built on a picture the viewer never received and would show as
     /// corrupt blocks, so such a surface takes nothing but a key frame until
-    /// one arrives. A key frame already waiting does not end it: the delta
-    /// that was lost came after that key frame.
+    /// one arrives. Whatever is already waiting came before the lost delta
+    /// and still goes out, but a key frame waiting does not end the wait: the
+    /// delta that was lost came after it.
     private var awaitingKeyFrame = CanvasSurfaceSlots { _ in false }
 
     public init() {}
@@ -177,20 +184,20 @@ public struct SurfaceVideoSendQueues: Sendable {
             isSendInFlight = true
             return .sendNow
         }
-        let displacesDelta = queues[surface].hasWaitingFrame && !queues[surface].hasWaitingKeyFrame
+        if !frame.isKeyFrame && queues[surface].hasWaitingFrame && !queues[surface].hasWaitingKeyFrame {
+            // A delta never displaces a waiting delta. The waiting one refers
+            // only to frames already sent and still decodes; this one is built
+            // on it, so this one is dropped, and with it every delta after.
+            queues[surface].recordDroppedIncoming()
+            awaitingKeyFrame[surface] = true
+            return .droppedIncoming
+        }
         let admission = queues[surface].offerToWaitingSlot(frame)
         switch admission {
         case .queued:
             waitingPriority[surface] = priority
             fairnessOrder.append(surface)
         case .replacedStaleFrame:
-            if displacesDelta && !frame.isKeyFrame {
-                // This delta is built on the one it displaced, so neither can
-                // be decoded without the other.
-                clearWaiting(surface)
-                awaitingKeyFrame[surface] = true
-                return .awaitingKeyFrame
-            }
             // Keeps the fairness turn the displaced frame already held: a
             // surface cannot jump the line by replacing its own waiting frame.
             waitingPriority[surface] = priority

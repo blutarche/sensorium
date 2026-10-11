@@ -10,13 +10,13 @@ import SensoriumHost
 /// nothing but a key frame until one arrives, which it asks its encoder for.
 @MainActor
 func runVideoSendRecoveryTests() async {
-    expectReplacedDeltaGatesLaterDeltasUntilAKeyFrame()
+    expectDeltaBehindAWaitingDeltaGatesLaterDeltasUntilAKeyFrame()
     expectRefusedDeltaGatesLaterDeltasUntilANewKeyFrame()
     expectFailedWriteGatesLaterDeltasUntilAKeyFrame()
     expectRecoveryRequestsArePaced()
     expectCapturesWaitBeforeTheEncoderWhileTheSendSlotIsFull()
     expectAHeldCaptureNeverGoesInAfterANewerOne()
-    await expectSendQueueDiscardAsksForAKeyFrameBeforeTheSlotDrains()
+    await expectSendQueueDropAsksForOneKeyFrameAndSendsNoDeltaAfterIt()
     await expectFailedWriteAsksForAKeyFrameAndSendsNoDeltaAfterIt()
     await expectHeldKeyFrameRequestIsServedWhenTheSecondIsUp()
     await expectCanvasMediaCarriesTheSessionsSendFeedbackIntoEveryPipeline()
@@ -117,34 +117,42 @@ private func recoveryFrame(_ sequence: UInt64, keyFrame: Bool = false) -> Encode
     )
 }
 
-/// A newer delta is built on the waiting one it would displace, so the two go
-/// together, and every delta after them is built on pictures the viewer will
-/// never have either.
-private func expectReplacedDeltaGatesLaterDeltasUntilAKeyFrame() {
+/// The waiting delta refers only to frames already sent, so it still decodes
+/// and keeps its slot. The newer delta is the one lost, and every delta after
+/// it is built on it.
+private func expectDeltaBehindAWaitingDeltaGatesLaterDeltasUntilAKeyFrame() {
     var queues = SurfaceVideoSendQueues()
     expect(queues.enqueue(recoveryFrame(1, keyFrame: true), surface: surfaceZero) == .sendNow, "the key frame takes the idle wire")
     expect(queues.enqueue(recoveryFrame(2), surface: surfaceZero) == .queued, "a delta waits behind it")
     expect(
-        queues.enqueue(recoveryFrame(3), surface: surfaceZero) == .awaitingKeyFrame,
-        "a delta that would displace the waiting delta is not taken: it is built on the one it would displace"
+        queues.enqueue(recoveryFrame(3), surface: surfaceZero) == .droppedIncoming,
+        "a newer delta does not displace the waiting delta: it is the one dropped"
     )
-    expect(!queues.hasWaitingFrame(surfaceZero), "and the displaced delta is gone too, leaving the slot empty")
+    expect(queues.hasWaitingFrame(surfaceZero), "the waiting delta keeps its slot")
     expect(queues.isAwaitingKeyFrame(surfaceZero), "the surface now waits for a key frame")
-    expect(queues.droppedFrameCount == 1, "the displaced delta counts as one frame dropped to keep up, as before")
+    expect(queues.droppedFrameCount == 1, "the dropped delta counts as one frame dropped to keep up, as before")
     expect(
         queues.enqueue(recoveryFrame(4), surface: surfaceZero) == .awaitingKeyFrame,
         "a later delta is refused while the surface waits for a key frame"
     )
     expect(queues.droppedFrameCount == 1, "a delta refused for want of a key frame is not a frame dropped to keep up")
-    expect(queues.completeSend() == nil, "no delta is let out once the in-flight key frame finishes")
+    expect(
+        queues.completeSend()?.frame.sequence == 2,
+        "the waiting delta is the next frame out: it is built only on frames already sent"
+    )
     expect(
         queues.enqueue(recoveryFrame(5), surface: surfaceZero) == .awaitingKeyFrame,
+        "sending it does not end the wait"
+    )
+    expect(queues.completeSend() == nil, "and nothing of the dropped delta's line follows it")
+    expect(
+        queues.enqueue(recoveryFrame(6), surface: surfaceZero) == .awaitingKeyFrame,
         "an idle wire does not let a delta through either"
     )
-    expect(queues.enqueue(recoveryFrame(6, keyFrame: true), surface: surfaceZero) == .sendNow, "a key frame goes out")
+    expect(queues.enqueue(recoveryFrame(7, keyFrame: true), surface: surfaceZero) == .sendNow, "a key frame goes out")
     expect(!queues.isAwaitingKeyFrame(surfaceZero), "and ends the wait")
-    expect(queues.enqueue(recoveryFrame(7), surface: surfaceZero) == .queued, "so the deltas after it are taken again")
-    print("PASS: a delta displaced from the send slot takes the newer delta with it and gates the surface until a key frame")
+    expect(queues.enqueue(recoveryFrame(8), surface: surfaceZero) == .queued, "so the deltas after it are taken again")
+    print("PASS: a delta arriving behind a waiting delta is dropped, the waiting one still goes out, and the surface waits for a key frame")
 }
 
 /// A delta refused because a key frame is waiting was encoded after that key
@@ -346,10 +354,11 @@ private func expectCapturesWaitBeforeTheEncoderWhileTheSendSlotIsFull() {
     print("PASS: captures wait before the encoder while their surface's send slot is full, and the newest goes in when it empties")
 }
 
-/// The request reaches the encoder before the emptied slot lets a held
-/// capture in, so that capture is the one encoded as the key frame.
+/// A delta dropped at the send queue asks its encoder for one key frame, the
+/// waiting delta it could not follow still goes out, and nothing built on the
+/// dropped one does.
 @MainActor
-private func expectSendQueueDiscardAsksForAKeyFrameBeforeTheSlotDrains() async {
+private func expectSendQueueDropAsksForOneKeyFrameAndSendsNoDeltaAfterIt() async {
     let channel = FakeHostByteChannel(scriptedMessages: [])
     channel.sendDelay = .milliseconds(60)
     let listener = RecordingFeedbackListener()
@@ -361,19 +370,23 @@ private func expectSendQueueDiscardAsksForAKeyFrameBeforeTheSlotDrains() async {
     expect(feedback.isWaitingSlotOccupied(on: surfaceZero), "and fills surface 0's send slot")
     expect(
         !session.send(recoveryFrame(3), surface: surfaceZero, priority: .normal),
-        "a delta that would displace it is not taken"
+        "a delta arriving behind the waiting delta is not taken"
     )
-    expect(!feedback.isWaitingSlotOccupied(on: surfaceZero), "the slot is empty once both deltas are gone")
-    expect(
-        listener.events == ["key frame", "slot emptied"],
-        "the encoder is asked for a key frame before the slot is reported empty, got \(listener.events)"
-    )
+    expect(feedback.isWaitingSlotOccupied(on: surfaceZero), "the waiting delta keeps the slot")
+    expect(listener.events == ["key frame"], "the encoder is asked for a key frame at once, got \(listener.events)")
     expect(requests.requests == ["surface 0: send-queue discard"], "the request is reported once, got \(requests.requests)")
     expect(!session.send(recoveryFrame(4), surface: surfaceZero, priority: .normal), "a later delta is refused")
-    expect(listener.events.count == 2, "and asks for nothing more while the request is outstanding")
-    _ = await waitUntil(timeoutSeconds: 2) { sentVideoSequences(channel) == [1] && channel.peakConcurrentSends == 1 }
+    expect(listener.events.count == 1, "and asks for nothing more while the request is outstanding")
+    _ = await waitUntil(timeoutSeconds: 2) { sentVideoSequences(channel) == [1, 2] && listener.events.count == 2 }
     try? await Task.sleep(for: .milliseconds(100))
-    expect(sentVideoSequences(channel) == [1], "no delta after the lost one reached the wire, got \(sentVideoSequences(channel))")
+    expect(
+        sentVideoSequences(channel) == [1, 2],
+        "the waiting delta went out and nothing built on the dropped one did, got \(sentVideoSequences(channel))"
+    )
+    expect(
+        listener.events == ["key frame", "slot emptied"],
+        "the slot is reported empty when the waiting delta leaves it, got \(listener.events)"
+    )
 
     expect(session.send(recoveryFrame(5, keyFrame: true), surface: surfaceZero, priority: .normal), "a key frame is sent")
     expect(session.send(recoveryFrame(6), surface: surfaceZero, priority: .normal), "and deltas are taken again")
@@ -385,14 +398,10 @@ private func expectSendQueueDiscardAsksForAKeyFrameBeforeTheSlotDrains() async {
         requests.requests.count == 1 && listener.events.count == 2,
         "and asks for nothing: the frame that displaced the delta is itself the key frame the viewer needs"
     )
-    _ = await waitUntil(timeoutSeconds: 2) { sentVideoSequences(channel) == [1, 5, 7] }
-    expect(sentVideoSequences(channel) == [1, 5, 7], "the key frames went out, got \(sentVideoSequences(channel))")
-    expect(
-        listener.events == ["key frame", "slot emptied", "slot emptied"],
-        "and the slot is reported empty when its key frame leaves it, got \(listener.events)"
-    )
+    _ = await waitUntil(timeoutSeconds: 2) { sentVideoSequences(channel) == [1, 2, 5, 7] }
+    expect(sentVideoSequences(channel) == [1, 2, 5, 7], "the key frames went out, got \(sentVideoSequences(channel))")
     channel.cancel()
-    print("PASS: a send-queue discard asks the surface's encoder for one key frame before its emptied slot lets a capture in")
+    print("PASS: a send-queue drop asks the surface's encoder for one key frame and lets nothing built on the dropped delta out")
 }
 
 @MainActor

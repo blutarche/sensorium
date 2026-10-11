@@ -3,7 +3,7 @@ import Foundation
 /// Why the send path asked a surface's encoder for a key frame. The raw value
 /// is the wording of the host's log line.
 public enum KeyFrameRecoveryCause: String, Equatable, Sendable {
-    /// The send queue displaced or refused a delta.
+    /// The send queue dropped a delta.
     case sendQueueDiscard = "send-queue discard"
     /// A frame's write to the transport failed.
     case writeFailure = "write failure"

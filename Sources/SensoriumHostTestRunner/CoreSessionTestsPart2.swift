@@ -1188,8 +1188,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
 
         // Until a delta is lost, a single-surface session behaves exactly as
         // one `VideoSendQueue` does: same admissions, same drop count, in the
-        // same order. A displaced or refused delta is where the two part:
-        // the surface queue then takes only a key frame, which
+        // same order. A delta that cannot wait is where the two part: the
+        // surface queue refuses it rather than let it displace a waiting
+        // delta, and then takes only a key frame, which
         // `runVideoSendRecoveryTests` covers.
         var singleSurfaceQueues = SurfaceVideoSendQueues()
         var singleQueue = VideoSendQueue()
@@ -1261,14 +1262,9 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
                         isWireBusy = true
                     case .queued, .replacedStaleFrame:
                         expectedWaiting[surface] = frame
-                    case .droppedIncoming:
+                    case .droppedIncoming, .awaitingKeyFrame:
+                        // A refused frame leaves the waiting one in place.
                         break
-                    case .awaitingKeyFrame:
-                        // A delta it displaced goes with it; a waiting key
-                        // frame stays.
-                        if expectedWaiting[surface]?.isKeyFrame == false {
-                            expectedWaiting[surface] = nil
-                        }
                     }
                 }
             }
