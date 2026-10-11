@@ -47,9 +47,11 @@ public final class HostMediaPipeline {
     /// outran it, or outran the link: captures wait while this surface's send
     /// slot is full, newest wins. Distinct from `HostMediaLatencyRecorder`'s
     /// `encodeSubmissionFailures`, which counts frames VideoToolbox itself
-    /// refused. Counted per pipeline, so a resolution change restarts it; the
-    /// count that spans a whole session is the recorder's
-    /// `encoderInputDropped`, which the host summary reports.
+    /// refused. Counted per pipeline, so a resolution change restarts it. The
+    /// counts that span a whole session are the recorder's
+    /// `encoderInputDropped`, for captures the encoder was too busy for, and
+    /// the transport's `droppedVideoFrameCount`, for captures held for the
+    /// link.
     public var droppedCaptureFrameCount: Int { admissionGate.droppedFrameCount }
 
     public init(

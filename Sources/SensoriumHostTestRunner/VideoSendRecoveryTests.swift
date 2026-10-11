@@ -21,6 +21,7 @@ func runVideoSendRecoveryTests() async {
     await expectHeldKeyFrameRequestIsServedWhenTheSecondIsUp()
     await expectCanvasMediaCarriesTheSessionsSendFeedbackIntoEveryPipeline()
     await expectEachRecoveryRequestIsLoggedOnce()
+    await expectCapturesHeldForTheLinkReadAsLinkPressure()
 }
 
 private let surfaceZero = CanvasSurfaceID.allCases[0]
@@ -292,8 +293,10 @@ private func expectCapturesWaitBeforeTheEncoderWhileTheSendSlotIsFull() {
         "while the send slot holds a frame no capture reaches the encoder, got \(encoder.submittedPresentationTimes)"
     )
     expect(
-        recorder.frameCounts(for: surfaceZero).encoderInputDropped == 2,
-        "the two older held captures count as encoder-input drops, got "
+        feedback.capturesDroppedForTheLink(on: surfaceZero) == 2
+            && recorder.frameCounts(for: surfaceZero).encoderInputDropped == 0,
+        "the two older held captures count as lost to the link, not to the encoder, got "
+            + "\(feedback.capturesDroppedForTheLink(on: surfaceZero)) and "
             + "\(recorder.frameCounts(for: surfaceZero).encoderInputDropped)"
     )
     feedback.setWaitingSlotOccupied(false, on: surfaceZero)
@@ -314,12 +317,23 @@ private func expectCapturesWaitBeforeTheEncoderWhileTheSendSlotIsFull() {
     feedback.setWaitingSlotOccupied(false, on: surfaceZero)
     feedback.waitingSlotEmptied(on: surfaceZero)
     expect(encoder.submittedPresentationTimes == [1, 4, 5], "and goes in when the slot empties")
+
+    // A capture replaced while the encoder is still busy is the encoder's.
+    _ = gate.admit(makeCaptureSampleBuffer(presentationTimeNanoseconds: 50))
+    _ = gate.admit(makeCaptureSampleBuffer(presentationTimeNanoseconds: 51))
+    expect(
+        recorder.frameCounts(for: surfaceZero).encoderInputDropped == 1
+            && feedback.capturesDroppedForTheLink(on: surfaceZero) == 2,
+        "a capture the busy encoder had no room for is an encoder-input drop"
+    )
+    gate.frameFinished(.encoded(makeCaptureSampleBuffer()))
+    expect(encoder.submittedPresentationTimes == [1, 4, 5, 51], "and the newest goes in when the encoder finishes")
     gate.frameFinished(.encoded(makeCaptureSampleBuffer()))
 
     // Only this surface's slot holds this surface's captures.
     feedback.setWaitingSlotOccupied(true, on: surfaceOne)
     _ = gate.admit(makeCaptureSampleBuffer(presentationTimeNanoseconds: 6))
-    expect(encoder.submittedPresentationTimes == [1, 4, 5, 6], "the other surface's full slot holds nothing here")
+    expect(encoder.submittedPresentationTimes == [1, 4, 5, 51, 6], "the other surface's full slot holds nothing here")
     gate.frameFinished(.encoded(makeCaptureSampleBuffer()))
 
     feedback.requestKeyFrame(on: surfaceZero)
@@ -561,8 +575,128 @@ private func expectAHeldCaptureNeverGoesInAfterANewerOne() {
         "the older capture held before it is never encoded after it, got \(encoder.submittedPresentationTimes)"
     )
     expect(
-        recorder.frameCounts(for: surfaceZero).encoderInputDropped == 1,
-        "it counts as an encoder-input drop, got \(recorder.frameCounts(for: surfaceZero).encoderInputDropped)"
+        feedback.capturesDroppedForTheLink(on: surfaceZero) == 1
+            && recorder.frameCounts(for: surfaceZero).encoderInputDropped == 0,
+        "it was waiting for the link, so it counts as lost to the link, got "
+            + "\(feedback.capturesDroppedForTheLink(on: surfaceZero))"
     )
     print("PASS: a capture held for a full slot is dropped, not encoded, once a newer one has gone in")
+}
+
+/// Hands frames to nobody but reports the drops of a real session, which is
+/// what the coordinator reads for the link; and accepts every frame, so the
+/// session's own queue adds no drops of its own.
+private final class SessionDropReportingSink: CanvasVideoSending, @unchecked Sendable {
+    private let session: HostNetworkSession
+
+    init(_ session: HostNetworkSession) {
+        self.session = session
+    }
+
+    func send(_ packet: EncodedVideoFramePacket, surface: CanvasSurfaceID, priority: VideoSendPriority) -> Bool {
+        true
+    }
+
+    var droppedVideoFrameCount: Int { session.droppedVideoFrameCount }
+
+    func droppedVideoFrameCount(for surface: CanvasSurfaceID) -> Int {
+        session.droppedVideoFrameCount(for: surface)
+    }
+}
+
+/// Before captures waited for the send slot, a link that could not keep up
+/// lost encoded frames at the send queue, and that is what names the link.
+/// A capture now held for the link and replaced by a newer one is the same
+/// loss, so it is counted there too and the link is still named, not the
+/// encoder: an encoder well inside its budget is not what is behind.
+@MainActor
+private func expectCapturesHeldForTheLinkReadAsLinkPressure() async {
+    let feedback = VideoSendFeedback()
+    let recorder = HostMediaLatencyRecorder()
+    let session = HostNetworkSession(
+        connection: FakeHostByteChannel(scriptedMessages: []),
+        controller: HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            keyConfinement: .unconfined
+        ),
+        sendFeedback: feedback
+    )
+    let media = FakeScalableCanvasMedia()
+    let coordinator = HostSessionCoordinator(
+        controller: HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        ),
+        media: onlyOnSurfaceZero(media),
+        videoSink: SessionDropReportingSink(session),
+        workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
+        latencyRecorder: recorder
+    )
+    _ = try! await coordinator.handleWritingResponse(
+        .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+    )
+    let encoder = FakeFrameEncoder()
+    let gate = EncodeAdmissionGate(
+        latencyRecorder: recorder,
+        sessionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(capacity: 2),
+        surface: surfaceZero,
+        sendFeedback: feedback,
+        encodedFrameHandler: { _ in }
+    )
+    gate.encoder = encoder
+
+    // Sixty captures a tick. The send slot is full except once every sixth
+    // capture, when the newest held capture goes in and is encoded at once:
+    // fifty captures a tick are lost to the link, none to the encoder.
+    feedback.setWaitingSlotOccupied(true, on: surfaceZero)
+    var presentationTime: Int64 = 0
+    var sequence: UInt64 = 0
+    for tick in 0...8 {
+        for capture in 0..<60 {
+            presentationTime += 16_666_667
+            recorder.recordCapture(
+                surface: surfaceZero,
+                presentationTimeNanoseconds: presentationTime,
+                atNanoseconds: MonotonicClock.nowNanoseconds()
+            )
+            gate.admit(makeCaptureSampleBuffer(presentationTimeNanoseconds: presentationTime))
+            guard capture % 6 == 5 else { continue }
+            feedback.setWaitingSlotOccupied(false, on: surfaceZero)
+            feedback.waitingSlotEmptied(on: surfaceZero)
+            feedback.setWaitingSlotOccupied(true, on: surfaceZero)
+            gate.frameFinished(.encoded(makeCaptureSampleBuffer()))
+            recorder.recordEncodeOutput(
+                surface: surfaceZero,
+                presentationTimeNanoseconds: encoder.submittedPresentationTimes.last ?? 0,
+                atNanoseconds: MonotonicClock.nowNanoseconds()
+            )
+            sequence += 1
+            media.emit(EncodedVideoFramePacket(
+                sequence: sequence,
+                presentationTimeNanoseconds: UInt64(presentationTime),
+                isKeyFrame: false,
+                codecConfiguration: nil,
+                payload: Data(repeating: 0xAB, count: 100_000)
+            ))
+        }
+        media.frameCounts = recorder.frameCounts(for: surfaceZero)
+        await coordinator.tickFidelity(atSeconds: Double(tick))
+    }
+    expect(
+        coordinator.fidelityLimitReason(for: surfaceZero) == FidelityLimitReason.link,
+        "a link that holds captures back is named as the link, got "
+            + "\(String(describing: coordinator.fidelityLimitReason(for: surfaceZero)))"
+    )
+    expect(
+        recorder.frameCounts(for: surfaceZero).encoderInputDropped == 0,
+        "a capture held for the link is not an encoder-input drop, got "
+            + "\(recorder.frameCounts(for: surfaceZero).encoderInputDropped)"
+    )
+    expect(
+        session.droppedVideoFrameCount(for: surfaceZero) == 450 && session.droppedVideoFrameCount == 450,
+        "it is counted with the frames the link could not carry, got \(session.droppedVideoFrameCount(for: surfaceZero))"
+    )
+    gate.shutDown()
+    print("PASS: captures lost waiting for the link count as link drops, so a congested link is still named the link")
 }

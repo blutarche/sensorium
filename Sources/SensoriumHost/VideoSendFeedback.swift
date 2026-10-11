@@ -31,6 +31,7 @@ public final class VideoSendFeedback: @unchecked Sendable {
 
     private let lock = NSLock()
     private var waitingSlotOccupied = CanvasSurfaceSlots { _ in false }
+    private var capturesDroppedForTheLink = CanvasSurfaceSlots { _ in 0 }
     private var listeners = CanvasSurfaceSlots { _ in WeakListener() }
 
     public init() {}
@@ -48,6 +49,25 @@ public final class VideoSendFeedback: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         waitingSlotOccupied[surface] = occupied
+    }
+
+    /// A capture held because `surface`'s send slot was full, then replaced by
+    /// a newer one. Kept apart from the captures the encoder was too busy
+    /// for: it is the link that could not keep up, and before captures
+    /// waited for the slot the same loss was an encoded frame the send queue
+    /// dropped, which is what tells the fidelity controller the link is
+    /// behind.
+    public func recordCaptureDroppedForTheLink(on surface: CanvasSurfaceID) {
+        lock.lock()
+        defer { lock.unlock() }
+        capturesDroppedForTheLink[surface] += 1
+    }
+
+    /// Cumulative for the life of the connection.
+    public func capturesDroppedForTheLink(on surface: CanvasSurfaceID) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return capturesDroppedForTheLink[surface]
     }
 
     /// Replaces any listener `surface` had: a rebuilt pipeline's gate takes

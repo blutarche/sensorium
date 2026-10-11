@@ -105,8 +105,9 @@ public protocol CanvasVideoSending: AnyObject, Sendable {
     /// reached the wire: the write itself completes later.
     @discardableResult
     func send(_ packet: EncodedVideoFramePacket, surface: CanvasSurfaceID, priority: VideoSendPriority) -> Bool
-    /// Frames the transport discarded because the link could not keep up.
-    /// A sink with no queue of its own reports none.
+    /// Frames the transport discarded because the link could not keep up,
+    /// captures held back for it and then replaced included. A sink with no
+    /// queue of its own reports none.
     var droppedVideoFrameCount: Int { get }
     /// The same count for one surface alone. The total above is what an
     /// operator reads; this is what a per-surface fidelity decision needs,

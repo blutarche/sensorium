@@ -580,13 +580,22 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     }
 
     /// Frames dropped so far, across both surfaces, because the link could not
-    /// keep up with the encoders.
+    /// keep up with the encoders: encoded frames the send queue dropped, and
+    /// captures that waited for a full send slot and were replaced.
     public var droppedVideoFrameCount: Int {
-        videoQueues.withLock { $0.queues.droppedFrameCount }
+        CanvasSurfaceID.allCases.reduce(0) { $0 + droppedVideoFrameCount(for: $1) }
     }
 
     public func droppedVideoFrameCount(for surface: CanvasSurfaceID) -> Int {
-        videoQueues.withLock { $0.queues.droppedFrameCount(for: surface) }
+        videoQueues.withLock { Self.linkDrops($0, on: surface, feedback: sendFeedback) }
+    }
+
+    private static func linkDrops(
+        _ state: VideoSendState,
+        on surface: CanvasSurfaceID,
+        feedback: VideoSendFeedback
+    ) -> Int {
+        state.queues.droppedFrameCount(for: surface) + feedback.capturesDroppedForTheLink(on: surface)
     }
 
     public func sentVideoByteCount(for surface: CanvasSurfaceID) -> Int? {
@@ -719,11 +728,11 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                             )
                         }
                     }
-                let surfaces = self.videoQueues.withLock { state in
+                let surfaces = self.videoQueues.withLock { [sendFeedback = self.sendFeedback] state in
                     builder.snapshot(
                         metrics: { latencyRecorder.metrics(for: $0) },
                         frameCounts: { latencyRecorder.frameCounts(for: $0) },
-                        sendQueueDropped: { state.queues.droppedFrameCount(for: $0) },
+                        sendQueueDropped: { Self.linkDrops(state, on: $0, feedback: sendFeedback) },
                         appliedStreamScale: { fidelity?[$0].appliedScale },
                         sustainableScaleCeiling: { fidelity?[$0].sustainableScaleCeiling },
                         clampedFromUserChoice: { fidelity?[$0].clampedFromUserChoice },

@@ -129,6 +129,9 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
         let capture = CaptureFrameAdmission(sampleBuffer: sampleBuffer)
         let admission: VideoSendAdmission
         let submitsNow: Bool
+        // A capture replaced while the encoder is idle was waiting for the
+        // link alone.
+        let encoderWasBusy = isEncoding
         if isEncoding || sendFeedback.isWaitingSlotOccupied(on: surface) {
             admission = queue.offerToWaitingSlot(capture)
             submitsNow = false
@@ -147,7 +150,11 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
             break
         case .replacedStaleFrame:
             // The older frame this one displaced is what was dropped.
-            latencyRecorder?.recordEncoderInputDrop(surface: surface)
+            if encoderWasBusy {
+                latencyRecorder?.recordEncoderInputDrop(surface: surface)
+            } else {
+                sendFeedback.recordCaptureDroppedForTheLink(on: surface)
+            }
         case .droppedIncoming, .awaitingKeyFrame:
             latencyRecorder?.recordEncoderInputDrop(surface: surface)
             return false
