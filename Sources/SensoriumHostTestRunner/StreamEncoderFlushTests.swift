@@ -3,15 +3,18 @@ import CoreVideo
 import Foundation
 import SensoriumHost
 
-/// A still-screen refresh empties the stream's encoder while the stream is
-/// still running. VideoToolbox's flush waits for the frame in flight to come
-/// out, and that frame's output callback is where `EncodeAdmissionGate`
-/// submits the next capture, straight back into `encode`. Driven here on a
-/// real encoder, offline: no display, no capture, no network. A machine with
-/// no hardware H.264 encoder skips it, as the other real-encoder tests do.
+/// A still-screen refresh empties the stream's encoder and holds whatever the
+/// stream submits next until the refresh has been handed on. VideoToolbox's
+/// flush waits for the frame in flight to come out, and that frame's output
+/// callback is where `EncodeAdmissionGate` submits the next capture, straight
+/// back into `encode`. Driven here on a real encoder, offline: no display, no
+/// capture, no network. A machine with no hardware H.264 encoder skips it, as
+/// the other real-encoder tests do.
 @MainActor
 func runStreamEncoderFlushTests() async {
     await expectAFlushNeverWaitsOnTheFrameItsOwnCallbackSubmits()
+    await expectAFrameAcceptedDuringTheHoldWaitsForTheRefresh()
+    await expectEveryHoldIsResumedBeforeHeldFramesGoIn()
 }
 
 /// The output callback here resubmits from inside itself, the way the
@@ -24,16 +27,7 @@ private func expectAFlushNeverWaitsOnTheFrameItsOwnCallbackSubmits() async {
     let configuration = VideoEncoderConfiguration.remoteDefault
     // Built before the encoder exists: making a full-size picture inside the
     // output callback would stretch the time a frame is in flight unevenly.
-    let frames = (0..<20).map { index in
-        refreshTestSampleBuffer(
-            refreshTestPixelBuffer(
-                width: configuration.encodeWidth,
-                height: configuration.encodeHeight,
-                shiftedBy: index
-            ),
-            frameIndex: index
-        )
-    }
+    let frames = flushTestFrames(count: 20, configuration: configuration)
     let chain = ResubmittingFrameChain(frames: frames)
     guard let encoder = try? VideoToolboxEncoder(
         configuration: configuration,
@@ -54,9 +48,8 @@ private func expectAFlushNeverWaitsOnTheFrameItsOwnCallbackSubmits() async {
     }
     let flushReturned = DispatchSemaphore(value: 0)
     DispatchQueue.global().async {
-        chain.setFlushInProgress(true)
-        encoder.completeFramesRequestingKeyFrame()
-        chain.setFlushInProgress(false)
+        chain.setHoldInProgress(true)
+        encoder.holdFramesAndFlush()
         flushReturned.signal()
     }
     expect(
@@ -65,15 +58,17 @@ private func expectAFlushNeverWaitsOnTheFrameItsOwnCallbackSubmits() async {
             + "through `encode`: a flush that holds the encoder's lock while VideoToolbox waits on that "
             + "callback never returns, and freezes whichever thread called it"
     )
+    encoder.resumeHeldFramesWithKeyFrame()
+    chain.setHoldInProgress(false)
     expect(
         await waitUntil(timeoutSeconds: 5) { chain.isSettled },
         "every frame the encoder accepted is reported on, and the chain of resubmissions runs to its end "
-            + "after the flush: \(chain.outcomeCount) outcomes for \(chain.acceptedCount) accepted frames"
+            + "after the hold: \(chain.outcomeCount) outcomes for \(chain.acceptedCount) accepted frames"
     )
 
     expect(
         chain.refusedSubmissions.isEmpty,
-        "no frame submitted from the output callback is refused, during the flush or after it, got "
+        "no frame submitted from the output callback is refused, during the hold or after it, got "
             + "\(chain.refusedSubmissions)"
     )
     expect(
@@ -86,10 +81,10 @@ private func expectAFlushNeverWaitsOnTheFrameItsOwnCallbackSubmits() async {
         Set(encoded.map(\.index)).count == encoded.count,
         "no frame is reported twice, got \(encoded.map(\.index))"
     )
-    let submittedDuringFlush = chain.indicesSubmittedDuringFlush
+    let submittedDuringHold = chain.indicesSubmittedDuringHold
     expect(
-        !submittedDuringFlush.isEmpty,
-        "the output callback submitted a frame while the flush was running, so the re-entry this test "
+        !submittedDuringHold.isEmpty,
+        "the output callback submitted a frame while the hold was in force, so the re-entry this test "
             + "exists for really happened"
     )
     let keyFrameIndices = encoded.filter(\.isKeyFrame).map(\.index)
@@ -99,35 +94,291 @@ private func expectAFlushNeverWaitsOnTheFrameItsOwnCallbackSubmits() async {
     )
     expect(
         keyFrameIndices.count == 2,
-        "the flush's request makes exactly one more key frame and is then spent: the stream goes back "
+        "the resume's request makes exactly one more key frame and is then spent: the stream goes back "
             + "to deltas, got key frames at \(keyFrameIndices)"
     )
     if keyFrameIndices.count == 2 {
         expect(
-            submittedDuringFlush.contains(keyFrameIndices[1]),
-            "the key frame the flush asked for is a frame the callback submitted while the flush was "
-                + "running, so nothing submitted after the flush began can be a delta built on what the "
-                + "flush let out: key frame at \(keyFrameIndices[1]), submitted during the flush "
-                + "\(submittedDuringFlush)"
+            submittedDuringHold.contains(keyFrameIndices[1]),
+            "the key frame the resume asked for is a frame the callback submitted during the hold, so "
+                + "nothing submitted after the flush began can be a delta built on what the flush let out: "
+                + "key frame at \(keyFrameIndices[1]), submitted during the hold \(submittedDuringHold)"
         )
     }
     withExtendedLifetime(encoder) {}
     print(
         "PASS: a still-refresh flush returns while its own output callback submits the next frame, "
             + "every frame gets one outcome, and frame \(keyFrameIndices.last ?? -1) submitted during the "
-            + "flush comes out a key frame"
+            + "hold comes out a key frame"
     )
 }
 
-/// `DispatchSemaphore.wait` from a synchronous frame, so the async test above
-/// can bound a wait on another thread without suspending on it.
+/// The refresh is handed on between the hold and the resume, so a stream
+/// frame accepted in that time must not reach VideoToolbox before the resume.
+/// If it did, its output could reach the transport ahead of the refresh, and
+/// the stream's next delta would follow the refresh built on a picture the
+/// viewer's rebuilt decoder never saw.
+private func expectAFrameAcceptedDuringTheHoldWaitsForTheRefresh() async {
+    guard let primed = await primedFlushTestEncoder() else {
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no hold to drive")
+        return
+    }
+    let encoder = primed.encoder
+    let log = primed.log
+
+    encoder.holdFramesAndFlush()
+    expect(
+        encodeOnAnotherThread(primed.heldFrame, encoder: encoder),
+        "`encode` accepts a frame during a hold and returns at once, without throwing"
+    )
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    expect(
+        log.outcomeCount == primed.primingFrameCount,
+        "a frame accepted after the flush produces no outcome before the refresh has been handed on: "
+            + "its output could otherwise reach the transport ahead of the refresh, got "
+            + "\(log.outcomeCount - primed.primingFrameCount) early"
+    )
+    log.recordRefreshHandedOn()
+    encoder.resumeHeldFramesWithKeyFrame()
+    expect(
+        await waitUntil(timeoutSeconds: 5) { log.outcomeCount == primed.primingFrameCount + 1 },
+        "the resume submits the held frame and it is reported on, got \(log.outcomeCount) outcomes for "
+            + "\(primed.primingFrameCount + 1) accepted frames"
+    )
+    expectHeldFrameFollowsTheRefreshAsAKeyFrame(log, heldIndex: primed.heldIndex)
+    withExtendedLifetime(encoder) {}
+    print("PASS: a frame accepted during the hold comes out after the refresh is handed on, as a key frame")
+}
+
+/// Holds nest. Every hold is paired with exactly one resume, and held frames
+/// go in only when the last of them resumes: a frame let in early by an inner
+/// resume could still overtake the refresh an outer hold is waiting to send.
+private func expectEveryHoldIsResumedBeforeHeldFramesGoIn() async {
+    guard let primed = await primedFlushTestEncoder() else {
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no hold to nest")
+        return
+    }
+    let encoder = primed.encoder
+    let log = primed.log
+
+    encoder.holdFramesAndFlush()
+    encoder.holdFramesAndFlush()
+    expect(
+        encodeOnAnotherThread(primed.heldFrame, encoder: encoder),
+        "`encode` accepts a frame during a nested hold and returns at once, without throwing"
+    )
+    encoder.resumeHeldFramesWithKeyFrame()
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    expect(
+        log.outcomeCount == primed.primingFrameCount,
+        "one resume of two leaves the frame held, so it produces no outcome yet, got "
+            + "\(log.outcomeCount - primed.primingFrameCount) early"
+    )
+    log.recordRefreshHandedOn()
+    encoder.resumeHeldFramesWithKeyFrame()
+    expect(
+        await waitUntil(timeoutSeconds: 5) { log.outcomeCount == primed.primingFrameCount + 1 },
+        "the second resume submits the held frame and it is reported on, got \(log.outcomeCount) outcomes "
+            + "for \(primed.primingFrameCount + 1) accepted frames"
+    )
+    expectHeldFrameFollowsTheRefreshAsAKeyFrame(log, heldIndex: primed.heldIndex)
+    withExtendedLifetime(encoder) {}
+    print("PASS: a nested hold keeps a frame held until its last resume")
+}
+
+private func expectHeldFrameFollowsTheRefreshAsAKeyFrame(_ log: OrderedEncoderLog, heldIndex: Int) {
+    let entries = log.entries
+    let markerPosition = entries.firstIndex { $0 == .refreshHandedOn }
+    let heldPosition = entries.firstIndex {
+        if case .encoded(heldIndex, _) = $0 { return true }
+        return false
+    }
+    guard let markerPosition, let heldPosition else {
+        expect(false, "the log holds both the refresh hand-off and the held frame's output, got \(entries)")
+        return
+    }
+    expect(
+        heldPosition > markerPosition,
+        "the held frame comes out after the refresh is handed on, never ahead of it, got \(entries)"
+    )
+    expect(
+        entries[heldPosition] == .encoded(index: heldIndex, isKeyFrame: true),
+        "and it is a key frame, so the stream's frames after the refresh decode on the viewer's rebuilt "
+            + "decoder, got \(entries[heldPosition])"
+    )
+}
+
+/// An encoder that has already put out its opening key frame and a delta or
+/// two, so a key frame after the hold is the resume's doing.
+private struct PrimedFlushTestEncoder {
+    let encoder: VideoToolboxEncoder
+    let log: OrderedEncoderLog
+    let primingFrameCount: Int
+    let heldIndex: Int
+    let heldFrame: SendableSampleBuffer
+}
+
+private func primedFlushTestEncoder() async -> PrimedFlushTestEncoder? {
+    let configuration = VideoEncoderConfiguration.remoteDefault
+    let primingFrameCount = 3
+    let frames = flushTestFrames(count: primingFrameCount + 1, configuration: configuration)
+    let log = OrderedEncoderLog()
+    guard let encoder = try? VideoToolboxEncoder(
+        configuration: configuration,
+        frameOutcomeHandler: { outcome in
+            log.record(outcome)
+        }
+    ) else {
+        return nil
+    }
+    for frame in frames.prefix(primingFrameCount) {
+        do {
+            try encoder.encode(frame)
+        } catch {
+            expect(false, "the stream's encoder takes each priming frame, got \(error)")
+        }
+    }
+    expect(
+        await waitUntil(timeoutSeconds: 5) { log.outcomeCount == primingFrameCount },
+        "every priming frame is reported on, got \(log.outcomeCount) of \(primingFrameCount)"
+    )
+    expect(
+        log.entries.last == .encoded(index: primingFrameCount - 1, isKeyFrame: false),
+        "the stream is producing deltas by now, so a key frame after the hold is the resume's doing, got "
+            + "\(log.entries)"
+    )
+    return PrimedFlushTestEncoder(
+        encoder: encoder,
+        log: log,
+        primingFrameCount: primingFrameCount,
+        heldIndex: primingFrameCount,
+        heldFrame: SendableSampleBuffer(frames[primingFrameCount])
+    )
+}
+
+private func flushTestFrames(count: Int, configuration: VideoEncoderConfiguration) -> [CMSampleBuffer] {
+    (0..<count).map { index in
+        refreshTestSampleBuffer(
+            refreshTestPixelBuffer(
+                width: configuration.encodeWidth,
+                height: configuration.encodeHeight,
+                shiftedBy: index
+            ),
+            frameIndex: index
+        )
+    }
+}
+
+/// Submits from a thread other than the caller's, as capture does, and
+/// answers whether `encode` returned within 5 seconds without throwing.
+private func encodeOnAnotherThread(_ frame: SendableSampleBuffer, encoder: VideoToolboxEncoder) -> Bool {
+    let returned = DispatchSemaphore(value: 0)
+    let accepted = LockedFlag()
+    DispatchQueue.global().async {
+        if (try? encoder.encode(frame.sampleBuffer)) != nil {
+            accepted.set()
+        }
+        returned.signal()
+    }
+    return waitForSignal(returned, seconds: 5) && accepted.isSet
+}
+
+/// `DispatchSemaphore.wait` from a synchronous frame, so an async test can
+/// bound a wait on another thread without suspending on it.
 private func waitForSignal(_ semaphore: DispatchSemaphore, seconds: Double) -> Bool {
     semaphore.wait(timeout: .now() + seconds) == .success
 }
 
-/// The output callback's side of the test: records every outcome and submits
-/// the next frame from inside the callback, as `EncodeAdmissionGate` does,
-/// until the frames run out.
+/// Carries one frame to the thread that submits it. Nothing reads or writes
+/// the buffer after it is built except that one `encode` call.
+private struct SendableSampleBuffer: @unchecked Sendable {
+    let sampleBuffer: CMSampleBuffer
+
+    init(_ sampleBuffer: CMSampleBuffer) {
+        self.sampleBuffer = sampleBuffer
+    }
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        defer { lock.unlock() }
+        value = true
+    }
+}
+
+/// Encoder outputs and the test's own refresh hand-off, in one log, in the
+/// order they happened.
+private final class OrderedEncoderLog: @unchecked Sendable {
+    enum Entry: Equatable, CustomStringConvertible {
+        case encoded(index: Int, isKeyFrame: Bool)
+        case dropped
+        case failed(OSStatus)
+        case refreshHandedOn
+
+        var description: String {
+            switch self {
+            case .encoded(let index, let isKeyFrame):
+                return isKeyFrame ? "key \(index)" : "delta \(index)"
+            case .dropped:
+                return "dropped"
+            case .failed(let status):
+                return "failed \(status)"
+            case .refreshHandedOn:
+                return "refresh"
+            }
+        }
+    }
+
+    private let lock = NSLock()
+    private var recorded: [Entry] = []
+
+    var entries: [Entry] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    var outcomeCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded.filter { $0 != .refreshHandedOn }.count
+    }
+
+    func record(_ outcome: VideoEncodeOutcome) {
+        let entry: Entry
+        switch outcome {
+        case .encoded(let sampleBuffer):
+            entry = .encoded(index: flushTestFrameIndex(of: sampleBuffer), isKeyFrame: flushTestIsKeyFrame(sampleBuffer))
+        case .dropped:
+            entry = .dropped
+        case .failed(let status):
+            entry = .failed(status)
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(entry)
+    }
+
+    func recordRefreshHandedOn() {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(.refreshHandedOn)
+    }
+}
+
+/// The output callback's side of the deadlock test: records every outcome and
+/// submits the next frame from inside the callback, as `EncodeAdmissionGate`
+/// does, until the frames run out.
 private final class ResubmittingFrameChain: @unchecked Sendable {
     struct EncodedFrame {
         let index: Int
@@ -142,8 +393,8 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
     private var outcomes = 0
     private var encoded: [EncodedFrame] = []
     private var refused: [Int] = []
-    private var flushInProgress = false
-    private var duringFlush: [Int] = []
+    private var holdInProgress = false
+    private var duringHold: [Int] = []
 
     init(frames: [CMSampleBuffer]) {
         self.frames = frames
@@ -188,10 +439,10 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         return refused
     }
 
-    var indicesSubmittedDuringFlush: [Int] {
+    var indicesSubmittedDuringHold: [Int] {
         lock.lock()
         defer { lock.unlock() }
-        return duringFlush
+        return duringHold
     }
 
     /// Every frame has been submitted or refused, and every accepted one has
@@ -202,10 +453,10 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         return (nextIndex >= frames.count || !refused.isEmpty) && outcomes == accepted
     }
 
-    func setFlushInProgress(_ inProgress: Bool) {
+    func setHoldInProgress(_ inProgress: Bool) {
         lock.lock()
         defer { lock.unlock() }
-        flushInProgress = inProgress
+        holdInProgress = inProgress
     }
 
     /// `callbackIndex` names a frame the output callback submitted; `nil` is
@@ -214,8 +465,8 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         accepted += 1
-        if let callbackIndex, flushInProgress {
-            duringFlush.append(callbackIndex)
+        if let callbackIndex, holdInProgress {
+            duringHold.append(callbackIndex)
         }
     }
 
@@ -224,8 +475,8 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         outcomes += 1
         if case .encoded(let sampleBuffer) = outcome {
             encoded.append(EncodedFrame(
-                index: Self.frameIndex(of: sampleBuffer),
-                isKeyFrame: Self.isKeyFrame(sampleBuffer)
+                index: flushTestFrameIndex(of: sampleBuffer),
+                isKeyFrame: flushTestIsKeyFrame(sampleBuffer)
             ))
         }
         let index = nextIndex < frames.count ? nextIndex : nil
@@ -248,18 +499,19 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
             lock.unlock()
         }
     }
+}
 
-    private static func frameIndex(of sampleBuffer: CMSampleBuffer) -> Int {
-        let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-        return Int(CMTimeConvertScale(presentationTime, timescale: 60, method: .roundHalfAwayFromZero).value)
-    }
+/// Every test frame is stamped with its index at 60 per second.
+private func flushTestFrameIndex(of sampleBuffer: CMSampleBuffer) -> Int {
+    let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+    return Int(CMTimeConvertScale(presentationTime, timescale: 60, method: .roundHalfAwayFromZero).value)
+}
 
-    private static func isKeyFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
-        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
-            as? [[CFString: Any]],
-            let first = attachments.first else {
-            return true
-        }
-        return (first[kCMSampleAttachmentKey_NotSync] as? Bool) != true
+private func flushTestIsKeyFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+    guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+        as? [[CFString: Any]],
+        let first = attachments.first else {
+        return true
     }
+    return (first[kCMSampleAttachmentKey_NotSync] as? Bool) != true
 }

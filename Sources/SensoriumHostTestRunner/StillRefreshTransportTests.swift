@@ -130,8 +130,9 @@ private func expectTheRealRefreshPathHoldsItsGuarantees() async {
     )
 
     // Exactly the order `HostMediaPipeline.refreshStillPicture` runs: encode
-    // the held picture whole, empty the stream's encoder and arm its next
-    // frame as a recovery point, then hand the refresh on.
+    // the held picture whole, empty the stream's encoder and hold whatever it
+    // is given next, hand the refresh on, then let the stream resume with a
+    // key frame as its recovery point.
     let stillPicture = refreshTestPixelBuffer(width: width, height: height, shiftedBy: 99)
     let refreshTime: Int64 = 5_000_000_000
     let refreshed: CMSampleBuffer
@@ -173,7 +174,7 @@ private func expectTheRealRefreshPathHoldsItsGuarantees() async {
             frameIndex: index
         ))
     }
-    encoder.completeFramesRequestingKeyFrame()
+    encoder.holdFramesAndFlush()
     let packetsAtFlush = sink.packets.count
     try? await Task.sleep(nanoseconds: 200_000_000)
     expect(
@@ -182,6 +183,7 @@ private func expectTheRealRefreshPathHoldsItsGuarantees() async {
             + "keeps a delta from following the refresh onto the wire"
     )
     let delivered = (try? packetizer.deliver(from: refreshed) { sink.record($0) }) ?? false
+    encoder.resumeHeldFramesWithKeyFrame()
     expect(delivered, "a sink that takes the frame answers so, and the refresh is a picture that went out")
     let refreshIndex = sink.packets.count - 1
     expect(
@@ -231,9 +233,11 @@ private func expectTheRealRefreshPathHoldsItsGuarantees() async {
         configuration: configuration,
         presentationTimeNanoseconds: refreshTime + 1_000_000_000
     ) {
-        encoder.completeFramesRequestingKeyFrame()
+        encoder.holdFramesAndFlush()
+        let refusedDelivery = (try? packetizer.deliver(from: refused) { sink.record($0) }) ?? false
+        encoder.resumeHeldFramesWithKeyFrame()
         expect(
-            ((try? packetizer.deliver(from: refused) { sink.record($0) }) ?? false) == false,
+            refusedDelivery == false,
             "a sink that refuses the frame says so, which is what stops a refusal being reported as a "
                 + "picture that went out"
         )
@@ -408,8 +412,10 @@ private func offlineEncodedKeyFrame() -> CMSampleBuffer? {
         frameIndex: 0
     ))
     // Flushes what was just submitted, so the frame is in hand rather than
-    // waited for on a guessed interval.
-    encoder.completeFramesRequestingKeyFrame()
+    // waited for on a guessed interval. There is no refresh to hand on, so
+    // the hold ends at once.
+    encoder.holdFramesAndFlush()
+    encoder.resumeHeldFramesWithKeyFrame()
     return output.frame
 }
 

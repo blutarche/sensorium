@@ -32,12 +32,13 @@ public final class HostMediaPipeline {
     /// Answers whether the frame was taken. A stream frame has nothing to do
     /// about a refusal; a still-screen refresh reports one.
     private let deliverEncodedFrame: @Sendable (CMSampleBuffer) -> Bool
-    /// Where a still-screen refresh is encoded and the stream's encoder is
-    /// flushed behind it. Off the main actor because a whole key frame of a
-    /// large screen takes tens of milliseconds -- 57 ms measured at
-    /// 2880x1800 -- and input injection runs on that actor, so encoding there
-    /// is a visible stall on every key the person is pressing. The flush
-    /// waits on VideoToolbox, and the main actor must not wait with it.
+    /// Where a still-screen refresh is encoded, and where the stream's encoder
+    /// is flushed and held before it and resumed after it. Off the main actor
+    /// because a whole key frame of a large screen takes tens of milliseconds
+    /// -- 57 ms measured at 2880x1800 -- and input injection runs on that
+    /// actor, so encoding there is a visible stall on every key the person is
+    /// pressing. The flush waits on VideoToolbox, and the main actor must not
+    /// wait with it.
     /// Serial: two refreshes of the same surface have no reason to run at once.
     private let stillRefreshQueue = DispatchQueue(label: "sensorium.still-refresh-encode")
     /// Bumped by `stop`. A refresh encoded off the actor comes back to an
@@ -217,10 +218,12 @@ public final class HostMediaPipeline {
     /// optional: this frame carries the still session's parameter sets, so the
     /// viewer rebuilds its decoder around them and keeps no reference frames
     /// from the stream's session. A delta built on those references would
-    /// arrive at a decoder that no longer holds them. Before this frame is
-    /// handed on, the stream's encoder is flushed, off the main actor like the
-    /// still encode, so every frame it was still holding goes out ahead of
-    /// this one.
+    /// arrive at a decoder that no longer holds them. So the stream reaches
+    /// the transport in this order: the frames already in its encoder, then
+    /// this one, then a key frame, then deltas. Right after the still encode
+    /// the stream's encoder is flushed, and every stream frame it accepts from
+    /// then on is held. Only once this frame has been handed on, or given up,
+    /// are the held frames submitted, the first of them as that key frame.
     ///
     /// Returns how many bytes the frame that went out is, or `nil` when there
     /// was nothing to send -- a surface that has captured nothing yet, or one
@@ -251,11 +254,23 @@ public final class HostMediaPipeline {
         )
         let encodedAgainst = generation
         let submittedAt = MonotonicClock.nowNanoseconds()
-        let (refreshed, encodedAt) = try await encodeStillFrameAndFlushStream(
+        let (refreshed, encodedAt) = try await encodeStillFrameHoldingStream(
             imageBuffer: imageBuffer,
             configuration: configuration,
             presentationTimeNanoseconds: presentationTime
         )
+        // The stream's encoder is holding from here, and every exit below
+        // must end that hold exactly once, or the frames it holds never get
+        // an outcome and their admission slots are never given back. At scope
+        // exit, so the refresh has already been handed on when they go in;
+        // on the queue, so their submission stays off the main actor.
+        let queue = stillRefreshQueue
+        let encoder = encoder
+        defer {
+            queue.async {
+                encoder.resumeHeldFramesWithKeyFrame()
+            }
+        }
         guard encodedAgainst == generation else {
             // This pipeline stopped while the frame was being encoded. Its
             // encoder is finished with and its surface belongs to a capture
@@ -288,18 +303,20 @@ public final class HostMediaPipeline {
         return CMSampleBufferGetTotalSampleSize(refreshed)
     }
 
-    /// `StillFrameEncoder`, then the stream encoder's flush and key-frame
-    /// request, both off the main actor on this pipeline's own serial queue.
-    /// The flush waits on VideoToolbox's output callbacks, and the main actor
-    /// must not wait with it: input injection runs there, and so does the
-    /// host's handling of every message the viewer sends. The picture and
-    /// the configuration are read on the actor and handed across, so nothing
-    /// here reads pipeline state that the actor could be changing meanwhile.
+    /// `StillFrameEncoder`, then the stream encoder's flush and hold, both
+    /// off the main actor on this pipeline's own serial queue. The flush
+    /// waits on VideoToolbox's output callbacks, and the main actor must not
+    /// wait with it: input injection runs there, and so does the host's
+    /// handling of every message the viewer sends. The picture and the
+    /// configuration are read on the actor and handed across, so nothing here
+    /// reads pipeline state that the actor could be changing meanwhile.
     ///
-    /// The flush follows only a still encode that succeeded, so a refresh
-    /// that failed leaves the stream as it was. `encodedAt` is taken between
-    /// the two, so the encode stage measures the still encode alone.
-    private func encodeStillFrameAndFlushStream(
+    /// The hold begins only after a still encode that succeeded, so a
+    /// refresh that failed leaves the stream as it was. A frame returned here
+    /// means the hold is in force, and the caller must resume it.
+    /// `encodedAt` is taken between the encode and the flush, so the encode
+    /// stage measures the still encode alone.
+    private func encodeStillFrameHoldingStream(
         imageBuffer: CVImageBuffer,
         configuration: VideoEncoderConfiguration,
         presentationTimeNanoseconds: Int64
@@ -316,7 +333,7 @@ public final class HostMediaPipeline {
                         presentationTimeNanoseconds: presentationTimeNanoseconds
                     )
                     let encodedAt = MonotonicClock.nowNanoseconds()
-                    encoder.completeFramesRequestingKeyFrame()
+                    encoder.holdFramesAndFlush()
                     continuation.resume(returning: (frame, encodedAt))
                 } catch {
                     continuation.resume(throwing: error)

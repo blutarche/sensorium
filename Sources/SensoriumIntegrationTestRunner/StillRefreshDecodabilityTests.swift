@@ -80,20 +80,23 @@ func runStillRefreshDecodabilityTests() async {
         print("FAIL: the still refresh carried the stream's parameter sets, so this test is not exercising a change of them")
         Foundation.exit(1)
     }
+    // In the order `HostMediaPipeline` sends a refresh, through the same
+    // calls, so this test exercises what production runs: the stream's
+    // encoder is emptied and holds anything new, the refresh is handed on,
+    // and only then does the stream resume, with a keyframe.
+    encoder.holdFramesAndFlush()
     let beforeStill = decoded.count
     try? decoder.decode(stillPacket)
+    encoder.resumeHeldFramesWithKeyFrame()
     try? await Task.sleep(nanoseconds: 300_000_000)
     guard decoded.count > beforeStill else {
         print("FAIL: the viewer did not decode a keyframe whose parameter sets differ from the stream's")
         Foundation.exit(1)
     }
 
-    // And the stream continues. Its next frame is a keyframe, which is what
-    // `HostMediaPipeline` asks for when it sends a refresh -- through the same
-    // call, so this test exercises what production runs: the viewer's decoder
-    // was rebuilt around the still frame's parameter sets and holds no
-    // reference frames from the stream's session any more.
-    encoder.completeFramesRequestingKeyFrame()
+    // And the stream continues. Its next frame is a keyframe: the viewer's
+    // decoder was rebuilt around the still frame's parameter sets and holds
+    // no reference frames from the stream's session any more.
     for (index, picture) in pictures.enumerated() {
         try? encoder.encode(streamSampleBuffer(picture, frameIndex: pictures.count + index, framesPerSecond: configuration.framesPerSecond))
         try? await Task.sleep(nanoseconds: 20_000_000)

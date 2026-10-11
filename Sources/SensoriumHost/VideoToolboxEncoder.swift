@@ -60,12 +60,11 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     /// state between them is held under this lock.
     private let stateLock = NSLock()
     private var keyFrameRequested = false
-    /// True while `completeFramesRequestingKeyFrame` waits on VideoToolbox's
-    /// flush with `stateLock` released. Frames `encode` accepts meanwhile go
-    /// to `framesHeldDuringFlush` instead of the session, so none of them can
-    /// reach VideoToolbox ahead of the key-frame request the flush ends with.
-    private var isFlushing = false
-    private var framesHeldDuringFlush: [CMSampleBuffer] = []
+    /// How many `holdFramesAndFlush` calls are still waiting for their
+    /// `resumeHeldFramesWithKeyFrame`. Above 0, every frame `encode` accepts
+    /// goes to `heldFrames` instead of the session.
+    private var holdDepth = 0
+    private var heldFrames: [CMSampleBuffer] = []
     /// The fidelity actually in force, updated only when VideoToolbox has
     /// accepted it. Each lever derives its new bitrate from this rather than
     /// from `configuration`: bits per second is now a product of frame rate
@@ -329,46 +328,63 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         keyFrameRequested = true
     }
 
-    /// Flushes the encoder and makes the next frame a key frame, for a
-    /// still-screen refresh. The refresh is encoded on its own session with
-    /// its own parameter sets, so the viewer rebuilds its decoder and any
-    /// delta emitted behind the refresh would reference pictures it no longer
-    /// holds.
+    /// Empties the encoder for a still-screen refresh and holds every frame
+    /// `encode` accepts from now until the matching
+    /// `resumeHeldFramesWithKeyFrame`. The refresh is encoded on its own
+    /// session with its own parameter sets, so the viewer rebuilds its decoder
+    /// around them, and the stream must reach the transport in this order: the
+    /// frames already in flight, then the refresh, then a key frame, then
+    /// deltas. The flush puts out the first. The caller hands the refresh on
+    /// between this call and the resume. The resume lets the held frames in
+    /// behind it, the first of them a key frame. A frame submitted before the
+    /// refresh was handed on could come out ahead of it, and the delta after
+    /// that frame would reach a decoder that no longer holds its reference.
     ///
     /// `stateLock` is released while VideoToolbox flushes. The flush waits
     /// for the output callback of every frame still in flight, and that
     /// callback is where `EncodeAdmissionGate` submits the next capture,
-    /// through `encode`, which needs the same lock. So `encode` holds any
-    /// frame it accepts during the flush, and this method submits those
-    /// frames once the flush has returned, in the order they arrived, the
-    /// first of them taking the key-frame request. Nothing submitted after
-    /// the flush began reaches VideoToolbox ahead of that request.
+    /// through `encode`, which needs the same lock. Holding that frame rather
+    /// than waiting for the flush is what lets the callback return.
     ///
-    /// A held frame whose submission then fails is reported through
+    /// Every call must be matched by exactly one resume, on every path,
+    /// including a refresh that is given up or refused. A frame held with no
+    /// resume to come never gets an outcome, and its slots in the session's
+    /// and the machine's admission gates are never given back. Holds nest:
+    /// frames go in only when the last of them is resumed.
+    ///
+    /// Blocks until VideoToolbox has emitted every frame that was in flight,
+    /// so the caller belongs off the main actor. It requests no key frame;
+    /// the resume does.
+    public func holdFramesAndFlush() {
+        stateLock.lock()
+        holdDepth += 1
+        let session = session
+        stateLock.unlock()
+        if let session {
+            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
+        }
+    }
+
+    /// Ends one `holdFramesAndFlush`. Ending the last one makes the next
+    /// frame a key frame and submits every held frame, in the order `encode`
+    /// accepted them, so the first of them is that key frame.
+    ///
+    /// A held frame whose submission fails is reported through
     /// `frameOutcomeHandler` as `.failed`, so it still gets its one outcome.
     /// That report is made with `stateLock` released, because the handler
     /// may call `encode` again.
-    ///
-    /// Blocks until VideoToolbox has emitted every frame that was in flight,
-    /// so the caller belongs off the main actor. A call while a flush is
-    /// already running starts no second one and only renews the request.
-    public func completeFramesRequestingKeyFrame() {
+    public func resumeHeldFramesWithKeyFrame() {
         stateLock.lock()
-        guard !isFlushing, let session else {
-            keyFrameRequested = true
+        // Never below 0: a resume with no hold to end must not leave the next
+        // hold holding nothing.
+        holdDepth = max(holdDepth - 1, 0)
+        guard holdDepth == 0 else {
             stateLock.unlock()
             return
         }
-        isFlushing = true
-        stateLock.unlock()
-
-        VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
-
-        stateLock.lock()
-        isFlushing = false
         keyFrameRequested = true
-        let held = framesHeldDuringFlush
-        framesHeldDuringFlush = []
+        let held = heldFrames
+        heldFrames = []
         var failedStatuses: [OSStatus] = []
         for frame in held {
             let status = submitHoldingStateLock(frame)
@@ -392,12 +408,12 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         // VideoToolbox in the order they took the lock.
         stateLock.lock()
         defer { stateLock.unlock() }
-        if isFlushing {
+        if holdDepth > 0 {
             // Accepted now and reported on later, once
-            // `completeFramesRequestingKeyFrame` submits it. Waiting for the
-            // flush here instead would block the very output callback the
-            // flush is waiting on.
-            framesHeldDuringFlush.append(sampleBuffer)
+            // `resumeHeldFramesWithKeyFrame` submits it. Waiting here instead
+            // would block the very output callback a flush is waiting on, and
+            // submitting now could put this frame out ahead of the refresh.
+            heldFrames.append(sampleBuffer)
             return
         }
         let status = submitHoldingStateLock(sampleBuffer)
