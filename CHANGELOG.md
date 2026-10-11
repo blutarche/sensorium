@@ -26,6 +26,11 @@ once it reaches 1.0.
 
 ### Fixed
 
+- A host screen session could end by itself a couple of minutes after
+  the screen went still. The sharp picture the host sends of a still
+  screen could freeze the host. A frozen host read nothing from the
+  viewer, so after 20 seconds it ended the session. Sending that picture
+  no longer freezes the host.
 - On a slow link, a mostly still host screen could stall for about half a
   second every few seconds. Each time the screen settled, the host sent a
   large sharp picture of it, and the next change waited behind it. The
