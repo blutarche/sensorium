@@ -32,6 +32,14 @@ once it reaches 1.0.
   over each of its few frames, and that counted as the viewer falling
   behind. The host now tells both apart from a viewer that is really
   behind.
+- The viewer could show broken blocks for up to a second while the
+  picture was changing. When the link fell behind, the host threw away
+  frames it had already encoded. The frames after them could not be
+  drawn correctly until the next full frame. The host now waits to
+  encode while the link is busy, so it rarely has to throw an encoded
+  frame away. If one is still lost, the host sends nothing more for
+  that screen until a full frame, and asks for one at once. The host
+  log notes each time it asks.
 
 ## [0.5.0] - 2026-10-11
 
