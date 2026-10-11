@@ -1555,6 +1555,66 @@ func testStreamFidelityClimbsBackIntoAFrameRateTheQuietScreenMakesAffordable() {
     )
 }
 
+/// A busy screen as the coordinator reports it: capture never delivers more
+/// frames than the frame rate the surface is held to, however much the
+/// screen changes, so a screen held to 45 fps captures 45 frames a second.
+private func cappedCaptureObservation(
+    framesPerSecond: Int,
+    encodeP50Nanoseconds: Int64
+) -> StreamFidelityObservation {
+    StreamFidelityObservation(
+        capturedDelta: framesPerSecond,
+        encodedDelta: framesPerSecond,
+        encodeP50Nanoseconds: encodeP50Nanoseconds,
+        encodeSampleCount: framesPerSecond,
+        producedBitsPerSecond: 10_000_000,
+        tickDurationNanoseconds: 1_000_000_000
+    )
+}
+
+/// The other side of the quiet-screen rule: a screen captured at exactly the
+/// frame rate it is held to is not quiet, it is capped. Read as its own
+/// capture period, 45 frames a second would judge a climb to 60 fps against
+/// 45 fps's frame period, which the encoder is already meeting by definition.
+func testStreamFidelityJudgesAFrameRateClimbOnWhatTheFasterRateWouldCapture() {
+    var controller = StreamFidelityController(requestedScale: 1.0)
+    warmUp(&controller)
+
+    // 16ms is past 90% of the 16.7ms period 60fps asks for. The 15ms that
+    // follows is inside 90% of 45fps's 22.2ms and outside 80% of 60fps's
+    // 16.7ms: a cost 45fps holds and 60fps has no room for.
+    expect(
+        controller.observe(
+            cappedCaptureObservation(framesPerSecond: 60, encodeP50Nanoseconds: 16_000_000),
+            atSeconds: 0
+        ) == .stepDown(to: level(fps: 45), reason: .encoder),
+        "the surface gives up the frame rate to the encoder"
+    )
+    for second in 1...180 {
+        let decision = controller.observe(
+            cappedCaptureObservation(
+                framesPerSecond: controller.currentLevel.framesPerSecond,
+                encodeP50Nanoseconds: 15_000_000
+            ),
+            atSeconds: Double(second)
+        )
+        expect(
+            decision == .hold,
+            "a screen filling every frame 45fps allows would fill every frame 60fps allows too, so 15ms is no "
+                + "more affordable at 60 than it was, at second \(second), got \(decision)"
+        )
+    }
+    expect(controller.currentLevel == level(fps: 45), "the surface settles at 45fps, got \(controller.currentLevel)")
+
+    expect(
+        controller.observe(
+            cappedCaptureObservation(framesPerSecond: 45, encodeP50Nanoseconds: 12_000_000),
+            atSeconds: 181
+        ) == .stepUp(to: level(fps: 60)),
+        "an encode with room to spare inside 60fps's own period still takes the frame rate back"
+    )
+}
+
 /// A tick of a surface the encoder is keeping up with easily, on a link that
 /// is delivering only part of what is put on the wire.
 private func linkObservation(

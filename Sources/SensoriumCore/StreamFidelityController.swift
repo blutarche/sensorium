@@ -740,6 +740,15 @@ public struct StreamFidelityController: Sendable {
     /// it fails at, fails, and climbs again. No median, or too few samples
     /// behind one, holds it where it is: unmeasured is not the same as
     /// affordable.
+    ///
+    /// A quiet screen's own capture period still counts, as it does in
+    /// `StreamFidelityPressure.encoderBudgetPeriodNanoseconds`, but scaled to
+    /// the target first. Capture never delivers more frames than the frame
+    /// rate in force, so a busy screen held to 45 fps captures 45 a second,
+    /// and read as it stands that period would judge the climb against the
+    /// rate already being met. Scaled in proportion, a screen filling every
+    /// frame it is allowed is judged against the target's own period, and a
+    /// quiet one is still judged against the long gaps between its frames.
     private func canAffordEncode(
         atFramesPerSecond framesPerSecond: Int,
         observation: StreamFidelityObservation
@@ -748,12 +757,15 @@ public struct StreamFidelityController: Sendable {
               EncodeSustainabilityPolicy.hasEnoughSamples(observation.encodeSampleCount) else {
             return false
         }
-        let framePeriod = Double(
+        var budgetPeriod = Double(
             EncodeSustainabilityPolicy.frameBudgetNanoseconds(framesPerSecond: framesPerSecond)
         )
-        let budgetPeriod = StreamFidelityPressure.encoderBudgetPeriodNanoseconds(
-            observation, nominalFramePeriodNanoseconds: framePeriod
-        )
+        if let tickDurationNanoseconds = observation.tickDurationNanoseconds, observation.capturedDelta > 0 {
+            let observedCapturePeriod = Double(tickDurationNanoseconds) / Double(observation.capturedDelta)
+            let projectedCapturePeriod = observedCapturePeriod
+                * Double(currentLevel.framesPerSecond) / Double(Swift.max(1, framesPerSecond))
+            budgetPeriod = Swift.max(budgetPeriod, projectedCapturePeriod)
+        }
         return Double(encodeP50Nanoseconds)
             < StreamFidelityPressure.encodeRecoveryFraction * budgetPeriod
     }

@@ -129,6 +129,7 @@ struct SensoriumCoreTestRunner {
             ("fidelity holds off a lever that fails after its probation", testStreamFidelityHoldsOffALeverThatFailsAfterItsProbation),
             ("fidelity pressure judges the encoder against the screen's own capture rate", testStreamFidelityEncoderPressureJudgesAgainstTheScreensOwnCaptureRate),
             ("fidelity climbs back into a frame rate the quiet screen makes affordable", testStreamFidelityClimbsBackIntoAFrameRateTheQuietScreenMakesAffordable),
+            ("fidelity judges a frame rate climb on what the faster rate would capture", testStreamFidelityJudgesAFrameRateClimbOnWhatTheFasterRateWouldCapture),
             ("fidelity holds the requested scale on a quiet coding screen", testStreamFidelityHoldsTheRequestedScaleOnAQuietCodingScreen),
             ("fidelity spends resolution before the frame rate and quality", testStreamFidelitySpendsResolutionBeforeTheFrameRateAndQuality),
             ("fidelity gives resolution up to what the link can carry", testStreamFidelityGivesResolutionUpToWhatTheLinkCanCarry),
