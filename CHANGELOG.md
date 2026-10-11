@@ -17,6 +17,12 @@ once it reaches 1.0.
   "External Display", with no resolution choices. Connecting a monitor
   ends the session, and macOS brings the placeholder back once the host
   lets that screen go.
+- When the host cannot keep up with the full picture, it now keeps the
+  picture sharp and lowers the frame rate first, from 60 to 45 to 30
+  frames a second, so text stays easy to read. The picture gets smaller
+  only if 30 frames a second is still too much, and softer only after
+  that. As things improve, the full size comes back before the frame
+  rate climbs above 30.
 
 ## [0.5.0] - 2026-10-11
 
