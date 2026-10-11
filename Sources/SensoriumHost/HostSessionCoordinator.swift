@@ -2303,6 +2303,7 @@ public final class HostSessionCoordinator {
         onEvent?(
             "fidelity now \(Self.fidelityDescription(level, requestedScale: fidelity[surface].requestedScale)) "
                 + "on \(surfaceLogName(surface)) (\(Self.limitDescription(fidelity[surface].limitReason)))"
+                + Self.viewerTelemetryDescription(controller.latestViewerTelemetry(for: surface, atSeconds: now))
         )
         guard level.scaleStepsBelowRequested != previousLevel.scaleStepsBelowRequested else {
             return
@@ -2373,6 +2374,19 @@ public final class HostSessionCoordinator {
         case .some(.none), nil:
             return "no limit"
         }
+    }
+
+    /// The viewer's own report behind a fidelity change, so a "limited by
+    /// the viewer" line can be checked against the numbers it rests on.
+    /// Empty when no fresh report has arrived.
+    private static func viewerTelemetryDescription(_ sample: ViewerTelemetrySample?) -> String {
+        guard let sample else {
+            return ""
+        }
+        let decode = sample.decode.map { String(format: "%.1fms", Double($0.p95Nanoseconds) / 1_000_000) } ?? "?"
+        let decoded = sample.decodedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
+        let presented = sample.presentedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
+        return "; viewer decode p95 \(decode), decoded \(decoded) fps, presented \(presented) fps"
     }
 
     /// What the log calls the message that failed, in the words the rest of

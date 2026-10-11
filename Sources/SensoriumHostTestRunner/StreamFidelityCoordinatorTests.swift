@@ -126,6 +126,44 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: sustained encoder pressure steps the frame rate down one step at a time and the telemetry sample reports it")
 
+    // A fidelity change names the viewer's own numbers behind it
+    do {
+        let media = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(media: onlyOnSurfaceZero(media), onEvent: { events.record($0) })
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        // A viewer keeping up comfortably, so the encoder alone is what moves
+        // the ladder and the line under test is the same one the scenario
+        // above writes.
+        _ = try! await coordinator.handleWritingResponse(
+            .viewerTelemetry(
+                ViewerTelemetrySample(
+                    surfaceID: 0,
+                    endToEnd: nil,
+                    receive: nil,
+                    decode: StageLatencySample(p50Nanoseconds: 3_000_000, p95Nanoseconds: 4_250_000),
+                    presentedFramesPerSecond: 59.6,
+                    decodedFramesPerSecond: 60,
+                    receivedBitsPerSecond: nil
+                )
+            )
+        )
+        for tick in 0...8 {
+            media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
+            await coordinator.tickFidelity(atSeconds: Double(tick))
+        }
+        let fidelityLines = events.messages.filter { $0.hasPrefix("fidelity now") }
+        expect(
+            fidelityLines.last
+                == "fidelity now 30 fps, quality 100%, 1.00x on canvas 0 (limited by the encoder)"
+                + "; viewer decode p95 4.2ms, decoded 60 fps, presented 60 fps",
+            "the line carries the viewer's decode p95 and both of its frame rates, got \(fidelityLines.last ?? "nothing")"
+        )
+    }
+    print("PASS: a fidelity change line carries the viewer's own decode time and frame rates when it has reported them")
+
     // A screen nobody is changing gets its quality back at once
     do {
         let media = FakeScalableCanvasMedia()
