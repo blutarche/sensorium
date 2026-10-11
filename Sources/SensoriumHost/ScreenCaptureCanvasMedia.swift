@@ -14,6 +14,7 @@ public typealias HostMediaPipelineFactory = @MainActor (
     _ latencyRecorder: HostMediaLatencyRecorder?,
     _ sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
     _ focus: CanvasFocusTracker,
+    _ sendFeedback: VideoSendFeedback,
     _ captureTarget: CaptureCursorPolicy.Target,
     _ packetizer: H264SampleBufferPacketizer,
     _ streamStoppedHandler: (@Sendable (Error) -> Void)?,
@@ -42,6 +43,9 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
     /// The session's shared focus state, carried into every pipeline this
     /// media rebuilds so a resolution change never drops the preference.
     private let focus: CanvasFocusTracker
+    /// The connection's view of each surface's send slot, carried into every
+    /// pipeline this media rebuilds for the same reason as `focus`.
+    private let sendFeedback: VideoSendFeedback
     /// This session's encode-admission gate, shared with the other canvas's
     /// media and carried across every pipeline this media rebuilds. Owned by
     /// the session, not by this object: it has to outlive a resolution change,
@@ -81,8 +85,9 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         focus: CanvasFocusTracker = CanvasFocusTracker(),
         admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         log: (@Sendable (String) -> Void)? = nil,
-        pipelineFactory: @escaping HostMediaPipelineFactory = { contentFilter, surface, configuration, latencyRecorder, sessionAdmissionGate, focus, captureTarget, packetizer, streamStoppedHandler, encodedPacketHandler in
+        pipelineFactory: @escaping HostMediaPipelineFactory = { contentFilter, surface, configuration, latencyRecorder, sessionAdmissionGate, focus, sendFeedback, captureTarget, packetizer, streamStoppedHandler, encodedPacketHandler in
             try HostMediaPipeline(
                 contentFilter: contentFilter,
                 surface: surface,
@@ -90,6 +95,7 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
                 latencyRecorder: latencyRecorder,
                 sessionAdmissionGate: sessionAdmissionGate,
                 focus: focus,
+                sendFeedback: sendFeedback,
                 captureTarget: captureTarget,
                 packetizer: packetizer,
                 streamStoppedHandler: streamStoppedHandler,
@@ -103,6 +109,7 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         self.latencyRecorder = latencyRecorder
         self.focus = focus
         self.admissionGate = admissionGate
+        self.sendFeedback = sendFeedback
         self.log = log
         self.pipelineFactory = pipelineFactory
         self.contentFilterProvider = contentFilterProvider
@@ -273,6 +280,7 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
             latencyRecorder,
             admissionGate,
             focus,
+            sendFeedback,
             .sessionCanvas,
             packetizer,
             { [log, weak self] error in

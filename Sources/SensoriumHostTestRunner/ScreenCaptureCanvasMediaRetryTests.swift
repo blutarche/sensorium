@@ -55,7 +55,7 @@ func runScreenCaptureCanvasMediaRetryTests() async {
             capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
         ),
         log: { log.record($0) },
-        pipelineFactory: { _, _, _, _, _, _, _, _, _, _ in
+        pipelineFactory: { _, _, _, _, _, _, _, _, _, _, _ in
             let pipeline = FakeMediaPipeline(
                 id: pipelines.count,
                 startError: pipelines.isEmpty ? FakeMediaFailure.captureUnavailable : nil
@@ -106,7 +106,7 @@ func runScreenCaptureCanvasMediaStopSignalTests() async {
         admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
             capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
         ),
-        pipelineFactory: { _, _, _, _, _, _, _, _, streamStoppedHandler, _ in
+        pipelineFactory: { _, _, _, _, _, _, _, _, _, streamStoppedHandler, _ in
             stopHandlers.append(streamStoppedHandler)
             return FakeMediaPipeline(id: stopHandlers.count - 1, startError: nil)
         },

@@ -43,6 +43,8 @@ public enum VideoEncodeOutcome {
 @available(macOS 13.0, *)
 public protocol VideoFrameEncoding: AnyObject {
     func encode(_ sampleBuffer: CMSampleBuffer) throws
+    /// Makes the next frame submitted a key frame. Safe from any thread.
+    func requestKeyFrame()
 }
 
 @available(macOS 13.0, *)

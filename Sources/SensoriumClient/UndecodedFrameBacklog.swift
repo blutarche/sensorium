@@ -25,7 +25,8 @@ import SensoriumCore
 /// taken after that until the next key frame arrives. The host bounds that
 /// wait: its encoder asks for a key frame at least once a second
 /// (`kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration`), and sends one
-/// besides whenever fidelity changes or a still screen is refreshed.
+/// besides whenever fidelity changes, a still screen is refreshed, or a frame
+/// is lost on its way out.
 ///
 /// Admitting nothing before the session's first key frame is not this type's
 /// job -- `VideoFrameIngress` already refuses a delta it has no picture to

@@ -7,6 +7,10 @@ public enum VideoSendAdmission: Equatable, Sendable {
     case replacedStaleFrame
     /// The waiting frame is worth more than this one; this frame is discarded.
     case droppedIncoming
+    /// This delta is discarded because its surface lost an earlier delta and
+    /// takes nothing but a key frame until one arrives. Only
+    /// `SurfaceVideoSendQueues` returns it.
+    case awaitingKeyFrame
 }
 
 /// Whether a frame is worth protecting from displacement. A waiting keyframe is
@@ -104,6 +108,11 @@ public enum VideoSendPriority: Int, Comparable, Sendable {
 /// then decodes nothing until its next IDR. Latency is unchanged, one send
 /// is in flight either way. Focus preference is bounded by
 /// `maximumConsecutivePriorityWins` and never reorders a waiting keyframe.
+///
+/// A surface that loses a delta here, displaced, refused or failed on the
+/// wire, takes only key frames until one arrives. Losses are rare: a
+/// surface's encode gate holds its captures while that surface's waiting slot
+/// is full, through `VideoSendFeedback`.
 public struct SurfaceVideoSendQueues: Sendable {
     /// How many turns in a row a higher-priority surface may take while a
     /// lower-priority one has a frame waiting.
@@ -124,10 +133,27 @@ public struct SurfaceVideoSendQueues: Sendable {
     /// a frame waiting. Bounds preference so the unfocused window keeps
     /// receiving frames instead of freezing.
     private var consecutivePriorityWins = 0
+    /// Surfaces that lost a delta on the way out. Every delta after a lost
+    /// one is built on a picture the viewer never received and would show as
+    /// corrupt blocks, so such a surface takes nothing but a key frame until
+    /// one arrives. A key frame already waiting does not end it: the delta
+    /// that was lost came after that key frame.
+    private var awaitingKeyFrame = CanvasSurfaceSlots { _ in false }
 
     public init() {}
 
-    /// Frames dropped across both surfaces because the link could not keep up.
+    public func hasWaitingFrame(_ surface: CanvasSurfaceID) -> Bool {
+        queues[surface].hasWaitingFrame
+    }
+
+    public func isAwaitingKeyFrame(_ surface: CanvasSurfaceID) -> Bool {
+        awaitingKeyFrame[surface]
+    }
+
+    /// Frames the waiting slots dropped across both surfaces because the link
+    /// could not keep up. A delta refused while its surface waits for a key
+    /// frame is not counted again: it follows from a loss already counted, or
+    /// from a failed write.
     public var droppedFrameCount: Int {
         queues.all.reduce(0) { $0 + $1.droppedFrameCount }
     }
@@ -142,23 +168,61 @@ public struct SurfaceVideoSendQueues: Sendable {
         surface: CanvasSurfaceID,
         priority: VideoSendPriority = .normal
     ) -> VideoSendAdmission {
+        if frame.isKeyFrame {
+            awaitingKeyFrame[surface] = false
+        } else if awaitingKeyFrame[surface] {
+            return .awaitingKeyFrame
+        }
         guard isSendInFlight else {
             isSendInFlight = true
             return .sendNow
         }
+        let displacesDelta = queues[surface].hasWaitingFrame && !queues[surface].hasWaitingKeyFrame
         let admission = queues[surface].offerToWaitingSlot(frame)
         switch admission {
         case .queued:
             waitingPriority[surface] = priority
             fairnessOrder.append(surface)
         case .replacedStaleFrame:
+            if displacesDelta && !frame.isKeyFrame {
+                // This delta is built on the one it displaced, so neither can
+                // be decoded without the other.
+                clearWaiting(surface)
+                awaitingKeyFrame[surface] = true
+                return .awaitingKeyFrame
+            }
             // Keeps the fairness turn the displaced frame already held: a
             // surface cannot jump the line by replacing its own waiting frame.
             waitingPriority[surface] = priority
-        case .droppedIncoming, .sendNow:
+        case .droppedIncoming:
+            awaitingKeyFrame[surface] = true
+        case .sendNow, .awaitingKeyFrame:
             break
         }
         return admission
+    }
+
+    /// Call when a frame of `surface` failed to reach the wire, before
+    /// `completeSend` dispatches anything else. Answers whether this started
+    /// a wait for a key frame: not when the surface is already waiting, and
+    /// not when a key frame is waiting, which recovers the viewer by itself.
+    public mutating func noteWriteFailed(_ surface: CanvasSurfaceID) -> Bool {
+        guard !awaitingKeyFrame[surface], !queues[surface].hasWaitingKeyFrame else {
+            return false
+        }
+        if queues[surface].hasWaitingFrame {
+            clearWaiting(surface)
+        }
+        awaitingKeyFrame[surface] = true
+        return true
+    }
+
+    /// Empties `surface`'s waiting slot and gives up its fairness turn, which
+    /// `fairnessOrder` lists only while the slot holds a frame.
+    private mutating func clearWaiting(_ surface: CanvasSurfaceID) {
+        _ = queues[surface].takeWaiting()
+        fairnessOrder.removeAll { $0 == surface }
+        waitingPriority[surface] = .normal
     }
 
     /// Call when the in-flight send finishes. Returns the surface whose turn it

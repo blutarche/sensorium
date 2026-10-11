@@ -121,7 +121,7 @@ func runViewerDecoderPreferenceHostTests() async {
             admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
                 capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
             ),
-            pipelineFactory: { _, _, configuration, _, _, _, _, _, _, _ in
+            pipelineFactory: { _, _, configuration, _, _, _, _, _, _, _, _ in
                 configurations.append(configuration)
                 return ProfileRecordingPipeline()
             },

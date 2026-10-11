@@ -29,6 +29,7 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
     private let latencyRecorder: HostMediaLatencyRecorder?
     private let focus: CanvasFocusTracker
     private let admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>
+    private let sendFeedback: VideoSendFeedback
     private var pipeline: HostMediaPipeline?
     private let packetizer: H264SampleBufferPacketizer
     private var displayID: UInt32?
@@ -60,6 +61,7 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         focus: CanvasFocusTracker = CanvasFocusTracker(),
         admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         sequencer: VideoPacketSequencer = VideoPacketSequencer(),
         log: (@Sendable (String) -> Void)? = nil
     ) {
@@ -67,6 +69,7 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         self.latencyRecorder = latencyRecorder
         self.focus = focus
         self.admissionGate = admissionGate
+        self.sendFeedback = sendFeedback
         self.packetizer = H264SampleBufferPacketizer(sequencer: sequencer)
         self.log = log
     }
@@ -204,6 +207,7 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
             latencyRecorder: latencyRecorder,
             sessionAdmissionGate: admissionGate,
             focus: focus,
+            sendFeedback: sendFeedback,
             captureTarget: .hostScreen,
             packetizer: packetizer,
             streamStoppedHandler: { [log, captureStoppedHandler] error in

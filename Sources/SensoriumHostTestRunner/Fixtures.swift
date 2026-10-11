@@ -424,15 +424,24 @@ final class FirstWrittenResponseBox: @unchecked Sendable {
 /// and refused synchronously.
 final class FakeFrameEncoder: VideoFrameEncoding, @unchecked Sendable {
     private(set) var submissionCount = 0
+    /// Each submitted frame's presentation time, in nanoseconds, in the order
+    /// submitted, so a test can tell which of several captures went in.
+    private(set) var submittedPresentationTimes: [Int64] = []
+    private(set) var keyFrameRequestCount = 0
     /// Non-nil makes every submission fail the way VideoToolbox refuses a
     /// frame outright, before any callback exists for it.
     var submissionFailureStatus: OSStatus?
 
     func encode(_ sampleBuffer: CMSampleBuffer) throws {
         submissionCount += 1
+        submittedPresentationTimes.append(CMSampleBufferGetPresentationTimeStamp(sampleBuffer).value)
         if let submissionFailureStatus {
             throw VideoEncoderError.frameSubmissionFailed(submissionFailureStatus)
         }
+    }
+
+    func requestKeyFrame() {
+        keyFrameRequestCount += 1
     }
 }
 
@@ -1099,6 +1108,24 @@ final class FakeVideoSink: CanvasVideoSending, @unchecked Sendable {
     private var sent: [(surface: CanvasSurfaceID, packet: EncodedVideoFramePacket, priority: VideoSendPriority)] = []
     private var dropped = 0
     private var refuses = false
+    private var keyFrameRecoveryObserver: (@Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void)?
+
+    func observeKeyFrameRecoveryRequests(
+        _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        keyFrameRecoveryObserver = observer
+    }
+
+    /// Stands in for the transport asking an encoder for a key frame after
+    /// losing a frame.
+    func reportKeyFrameRecoveryRequest(on surface: CanvasSurfaceID, cause: KeyFrameRecoveryCause) {
+        lock.lock()
+        let observer = keyFrameRecoveryObserver
+        lock.unlock()
+        observer?(surface, cause)
+    }
 
     /// The transport's running drop count, as a test wants it read: settable,
     /// cumulative, and never reset, exactly like the real one.

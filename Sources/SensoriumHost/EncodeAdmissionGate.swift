@@ -11,12 +11,18 @@ struct CaptureFrameAdmission: VideoFrameAdmissible, @unchecked Sendable {
     var isKeyFrame: Bool { false }
 }
 
-/// A dropped frame here never reached the encoder, so nothing downstream
-/// can depend on it.
+/// One capture in the encoder, one waiting, newest wins. A capture also waits
+/// while this surface's send waiting slot holds a frame, and goes in the
+/// moment that slot empties: an encoded delta the send queue had to drop
+/// would cost the viewer every delta after it, and a dropped frame here never
+/// reached the encoder, so nothing downstream can depend on it.
 @available(macOS 13.0, *)
 public final class EncodeAdmissionGate: @unchecked Sendable {
     private let lock = NSLock()
+    /// Only the waiting slot is used; the in-flight slot is `isEncoding`,
+    /// because a capture can wait with nothing in the encoder at all.
     private var queue = VideoFrameAdmissionQueue<CaptureFrameAdmission>()
+    private var isEncoding = false
     private let latencyRecorder: HostMediaLatencyRecorder?
     /// This session's admission gate, which in turn defers to the machine-wide
     /// one. Bounds total frames in flight toward the encoder across every
@@ -36,6 +42,10 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
     /// the one hardware encoder.
     private let surface: CanvasSurfaceID
     private let focus: CanvasFocusTracker
+    /// Read under `lock`, in the same critical section that decides whether a
+    /// capture waits, so a slot that empties meanwhile always finds the
+    /// waiting capture when it calls `sendWaitingSlotEmptied`.
+    private let sendFeedback: VideoSendFeedback
     /// Set once the encoder exists, after this gate is constructed: the
     /// encoder's own compressed-output callback is created before the
     /// encoder instance it belongs to, so it cannot capture `encoder`
@@ -52,6 +62,7 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
         sessionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
         surface: CanvasSurfaceID = CanvasSurfaceID.allCases[0],
         focus: CanvasFocusTracker = CanvasFocusTracker(),
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Void
     ) {
         self.latencyRecorder = latencyRecorder
@@ -60,6 +71,8 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
         self.sessionSource = sessionGate.makeSource()
         self.surface = surface
         self.focus = focus
+        self.sendFeedback = sendFeedback
+        sendFeedback.attach(self, on: surface)
     }
 
     /// Ends this pipeline's use of the session gate, handing back the slot it
@@ -80,6 +93,7 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
         guard !wasShutDown else {
             return
         }
+        sendFeedback.detach(self, on: surface)
         if sessionGate.unregisterSource(sessionSource) {
             latencyRecorder?.recordGlobalEncoderInputDrop(surface: surface)
         }
@@ -98,9 +112,8 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
     /// Call from the capture callback for every admitted frame (not only
     /// `.complete` status — the caller already filters that).
     ///
-    /// `false` when this frame was not taken: the gate has shut down, or a
-    /// newer frame is already waiting and this one is worth less than it.
-    /// Capture itself has nothing to do about either, which is why the result
+    /// `false` when this frame was not taken because the gate has shut down.
+    /// Capture itself has nothing to do about that, which is why the result
     /// is discardable.
     @discardableResult
     public func admit(_ sampleBuffer: CMSampleBuffer) -> Bool {
@@ -113,23 +126,36 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
             latencyRecorder?.recordEncoderInputDrop(surface: surface)
             return false
         }
-        let admission = queue.enqueue(CaptureFrameAdmission(sampleBuffer: sampleBuffer))
+        let capture = CaptureFrameAdmission(sampleBuffer: sampleBuffer)
+        let admission: VideoSendAdmission
+        let submitsNow: Bool
+        if isEncoding || sendFeedback.isWaitingSlotOccupied(on: surface) {
+            admission = queue.offerToWaitingSlot(capture)
+            submitsNow = false
+        } else {
+            // A capture still held for a slot that has just emptied, before
+            // `sendWaitingSlotEmptied` came for it, is older than this one:
+            // this one replaces it and goes in now.
+            admission = queue.hasWaitingFrame ? queue.offerToWaitingSlot(capture) : .sendNow
+            _ = queue.takeWaiting()
+            isEncoding = true
+            submitsNow = true
+        }
         lock.unlock()
         switch admission {
-        case .sendNow:
-            submit(sampleBuffer)
-            return true
+        case .sendNow, .queued:
+            break
         case .replacedStaleFrame:
-            // This frame is the one now waiting; the older one it displaced is
-            // what was dropped.
+            // The older frame this one displaced is what was dropped.
             latencyRecorder?.recordEncoderInputDrop(surface: surface)
-            return true
-        case .droppedIncoming:
+        case .droppedIncoming, .awaitingKeyFrame:
             latencyRecorder?.recordEncoderInputDrop(surface: surface)
             return false
-        case .queued:
-            return true
         }
+        if submitsNow {
+            submit(sampleBuffer)
+        }
+        return true
     }
 
     /// The encoder's single terminal callback for a frame this gate
@@ -151,14 +177,16 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
     }
 
     /// The frame holding this pipeline's in-flight slot has finished, so
-    /// whatever capture is waiting may now go in. Also releases that frame's
-    /// session slot — `releaseSlot()` runs first so an already-waiting
-    /// sibling pipeline gets first refusal at it, before this pipeline's own
-    /// next frame (if any) re-requests one.
+    /// whatever capture is waiting may now go in, unless this surface's send
+    /// slot is still full, when `sendWaitingSlotEmptied` sends it in instead.
+    /// Also releases that frame's session slot — `releaseSlot()` runs first
+    /// so an already-waiting sibling pipeline gets first refusal at it, before
+    /// this pipeline's own next frame (if any) re-requests one.
     private func encodeCompleted() {
         lock.lock()
-        let next = queue.completeSend()
         let isShutDown = isShutDown
+        let next = isShutDown || !sendFeedback.isWaitingSlotOccupied(on: surface) ? queue.takeWaiting() : nil
+        isEncoding = next != nil && !isShutDown
         lock.unlock()
         sessionGate.releaseSlot(source: sessionSource)
         guard let next else {
@@ -240,4 +268,25 @@ extension SharedEncodeAdmissionGate where Frame == CMSampleBuffer {
     /// supplied by its owner instead — see `HostSessionController`. Tests that
     /// need to observe a bound in isolation construct their own instances.
     public static var machineWide: SharedEncodeAdmissionGate<CMSampleBuffer> { machineWideCMSampleBufferGate }
+}
+
+@available(macOS 13.0, *)
+extension EncodeAdmissionGate: VideoSendFeedbackListener {
+    /// Submits the capture held for the slot, unless the encoder is still busy
+    /// with one, in which case `encodeCompleted` submits it.
+    public func sendWaitingSlotEmptied() {
+        lock.lock()
+        guard !isShutDown, !isEncoding, !sendFeedback.isWaitingSlotOccupied(on: surface),
+              let next = queue.takeWaiting() else {
+            lock.unlock()
+            return
+        }
+        isEncoding = true
+        lock.unlock()
+        submit(next.sampleBuffer)
+    }
+
+    public func keyFrameNeeded() {
+        encoder?.requestKeyFrame()
+    }
 }

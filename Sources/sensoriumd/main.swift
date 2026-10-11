@@ -780,6 +780,11 @@ struct sensoriumd {
                 // is looking at is a property of this session, and a new
                 // connection must start with none.
                 let focus = CanvasFocusTracker()
+                // Each surface's send slot as this connection's transport
+                // has it, shared the same way: a pipeline's encode gate holds
+                // captures while its surface's slot is full rather than
+                // encode frames the transport would then have to drop.
+                let sendFeedback = VideoSendFeedback()
                 // Dropped as soon as this session ends on its own, so a
                 // day of reconnects cannot pile up quit teardowns for
                 // sessions long gone. Filled in below, once there is a
@@ -822,6 +827,7 @@ struct sensoriumd {
                     controller: controller,
                     latencyRecorder: latencyRecorder,
                     clipboard: clipboard,
+                    sendFeedback: sendFeedback,
                     onEvent: { print("Sensorium host: \($0)") },
                     // Who is on this machine, for the menu bar: the name
                     // chosen at this machine, else the one the hello reports.
@@ -873,6 +879,7 @@ struct sensoriumd {
                             latencyRecorder: latencyRecorder,
                             focus: focus,
                             admissionGate: controller.encodeAdmission,
+                            sendFeedback: sendFeedback,
                             sequencer: sequencer,
                             log: { print("Sensorium host: \($0)") }
                         )
@@ -903,6 +910,7 @@ struct sensoriumd {
                             // it is what the two canvases of *another*
                             // session contend with.
                             admissionGate: controller.encodeAdmission,
+                            sendFeedback: sendFeedback,
                             log: { print("Sensorium host: \($0)") }
                         )
                     },

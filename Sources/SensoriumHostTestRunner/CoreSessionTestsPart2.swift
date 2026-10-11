@@ -1141,7 +1141,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
 
         // Fair share: with both surfaces backlogged, the wire alternates. No
         // focus signal exists on the wire, so nothing may legitimately prefer
-        // one canvas over the other.
+        // one canvas over the other. Both surfaces lost a delta above and take
+        // only key frames until one arrives, so key frames are what re-queue.
         guard let firstOut = surfaceQueues.completeSend() else {
             expect(false, "a completed send releases the longest-waiting surface's frame")
             return
@@ -1151,7 +1152,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             "surface 0 waited first, so surface 0's protected keyframe goes next"
         )
         expect(
-            surfaceQueues.enqueue(videoFrame(7), surface: surfaceZero, priority: .normal) == .queued,
+            surfaceQueues.enqueue(videoFrame(7, keyFrame: true), surface: surfaceZero, priority: .normal) == .queued,
             "surface 0 re-queues immediately, taking its turn at the back of the line"
         )
         guard let secondOut = surfaceQueues.completeSend() else {
@@ -1163,7 +1164,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             "an eager surface 0 cannot win two turns in a row: surface 1 goes next"
         )
         expect(
-            surfaceQueues.enqueue(videoFrame(8), surface: surfaceOne, priority: .normal) == .queued,
+            surfaceQueues.enqueue(videoFrame(8, keyFrame: true), surface: surfaceOne, priority: .normal) == .queued,
             "surface 1 re-queues behind surface 0"
         )
         guard let thirdOut = surfaceQueues.completeSend() else {
@@ -1185,14 +1186,17 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             "the wire is idle again once nothing is waiting on either surface"
         )
 
-        // A single-surface session behaves exactly as one `VideoSendQueue`
-        // does today: same admissions, same drop count, in the same order.
+        // Until a delta is lost, a single-surface session behaves exactly as
+        // one `VideoSendQueue` does: same admissions, same drop count, in the
+        // same order. A displaced or refused delta is where the two part:
+        // the surface queue then takes only a key frame, which
+        // `runVideoSendRecoveryTests` covers.
         var singleSurfaceQueues = SurfaceVideoSendQueues()
         var singleQueue = VideoSendQueue()
         let singleSurfaceScript: [EncodedVideoFramePacket] = [
             videoFrame(1, keyFrame: true),
             videoFrame(2),
-            videoFrame(3),
+            videoFrame(3, keyFrame: true),
             videoFrame(4, keyFrame: true),
             videoFrame(5),
         ]
@@ -1259,6 +1263,12 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
                         expectedWaiting[surface] = frame
                     case .droppedIncoming:
                         break
+                    case .awaitingKeyFrame:
+                        // A delta it displaced goes with it; a waiting key
+                        // frame stays.
+                        if expectedWaiting[surface]?.isKeyFrame == false {
+                            expectedWaiting[surface] = nil
+                        }
                     }
                 }
             }
@@ -1276,7 +1286,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             }
             expect(waitingSurfaceCount() == 0, "every admitted frame was dispatched, none orphaned")
             expect(
-                propertyQueues.enqueue(videoFrame(9999), surface: surfaceZero, priority: .normal) == .sendNow,
+                propertyQueues.enqueue(videoFrame(9999, keyFrame: true), surface: surfaceZero, priority: .normal) == .sendNow,
                 "a fully drained pair of queues leaves the wire idle for the next frame"
             )
         }

@@ -94,8 +94,9 @@ public protocol CanvasVideoSending: AnyObject, Sendable {
     /// use; see `SurfaceVideoSendQueues`.
     ///
     /// `false` when this frame was not taken: the link could not keep up and
-    /// the queue discarded it, or this sink has no way to tag the surface it
-    /// belongs to. A stream frame has nothing to do about either, which is why
+    /// the queue discarded it, it is a delta built on a frame the queue
+    /// already lost, or this sink has no way to tag the surface it belongs
+    /// to. A stream frame has nothing to do about any of these, which is why
     /// the result is discardable -- but a still-screen refresh is a single
     /// frame whose sending is reported to a person, and that report must not
     /// describe a picture the transport refused.
@@ -120,6 +121,12 @@ public protocol CanvasVideoSending: AnyObject, Sendable {
     /// decision with no ratio rather than one built on bytes that may never
     /// have left this machine.
     func sentVideoByteCount(for surface: CanvasSurfaceID) -> Int?
+    /// Told each time this sink asks a surface's encoder for a key frame
+    /// because it lost a frame on the way out, with why. A sink that never
+    /// loses a frame never calls it.
+    func observeKeyFrameRecoveryRequests(
+        _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void
+    )
 }
 
 public extension CanvasVideoSending {
@@ -128,6 +135,10 @@ public extension CanvasVideoSending {
     func droppedVideoFrameCount(for surface: CanvasSurfaceID) -> Int { 0 }
 
     func sentVideoByteCount(for surface: CanvasSurfaceID) -> Int? { nil }
+
+    func observeKeyFrameRecoveryRequests(
+        _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void
+    ) {}
 }
 
 /// The three steps share one catch, so each names itself; a workspace that
@@ -553,6 +564,12 @@ public final class HostSessionCoordinator {
                 appliedScale: media[surface].currentStreamScale,
                 settleSeconds: streamScaleSettleSeconds
             )
+        }
+        videoSink.observeKeyFrameRecoveryRequests { [weak self] surface, cause in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.onEvent?("key frame requested on \(self.surfaceLogName(surface)): \(cause.rawValue)")
+            }
         }
     }
 

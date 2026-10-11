@@ -240,10 +240,10 @@ public enum StreamFidelityPressure: String, Equatable, Sendable, CaseIterable {
     }
 
     /// Against what the transport actually put on the wire, never against what
-    /// the encoder produced. A link the encoder outruns has its excess frames
-    /// discarded at the send queue, and charging the viewer for bits that were
-    /// thrown away on this machine makes every tick after the first drop read
-    /// as a starved link -- which is the one reading that can never be climbed
+    /// the encoder produced. A frame the send queue discards never reaches the
+    /// wire, and charging the viewer for bits that were thrown away on this
+    /// machine makes every tick after the first drop read as a starved link
+    /// -- which is the one reading that can never be climbed
     /// out of, since climbing back past what the link took asks for exactly
     /// this measurement to come back clean.
     ///

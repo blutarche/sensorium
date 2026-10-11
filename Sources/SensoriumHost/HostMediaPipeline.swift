@@ -44,7 +44,8 @@ public final class HostMediaPipeline {
     private var generation = 0
 
     /// Frames dropped before they ever reached the encoder because capture
-    /// outran it. Distinct from `HostMediaLatencyRecorder`'s
+    /// outran it, or outran the link: captures wait while this surface's send
+    /// slot is full, newest wins. Distinct from `HostMediaLatencyRecorder`'s
     /// `encodeSubmissionFailures`, which counts frames VideoToolbox itself
     /// refused. Counted per pipeline, so a resolution change restarts it; the
     /// count that spans a whole session is the recorder's
@@ -58,6 +59,7 @@ public final class HostMediaPipeline {
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
         focus: CanvasFocusTracker = CanvasFocusTracker(),
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         captureTarget: CaptureCursorPolicy.Target,
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
         encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Bool
@@ -77,6 +79,7 @@ public final class HostMediaPipeline {
             sessionGate: sessionAdmissionGate,
             surface: surface,
             focus: focus,
+            sendFeedback: sendFeedback,
             encodedFrameHandler: { sampleBuffer in
                 if let latencyRecorder, let presentationTime = CMSampleBufferPresentationTiming.nanoseconds(sampleBuffer) {
                     latencyRecorder.recordEncodeOutput(
@@ -135,6 +138,7 @@ public final class HostMediaPipeline {
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
         focus: CanvasFocusTracker = CanvasFocusTracker(),
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         captureTarget: CaptureCursorPolicy.Target,
         packetizer: H264SampleBufferPacketizer = H264SampleBufferPacketizer(),
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
@@ -147,6 +151,7 @@ public final class HostMediaPipeline {
             latencyRecorder: latencyRecorder,
             sessionAdmissionGate: sessionAdmissionGate,
             focus: focus,
+            sendFeedback: sendFeedback,
             captureTarget: captureTarget,
             streamStoppedHandler: streamStoppedHandler,
             // Through `deliver`, not `packet(from:)`: the sequence number and

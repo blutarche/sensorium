@@ -283,11 +283,12 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
 
             // Both surfaces' queues feed one byte channel, so exactly one send
             // may be in flight on it at a time however the waiting slots are
-            // partitioned.
+            // partitioned. Key frames, because a delta displaced from a
+            // waiting slot would stop that surface's deltas until one.
             taggedChannel.sendDelay = .milliseconds(30)
             for sequence in 3...8 {
-                taggedMediaZero.emit(videoFrame(UInt64(sequence)))
-                taggedMediaOne.emit(videoFrame(UInt64(sequence)))
+                taggedMediaZero.emit(videoFrame(UInt64(sequence), keyFrame: true))
+                taggedMediaOne.emit(videoFrame(UInt64(sequence), keyFrame: true))
             }
             try! await Task.sleep(for: .milliseconds(400))
             expect(

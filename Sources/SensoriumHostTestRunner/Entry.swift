@@ -120,6 +120,7 @@ struct SensoriumHostTestRunner {
             { await runStreamFidelityLeverTests() },
             { await runScreenChangeAdmissionTests() },
             { await runSentByteAccountingTests() },
+            { await runVideoSendRecoveryTests() },
             { await runStillRefreshTests() },
             { await runStillRefreshTransportTests() },
             { await runStillRefreshEncodeMeasurementTests() },

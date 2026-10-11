@@ -91,14 +91,52 @@ private enum HostScreenLockWatchPolicy {
     static let pollIntervalSeconds: Double = 2
 }
 
-private final class LockedSurfaceVideoSendQueues: @unchecked Sendable {
-    private let lock = NSLock()
-    private var queues = SurfaceVideoSendQueues()
+/// The send queues and the key-frame requests their losses lead to, under one
+/// lock: a surface starts waiting for a key frame inside the same call that
+/// lost its delta, and the request has to be decided there too.
+private struct VideoSendState {
+    var queues = SurfaceVideoSendQueues()
+    var pacer: KeyFrameRecoveryPacer
+}
 
-    func withLock<T>(_ body: (inout SurfaceVideoSendQueues) -> T) -> T {
+private final class LockedVideoSendState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var state: VideoSendState
+
+    init(_ state: VideoSendState) {
+        self.state = state
+    }
+
+    func withLock<T>(_ body: (inout VideoSendState) -> T) -> T {
         lock.lock()
         defer { lock.unlock() }
-        return body(&queues)
+        return body(&state)
+    }
+}
+
+/// What a change to the send queues obliges the session to tell the encode
+/// gates, worked out under the queues' lock and acted on after it.
+private struct VideoSendEffects {
+    var keyFrameRequests: [(surface: CanvasSurfaceID, cause: KeyFrameRecoveryCause)] = []
+    var heldRequests: [(surface: CanvasSurfaceID, dueNanoseconds: Int64)] = []
+    var emptiedSlots: [CanvasSurfaceID] = []
+}
+
+private final class KeyFrameRecoveryObserverBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var observer: (@Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void)?
+
+    func set(_ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        self.observer = observer
+    }
+
+    func notify(_ surface: CanvasSurfaceID, _ cause: KeyFrameRecoveryCause) {
+        lock.lock()
+        let observer = self.observer
+        lock.unlock()
+        observer?(surface, cause)
     }
 }
 
@@ -237,12 +275,18 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// Frames arrive from the encoder's own thread, so the queues are
     /// lock-guarded rather than actor-isolated: an await here would reintroduce
     /// the backlog.
-    private let videoQueues = LockedSurfaceVideoSendQueues()
+    private let videoQueues: LockedVideoSendState
+    /// Each surface's encode gate, told when its send slot empties and when it
+    /// lost a frame and needs a key frame.
+    private let sendFeedback: VideoSendFeedback
+    /// A key-frame request the pacer held back, one timer per surface.
+    private let heldKeyFrameRequestTasks = CanvasSurfaceSlots { _ in CancellableTaskBox() }
+    private let keyFrameRecoveryObserver = KeyFrameRecoveryObserverBox()
     /// Bytes actually written per surface, counted at send completion rather
-    /// than at enqueue. A link the encoder outruns has its excess frames
-    /// discarded by the queue above, and a fidelity decision comparing the
-    /// viewer's reading against those discarded bytes would read every tick
-    /// after the first drop as a starved link.
+    /// than at enqueue. A frame the queue above discards, or whose write
+    /// fails, never reaches the wire, and a fidelity decision comparing the
+    /// viewer's reading against those bytes would read every tick after the
+    /// first drop as a starved link.
     private let sentBytes = SurfaceByteCounter()
     /// Set only once this connection has actually written a `canvasReady`
     /// carrying a surfaceID — which the controller echoes only for a request
@@ -292,6 +336,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         clipboard: ClipboardSyncSession? = nil,
         viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
+        keyFrameRecoveryInterval: Duration = .seconds(1),
         onEvent: (@Sendable (String) -> Void)? = nil,
         onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil,
         onViewerPing: (@Sendable (Int64?) -> Void)? = nil
@@ -301,6 +347,10 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         self.coordinator = coordinator
         self.latencyRecorder = latencyRecorder
         self.clipboard = clipboard
+        self.sendFeedback = sendFeedback
+        self.videoQueues = LockedVideoSendState(VideoSendState(
+            pacer: KeyFrameRecoveryPacer(minimumIntervalNanoseconds: Self.nanoseconds(for: keyFrameRecoveryInterval))
+        ))
         self.viewerSilenceTimeout = viewerSilenceTimeout
         self.viewerSilenceTimeoutNanoseconds = Self.nanoseconds(for: viewerSilenceTimeout)
         self.onEvent = onEvent
@@ -315,6 +365,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         clipboard: ClipboardSyncSession? = nil,
         viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         onEvent: (@Sendable (String) -> Void)? = nil,
         onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil,
         onViewerPing: (@Sendable (Int64?) -> Void)? = nil
@@ -326,6 +377,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             latencyRecorder: latencyRecorder,
             clipboard: clipboard,
             viewerSilenceTimeout: viewerSilenceTimeout,
+            sendFeedback: sendFeedback,
             onEvent: onEvent,
             onPeerPresence: onPeerPresence,
             onViewerPing: onViewerPing
@@ -342,11 +394,15 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     ///
     /// Bounded on purpose: spawning a task per frame lets a link slower than the
     /// encoder grow an unbounded backlog, which shows up as latency that never
-    /// recovers. One frame in flight, one waiting, the rest dropped.
+    /// recovers. One frame in flight, one waiting per surface. A surface's
+    /// captures wait before its encoder while its slot is full, so a frame is
+    /// seldom dropped here; a surface that does lose a delta sends only key
+    /// frames until one arrives, and asks its encoder for one.
     ///
-    /// `false` for a frame this session did not take, which is a frame the
-    /// queue discarded because the link could not keep up with the encoder, or
-    /// one belonging to a surface this viewer cannot be sent.
+    /// `false` for a frame this session did not take: one the queue discarded
+    /// because the link could not keep up with the encoder, a delta of a
+    /// surface waiting for a key frame, or one belonging to a surface this
+    /// viewer cannot be sent.
     @discardableResult
     public func send(_ packet: EncodedVideoFramePacket, surface: CanvasSurfaceID, priority: VideoSendPriority) -> Bool {
         // Unreachable by construction: a viewer that never proved it understands
@@ -357,14 +413,17 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         guard isPeerSurfaceAware.isSet || surface == CanvasSurfaceID.allCases[0] else {
             return false
         }
-        let admission = videoQueues.withLock { $0.enqueue(packet, surface: surface, priority: priority) }
+        let (admission, effects) = changeVideoQueues(cause: .sendQueueDiscard) {
+            $0.enqueue(packet, surface: surface, priority: priority)
+        }
+        apply(effects)
         switch admission {
         case .sendNow:
             startVideoSend(packet, surface: surface)
             return true
         case .queued, .replacedStaleFrame:
             return true
-        case .droppedIncoming:
+        case .droppedIncoming, .awaitingKeyFrame:
             return false
         }
     }
@@ -372,6 +431,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     private func startVideoSend(_ packet: EncodedVideoFramePacket, surface: CanvasSurfaceID) {
         Task { [weak self] in
             guard let self else { return }
+            var writeFailed = false
             do {
                 try await self.send(self.videoPacket(packet, on: surface))
                 // Counted at send completion on the same basis the viewer
@@ -383,6 +443,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 )
             } catch {
                 // Nothing reached the wire; sentBytes stays where it was.
+                writeFailed = true
             }
             // Recorded at actual send completion, after any wait this packet
             // spent behind an in-flight send, so a link the encoder outruns
@@ -392,10 +453,116 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 presentationTimeNanoseconds: Int64(bitPattern: packet.presentationTimeNanoseconds),
                 atNanoseconds: MonotonicClock.nowNanoseconds()
             )
-            guard let next = self.videoQueues.withLock({ $0.completeSend() }) else {
+            // The failure is noted in the same locked step that picks the next
+            // frame, so a delta of this surface waiting behind the lost frame
+            // is never the one picked.
+            let (next, effects) = self.changeVideoQueues(cause: .writeFailure) { queues in
+                if writeFailed {
+                    _ = queues.noteWriteFailed(surface)
+                }
+                return queues.completeSend()
+            }
+            self.apply(effects)
+            guard let next else {
                 return
             }
             self.startVideoSend(next.frame, surface: next.surface)
+        }
+    }
+
+    /// Runs `change` on the send queues and works out, under the same lock,
+    /// what it obliges the encode gates to be told: a surface that has just
+    /// started waiting for a key frame asks for one, for `cause`, and a
+    /// surface whose waiting slot has just emptied lets a held capture in.
+    /// The slot's occupancy is published to `sendFeedback` under this lock
+    /// too, so a gate never reads a slot the queues have already changed.
+    private func changeVideoQueues<T>(
+        cause: KeyFrameRecoveryCause,
+        _ change: (inout SurfaceVideoSendQueues) -> T
+    ) -> (T, VideoSendEffects) {
+        videoQueues.withLock { state in
+            let wasAwaiting = CanvasSurfaceSlots { state.queues.isAwaitingKeyFrame($0) }
+            let hadWaitingFrame = CanvasSurfaceSlots { state.queues.hasWaitingFrame($0) }
+            let result = change(&state.queues)
+            var effects = VideoSendEffects()
+            for surface in CanvasSurfaceID.allCases {
+                let isAwaiting = state.queues.isAwaitingKeyFrame(surface)
+                if isAwaiting && !wasAwaiting[surface] {
+                    switch state.pacer.keyFrameNeeded(
+                        on: surface,
+                        cause: cause,
+                        atNanoseconds: MonotonicClock.nowNanoseconds()
+                    ) {
+                    case .requestNow:
+                        effects.keyFrameRequests.append((surface, cause))
+                    case let .requestAt(dueNanoseconds):
+                        effects.heldRequests.append((surface, dueNanoseconds))
+                    case .none:
+                        break
+                    }
+                } else if !isAwaiting && wasAwaiting[surface] {
+                    state.pacer.keyFrameArrived(on: surface)
+                }
+                let hasWaitingFrame = state.queues.hasWaitingFrame(surface)
+                if hasWaitingFrame != hadWaitingFrame[surface] {
+                    sendFeedback.setWaitingSlotOccupied(hasWaitingFrame, on: surface)
+                    if !hasWaitingFrame {
+                        effects.emptiedSlots.append(surface)
+                    }
+                }
+            }
+            return (result, effects)
+        }
+    }
+
+    /// Key-frame requests go first, so a capture an emptied slot lets in is
+    /// already the one the encoder makes a key frame of.
+    private func apply(_ effects: VideoSendEffects) {
+        for request in effects.keyFrameRequests {
+            requestRecoveryKeyFrame(on: request.surface, cause: request.cause)
+        }
+        for held in effects.heldRequests {
+            scheduleHeldKeyFrameRequest(on: held.surface, dueNanoseconds: held.dueNanoseconds)
+        }
+        for surface in effects.emptiedSlots {
+            sendFeedback.waitingSlotEmptied(on: surface)
+        }
+    }
+
+    private func requestRecoveryKeyFrame(on surface: CanvasSurfaceID, cause: KeyFrameRecoveryCause) {
+        sendFeedback.requestKeyFrame(on: surface)
+        keyFrameRecoveryObserver.notify(surface, cause)
+    }
+
+    private func scheduleHeldKeyFrameRequest(on surface: CanvasSurfaceID, dueNanoseconds: Int64) {
+        let delay = max(0, dueNanoseconds - MonotonicClock.nowNanoseconds())
+        heldKeyFrameRequestTasks[surface].replace(with: Task { [weak self] in
+            try? await Task.sleep(for: .nanoseconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            let cause = self.videoQueues.withLock { state in
+                state.pacer.deferredRequestDue(
+                    on: surface,
+                    isStillAwaiting: state.queues.isAwaitingKeyFrame(surface),
+                    atNanoseconds: MonotonicClock.nowNanoseconds()
+                )
+            }
+            if let cause {
+                self.requestRecoveryKeyFrame(on: surface, cause: cause)
+            }
+        })
+    }
+
+    /// Reports every key frame this session asks an encoder for after losing
+    /// a frame, with why, so it can be logged.
+    public func observeKeyFrameRecoveryRequests(
+        _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void
+    ) {
+        keyFrameRecoveryObserver.set(observer)
+    }
+
+    private func cancelHeldKeyFrameRequests() {
+        for surface in CanvasSurfaceID.allCases {
+            heldKeyFrameRequestTasks[surface].cancel()
         }
     }
 
@@ -415,11 +582,11 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// Frames dropped so far, across both surfaces, because the link could not
     /// keep up with the encoders.
     public var droppedVideoFrameCount: Int {
-        videoQueues.withLock { $0.droppedFrameCount }
+        videoQueues.withLock { $0.queues.droppedFrameCount }
     }
 
     public func droppedVideoFrameCount(for surface: CanvasSurfaceID) -> Int {
-        videoQueues.withLock { $0.droppedFrameCount(for: surface) }
+        videoQueues.withLock { $0.queues.droppedFrameCount(for: surface) }
     }
 
     public func sentVideoByteCount(for surface: CanvasSurfaceID) -> Int? {
@@ -552,11 +719,11 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                             )
                         }
                     }
-                let surfaces = self.videoQueues.withLock { queues in
+                let surfaces = self.videoQueues.withLock { state in
                     builder.snapshot(
                         metrics: { latencyRecorder.metrics(for: $0) },
                         frameCounts: { latencyRecorder.frameCounts(for: $0) },
-                        sendQueueDropped: { queues.droppedFrameCount(for: $0) },
+                        sendQueueDropped: { state.queues.droppedFrameCount(for: $0) },
                         appliedStreamScale: { fidelity?[$0].appliedScale },
                         sustainableScaleCeiling: { fidelity?[$0].sustainableScaleCeiling },
                         clampedFromUserChoice: { fidelity?[$0].clampedFromUserChoice },
@@ -638,6 +805,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         telemetryPollTask.cancel()
         viewerSilenceWatchdogTask.cancel()
         hostScreenLockWatchPollTask.cancel()
+        cancelHeldKeyFrameRequests()
         onPeerPresence?(.closed(reason: nil))
         Task { @MainActor [controller, coordinator, clipboard] in
             // Set before the teardown below, which can stall (a slow capture
@@ -792,6 +960,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             telemetryPollTask.cancel()
             viewerSilenceWatchdogTask.cancel()
             hostScreenLockWatchPollTask.cancel()
+            cancelHeldKeyFrameRequests()
             // A watchdog-triggered cancel reaches here as an ordinary
             // channel error; naming it explicitly is what lets the close
             // reason say why the link ended instead of just that it did.
