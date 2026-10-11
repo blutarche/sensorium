@@ -24,6 +24,15 @@ once it reaches 1.0.
   that. As things improve, the full size comes back before the frame
   rate climbs above 30.
 
+### Fixed
+
+- The host could lower the picture for a viewer that was keeping up.
+  Time a frame spent waiting before the viewer began to decode it counted
+  as slow decoding. On a quiet screen, the viewer takes a little longer
+  over each of its few frames, and that counted as the viewer falling
+  behind. The host now tells both apart from a viewer that is really
+  behind.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added
