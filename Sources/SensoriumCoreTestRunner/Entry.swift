@@ -64,6 +64,7 @@ struct SensoriumCoreTestRunner {
             ("telemetry carries the applied scale and the learned ceiling", testTelemetryCarriesTheAppliedScaleAndTheLearnedCeiling),
             ("viewer telemetry round-trips and is skippable by an old host", testViewerTelemetryRoundTripsAndIsSkippableByAnOldHost),
             ("viewer telemetry round-trips the ping field and is skippable by an old host", testViewerTelemetryRoundTripRoundTripsThePingFieldAndIsSkippableByAnOldHost),
+            ("viewer telemetry carries the decoder fields and stays compatible both ways", testViewerTelemetryCarriesTheDecoderFieldsAndStaysCompatibleBothWays),
             ("telemetry carries the applied frame rate, quality and limit reason", testTelemetryCarriesTheAppliedFrameRateQualityAndLimit),
             ("the viewer telemetry store forgets a reading that stopped arriving", testViewerTelemetryStoreForgetsAReadingThatStoppedArriving),
             ("the viewer telemetry store refuses impossible numbers", testViewerTelemetryStoreRefusesImpossibleNumbers),

@@ -145,8 +145,9 @@ public struct SurfaceTelemetrySample: Equatable, Sendable {
 /// with no samples yet is absent, never a fabricated zero, because a zero
 /// here would read as a link with no latency at all.
 ///
-/// Everything on it is a timing or a rate. Nothing names an address, a
-/// window, a file, or anything the person at the viewer did.
+/// Everything on it is a timing, a rate, or whether the decoder behind them
+/// runs in hardware. Nothing names an address, a window, a file, or anything
+/// the person at the viewer did.
 public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
     public let surfaceID: UInt32
     /// Host capture to this machine putting the frame on screen, which is
@@ -183,6 +184,25 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
     /// stream: unlike every other field above, an untrusted or wrong value
     /// here can only mislabel a number on the host's own screen.
     public let roundTripNanoseconds: Int64?
+    /// Whether this surface's decoder runs in hardware, as the decoder itself
+    /// reported once it was created. `nil` from a viewer that predates this
+    /// field, before a decoder exists, or when the decoder did not say.
+    ///
+    /// This and the two stages below are a diagnosis for the host's log and
+    /// nothing else: no fidelity decision reads them, so a wrong value can
+    /// only mislabel a log line.
+    public let decodesInHardware: Bool?
+    /// The decoder's own share of `decode`: from the moment a packet is
+    /// handed to the decoder to the moment the decoder hands the picture
+    /// back. Over the frames decoded in the last completed measuring window
+    /// (`TelemetryPolicy.sendIntervalSeconds`), not the session, so it
+    /// describes the stream as it is now. `nil` from a viewer that predates
+    /// this field or one that decoded nothing timed in that window.
+    public let decoderOnly: StageLatencySample?
+    /// The rest of `decode`: from receipt to the moment the packet is handed
+    /// to the decoder, which is time spent waiting behind earlier packets.
+    /// Same window and the same `nil` rule as `decoderOnly`.
+    public let decodeQueueWait: StageLatencySample?
 
     public init(
         surfaceID: UInt32,
@@ -192,7 +212,10 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         presentedFramesPerSecond: Double?,
         decodedFramesPerSecond: Double?,
         receivedBitsPerSecond: Double?,
-        roundTripNanoseconds: Int64? = nil
+        roundTripNanoseconds: Int64? = nil,
+        decodesInHardware: Bool? = nil,
+        decoderOnly: StageLatencySample? = nil,
+        decodeQueueWait: StageLatencySample? = nil
     ) {
         self.surfaceID = surfaceID
         self.endToEnd = endToEnd
@@ -202,6 +225,9 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         self.decodedFramesPerSecond = decodedFramesPerSecond
         self.receivedBitsPerSecond = receivedBitsPerSecond
         self.roundTripNanoseconds = roundTripNanoseconds
+        self.decodesInHardware = decodesInHardware
+        self.decoderOnly = decoderOnly
+        self.decodeQueueWait = decodeQueueWait
     }
 }
 
@@ -264,7 +290,7 @@ public struct ViewerTelemetryStore: Equatable, Sendable {
             guard let rate else { continue }
             guard rate.isFinite, rate >= 0 else { return false }
         }
-        for stage in [sample.endToEnd, sample.receive, sample.decode] {
+        for stage in [sample.endToEnd, sample.receive, sample.decode, sample.decoderOnly, sample.decodeQueueWait] {
             guard let stage else { continue }
             guard stage.p50Nanoseconds >= 0, stage.p95Nanoseconds >= 0 else { return false }
         }

@@ -142,6 +142,104 @@ func testViewerTelemetryRoundTripRoundTripsThePingFieldAndIsSkippableByAnOldHost
     )
 }
 
+/// What a host one revision behind decodes a viewer telemetry message into:
+/// the reading exactly as it was before the decoder fields existed. The
+/// payload is synthesized `Codable` on both sides, so this is the old host's
+/// own decoder, not an approximation of it.
+private struct PreDecoderFieldsViewerTelemetrySample: Codable, Equatable {
+    let surfaceID: UInt32
+    let endToEnd: StageLatencySample?
+    let receive: StageLatencySample?
+    let decode: StageLatencySample?
+    let presentedFramesPerSecond: Double?
+    let decodedFramesPerSecond: Double?
+    let receivedBitsPerSecond: Double?
+    let roundTripNanoseconds: Int64?
+}
+
+private struct PreDecoderFieldsEnvelope: Codable {
+    let type: String
+    let viewerTelemetry: PreDecoderFieldsViewerTelemetrySample?
+}
+
+/// Which decoder the viewer is running and where its decode time goes, split
+/// into the wait ahead of the decoder and the decoder itself. A diagnosis
+/// only: an old host must read a new viewer's message as it always did, and
+/// a new host must read an old viewer's as one that reported none of it.
+func testViewerTelemetryCarriesTheDecoderFieldsAndStaysCompatibleBothWays() {
+    let decoderOnly = StageLatencySample(p50Nanoseconds: 9_000_000, p95Nanoseconds: 14_000_000)
+    let queueWait = StageLatencySample(p50Nanoseconds: 1_000_000, p95Nanoseconds: 31_000_000)
+    let withDecoderFields = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: StageLatencySample(p50Nanoseconds: 12_000_000, p95Nanoseconds: 45_000_000),
+            presentedFramesPerSecond: 28,
+            decodedFramesPerSecond: 29,
+            receivedBitsPerSecond: nil,
+            decodesInHardware: false,
+            decoderOnly: decoderOnly,
+            decodeQueueWait: queueWait
+        )
+    )
+    let frame = try! SensoriumFrameCodec.encode(withDecoderFields)
+    expect(
+        try! SensoriumFrameCodec.decode(frame) == withDecoderFields,
+        "the decoder kind and both decode timings round-trip unchanged"
+    )
+
+    let oldHost = try! JSONDecoder().decode(PreDecoderFieldsEnvelope.self, from: frame.dropFirst(4))
+    expect(
+        oldHost.type == "viewerTelemetry"
+            && oldHost.viewerTelemetry == PreDecoderFieldsViewerTelemetrySample(
+                surfaceID: 0,
+                endToEnd: nil,
+                receive: nil,
+                decode: StageLatencySample(p50Nanoseconds: 12_000_000, p95Nanoseconds: 45_000_000),
+                presentedFramesPerSecond: 28,
+                decodedFramesPerSecond: 29,
+                receivedBitsPerSecond: nil,
+                roundTripNanoseconds: nil
+            ),
+        "a host that predates the decoder fields reads every field it knows and skips the rest"
+    )
+
+    guard case let .viewerTelemetry(oldViewer) = try! SensoriumFrameCodec.decode(viewerTelemetryFrame([
+        "type": "viewerTelemetry",
+        "viewerTelemetry": ["surfaceID": 0, "decodedFramesPerSecond": 30]
+    ])) else {
+        expect(false, "a viewer telemetry message without the decoder fields still decodes as one")
+        return
+    }
+    expect(
+        oldViewer.decodedFramesPerSecond == 30
+            && oldViewer.decodesInHardware == nil
+            && oldViewer.decoderOnly == nil
+            && oldViewer.decodeQueueWait == nil,
+        "a viewer that predates the decoder fields reports no decoder kind and no split, not a guess"
+    )
+
+    let unreported = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil
+        )
+    )
+    let unreportedJSON = String(decoding: try! SensoriumFrameCodec.encode(unreported), as: UTF8.self)
+    expect(
+        !unreportedJSON.contains("decodesInHardware")
+            && !unreportedJSON.contains("decoderOnly")
+            && !unreportedJSON.contains("decodeQueueWait"),
+        "a viewer with nothing to say about its decoder omits the fields rather than sending nulls"
+    )
+}
+
 /// The other half of the same conversation: what the host applied, and why it
 /// is below what the viewer asked for. Absent from a host that predates the
 /// fields, which the viewer must read as "unknown" rather than as a limit.
@@ -297,7 +395,9 @@ func testViewerTelemetryStoreRefusesImpossibleNumbers() {
         decodedFramesPerSecond: Double? = 60,
         receivedBitsPerSecond: Double? = 41_800_000,
         endToEnd: StageLatencySample? = StageLatencySample(p50Nanoseconds: 21_000_000, p95Nanoseconds: 34_000_000),
-        roundTripNanoseconds: Int64? = nil
+        roundTripNanoseconds: Int64? = nil,
+        decoderOnly: StageLatencySample? = nil,
+        decodeQueueWait: StageLatencySample? = nil
     ) -> ViewerTelemetrySample {
         ViewerTelemetrySample(
             surfaceID: 0,
@@ -307,7 +407,9 @@ func testViewerTelemetryStoreRefusesImpossibleNumbers() {
             presentedFramesPerSecond: presentedFramesPerSecond,
             decodedFramesPerSecond: decodedFramesPerSecond,
             receivedBitsPerSecond: receivedBitsPerSecond,
-            roundTripNanoseconds: roundTripNanoseconds
+            roundTripNanoseconds: roundTripNanoseconds,
+            decoderOnly: decoderOnly,
+            decodeQueueWait: decodeQueueWait
         )
     }
 
@@ -334,6 +436,14 @@ func testViewerTelemetryStoreRefusesImpossibleNumbers() {
         (
             "a round trip that ran backwards",
             reading(roundTripNanoseconds: -1)
+        ),
+        (
+            "a decoder time that ran backwards",
+            reading(decoderOnly: StageLatencySample(p50Nanoseconds: -1, p95Nanoseconds: 14_000_000))
+        ),
+        (
+            "a queue wait that ran backwards",
+            reading(decodeQueueWait: StageLatencySample(p50Nanoseconds: 1_000_000, p95Nanoseconds: -1))
         )
     ]
     for (label, sample) in impossible {
