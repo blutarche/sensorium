@@ -1214,6 +1214,34 @@ func testStreamFidelityRefreshesTheStillPictureOncePerStillPeriod() {
         controller.observe(stillTickObservation(), atSeconds: 11) == .refreshStill,
         "a screen that moved and stopped again is a new picture to refresh"
     )
+
+    // A blinking caret: one changed frame on most ticks, two on some. Each
+    // change after a refresh forces a whole-screen key frame that replaces
+    // the refreshed picture, so a refresh here buys a moment of sharpness at
+    // the cost of the next keystroke waiting behind two large frames.
+    var blinking = StreamFidelityController(requestedScale: 1.0)
+    warmUp(&blinking)
+    func caretTick(changes: Int) -> StreamFidelityObservation {
+        StreamFidelityObservation(
+            capturedDelta: changes,
+            encodedDelta: changes,
+            encodeP50Nanoseconds: 5_000_000,
+            encodeSampleCount: changes,
+            producedBitsPerSecond: 40_000
+        )
+    }
+    var refreshes = 0
+    for second in 0..<30 {
+        if blinking.observe(caretTick(changes: second % 3 == 2 ? 2 : 1), atSeconds: Double(second)) == .refreshStill {
+            refreshes += 1
+        }
+    }
+    expect(refreshes == 0, "a screen with only a blinking caret is never refreshed, got \(refreshes) refreshes in 30 s")
+    expect(
+        blinking.observe(stillTickObservation(), atSeconds: 30) == .hold
+            && blinking.observe(stillTickObservation(), atSeconds: 31) == .refreshStill,
+        "once the caret stops and nothing changes for two ticks, the picture is refreshed"
+    )
 }
 
 func testStreamFidelityTakesTheFrameRateBackOnAStillScreen() {

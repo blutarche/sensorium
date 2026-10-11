@@ -139,6 +139,12 @@ public struct StreamFidelityController: Sendable {
     private var pressuredTicks = 0
     private var unpressuredTicks = 0
     private var stillTicks = 0
+    /// Consecutive ticks that captured nothing at all. Stricter than
+    /// `stillTicks`, which lets a single changed frame through: a blinking
+    /// caret changes the screen on nearly every tick, and each change after a
+    /// refresh forces a whole-screen key frame that replaces the refreshed
+    /// picture, so only a screen with nothing changing keeps one.
+    private var quietTicks = 0
     private var warmUpTicksRemaining = StreamFidelityController.warmUpTicks
     private var history = StreamFidelityPressure.History()
     private var lastChangeSeconds: Double?
@@ -293,6 +299,7 @@ public struct StreamFidelityController: Sendable {
         )
         let isStillTick = observation.capturedDelta <= StreamFidelityPressure.stillCapturedDeltaLimit
         stillTicks = isStillTick ? stillTicks + 1 : 0
+        quietTicks = observation.capturedDelta == 0 ? quietTicks + 1 : 0
         if !isStillTick {
             hasRefreshedStill = false
         }
@@ -392,6 +399,7 @@ public struct StreamFidelityController: Sendable {
         isQualityLifted = false
         pressuredTicks = 0
         stillTicks = 0
+        quietTicks = 0
         probationUntilSeconds = nil
         lastChangeSeconds = atSeconds
         return .stepDown(to: currentLevel, reason: reason)
@@ -452,7 +460,8 @@ public struct StreamFidelityController: Sendable {
         } else if canClimb, let decision = raiseScale(observation, atSeconds: atSeconds) {
             return decision
         }
-        if isStill, !hasRefreshedStill, canChangePicture(atSeconds: atSeconds) {
+        if quietTicks >= Self.stillTicksBeforeQualityLift, !hasRefreshedStill,
+           canChangePicture(atSeconds: atSeconds) {
             // After the quality lift and the resolution: a lift changes what
             // the picture is worth and a resolution change replaces it
             // outright, so refreshing the one the viewer ends up keeping is
@@ -813,6 +822,7 @@ public struct StreamFidelityController: Sendable {
         pressuredTicks = 0
         unpressuredTicks = 0
         stillTicks = 0
+        quietTicks = 0
     }
 
     /// Holds `position` off for twice as long as the last time it failed, or
