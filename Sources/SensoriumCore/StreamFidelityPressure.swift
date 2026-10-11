@@ -260,6 +260,12 @@ public enum StreamFidelityPressure: String, Equatable, Sendable, CaseIterable {
         return receivedBitsPerSecond < deliveredFraction * sentBitsPerSecond
     }
 
+    /// Against the longer of the applied rate's period and the period the
+    /// viewer is actually decoding at, for the reason
+    /// `encoderBudgetPeriodNanoseconds` gives: a quiet screen sends a frame
+    /// or two a second, and a decoder idling between them takes longer over
+    /// each one without being behind. A decoder that is the bottleneck
+    /// decodes at about one frame per decode time, so it still reads as over.
     private static func isDecodingOverBudget(
         _ viewer: StreamFidelityViewerObservation?,
         framePeriodNanoseconds: Double
@@ -267,7 +273,11 @@ public enum StreamFidelityPressure: String, Equatable, Sendable, CaseIterable {
         guard let decodeP95Nanoseconds = viewer?.decodeP95Nanoseconds else {
             return false
         }
-        return Double(decodeP95Nanoseconds) > decodeBudgetFraction * framePeriodNanoseconds
+        var budgetPeriod = framePeriodNanoseconds
+        if let decodedFramesPerSecond = viewer?.decodedFramesPerSecond, decodedFramesPerSecond > 0 {
+            budgetPeriod = Swift.max(budgetPeriod, 1_000_000_000 / decodedFramesPerSecond)
+        }
+        return Double(decodeP95Nanoseconds) > decodeBudgetFraction * budgetPeriod
     }
 
     /// Against the viewer's own decoded count, never against the frame rate

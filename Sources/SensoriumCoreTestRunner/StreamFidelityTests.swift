@@ -290,6 +290,28 @@ func testStreamFidelityPressureNamesTheStageThatCannotKeepUp() {
         classifyRepeated(decodingSlowly, times: 3) == .viewer,
         "three ticks in a row of a decode past 80% of the frame period is the viewer"
     )
+    expect(
+        classifyRepeated(
+            withViewer(StreamFidelityViewerObservation(
+                decodeP95Nanoseconds: 15_000_000,
+                presentedFramesPerSecond: 2,
+                decodedFramesPerSecond: 2
+            )),
+            times: 10
+        ) == .none,
+        "a viewer decoding two frames a second has half a second for each, however long one takes"
+    )
+    expect(
+        classifyRepeated(
+            withViewer(StreamFidelityViewerObservation(
+                decodeP95Nanoseconds: 60_000_000,
+                presentedFramesPerSecond: 16,
+                decodedFramesPerSecond: 16
+            )),
+            times: 3
+        ) == .viewer,
+        "a decoder that has fallen to sixteen frames a second at 60 ms each is still the viewer"
+    )
     let presentingHalf = withViewer(StreamFidelityViewerObservation(
         presentedFramesPerSecond: 30,
         decodedFramesPerSecond: 60
