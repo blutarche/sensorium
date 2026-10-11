@@ -319,7 +319,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         ledger.record(presentationTimeNanoseconds: 100, receivedAtNanoseconds: 1_000)
         ledger.record(presentationTimeNanoseconds: 200, receivedAtNanoseconds: 1_100)
         expect(
-            ledger.takeReceipt(forPresentationTimeNanoseconds: 100) == 1_000,
+            ledger.takeReceipt(forPresentationTimeNanoseconds: 100)?.receivedAtNanoseconds == 1_000,
             "a frame's receipt time is returned for its own presentation timestamp"
         )
         expect(
@@ -331,7 +331,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
             "a presentation timestamp that was never recorded has no receipt"
         )
         expect(
-            ledger.takeReceipt(forPresentationTimeNanoseconds: 200) == 1_100,
+            ledger.takeReceipt(forPresentationTimeNanoseconds: 200)?.receivedAtNanoseconds == 1_100,
             "an unrelated lookup does not disturb other outstanding receipts"
         )
 
@@ -353,7 +353,7 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         expect(
             ledger.takeReceipt(
                 forPresentationTimeNanoseconds: Int64(10_000 + FrameReceiptLedger.maximumOutstanding + 9)
-            ) == Int64(20_000 + FrameReceiptLedger.maximumOutstanding + 9),
+            )?.receivedAtNanoseconds == Int64(20_000 + FrameReceiptLedger.maximumOutstanding + 9),
             "the newest receipt survives eviction"
         )
 
@@ -367,11 +367,11 @@ func testSurfaceRoutingAndSessionSetupTests() async {
         windowOneLedger.record(presentationTimeNanoseconds: 500, receivedAtNanoseconds: 1)
         windowTwoLedger.record(presentationTimeNanoseconds: 500, receivedAtNanoseconds: 2)
         expect(
-            windowOneLedger.takeReceipt(forPresentationTimeNanoseconds: 500) == 1,
+            windowOneLedger.takeReceipt(forPresentationTimeNanoseconds: 500)?.receivedAtNanoseconds == 1,
             "one window's ledger is unaffected by another window sharing its presentation timestamp"
         )
         expect(
-            windowTwoLedger.takeReceipt(forPresentationTimeNanoseconds: 500) == 2,
+            windowTwoLedger.takeReceipt(forPresentationTimeNanoseconds: 500)?.receivedAtNanoseconds == 2,
             "the other window's ledger keeps its own receipt regardless of what the first window recorded"
         )
         expect(

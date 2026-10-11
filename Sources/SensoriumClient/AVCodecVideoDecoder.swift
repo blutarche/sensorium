@@ -303,10 +303,11 @@ public final class AVCodecVideoDecoder: VideoDecoding, @unchecked Sendable {
             : frame.pointee.pts
         var timing: FrameTiming?
         if presentationTime != Int64.min,
-           let receivedAt = receipts?.takeReceipt(forPresentationTimeNanoseconds: presentationTime) {
+           let receipt = receipts?.takeReceipt(forPresentationTimeNanoseconds: presentationTime) {
             timing = FrameTiming(
                 hostCapturedAtNanoseconds: presentationTime,
-                receivedAtNanoseconds: receivedAt,
+                receivedAtNanoseconds: receipt.receivedAtNanoseconds,
+                submittedAtNanoseconds: receipt.submittedAtNanoseconds,
                 decodedAtNanoseconds: MonotonicClock.nowNanoseconds()
             )
         }

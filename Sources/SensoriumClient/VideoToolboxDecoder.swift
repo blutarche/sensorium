@@ -176,12 +176,13 @@ public final class VideoToolboxDecoder: VideoDecoding, @unchecked Sendable {
                 let scaled = CMTimeConvertScale(presentationTime, timescale: 1_000_000_000, method: .default)
                 var timing: FrameTiming?
                 if scaled.isValid,
-                   let receivedAt = box.receipts?.takeReceipt(
+                   let receipt = box.receipts?.takeReceipt(
                        forPresentationTimeNanoseconds: scaled.value
                    ) {
                     timing = FrameTiming(
                         hostCapturedAtNanoseconds: scaled.value,
-                        receivedAtNanoseconds: receivedAt,
+                        receivedAtNanoseconds: receipt.receivedAtNanoseconds,
+                        submittedAtNanoseconds: receipt.submittedAtNanoseconds,
                         decodedAtNanoseconds: MonotonicClock.nowNanoseconds()
                     )
                 }

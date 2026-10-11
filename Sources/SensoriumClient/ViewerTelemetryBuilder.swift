@@ -35,13 +35,16 @@ public struct ViewerTelemetryBuilder: Sendable {
     /// `roundTripNanoseconds` rides along for a different reason: it feeds no
     /// encoder decision either, but the host's own menu bar has no other way
     /// to show a live ping -- see `ViewerTelemetrySample.roundTripNanoseconds`.
+    /// `decodesInHardware` and the stream's decode split ride along the same
+    /// way, for the host's log alone.
     public mutating func sample(
         surfaceID: UInt32,
         metrics: SessionMetrics,
         stream: ClientStreamReading,
         presentedFrameCount: Int,
         atNanoseconds now: Int64,
-        roundTripNanoseconds: Int64? = nil
+        roundTripNanoseconds: Int64? = nil,
+        decodesInHardware: Bool? = nil
     ) -> ViewerTelemetrySample {
         let sample = ViewerTelemetrySample(
             surfaceID: surfaceID,
@@ -64,7 +67,10 @@ public struct ViewerTelemetryBuilder: Sendable {
             // Session-wide, not this surface's own -- the host's menu-bar
             // ping display reads whichever surface's tick arrives, since
             // every surface reports the same session's one clock sync.
-            roundTripNanoseconds: roundTripNanoseconds
+            roundTripNanoseconds: roundTripNanoseconds,
+            decodesInHardware: decodesInHardware,
+            decoderOnly: stream.decoderOnly,
+            decodeQueueWait: stream.decodeQueueWait
         )
         if let index = Self.index(for: surfaceID) {
             lastTick[index] = Tick(

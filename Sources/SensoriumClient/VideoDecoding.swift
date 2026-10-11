@@ -28,6 +28,16 @@ public enum DecoderHardwareAccelerationStatus: Equatable, Sendable {
         }
     }
 
+    /// The same answer as `ViewerTelemetrySample.decodesInHardware` carries
+    /// it: `unknown` is unreported, never software.
+    public var decodesInHardware: Bool? {
+        switch self {
+        case .hardwareAccelerated: return true
+        case .softwareFallback: return false
+        case .unknown: return nil
+        }
+    }
+
     /// Logged once per session creation, using the module's existing
     /// "Sensorium: ..." idiom (see `ViewerApplication`).
     var logLine: String {
@@ -84,11 +94,15 @@ public struct VideoDecodePipeline: Sendable {
     public let decodeQueue: VideoDecodeQueue
     public let coalescer: DecodedFrameCoalescer
 
+    /// `now` stamps the moment each packet is handed to the decoder into
+    /// `receipts`, so the decoder's output can tell its own time apart from
+    /// the wait ahead of it. Injectable so a test can name that moment.
     public init(
         receipts: FrameReceiptLedger?,
         drops: ViewerFrameDropCounter?,
         makeDecoder: VideoDecoderFactory,
         onDecodedFrame: (@Sendable (DecodedFrame) -> Void)? = nil,
+        now: @escaping @Sendable () -> Int64 = { MonotonicClock.nowNanoseconds() },
         present: @escaping DecodedFrameCoalescer.Present
     ) {
         let coalescer = DecodedFrameCoalescer(drops: drops, present: present)
@@ -97,6 +111,10 @@ public struct VideoDecodePipeline: Sendable {
             coalescer.submit(frame)
         }
         let decodeQueue = VideoDecodeQueue(drops: drops) { packet in
+            receipts?.recordSubmission(
+                presentationTimeNanoseconds: Int64(bitPattern: packet.presentationTimeNanoseconds),
+                submittedAtNanoseconds: now()
+            )
             try decoder.decode(packet)
         }
         self.coalescer = coalescer

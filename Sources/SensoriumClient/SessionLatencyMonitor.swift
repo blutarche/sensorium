@@ -7,15 +7,21 @@ import Foundation
 public struct FrameTiming: Equatable, Sendable {
     public let hostCapturedAtNanoseconds: Int64
     public let receivedAtNanoseconds: Int64
+    /// When the packet was handed to the decoder, splitting receipt-to-decoded
+    /// into the wait ahead of the decoder and the decoder itself. `nil` when
+    /// the decode path did not note it.
+    public let submittedAtNanoseconds: Int64?
     public let decodedAtNanoseconds: Int64
 
     public init(
         hostCapturedAtNanoseconds: Int64,
         receivedAtNanoseconds: Int64,
+        submittedAtNanoseconds: Int64? = nil,
         decodedAtNanoseconds: Int64
     ) {
         self.hostCapturedAtNanoseconds = hostCapturedAtNanoseconds
         self.receivedAtNanoseconds = receivedAtNanoseconds
+        self.submittedAtNanoseconds = submittedAtNanoseconds
         self.decodedAtNanoseconds = decodedAtNanoseconds
     }
 }

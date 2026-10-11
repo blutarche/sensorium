@@ -42,6 +42,39 @@ private final class FakeVideoDecoder: VideoDecoding, @unchecked Sendable {
     }
 }
 
+/// A decoder that, like the real ones, reads each packet's receipt back out
+/// of the ledger it was built with. The real decoders do that in their output
+/// path; doing it on submission here sees the receipt exactly as the
+/// pipeline left it for that path.
+private final class ReceiptReadingDecoder: VideoDecoding, @unchecked Sendable {
+    private let lock = NSLock()
+    private let ledger: FrameReceiptLedger?
+    private var taken: [FrameReceipt?] = []
+
+    init(ledger: FrameReceiptLedger?) {
+        self.ledger = ledger
+    }
+
+    func decode(_ packet: EncodedVideoFramePacket) throws {
+        let receipt = ledger?.takeReceipt(
+            forPresentationTimeNanoseconds: Int64(bitPattern: packet.presentationTimeNanoseconds)
+        )
+        lock.lock()
+        defer { lock.unlock() }
+        taken.append(receipt)
+    }
+
+    func reset() {}
+
+    var hardwareAcceleration: DecoderHardwareAccelerationStatus? { nil }
+
+    var receipts: [FrameReceipt?] {
+        lock.lock()
+        defer { lock.unlock() }
+        return taken
+    }
+}
+
 private func makePacket(sequence: UInt64) -> EncodedVideoFramePacket {
     EncodedVideoFramePacket(
         sequence: sequence,
@@ -101,5 +134,49 @@ func testVideoDecodingSeamTests() async {
         pipeline.decoder.reset()
         expect(fake.resetCount == 1, "a reset reaches the injected decoder -- got \(fake.resetCount)")
         print("PASS: acceleration readings and resets go to the injected decoder")
+    }
+
+    // The moment a packet is handed to the decoder is what splits its decode
+    // time into the wait ahead of the decoder and the decoder itself, and the
+    // receipt ledger is the only thing that reaches the decoder's output.
+    do {
+        let ledger = FrameReceiptLedger()
+        let decoder = ReceiptReadingDecoder(ledger: ledger)
+        let pipeline = VideoDecodePipeline(
+            receipts: ledger,
+            drops: nil,
+            makeDecoder: { _, _ in decoder },
+            now: { 7_500 },
+            present: { _ in }
+        )
+        let packet = makePacket(sequence: 0)
+        ledger.record(
+            presentationTimeNanoseconds: Int64(bitPattern: packet.presentationTimeNanoseconds),
+            receivedAtNanoseconds: 1_000
+        )
+        pipeline.decodeQueue.submit(packet)
+        let decoded = await waitFor { decoder.receipts.count == 1 }
+        expect(
+            decoded && decoder.receipts == [FrameReceipt(receivedAtNanoseconds: 1_000, submittedAtNanoseconds: 7_500)],
+            "the decoder finds the packet's submission time beside its receipt -- got \(decoder.receipts)"
+        )
+
+        // A packet whose receipt was never recorded, or has been evicted, has
+        // no receipt to stamp: submitting it must not invent one.
+        pipeline.decodeQueue.submit(makePacket(sequence: 1))
+        let decodedUnreceipted = await waitFor { decoder.receipts.count == 2 }
+        expect(
+            decodedUnreceipted && decoder.receipts.last == .some(nil),
+            "a packet with no receipt is decoded without one -- got \(decoder.receipts)"
+        )
+        expect(ledger.outstandingCount == 0, "stamping a submission never adds a receipt to the ledger")
+
+        ledger.record(presentationTimeNanoseconds: 42, receivedAtNanoseconds: 2_000)
+        expect(
+            ledger.takeReceipt(forPresentationTimeNanoseconds: 42)
+                == FrameReceipt(receivedAtNanoseconds: 2_000, submittedAtNanoseconds: nil),
+            "a receipt that was never handed to a decoder carries no submission time"
+        )
+        print("PASS: the decode path stamps each packet's submission beside its receipt for the decoder's output")
     }
 }

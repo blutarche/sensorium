@@ -228,7 +228,8 @@ public final class ClientSessionRunner {
             streamStatistics.recordDecodedFrame(
                 surfaceID: 1,
                 pixelWidth: frame.width,
-                pixelHeight: frame.height
+                pixelHeight: frame.height,
+                timing: frame.timing
             )
         }
     }
@@ -275,7 +276,8 @@ public final class ClientSessionRunner {
             statistics.recordDecodedFrame(
                 surfaceID: 0,
                 pixelWidth: frame.width,
-                pixelHeight: frame.height
+                pixelHeight: frame.height,
+                timing: frame.timing
             )
             onDecodedFrame?(frame)
         }
@@ -283,7 +285,8 @@ public final class ClientSessionRunner {
             statistics.recordDecodedFrame(
                 surfaceID: 1,
                 pixelWidth: frame.width,
-                pixelHeight: frame.height
+                pixelHeight: frame.height,
+                timing: frame.timing
             )
         }
         // Detached, not a child of whatever started this session: reading the
@@ -514,7 +517,8 @@ public final class ClientSessionRunner {
                 // screen -- the builder turns two of them into a rate.
                 presentedFrameCount: metrics.samples(for: .present).count,
                 atNanoseconds: nowNanoseconds,
-                roundTripNanoseconds: roundTripNanoseconds
+                roundTripNanoseconds: roundTripNanoseconds,
+                decodesInHardware: router.decoderHardwareAcceleration(surfaceID: surfaceID)?.decodesInHardware
             )
             try? await connection.send(.control(.viewerTelemetry(sample)))
         }

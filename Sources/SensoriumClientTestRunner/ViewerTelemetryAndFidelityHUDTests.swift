@@ -7,6 +7,7 @@ import SensoriumCore
 func runViewerTelemetryAndFidelityHUDTests() {
     viewerTelemetryBuilderReportsOnlyWhatWasMeasured()
     viewerTelemetryBuilderCarriesTheRoundTripWhenGiven()
+    viewerTelemetryReportsTheDecoderSplitOverTheLastWindow()
     fidelitySectionNamesTheFrameRateQualityAndReason()
     streamSectionNamesTheFramesThisViewerGaveUp()
     latencySectionNamesTheHoldThisMachineAdded()
@@ -326,6 +327,116 @@ private func viewerTelemetryBuilderCarriesTheRoundTripWhenGiven() {
     expect(
         withRoundTrip.roundTripNanoseconds == 8_400_000,
         "the caller's own reading travels on the sample unchanged"
+    )
+}
+
+/// `decode` alone cannot tell a slow decoder from a fast one with packets
+/// queued in front of it, and its percentile spans thousands of frames. The
+/// viewer therefore reports the two halves separately, over the last
+/// completed measuring window only, along with which kind of decoder it is
+/// running.
+private func viewerTelemetryReportsTheDecoderSplitOverTheLastWindow() {
+    let second: Int64 = 1_000_000_000
+    let statistics = ClientStreamStatistics()
+    statistics.recordReceivedVideo(surfaceID: 0, byteCount: 1_000, atNanoseconds: 10 * second)
+    // Received at 0 ms each, handed to the decoder after 2, 4, 6 ... 20 ms of
+    // waiting, and back out of it 10, 20, 30 ... 100 ms after that.
+    for index in 1...10 {
+        let receivedAt = 10 * second + Int64(index) * 16_000_000
+        let submittedAt = receivedAt + Int64(index) * 2_000_000
+        statistics.recordDecodedFrame(
+            surfaceID: 0,
+            pixelWidth: 3840,
+            pixelHeight: 2160,
+            timing: FrameTiming(
+                hostCapturedAtNanoseconds: Int64(index),
+                receivedAtNanoseconds: receivedAt,
+                submittedAtNanoseconds: submittedAt,
+                decodedAtNanoseconds: submittedAt + Int64(index) * 10_000_000
+            )
+        )
+    }
+    // A frame decoded with no receipt at all still counts as decoded, and
+    // contributes nothing it cannot have measured.
+    statistics.recordDecodedFrame(surfaceID: 0, pixelWidth: 3840, pixelHeight: 2160, timing: nil)
+
+    let midWindow = statistics.reading(surfaceID: 0, atNanoseconds: 10 * second + second / 2)
+    expect(
+        midWindow.decoderOnly == nil && midWindow.decodeQueueWait == nil && midWindow.decodedFrameCount == 11,
+        "nothing is reported before a whole window has been measured"
+    )
+
+    let firstWindow = statistics.reading(surfaceID: 0, atNanoseconds: 11 * second)
+    expect(
+        firstWindow.decoderOnly == StageLatencySample(p50Nanoseconds: 50_000_000, p95Nanoseconds: 100_000_000),
+        "the decoder's own time is the submission-to-output span, got \(String(describing: firstWindow.decoderOnly))"
+    )
+    expect(
+        firstWindow.decodeQueueWait == StageLatencySample(p50Nanoseconds: 10_000_000, p95Nanoseconds: 20_000_000),
+        "the wait ahead of the decoder is the receipt-to-submission span, got \(String(describing: firstWindow.decodeQueueWait))"
+    )
+
+    // One quick frame in the next window. A session-long percentile would
+    // still be dominated by the slow window before it.
+    statistics.recordDecodedFrame(
+        surfaceID: 0,
+        pixelWidth: 1920,
+        pixelHeight: 1080,
+        timing: FrameTiming(
+            hostCapturedAtNanoseconds: 99,
+            receivedAtNanoseconds: 11 * second + 100,
+            submittedAtNanoseconds: 11 * second + 1_100,
+            decodedAtNanoseconds: 11 * second + 4_001_100
+        )
+    )
+    let secondWindow = statistics.reading(surfaceID: 0, atNanoseconds: 12 * second)
+    expect(
+        secondWindow.decoderOnly == StageLatencySample(p50Nanoseconds: 4_000_000, p95Nanoseconds: 4_000_000)
+            && secondWindow.decodeQueueWait == StageLatencySample(p50Nanoseconds: 1_000, p95Nanoseconds: 1_000),
+        "each window reports only the frames decoded in it"
+    )
+
+    let emptyWindow = statistics.reading(surfaceID: 0, atNanoseconds: 13 * second)
+    expect(
+        emptyWindow.decoderOnly == nil && emptyWindow.decodeQueueWait == nil,
+        "a window that decoded nothing reports no split rather than the last one again"
+    )
+    expect(
+        statistics.reading(surfaceID: 1, atNanoseconds: 13 * second).decoderOnly == nil,
+        "one surface's decode times are never reported for the other"
+    )
+
+    var builder = ViewerTelemetryBuilder()
+    let sample = builder.sample(
+        surfaceID: 0,
+        metrics: SessionMetrics(),
+        stream: firstWindow,
+        presentedFrameCount: 0,
+        atNanoseconds: 11 * second,
+        decodesInHardware: false
+    )
+    expect(
+        sample.decodesInHardware == false
+            && sample.decoderOnly == firstWindow.decoderOnly
+            && sample.decodeQueueWait == firstWindow.decodeQueueWait,
+        "the sample carries the decoder kind and the stream's own split unchanged"
+    )
+    expect(
+        builder.sample(
+            surfaceID: 0,
+            metrics: SessionMetrics(),
+            stream: emptyWindow,
+            presentedFrameCount: 0,
+            atNanoseconds: 13 * second
+        ).decodesInHardware == nil,
+        "a caller that does not know the decoder kind sends none"
+    )
+
+    expect(
+        DecoderHardwareAccelerationStatus.hardwareAccelerated.decodesInHardware == true
+            && DecoderHardwareAccelerationStatus.softwareFallback.decodesInHardware == false
+            && DecoderHardwareAccelerationStatus.unknown.decodesInHardware == nil,
+        "a decoder that did not say which kind it is is sent as unreported, never as software"
     )
 }
 
