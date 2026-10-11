@@ -32,16 +32,16 @@ public enum StreamFidelityDecision: Equatable, Sendable {
 /// no reference to the session it describes, so the whole policy is testable
 /// as arithmetic. One instance per surface.
 ///
-/// Resolution is the lever it reaches for first, and it names a resolution
-/// rather than stepping towards one. Encode cost is per pixel, so the median
-/// encode measured at the applied scale predicts the cost of every other
-/// scale, and the controller picks the largest scale that leaves the encoder
-/// room to hold 60 fps. A screen with moving parts stays smooth at whatever
-/// size the encoder can actually sustain, and a screen nobody is changing
-/// costs nothing to encode and so returns to the size the viewer asked for.
+/// It gives ground up in the order `StreamFidelityLadder` describes: the
+/// frame rate a step at a time down to 30 fps, then resolution, then quality
+/// and the last of the frame rate. Ground comes back in the reverse order.
 ///
-/// Frame rate and quality are only spent once resolution has reached
-/// `StreamScalePolicy.minimumScale` and a stage is still behind.
+/// Resolution is named rather than stepped towards. Encode cost is per
+/// pixel, so the median encode measured at the applied scale predicts the
+/// cost of every other scale, and the controller picks the largest scale
+/// that leaves the encoder room to hold the frame rate in force. A screen
+/// nobody is changing costs nothing to encode and so returns to the size the
+/// viewer asked for.
 public struct StreamFidelityController: Sendable {
     /// Pressured ticks before ground is given up. One: the cost model names
     /// the resolution that fits from a single tick's measurement, and the
@@ -81,10 +81,6 @@ public struct StreamFidelityController: Sendable {
     public static let minimumSecondsBetweenChanges: Double = 2
     /// Consecutive still ticks before quality returns to full.
     public static let stillTicksBeforeQualityLift = 2
-    /// The frame rate every resolution decision is measured against. What the
-    /// whole design is for: a moving picture at 60 fps, at whatever size the
-    /// encoder can sustain it.
-    public static let targetFramesPerSecond = 60
     /// The share of a second the encoder may be predicted to spend at a scale
     /// for that scale to be worth streaming. Room to spare, because the
     /// median is not the slowest frame and a scale change rebuilds the
@@ -100,8 +96,8 @@ public struct StreamFidelityController: Sendable {
     /// carry now.
     public static let linkBudgetGrowthRate = 1.1
 
-    /// Where the two cheap levers stand. Only ever away from full while the
-    /// scale is already at its floor.
+    /// Where the two cheap levers stand: live settings on the encoder already
+    /// running, where a change of scale rebuilds it.
     private struct LeverPosition: Hashable {
         var frameRateIndex: Int
         var qualityIndex: Int
@@ -110,6 +106,15 @@ public struct StreamFidelityController: Sendable {
             frameRateIndex: StreamFidelityLadder.fullFrameRateIndex,
             qualityIndex: StreamFidelityLadder.fullQualityIndex
         )
+
+        /// Whether this position has given up anything the ladder spends after
+        /// resolution: quality, or a frame rate below
+        /// `StreamFidelityLadder.gentleFrameRateFloorIndex`. Only ever true
+        /// once the scale is at its floor.
+        var isPastResolution: Bool {
+            frameRateIndex > StreamFidelityLadder.gentleFrameRateFloorIndex
+                || qualityIndex > StreamFidelityLadder.fullQualityIndex
+        }
     }
 
     /// How long a lever position is held off, and until when. The length
@@ -185,16 +190,18 @@ public struct StreamFidelityController: Sendable {
     }
 
     /// Which stage is holding this surface below what the viewer asked for,
-    /// for the viewer to be told why. `nil` when nothing is being held back.
+    /// for the viewer to be told why: the one that took the last thing given
+    /// up, which is also the first thing to come back. `nil` when nothing is
+    /// being held back.
     public var limitReason: StreamFidelityPressure? {
         let position = currentLeverPosition
-        if position != LeverPosition.full {
+        if position.isPastResolution {
             return leverReason[position]
         }
-        guard scaleStepsBelowRequested > 0 else {
-            return nil
+        if scaleStepsBelowRequested > 0 {
+            return scaleReason
         }
-        return scaleReason
+        return position == LeverPosition.full ? nil : leverReason[position]
     }
 
     /// The viewer asked for a different scale. The number of steps this
@@ -326,11 +333,22 @@ public struct StreamFidelityController: Sendable {
         return stepDown(observation, reason: reason, atSeconds: atSeconds)
     }
 
+    /// One move down the ladder, whichever stage is behind: the frame rate a
+    /// step at a time down to `StreamFidelityLadder.gentleFrameRateFloorIndex`,
+    /// then the resolution, then `leverPositionBelow`.
     private mutating func stepDown(
         _ observation: StreamFidelityObservation,
         reason: StreamFidelityPressure,
         atSeconds: Double
     ) -> StreamFidelityDecision {
+        let position = currentLeverPosition
+        if position.frameRateIndex < StreamFidelityLadder.gentleFrameRateFloorIndex {
+            let slowed = LeverPosition(
+                frameRateIndex: position.frameRateIndex + 1,
+                qualityIndex: position.qualityIndex
+            )
+            return stepLevers(from: position, to: slowed, reason: reason, atSeconds: atSeconds)
+        }
         let floor = StreamFidelityLadder.scaleStepCount(requestedScale: requestedScale)
         if scaleStepsBelowRequested < floor {
             scaleStepsBeforeLastChange = scaleStepsBelowRequested
@@ -340,10 +358,21 @@ public struct StreamFidelityController: Sendable {
             scaleReason = reason
             return finishStepDown(reason: reason, atSeconds: atSeconds)
         }
-        let position = currentLeverPosition
-        guard let target = leverPositionBelow(position, reason: reason) else {
+        guard let target = leverPositionBelow(position) else {
             return .hold
         }
+        return stepLevers(from: position, to: target, reason: reason, atSeconds: atSeconds)
+    }
+
+    /// Moves the levers down from `position` to `target`. Stepping off the
+    /// position most recently taken back, inside `leverProbeSeconds`, is that
+    /// probe failing, and holds the position off.
+    private mutating func stepLevers(
+        from position: LeverPosition,
+        to target: LeverPosition,
+        reason: StreamFidelityPressure,
+        atSeconds: Double
+    ) -> StreamFidelityDecision {
         if let lastLeverStepUp,
            lastLeverStepUp.position == position,
            atSeconds - lastLeverStepUp.atSeconds <= Self.leverProbeSeconds {
@@ -370,10 +399,11 @@ public struct StreamFidelityController: Sendable {
 
     /// Where a pressured surface's resolution goes. The encoder's measured
     /// cost and the link's measured budget each name the scale they can
-    /// afford directly, so a stream that cannot carry what it is sending
-    /// lands on one that can in a single change rather than several seconds
-    /// and several rebuilds later. A viewer behind on its own frames is short
-    /// of neither, and one step smaller is what answers it.
+    /// afford directly, at the frame rate already given up to reach this
+    /// point, so a stream that cannot carry what it is sending lands on one
+    /// that can in a single change rather than several seconds and several
+    /// rebuilds later. A viewer behind on its own frames is short of neither,
+    /// and one step smaller is what answers it.
     private func scaleStepsForDownMove(
         _ observation: StreamFidelityObservation,
         reason: StreamFidelityPressure,
@@ -384,7 +414,7 @@ public struct StreamFidelityController: Sendable {
         guard reason == .encoder || reason == .link,
               let affordable = affordableScaleSteps(
                   observation,
-                  framesPerSecond: Self.targetFramesPerSecond,
+                  framesPerSecond: currentLevel.framesPerSecond,
                   utilisationLimit: Self.climbUtilisation,
                   atSeconds: atSeconds
               ) else {
@@ -411,25 +441,38 @@ public struct StreamFidelityController: Sendable {
         }
         let canClimb = unpressuredTicks >= Self.unpressuredTicksBeforeStepUp
             && canChangePicture(atSeconds: atSeconds)
-        if canClimb, let decision = raiseScale(observation, atSeconds: atSeconds) {
+        // The reverse of the order ground was given up in: what was spent
+        // after the resolution comes back before it, and the resolution
+        // before the frame rate above 30 fps.
+        let position = currentLeverPosition
+        if canClimb, position.isPastResolution {
+            if let decision = raiseLever(observation, isStill: isStill, atSeconds: atSeconds) {
+                return decision
+            }
+        } else if canClimb, let decision = raiseScale(observation, atSeconds: atSeconds) {
             return decision
         }
         if isStill, !hasRefreshedStill, canChangePicture(atSeconds: atSeconds) {
-            // After the quality lift and the resolution, before the levers: a
-            // lift changes what the picture is worth and a resolution change
-            // replaces it outright, so refreshing the one the viewer ends up
-            // keeping is the only refresh worth sending. The levers wait
-            // their turn because they leave the picture itself alone.
+            // After the quality lift and the resolution: a lift changes what
+            // the picture is worth and a resolution change replaces it
+            // outright, so refreshing the one the viewer ends up keeping is
+            // the only refresh worth sending. The frame rate above 30 fps
+            // waits its turn because it leaves the picture itself alone.
             hasRefreshedStill = true
             lastChangeSeconds = atSeconds
             return .refreshStill
         }
-        if canClimb, let decision = raiseLever(observation, isStill: isStill, atSeconds: atSeconds) {
+        if canClimb, !position.isPastResolution, scaleStepsBelowRequested == 0,
+           let decision = raiseLever(observation, isStill: isStill, atSeconds: atSeconds) {
             return decision
         }
         return .hold
     }
 
+    /// Predicted at the frame rate in force, because that is the rate the
+    /// larger picture will be streamed at: the frame rate above it comes back
+    /// only once the resolution has, and only if the encoder can afford it
+    /// at the size it is then streaming.
     private mutating func raiseScale(
         _ observation: StreamFidelityObservation,
         atSeconds: Double
@@ -438,7 +481,7 @@ public struct StreamFidelityController: Sendable {
               canRaise(past: scaleReason, observation: observation),
               let affordable = affordableScaleSteps(
                   observation,
-                  framesPerSecond: Self.targetFramesPerSecond,
+                  framesPerSecond: currentLevel.framesPerSecond,
                   utilisationLimit: Self.climbUtilisation,
                   atSeconds: atSeconds
               ),
@@ -478,58 +521,50 @@ public struct StreamFidelityController: Sendable {
         LeverPosition(frameRateIndex: frameRateIndex, qualityIndex: qualityIndex)
     }
 
-    /// Which lever answers this stage. An encoder or a viewer out of time
-    /// needs fewer frames to work on, and a link out of bits needs smaller
-    /// ones, which costs no motion at all. The frame rate stops at
-    /// `StreamFidelityLadder.gentleFrameRateFloorIndex` until quality has
-    /// been spent, because the slowest rate is worse to look at than any
-    /// softening. `nil` when both levers are exhausted.
-    private func leverPositionBelow(
-        _ position: LeverPosition,
-        reason: StreamFidelityPressure
-    ) -> LeverPosition? {
-        let canSoften = position.qualityIndex < StreamFidelityLadder.softestQualityIndex
-        let canSlow = position.frameRateIndex < StreamFidelityLadder.slowestFrameRateIndex
-        let slowsGently = position.frameRateIndex < StreamFidelityLadder.gentleFrameRateFloorIndex
-        let softened = LeverPosition(
-            frameRateIndex: position.frameRateIndex,
-            qualityIndex: position.qualityIndex + 1
-        )
-        let slowed = LeverPosition(
+    /// Where the levers go once the frame rate is at
+    /// `StreamFidelityLadder.gentleFrameRateFloorIndex` and the resolution at
+    /// its floor: quality first, because the slowest frame rate is worse to
+    /// look at than any softening, then the last of the frame rate. `nil`
+    /// when both levers are exhausted.
+    private func leverPositionBelow(_ position: LeverPosition) -> LeverPosition? {
+        if position.qualityIndex < StreamFidelityLadder.softestQualityIndex {
+            return LeverPosition(
+                frameRateIndex: position.frameRateIndex,
+                qualityIndex: position.qualityIndex + 1
+            )
+        }
+        guard position.frameRateIndex < StreamFidelityLadder.slowestFrameRateIndex else {
+            return nil
+        }
+        return LeverPosition(
             frameRateIndex: position.frameRateIndex + 1,
             qualityIndex: position.qualityIndex
         )
-        if reason == .link {
-            if canSoften {
-                return softened
-            }
-            return canSlow ? slowed : nil
-        }
-        if slowsGently {
-            return slowed
-        }
-        if canSoften {
-            return softened
-        }
-        return canSlow ? slowed : nil
     }
 
-    /// The frame rate comes back before the quality, whichever order they
-    /// were spent in. Motion is what this design protects, and a sharper
-    /// picture that stutters is the trade nobody wants back.
+    /// The reverse of the order the levers are spent in: the frame rate below
+    /// `StreamFidelityLadder.gentleFrameRateFloorIndex`, then the quality,
+    /// then the frame rate above it, which `recover` asks for only once the
+    /// resolution is back at the scale the viewer asked for.
     private func leverPositionAbove(_ position: LeverPosition) -> LeverPosition? {
-        if position.frameRateIndex > StreamFidelityLadder.fullFrameRateIndex {
+        if position.frameRateIndex > StreamFidelityLadder.gentleFrameRateFloorIndex {
             return LeverPosition(
                 frameRateIndex: position.frameRateIndex - 1,
                 qualityIndex: position.qualityIndex
             )
         }
-        guard position.qualityIndex > StreamFidelityLadder.fullQualityIndex else {
+        if position.qualityIndex > StreamFidelityLadder.fullQualityIndex {
+            return LeverPosition(
+                frameRateIndex: position.frameRateIndex,
+                qualityIndex: position.qualityIndex - 1
+            )
+        }
+        guard position.frameRateIndex > StreamFidelityLadder.fullFrameRateIndex else {
             return nil
         }
         return LeverPosition(
-            frameRateIndex: position.frameRateIndex,
-            qualityIndex: position.qualityIndex - 1
+            frameRateIndex: position.frameRateIndex - 1,
+            qualityIndex: position.qualityIndex
         )
     }
 
@@ -598,9 +633,10 @@ public struct StreamFidelityController: Sendable {
     /// median times the square of its ratio to the scale that median was
     /// measured at. What that costs per second is the prediction times the
     /// rate frames actually arrive at, which is the lower of the screen's own
-    /// observed capture rate and the frame rate being aimed for: a screen
-    /// producing 10 frames a second costs ten encodes, whatever the frame
-    /// rate says.
+    /// observed capture rate and `framesPerSecond`, the frame rate in force:
+    /// a screen producing 10 frames a second costs ten encodes, whatever the
+    /// frame rate says, and a frame rate already given up leaves each frame
+    /// a longer share of the second.
     ///
     /// A scale has to fit the link as well as the encoder: what it would cost
     /// in bits per second is predicted the same way, from what this tick

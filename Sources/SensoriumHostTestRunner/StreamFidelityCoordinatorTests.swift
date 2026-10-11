@@ -570,12 +570,16 @@ func runStreamFidelityCoordinatorTests() async {
             "the person's own choice is honoured exactly before anything is measured, got \(media.reconfiguredScales)"
         )
 
-        // Resolution is the first lever, so the first change a pressured
-        // surface makes is a smaller picture.
-        for tick in 0...6 {
+        // The frame rate goes first, down to 30 fps, and a pressured surface
+        // that is still behind there is given a smaller picture.
+        for tick in 0...9 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
         }
+        expect(
+            media.appliedFramesPerSecond == [45, 30],
+            "the frame rate is given up before any resolution, got \(media.appliedFramesPerSecond)"
+        )
         expect(
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0, 1.75] },
             "a smaller picture reaches the encoder through the same reconfigure path a viewer resize uses, got "
@@ -612,8 +616,8 @@ func runStreamFidelityCoordinatorTests() async {
         )
         expect(
             events.messages.filter { $0.hasPrefix("fidelity now") }.last
-                == "fidelity now 60 fps, quality 100%, 1.75x on canvas 0 (limited by the encoder)",
-            "the line reports the scale actually streamed, and the frame rate the smaller picture bought, got "
+                == "fidelity now 30 fps, quality 100%, 1.75x on canvas 0 (limited by the encoder)",
+            "the line reports the scale actually streamed, at the frame rate given up before it, got "
                 + "\(events.messages.filter { $0.hasPrefix("fidelity now") }.last ?? "nothing")"
         )
     }
@@ -632,13 +636,13 @@ func runStreamFidelityCoordinatorTests() async {
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0] },
             "the person's own choice is honoured exactly before anything is measured, got \(media.reconfiguredScales)"
         )
-        for tick in 0...6 {
+        for tick in 0...9 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
         }
         expect(
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0, 1.75] },
-            "the surface gives up resolution first, got \(media.reconfiguredScales)"
+            "the surface gives up the frame rate and then resolution, got \(media.reconfiguredScales)"
         )
 
         // The screen stops changing. The rebuild the smaller picture caused has
@@ -647,7 +651,7 @@ func runStreamFidelityCoordinatorTests() async {
         // ordinary way: what hands the resolution back is the still screen
         // itself.
         let still = media.frameCounts
-        for tick in 7...26 {
+        for tick in 10...35 {
             media.frameCounts = still
             await coordinator.tickFidelity(atSeconds: Double(tick))
             _ = await waitUntil(timeoutSeconds: 0.2) { media.reconfiguredScales.count == 3 }
@@ -683,16 +687,16 @@ func runStreamFidelityCoordinatorTests() async {
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0] },
             "the person's own choice is honoured exactly before anything is measured, got \(media.reconfiguredScales)"
         )
-        for tick in 0...6 {
+        for tick in 0...9 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
         }
         expect(
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0, 1.75] },
-            "the surface gives up resolution first, got \(media.reconfiguredScales)"
+            "the surface gives up the frame rate and then resolution, got \(media.reconfiguredScales)"
         )
         let still = media.frameCounts
-        for tick in 7...26 {
+        for tick in 10...35 {
             media.frameCounts = still
             await coordinator.tickFidelity(atSeconds: Double(tick))
             _ = await waitUntil(timeoutSeconds: 0.2) { media.reconfiguredScales.count == 3 }
@@ -703,9 +707,10 @@ func runStreamFidelityCoordinatorTests() async {
         )
 
         // The screen starts changing again and cannot keep up at that size,
-        // so the resolution the still screen was given goes straight back.
+        // so what the still screen was given goes back the way it was first
+        // given up: the frame rate, and then the resolution.
         var moving = still
-        for tick in 27...31 {
+        for tick in 36...43 {
             moving = HostFrameCounts(
                 captured: moving.captured + 60,
                 encoded: moving.encoded + 54,
@@ -722,12 +727,12 @@ func runStreamFidelityCoordinatorTests() async {
         )
         expect(
             events.messages.filter { $0.hasPrefix("fidelity now") }.last
-                == "fidelity now 60 fps, quality 100%, 1.75x on canvas 0 (limited by the encoder)",
+                == "fidelity now 30 fps, quality 100%, 1.75x on canvas 0 (limited by the encoder)",
             "and the log names the stage that is holding it there, got "
                 + "\(events.messages.filter { $0.hasPrefix("fidelity now") }.last ?? "nothing")"
         )
     }
-    print("PASS: a still screen that starts changing again gives the resolution back the moment it cannot keep up")
+    print("PASS: a still screen that starts changing again gives back the frame rate and then the resolution")
 
     // The frame a still screen is sent again is not the screen changing
     do {
@@ -741,13 +746,13 @@ func runStreamFidelityCoordinatorTests() async {
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0] },
             "the person's own choice is honoured exactly before anything is measured, got \(media.reconfiguredScales)"
         )
-        for tick in 0...6 {
+        for tick in 0...9 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
         }
         expect(
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0, 1.75] },
-            "the surface gives up resolution first, got \(media.reconfiguredScales)"
+            "the surface gives up the frame rate and then resolution, got \(media.reconfiguredScales)"
         )
 
         // A screen at rest is not a screen that produces nothing at all: a
@@ -755,7 +760,7 @@ func runStreamFidelityCoordinatorTests() async {
         // picture the screen is holding is another. Together they are two
         // frames a tick, one more than the limit that names a screen still.
         var counts = media.frameCounts
-        for tick in 7...26 {
+        for tick in 10...35 {
             counts = HostFrameCounts(
                 captured: counts.captured + 2,
                 encoded: counts.encoded + 2,
@@ -788,20 +793,20 @@ func runStreamFidelityCoordinatorTests() async {
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0] },
             "the person's own choice is honoured exactly before anything is measured, got \(media.reconfiguredScales)"
         )
-        for tick in 0...6 {
+        for tick in 0...9 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
         }
         expect(
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [2.0, 1.75] },
-            "the surface gives up resolution first, got \(media.reconfiguredScales)"
+            "the surface gives up the frame rate and then resolution, got \(media.reconfiguredScales)"
         )
 
         // From here the encoder cannot be rebuilt at any other scale: the
         // stream survives at the one it is already running.
         media.reconfigurationFailure = CanvasMediaReconfigurationError.recoveredToPreviousScale(1.75)
         let still = media.frameCounts
-        for tick in 7...34 {
+        for tick in 10...40 {
             media.frameCounts = still
             await coordinator.tickFidelity(atSeconds: Double(tick))
             _ = await waitUntil(timeoutSeconds: 0.2) { media.reconfiguredScales.count == 3 }
@@ -848,7 +853,7 @@ func runStreamFidelityCoordinatorTests() async {
             "the scale already in force is what automatic keeps serving, got \(media.reconfiguredScales)"
         )
 
-        for tick in 0...6 {
+        for tick in 0...9 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
         }
@@ -863,7 +868,7 @@ func runStreamFidelityCoordinatorTests() async {
         // fixed number of times, and each tick gives the debounced rebuild
         // the moment it needs to reach the media: how many ticks that takes
         // is not what this scenario is about, and the scale it lands on is.
-        var tick = 7
+        var tick = 10
         while media.reconfiguredScales.count < 3, tick < 60 {
             media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             await coordinator.tickFidelity(atSeconds: Double(tick))
@@ -1038,10 +1043,10 @@ func runStreamFidelityCoordinatorTests() async {
             events.messages.filter { $0.contains("held to") }
         }
 
-        // All the way down to the first scale step, so this surface has both
-        // a smaller picture and a reported hold to carry across the gap if anything
-        // does.
-        for tick in 0...6 {
+        // All the way down to the first scale step, so this surface has a
+        // lower frame rate, a smaller picture and a reported hold to carry
+        // across the gap if anything does.
+        for tick in 0...9 {
             mediaOne.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
             mediaZero.frameCounts = quietCounts(afterTicks: tick + 1)
             await coordinator.tickFidelity(atSeconds: Double(tick))
@@ -1051,9 +1056,9 @@ func runStreamFidelityCoordinatorTests() async {
             "the surface is streaming a step below what was asked for, got \(mediaOne.reconfiguredScales)"
         )
         expect(
-            coordinator.appliedFramesPerSecond(for: surfaceOne) == 60
+            coordinator.appliedFramesPerSecond(for: surfaceOne) == 30
                 && coordinator.sustainableScaleCeiling(for: surfaceOne) == 1.75,
-            "the surface really has given resolution up, at the full frame rate, before it is taken away"
+            "the surface really has given up its frame rate and then resolution before it is taken away"
         )
         expect(holdLines().count == 1, "the hold it reached was reported once, got \(holdLines())")
 
@@ -1097,8 +1102,10 @@ func runStreamFidelityCoordinatorTests() async {
         mediaZero.frameCounts = quietCounts(afterTicks: 25)
         await coordinator.tickFidelity(atSeconds: 23)
         expect(
-            coordinator.sustainableScaleCeiling(for: surfaceOne) == 1.75,
-            "and once the warm-up is behind it, it gives ground exactly as any other surface does, got "
+            coordinator.appliedFramesPerSecond(for: surfaceOne) == 45
+                && coordinator.sustainableScaleCeiling(for: surfaceOne) == nil,
+            "and once the warm-up is behind it, it gives ground exactly as any other surface does, frame rate "
+                + "first, got \(coordinator.appliedFramesPerSecond(for: surfaceOne)) fps and ceiling "
                 + "\(String(describing: coordinator.sustainableScaleCeiling(for: surfaceOne)))"
         )
     }

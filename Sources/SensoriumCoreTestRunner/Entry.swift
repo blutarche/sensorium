@@ -107,7 +107,7 @@ struct SensoriumCoreTestRunner {
             ("clipboardSharing round-trips both values and refuses malformed shapes", testClipboardSharingRoundTripsAndRefusesMalformed),
             ("clipboardRefused round-trips every reason and refuses malformed shapes", testClipboardRefusedRoundTripsAndRefusesMalformed),
             ("viewerDecoderPreference round-trips and refuses malformed shapes", testViewerDecoderPreferenceRoundTripsAndRefusesMalformed),
-            ("the fidelity ladder spends resolution before frame rate and quality", testStreamFidelityLadderSpendsResolutionBeforeFrameRateAndQuality),
+            ("the fidelity ladder spends frame rate before resolution and quality", testStreamFidelityLadderSpendsFrameRateBeforeResolutionAndQuality),
             ("fidelity pressure names the stage that cannot keep up", testStreamFidelityPressureNamesTheStageThatCannotKeepUp),
             ("fidelity pressure prefers the earliest stage that is behind", testStreamFidelityPressurePrefersTheEarliestStageThatIsBehind),
             ("fidelity steps down after one pressured tick and back up after two", testStreamFidelityStepsDownAfterOnePressuredTickAndBackUpAfterTwo),
@@ -117,11 +117,12 @@ struct SensoriumCoreTestRunner {
             ("fidelity refreshes the still picture again after a rebuild", testStreamFidelityRefreshesTheStillPictureAgainAfterARebuild),
             ("fidelity holds off a lever a probe failed into for longer each time", testStreamFidelityHoldsOffALeverAProbeFailedIntoForLongerEachTime),
             ("cleared fidelity ceilings reopen a lever and forget its hold-off", testStreamFidelityClearedCeilingsReopenALeverAndForgetItsHoldOff),
-            ("fidelity lowers quality first for a link and needs viewer evidence to raise it", testStreamFidelityLowersQualityFirstForALinkAndNeedsViewerEvidenceToRaiseIt),
+            ("fidelity lowers the frame rate first for a link and needs viewer evidence to raise it", testStreamFidelityLowersTheFrameRateFirstForALinkAndNeedsViewerEvidenceToRaiseIt),
             ("fidelity ignores the opening burst and the one after every rebuild", testStreamFidelityIgnoresTheOpeningBurstAndTheOneAfterEveryRebuild),
             ("fidelity replays the recorded Wi-Fi run and settles one step down", testStreamFidelityReplaysTheRecordedWiFiRunAndSettlesOneStepDown),
             ("fidelity will not climb back into a frame rate the encoder cannot afford", testStreamFidelityWillNotClimbBackIntoAFrameRateTheEncoderCannotAfford),
-            ("fidelity chooses the resolution that holds sixty frames a second", testStreamFidelityChoosesTheResolutionThatHoldsSixtyFramesASecond),
+            ("fidelity gives up frame rate before any resolution", testStreamFidelityGivesUpFrameRateBeforeAnyResolution),
+            ("fidelity chooses the resolution that holds thirty frames a second", testStreamFidelityChoosesTheResolutionThatHoldsThirtyFramesASecond),
             ("fidelity reads every drop counter as this tick's own", testStreamFidelityReadsEveryDropCounterAsThisTicksOwn),
             ("fidelity refreshes the still picture once per still period", testStreamFidelityRefreshesTheStillPictureOncePerStillPeriod),
             ("fidelity takes the frame rate back on a still screen", testStreamFidelityTakesTheFrameRateBackOnAStillScreen),
@@ -131,10 +132,13 @@ struct SensoriumCoreTestRunner {
             ("fidelity climbs back into a frame rate the quiet screen makes affordable", testStreamFidelityClimbsBackIntoAFrameRateTheQuietScreenMakesAffordable),
             ("fidelity judges a frame rate climb on what the faster rate would capture", testStreamFidelityJudgesAFrameRateClimbOnWhatTheFasterRateWouldCapture),
             ("fidelity holds the requested scale on a quiet coding screen", testStreamFidelityHoldsTheRequestedScaleOnAQuietCodingScreen),
-            ("fidelity spends resolution before the frame rate and quality", testStreamFidelitySpendsResolutionBeforeTheFrameRateAndQuality),
+            ("fidelity spends frame rate, then resolution, then quality", testStreamFidelitySpendsFrameRateThenResolutionThenQuality),
             ("fidelity gives resolution up to what the link can carry", testStreamFidelityGivesResolutionUpToWhatTheLinkCanCarry),
             ("fidelity lets a quiet screen back to the scale its bits fit", testStreamFidelityLetsAQuietScreenBackToTheScaleItsBitsFit),
-            ("fidelity holds off a resolution the rebuild refused", testStreamFidelityHoldsOffAResolutionTheRebuildRefused)
+            ("fidelity holds off a resolution the rebuild refused", testStreamFidelityHoldsOffAResolutionTheRebuildRefused),
+            ("fidelity takes back quality, then resolution, then frame rate", testStreamFidelityTakesBackQualityThenResolutionThenFrameRate),
+            ("fidelity hands a resolution that fails at once back as resolution", testStreamFidelityHandsAResolutionThatFailsAtOnceBackAsResolution),
+            ("fidelity settles at 45 fps at 2x without flapping", testStreamFidelitySettlesAtFortyFiveFramesASecondAtTwoXWithoutFlapping)
         ]
 
         // The TIFF-to-PNG conversion is the system pasteboard's, which only

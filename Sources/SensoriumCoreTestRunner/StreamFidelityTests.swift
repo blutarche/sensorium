@@ -73,7 +73,7 @@ private func warmUp(_ controller: inout StreamFidelityController, endingBefore s
     }
 }
 
-func testStreamFidelityLadderSpendsResolutionBeforeFrameRateAndQuality() {
+func testStreamFidelityLadderSpendsFrameRateBeforeResolutionAndQuality() {
     expect(
         StreamFidelityLadder.frameRates == [60, 45, 30, 20],
         "the frame rates a surface may be held to, fastest first"
@@ -84,7 +84,8 @@ func testStreamFidelityLadderSpendsResolutionBeforeFrameRateAndQuality() {
     )
     expect(
         StreamFidelityLadder.frameRate(at: StreamFidelityLadder.gentleFrameRateFloorIndex) == 30,
-        "the frame rate stops at 30 until quality has been spent, because below that a moving picture is unwatchable"
+        "the frame rate stops at 30 until resolution and quality have been spent, because below that a moving "
+            + "picture is unwatchable"
     )
     expect(
         StreamFidelityLadder.frameRate(at: StreamFidelityLadder.fullFrameRateIndex) == 60
@@ -438,59 +439,109 @@ func testStreamFidelityPressurePrefersTheEarliestStageThatIsBehind() {
 }
 
 
-/// A screen with moving parts on a host whose encoder costs 24ms a frame at
-/// the scale it is streaming: 1.44 seconds of encode for every second of 60
-/// captured frames, which is why the viewer cannot keep up.
-private func videoObservation(
-    encodeP50Nanoseconds: Int64 = 24_000_000,
-    capturedDelta: Int = 60
+/// A busy screen as the coordinator reports it: capture never delivers more
+/// frames than the frame rate the surface is held to, however much the
+/// screen changes, so a screen held to 45 fps captures 45 frames a second.
+private func cappedCaptureObservation(
+    framesPerSecond: Int,
+    encodeP50Nanoseconds: Int64
 ) -> StreamFidelityObservation {
     StreamFidelityObservation(
-        capturedDelta: capturedDelta,
-        encodedDelta: capturedDelta,
+        capturedDelta: framesPerSecond,
+        encodedDelta: framesPerSecond,
         encodeP50Nanoseconds: encodeP50Nanoseconds,
-        encodeSampleCount: 60,
+        encodeSampleCount: framesPerSecond,
         producedBitsPerSecond: 10_000_000,
         tickDurationNanoseconds: 1_000_000_000
     )
 }
 
-func testStreamFidelityChoosesTheResolutionThatHoldsSixtyFramesASecond() {
+func testStreamFidelityGivesUpFrameRateBeforeAnyResolution() {
+    var controller = StreamFidelityController(requestedScale: 2.0)
+    warmUp(&controller)
+    /// 24ms a frame at 2.00x: past 90% of the 16.7ms period 60fps asks for
+    /// and of 45fps's 22.2ms, and inside 90% of 30fps's 33.3ms.
+    func busy() -> StreamFidelityObservation {
+        let framesPerSecond = controller.currentLevel.framesPerSecond
+        return cappedCaptureObservation(framesPerSecond: framesPerSecond, encodeP50Nanoseconds: 24_000_000)
+    }
+
+    expect(
+        controller.observe(busy(), atSeconds: 0) == .stepDown(to: level(fps: 45), reason: .encoder),
+        "the frame rate is the first lever, even with a whole 2.00x of resolution to spend"
+    )
+    expect(
+        controller.observe(busy(), atSeconds: 2) == .stepDown(to: level(fps: 30), reason: .encoder),
+        "and the second, down to the 30fps the ladder protects"
+    )
+    for second in 3...60 {
+        let decision = controller.observe(busy(), atSeconds: Double(second))
+        expect(
+            decision == .hold,
+            "a cost 30fps holds spends no resolution at all, at second \(second), got \(decision)"
+        )
+    }
+    expect(
+        controller.currentLevel == level(fps: 30),
+        "the text stays at the full 2.00x and the full quality, got \(controller.currentLevel)"
+    )
+    expect(controller.limitReason == .encoder, "and the viewer is told the encoder took the frame rate")
+}
+
+func testStreamFidelityChoosesTheResolutionThatHoldsThirtyFramesASecond() {
     var controller = StreamFidelityController(requestedScale: 1.75)
     warmUp(&controller)
+    /// 40ms a frame at 1.75x is past what 60, 45 and 30 fps each afford.
+    func busy() -> StreamFidelityObservation {
+        let framesPerSecond = controller.currentLevel.framesPerSecond
+        return cappedCaptureObservation(framesPerSecond: framesPerSecond, encodeP50Nanoseconds: 40_000_000)
+    }
 
-    // Predicted cost is the measured median times the square of the scale
-    // ratio: 1.75x costs 1.44 of a second, 1.50x costs 1.06, and 1.25x costs
-    // 0.73, which is the first that fits inside the 0.8 a climb asks for.
     expect(
-        controller.observe(videoObservation(), atSeconds: 0)
-            == .stepDown(to: level(fps: 60, scaleSteps: 2), reason: .encoder),
-        "the encoder's measured cost names the resolution that holds 60 fps, and the surface goes there in one move"
+        controller.observe(busy(), atSeconds: 0) == .stepDown(to: level(fps: 45), reason: .encoder),
+        "the frame rate goes first"
+    )
+    expect(
+        controller.observe(busy(), atSeconds: 2) == .stepDown(to: level(fps: 30), reason: .encoder),
+        "as far as 30fps"
+    )
+    // Predicted cost is the measured median times the square of the scale
+    // ratio, times the 30 frames a second now being asked for: 1.75x costs
+    // 1.2 of a second, 1.50x costs 0.88, and 1.25x costs 0.61, which is the
+    // first that fits inside the 0.8 a climb asks for.
+    expect(
+        controller.observe(busy(), atSeconds: 4)
+            == .stepDown(to: level(fps: 30, scaleSteps: 2), reason: .encoder),
+        "only once 30fps is still behind does the measured cost name a resolution, and the surface goes there "
+            + "in one move"
     )
     expect(
         controller.currentLevel.streamScale(requestedScale: 1.75) == 1.25,
         "which is 1.25x, got \(controller.currentLevel.streamScale(requestedScale: 1.75))x"
     )
-    expect(
-        controller.currentLevel.framesPerSecond == 60 && controller.currentLevel.qualityScale == 1.0,
-        "the frame rate and the quality are what the resolution was spent to protect"
-    )
+    expect(controller.currentLevel.qualityScale == 1.0, "the quality is untouched")
     expect(controller.limitReason == .encoder, "and the viewer is told which stage took the resolution")
 
     // The screen stops moving. Nothing is captured, so nothing is encoded,
     // and every scale is affordable again.
     expect(
-        controller.observe(stillTickObservation(), atSeconds: 1) == .hold,
+        controller.observe(stillTickObservation(), atSeconds: 5) == .hold,
         "one still tick is not yet a screen that has stopped"
     )
     expect(
-        controller.observe(stillTickObservation(), atSeconds: 2)
-            == .stepUp(to: level(fps: 60, scaleSteps: 0)),
-        "two still ticks return the picture to exactly the scale the viewer asked for"
+        controller.observe(stillTickObservation(), atSeconds: 6)
+            == .stepUp(to: level(fps: 30, scaleSteps: 0)),
+        "two still ticks return the picture to exactly the scale the viewer asked for, before any frame rate"
     )
     expect(
-        controller.currentLevel.streamScale(requestedScale: 1.75) == 1.75,
-        "got \(controller.currentLevel.streamScale(requestedScale: 1.75))x"
+        controller.limitReason == .encoder,
+        "the frame rate the encoder took is still held, so the viewer is still told why"
+    )
+    let afterward = (7...12).map { controller.observe(stillTickObservation(), atSeconds: Double($0)) }
+    expect(
+        afterward == [.hold, .refreshStill, .hold, .stepUp(to: level(fps: 45)), .hold, .stepUp(to: level(fps: 60))],
+        "the picture the viewer keeps is refreshed, and then the frame rate comes back a step at a time, "
+            + "got \(afterward)"
     )
     expect(controller.limitReason == nil, "nothing is holding a still screen back")
 }
@@ -528,35 +579,30 @@ func testStreamFidelityHoldsTheRequestedScaleOnAQuietCodingScreen() {
     expect(controller.limitReason == nil, "nothing is being held back")
 }
 
-func testStreamFidelitySpendsResolutionBeforeTheFrameRateAndQuality() {
+func testStreamFidelitySpendsFrameRateThenResolutionThenQuality() {
     var controller = StreamFidelityController(requestedScale: 2.0)
     warmUp(&controller)
 
-    // 45ms a frame at 2.00x is affordable at no scale this ladder has, so
-    // the resolution goes straight to its floor rather than a step at a time.
-    expect(
-        controller.observe(encoderPressuredObservation(), atSeconds: 0)
-            == .stepDown(to: level(fps: 60, scaleSteps: 4), reason: .encoder),
-        "resolution is the first lever, and the cost model names how much of it to spend"
-    )
-    expect(
-        controller.currentLevel.streamScale(requestedScale: 2.0) == StreamScalePolicy.minimumScale,
-        "which is the minimum scale"
-    )
-
+    // 45ms a frame stays past every budget however far the picture goes.
+    // At 30fps the cost model puts 2.00x at 1.35 of a second and 1.50x at
+    // 0.76, so the first resolution step lands on 1.50x; measured there, the
+    // same 45ms puts only 1.00x inside the budget.
     let spent: [StreamFidelityLevel] = [
-        level(fps: 45, scaleSteps: 4),
+        level(fps: 45),
+        level(fps: 30),
+        level(fps: 30, scaleSteps: 2),
         level(fps: 30, scaleSteps: 4),
         level(fps: 30, quality: 0.75, scaleSteps: 4),
         level(fps: 30, quality: 0.5, scaleSteps: 4),
         level(fps: 20, quality: 0.5, scaleSteps: 4)
     ]
-    var now = 2.0
+    var now = 0.0
     for expected in spent {
         expect(
             controller.observe(encoderPressuredObservation(), atSeconds: now)
                 == .stepDown(to: expected, reason: .encoder),
-            "with the resolution already at its floor the cheap levers move, expected \(expected)"
+            "the frame rate goes to 30fps, then the resolution to its floor, then the quality and the last of "
+                + "the frame rate, expected \(expected), got \(controller.currentLevel)"
         )
         now += 2
     }
@@ -766,7 +812,7 @@ func testStreamFidelityClearedCeilingsReopenALeverAndForgetItsHoldOff() {
     )
 }
 
-func testStreamFidelityLowersQualityFirstForALinkAndNeedsViewerEvidenceToRaiseIt() {
+func testStreamFidelityLowersTheFrameRateFirstForALinkAndNeedsViewerEvidenceToRaiseIt() {
     var controller = StreamFidelityController(requestedScale: 1.0)
     warmUp(&controller)
     let congested = StreamFidelityObservation(
@@ -783,12 +829,12 @@ func testStreamFidelityLowersQualityFirstForALinkAndNeedsViewerEvidenceToRaiseIt
     )
     expect(
         controller.observe(congested, atSeconds: 1)
-            == .stepDown(to: level(fps: 60, quality: 0.75), reason: .link),
-        "a link short of bits gets smaller frames, which costs no motion at all"
+            == .stepDown(to: level(fps: 45), reason: .link),
+        "a link short of bits gets fewer frames first, and the bits per frame stay what they were"
     )
     expect(
-        controller.currentLevel.framesPerSecond == 60,
-        "the frame rate is untouched: it is not what a link is short of"
+        controller.currentLevel.qualityScale == 1.0,
+        "the quality is untouched: each frame that is sent is as sharp as it was"
     )
     expect(controller.limitReason == .link, "and the viewer is told the link is what took it")
 
@@ -1117,8 +1163,8 @@ func testStreamFidelityReadsEveryDropCounterAsThisTicksOwn() {
         )
     }
     expect(
-        readAsTotals.currentLevel.scaleStepsBelowRequested > 0,
-        "the same run read cumulatively makes the picture smaller when it never needed to, "
+        readAsTotals.currentLevel != level(fps: 60),
+        "the same run read cumulatively gives up fidelity it never needed to, "
             + "which is what the delta above exists to prevent"
     )
 
@@ -1357,8 +1403,8 @@ func testStreamFidelityJudgesTheLinkOnWhatWasSentRatherThanWhatWasEncoded() {
     _ = controller.observe(congested, atSeconds: 0)
     expect(
         controller.observe(congested, atSeconds: 1)
-            == .stepDown(to: level(fps: 60, quality: 0.75), reason: .link),
-        "frames the transport could not take, tick after tick, soften the picture for the link"
+            == .stepDown(to: level(fps: 45), reason: .link),
+        "frames the transport could not take, tick after tick, cost the frame rate for the link"
     )
 
     // What the recorded run looked like once the drops started: an encoder
@@ -1555,23 +1601,6 @@ func testStreamFidelityClimbsBackIntoAFrameRateTheQuietScreenMakesAffordable() {
     )
 }
 
-/// A busy screen as the coordinator reports it: capture never delivers more
-/// frames than the frame rate the surface is held to, however much the
-/// screen changes, so a screen held to 45 fps captures 45 frames a second.
-private func cappedCaptureObservation(
-    framesPerSecond: Int,
-    encodeP50Nanoseconds: Int64
-) -> StreamFidelityObservation {
-    StreamFidelityObservation(
-        capturedDelta: framesPerSecond,
-        encodedDelta: framesPerSecond,
-        encodeP50Nanoseconds: encodeP50Nanoseconds,
-        encodeSampleCount: framesPerSecond,
-        producedBitsPerSecond: 10_000_000,
-        tickDurationNanoseconds: 1_000_000_000
-    )
-}
-
 /// The other side of the quiet-screen rule: a screen captured at exactly the
 /// frame rate it is held to is not quiet, it is capped. Read as its own
 /// capture period, 45 frames a second would judge a climb to 60 fps against
@@ -1639,14 +1668,25 @@ private func linkObservation(
     )
 }
 
-/// A surface a starved link has already driven to the minimum scale: 16
-/// Mbit/s on the wire, 6 Mbit/s arriving, for the three ticks the classifier
-/// asks for. The last of those ticks is second 2.
+/// A link carrying 6 Mbit/s of a stream that asks for 24 Mbit/s at 60fps.
+/// The encoder spends the same bits on every frame whatever the frame rate,
+/// so the ask falls with it: 18 Mbit/s at 45fps and 12 at 30fps, each still
+/// more than the link delivers.
+private func starvedLinkObservation(framesPerSecond: Int) -> StreamFidelityObservation {
+    linkObservation(
+        producedBitsPerSecond: 24_000_000 * Double(framesPerSecond) / 60,
+        receivedBitsPerSecond: 6_000_000,
+        capturedDelta: framesPerSecond
+    )
+}
+
+/// A surface a starved link has already driven to 30fps and then to the
+/// minimum scale. The last of those ticks is second 6.
 private func linkStarvedController() -> StreamFidelityController {
     var controller = StreamFidelityController(requestedScale: 1.75)
     warmUp(&controller)
-    let starved = linkObservation(producedBitsPerSecond: 16_000_000, receivedBitsPerSecond: 6_000_000)
-    for tick in 0...2 {
+    for tick in 0...6 {
+        let starved = starvedLinkObservation(framesPerSecond: controller.currentLevel.framesPerSecond)
         _ = controller.observe(starved, atSeconds: Double(tick))
     }
     return controller
@@ -1655,41 +1695,54 @@ private func linkStarvedController() -> StreamFidelityController {
 func testStreamFidelityGivesResolutionUpToWhatTheLinkCanCarry() {
     var controller = StreamFidelityController(requestedScale: 1.75)
     warmUp(&controller)
-    let starved = linkObservation(producedBitsPerSecond: 16_000_000, receivedBitsPerSecond: 6_000_000)
+    func starved() -> StreamFidelityObservation {
+        starvedLinkObservation(framesPerSecond: controller.currentLevel.framesPerSecond)
+    }
     for tick in 0...1 {
         expect(
-            controller.observe(starved, atSeconds: Double(tick)) == .hold,
+            controller.observe(starved(), atSeconds: Double(tick)) == .hold,
             "a link is named from several ticks running, not one, at second \(tick)"
         )
     }
+    expect(
+        controller.observe(starved(), atSeconds: 2) == .stepDown(to: level(fps: 45), reason: .link),
+        "a starved link gives up frames first, and every frame still carries the full picture"
+    )
+    expect(controller.observe(starved(), atSeconds: 3) == .hold, "nothing changes twice inside two seconds")
+    expect(
+        controller.observe(starved(), atSeconds: 4) == .stepDown(to: level(fps: 30), reason: .link),
+        "and then the rest of what the frame rate is allowed to lose"
+    )
+    expect(controller.observe(starved(), atSeconds: 5) == .hold, "nothing changes twice inside two seconds")
     // 4.8 Mbit/s is what the viewer is receiving, less the room a budget
-    // leaves. Bits go with pixels, so 16 Mbit/s at 1.75x predicts 11.8 at
-    // 1.50x, 8.2 at 1.25x and 5.2 at 1.00x: none of them fit, and the
-    // resolution goes to its floor in one move rather than four.
+    // leaves. Bits go with pixels, so 12 Mbit/s at 1.75x predicts 8.8 at
+    // 1.50x, 6.1 at 1.25x and 3.9 at 1.00x: only the last fits, and the
+    // resolution goes to its floor in one move rather than three.
     expect(
-        controller.observe(starved, atSeconds: 2)
-            == .stepDown(to: level(fps: 60, scaleSteps: 3), reason: .link),
-        "a starved link buys its room back in pixels first, and the budget names how many to give up"
+        controller.observe(starved(), atSeconds: 6)
+            == .stepDown(to: level(fps: 30, scaleSteps: 3), reason: .link),
+        "with 30fps still more than the link carries, the budget names how much resolution to give up"
     )
-    expect(
-        controller.currentLevel.framesPerSecond == 60 && controller.currentLevel.qualityScale == 1.0,
-        "the motion and the sharpness are what the resolution was spent to protect"
-    )
+    expect(controller.currentLevel.qualityScale == 1.0, "the quality is untouched")
     expect(controller.limitReason == .link, "and the viewer is told the link is what took it")
 
-    // The smaller picture costs 5.2 Mbit/s, which the link carries whole. The
+    // The smaller picture costs 3.9 Mbit/s, which the link carries whole. The
     // budget rises by a tenth for every tick with nothing wrong in it, so the
     // next resolution up is affordable several ticks later, not at once.
-    let carried = linkObservation(producedBitsPerSecond: 5_200_000, receivedBitsPerSecond: 5_200_000)
-    for tick in 3...7 {
+    let carried = linkObservation(
+        producedBitsPerSecond: 3_900_000,
+        receivedBitsPerSecond: 3_900_000,
+        capturedDelta: 30
+    )
+    for tick in 7...8 {
         expect(
             controller.observe(carried, atSeconds: Double(tick)) == .hold,
             "a budget that has not yet risen to what the next resolution costs holds the picture, at second \(tick)"
         )
     }
     expect(
-        controller.observe(carried, atSeconds: 8) == .stepUp(to: level(fps: 60, scaleSteps: 2)),
-        "and a link that keeps carrying everything sent gets the resolution back"
+        controller.observe(carried, atSeconds: 9) == .stepUp(to: level(fps: 30, scaleSteps: 2)),
+        "and a link that keeps carrying everything sent gets the resolution back before the frame rate"
     )
     expect(
         controller.currentLevel.streamScale(requestedScale: 1.75) == 1.25,
@@ -1709,12 +1762,18 @@ func testStreamFidelityLetsAQuietScreenBackToTheScaleItsBitsFit() {
     )
     var quiet = linkStarvedController()
     expect(
-        quiet.observe(cheap, atSeconds: 3) == .hold,
+        quiet.observe(cheap, atSeconds: 7) == .hold,
         "one quiet tick is not yet a screen that has settled"
     )
     expect(
-        quiet.observe(cheap, atSeconds: 4) == .stepUp(to: level(fps: 60, scaleSteps: 0)),
+        quiet.observe(cheap, atSeconds: 8) == .stepUp(to: level(fps: 30, scaleSteps: 0)),
         "a screen costing the link almost nothing is streamed at exactly the scale the viewer asked for"
+    )
+    expect(quiet.limitReason == .link, "the frame rate the link took is still held, and the viewer is told so")
+    let afterward = (9...12).map { quiet.observe(cheap, atSeconds: Double($0)) }
+    expect(
+        afterward == [.hold, .stepUp(to: level(fps: 45)), .hold, .stepUp(to: level(fps: 60))],
+        "and comes back once the resolution has, on the viewer's own clean report, got \(afterward)"
     )
     expect(quiet.limitReason == nil, "with nothing left holding it back")
 
@@ -1726,9 +1785,9 @@ func testStreamFidelityLetsAQuietScreenBackToTheScaleItsBitsFit() {
         capturedDelta: 2
     )
     var busy = linkStarvedController()
-    _ = busy.observe(expensive, atSeconds: 3)
+    _ = busy.observe(expensive, atSeconds: 7)
     expect(
-        busy.observe(expensive, atSeconds: 4) == .stepUp(to: level(fps: 60, scaleSteps: 1)),
+        busy.observe(expensive, atSeconds: 8) == .stepUp(to: level(fps: 30, scaleSteps: 1)),
         "a quiet screen whose frames cost the link real bits climbs only as far as the budget covers"
     )
     expect(busy.limitReason == .link, "and the link is still what is holding the rest of it back")
@@ -1737,43 +1796,186 @@ func testStreamFidelityLetsAQuietScreenBackToTheScaleItsBitsFit() {
 func testStreamFidelityHoldsOffAResolutionTheRebuildRefused() {
     var controller = StreamFidelityController(requestedScale: 2.0)
     warmUp(&controller)
-    // 45ms a frame is affordable at no scale this ladder has, so every
-    // decision below is for the deepest resolution still worth trying.
-    expect(
-        controller.observe(encoderPressuredObservation(), atSeconds: 0)
-            == .stepDown(to: level(fps: 60, scaleSteps: 4), reason: .encoder),
-        "the first answer to an encoder this far behind is the smallest picture there is"
+    /// 120ms a frame is affordable at no scale this ladder has, even at
+    /// 30fps, so every resolution decision below is for the deepest one
+    /// still worth trying.
+    let farBehind = StreamFidelityObservation(
+        capturedDelta: 60,
+        encodedDelta: 20,
+        encodeP50Nanoseconds: 120_000_000,
+        encodeSampleCount: 60,
+        producedBitsPerSecond: 10_000_000
     )
-    controller.streamScaleDidNotApply(atSeconds: 0)
     expect(
-        controller.currentLevel.scaleStepsBelowRequested == 0,
-        "a rebuild that failed leaves the stream at the scale it was already running"
+        controller.observe(farBehind, atSeconds: 0) == .stepDown(to: level(fps: 45), reason: .encoder),
+        "the frame rate goes first"
+    )
+    expect(
+        controller.observe(farBehind, atSeconds: 2) == .stepDown(to: level(fps: 30), reason: .encoder),
+        "as far as 30fps"
+    )
+    expect(
+        controller.observe(farBehind, atSeconds: 4)
+            == .stepDown(to: level(fps: 30, scaleSteps: 4), reason: .encoder),
+        "the first resolution answer to an encoder this far behind is the smallest picture there is"
+    )
+    controller.streamScaleDidNotApply(atSeconds: 4)
+    expect(
+        controller.currentLevel == level(fps: 30),
+        "a rebuild that failed leaves the stream at the scale it was already running, got \(controller.currentLevel)"
     )
 
     expect(
-        controller.observe(encoderPressuredObservation(), atSeconds: 2)
-            == .stepDown(to: level(fps: 60, scaleSteps: 3), reason: .encoder),
+        controller.observe(farBehind, atSeconds: 6)
+            == .stepDown(to: level(fps: 30, scaleSteps: 3), reason: .encoder),
         "a resolution the pipeline just refused is not asked for again, and the next one up from it is"
     )
-    controller.streamScaleDidNotApply(atSeconds: 2)
+    controller.streamScaleDidNotApply(atSeconds: 6)
     expect(
-        controller.observe(encoderPressuredObservation(), atSeconds: 4)
-            == .stepDown(to: level(fps: 60, scaleSteps: 2), reason: .encoder),
+        controller.observe(farBehind, atSeconds: 8)
+            == .stepDown(to: level(fps: 30, scaleSteps: 2), reason: .encoder),
         "each refusal is remembered on its own, so a pressured surface never proposes the same one twice"
     )
-    controller.streamScaleDidNotApply(atSeconds: 4)
+    controller.streamScaleDidNotApply(atSeconds: 8)
 
     // The first hold-off runs for a minute. What made a rebuild fail can pass,
     // so the resolution is worth one more try once it has.
     expect(
-        controller.observe(encoderPressuredObservation(), atSeconds: 60)
-            == .stepDown(to: level(fps: 60, scaleSteps: 4), reason: .encoder),
+        controller.observe(farBehind, atSeconds: 64)
+            == .stepDown(to: level(fps: 30, scaleSteps: 4), reason: .encoder),
         "once a hold-off has run out the resolution behind it is worth trying again"
     )
-    controller.streamScaleDidNotApply(atSeconds: 60)
+    controller.streamScaleDidNotApply(atSeconds: 64)
     expect(
-        controller.observe(encoderPressuredObservation(), atSeconds: 170)
-            == .stepDown(to: level(fps: 60, scaleSteps: 3), reason: .encoder),
+        controller.observe(farBehind, atSeconds: 174)
+            == .stepDown(to: level(fps: 30, scaleSteps: 3), reason: .encoder),
         "and a resolution that failed twice is held off for twice as long as it was the first time"
+    )
+}
+
+func testStreamFidelityTakesBackQualityThenResolutionThenFrameRate() {
+    var controller = StreamFidelityController(requestedScale: 2.0)
+    warmUp(&controller)
+    let deepest = level(fps: 20, quality: 0.5, scaleSteps: 4)
+    var now = 0.0
+    while controller.currentLevel != deepest, now < 60 {
+        let framesPerSecond = controller.currentLevel.framesPerSecond
+        _ = controller.observe(
+            cappedCaptureObservation(framesPerSecond: framesPerSecond, encodeP50Nanoseconds: 45_000_000),
+            atSeconds: now
+        )
+        now += 1
+    }
+    expect(controller.currentLevel == deepest, "an encoder far behind spends every lever, got \(controller.currentLevel)")
+
+    // The screen calms down to 3ms a frame at 1.00x. Encode cost is per
+    // pixel, so the same screen costs four times that at 2.00x: 12ms, which
+    // fits 80% of 60fps's 16.7ms frame period.
+    var climbs: [StreamFidelityLevel] = []
+    for _ in 0..<40 {
+        let scale = controller.currentLevel.streamScale(requestedScale: 2.0)
+        let framesPerSecond = controller.currentLevel.framesPerSecond
+        let decision = controller.observe(
+            cappedCaptureObservation(
+                framesPerSecond: framesPerSecond,
+                encodeP50Nanoseconds: Int64(3_000_000 * scale * scale)
+            ),
+            atSeconds: now
+        )
+        if case .stepUp(let level) = decision {
+            climbs.append(level)
+        }
+        now += 1
+    }
+    expect(
+        climbs == [
+            level(fps: 30, quality: 0.5, scaleSteps: 4),
+            level(fps: 30, quality: 0.75, scaleSteps: 4),
+            level(fps: 30, scaleSteps: 4),
+            level(fps: 30),
+            level(fps: 45),
+            level(fps: 60)
+        ],
+        "the last thing given up comes back first: the slowest frame rate and the quality, then the resolution "
+            + "in one move, and only then the frame rate above 30fps, got \(climbs)"
+    )
+    expect(controller.limitReason == nil, "and nothing is holding the picture back any more")
+}
+
+func testStreamFidelityHandsAResolutionThatFailsAtOnceBackAsResolution() {
+    var controller = StreamFidelityController(requestedScale: 1.75)
+    warmUp(&controller)
+    /// 40ms a frame at 1.75x, and proportionally less below it.
+    func busy() -> StreamFidelityObservation {
+        let scale = controller.currentLevel.streamScale(requestedScale: 1.75)
+        let ratio = scale / 1.75
+        return cappedCaptureObservation(
+            framesPerSecond: controller.currentLevel.framesPerSecond,
+            encodeP50Nanoseconds: Int64(40_000_000 * ratio * ratio)
+        )
+    }
+    var now = 0.0
+    while controller.currentLevel != level(fps: 30, scaleSteps: 2), now < 20 {
+        _ = controller.observe(busy(), atSeconds: now)
+        now += 1
+    }
+    expect(
+        controller.currentLevel == level(fps: 30, scaleSteps: 2),
+        "the surface has given up the frame rate and then resolution, got \(controller.currentLevel)"
+    )
+
+    // A moment of calm is enough to predict the whole resolution affordable.
+    let calm = cappedCaptureObservation(framesPerSecond: 30, encodeP50Nanoseconds: 6_000_000)
+    var climbedAt: Double?
+    while climbedAt == nil, now < 40 {
+        if controller.observe(calm, atSeconds: now) == .stepUp(to: level(fps: 30)) {
+            climbedAt = now
+        }
+        now += 1
+    }
+    expect(climbedAt != nil, "the calm screen takes the resolution back")
+
+    // The screen is busy again a second later, inside the probation and the
+    // two-second floor alike.
+    expect(
+        controller.observe(busy(), atSeconds: now)
+            == .stepDown(to: level(fps: 30, scaleSteps: 2), reason: .encoder),
+        "the resolution just taken back is what is handed back, at once, and the quality and the last of the "
+            + "frame rate are left alone"
+    )
+}
+
+func testStreamFidelitySettlesAtFortyFiveFramesASecondAtTwoXWithoutFlapping() {
+    var controller = StreamFidelityController(requestedScale: 2.0)
+    warmUp(&controller)
+    /// A host encoding its own busy screen at 2.00x in about 15ms a frame:
+    /// just past 90% of 60fps's 16.7ms period, inside 90% of 45fps's 22.2ms,
+    /// and well outside the 80% of 60fps's period a climb back asks for.
+    func busy() -> StreamFidelityObservation {
+        let framesPerSecond = controller.currentLevel.framesPerSecond
+        return StreamFidelityObservation(
+            capturedDelta: framesPerSecond,
+            encodedDelta: framesPerSecond,
+            encodeP50Nanoseconds: 15_000_000,
+            encodeSampleCount: framesPerSecond,
+            producedBitsPerSecond: 10_000_000
+        )
+    }
+
+    expect(
+        controller.observe(busy(), atSeconds: 0) == .stepDown(to: level(fps: 45), reason: .encoder),
+        "a cost 60fps cannot hold at 2.00x gives up the frame rate, not the sharpness"
+    )
+    for second in 1...180 {
+        let decision = controller.observe(busy(), atSeconds: Double(second))
+        expect(
+            decision == .hold,
+            "the cost 45fps holds is held, with no climb back to 60fps and no softer picture, at second "
+                + "\(second), got \(decision)"
+        )
+    }
+    expect(
+        controller.currentLevel == level(fps: 45),
+        "three minutes later the text is still at the full 2.00x, got \(controller.currentLevel)"
     )
 }

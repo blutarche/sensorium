@@ -29,20 +29,24 @@ public struct StreamFidelityLevel: Equatable, Sendable {
 }
 
 /// The levers a surface's picture is lowered on, and the order they are spent
-/// in: resolution first, then frame rate and quality together at the bottom.
+/// in: the frame rate down to 30 fps, then resolution, then quality and the
+/// last of the frame rate. Ground comes back in the reverse order.
 ///
-/// Resolution leads because encode cost is per pixel and nothing else on this
-/// list buys frames back. A screen with moving parts is unwatchable below
-/// 30 fps, so the frame rate is protected by spending resolution until the
-/// encoder can hold 60 fps at the size it is left with. Resolution is also
-/// not stepped: `StreamFidelityController` predicts what each scale would
-/// cost from the cost it just measured and names the largest one that fits.
+/// The frame rate leads because it keeps the picture sharp. On a remote
+/// workstation the person at the viewer is mostly reading, and text that
+/// stays legible matters more than motion above 30 fps. Fewer frames also
+/// answer every stage that can fall behind: the encoder has longer for each
+/// one, the link carries fewer, and the viewer decodes fewer.
 ///
-/// Frame rate and quality only move once the scale has reached
-/// `StreamScalePolicy.minimumScale` and something is still behind. They are
-/// two independent levers rather than one list, because which of them answers
-/// a problem depends on the problem: an encoder out of time needs fewer
-/// frames, and a link out of bits needs smaller ones.
+/// Resolution is spent only once 30 fps is still behind. It is not stepped:
+/// `StreamFidelityController` predicts what each scale would cost at the
+/// frame rate in force from the cost it just measured, and names the largest
+/// one that fits.
+///
+/// Quality and the frame rate below 30 fps move only once the scale has
+/// reached `StreamScalePolicy.minimumScale` and something is still behind.
+/// Quality goes first, because a picture below 30 fps is worse to look at
+/// than a softer one.
 public enum StreamFidelityLadder {
     /// Frame rates a surface may be held to, fastest first.
     public static let frameRates: [Int] = [60, 45, 30, 20]
@@ -54,9 +58,10 @@ public enum StreamFidelityLadder {
     public static let fullFrameRateIndex = 0
     public static let fullQualityIndex = 0
 
-    /// The slowest frame rate reached before quality is spent. A picture
-    /// below this is slow enough to be unpleasant to watch, so it is the last
-    /// thing given up rather than the next.
+    /// The slowest frame rate reached before resolution is spent. A picture
+    /// below this is slow enough to be unpleasant to watch, so the rest of
+    /// the frame rate is the last thing given up, after resolution and
+    /// quality.
     public static let gentleFrameRateFloorIndex = 2
 
     public static var slowestFrameRateIndex: Int { frameRates.count - 1 }
@@ -75,7 +80,7 @@ public enum StreamFidelityLadder {
 
     /// How many `StreamScalePolicy.quantum` steps separate `requestedScale`
     /// from the minimum scale. A viewer already asking for the minimum has
-    /// none, and there is nothing to spend before the frame rate.
+    /// none, and a surface at 30 fps goes straight on to quality.
     public static func scaleStepCount(requestedScale: Double) -> Int {
         guard requestedScale.isFinite else {
             return 0
