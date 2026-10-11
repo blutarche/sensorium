@@ -124,6 +124,7 @@ struct SensoriumHostTestRunner {
             { await runStillRefreshTests() },
             { await runStillRefreshSendTimeTests() },
             { await runStillRefreshTransportTests() },
+            { await runStreamEncoderFlushTests() },
             { await runStillRefreshEncodeMeasurementTests() },
             { await runBaselineEncoderHardwareTests() },
             { await runViewerDecoderPreferenceHostTests() },

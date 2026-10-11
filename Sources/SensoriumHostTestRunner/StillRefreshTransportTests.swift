@@ -434,7 +434,7 @@ private final class EncodedKeyFrameBox: @unchecked Sendable {
 
 /// A picture with enough structure to compress and enough movement between
 /// frames to keep the stream producing deltas rather than repeating itself.
-private func refreshTestPixelBuffer(width: Int, height: Int, shiftedBy shift: Int) -> CVPixelBuffer {
+func refreshTestPixelBuffer(width: Int, height: Int, shiftedBy shift: Int) -> CVPixelBuffer {
     var pixelBuffer: CVPixelBuffer?
     let status = CVPixelBufferCreate(
         kCFAllocatorDefault,
@@ -469,7 +469,7 @@ private func refreshTestPixelBuffer(width: Int, height: Int, shiftedBy shift: In
     return pixelBuffer
 }
 
-private func refreshTestSampleBuffer(_ pixelBuffer: CVPixelBuffer, frameIndex: Int) -> CMSampleBuffer {
+func refreshTestSampleBuffer(_ pixelBuffer: CVPixelBuffer, frameIndex: Int) -> CMSampleBuffer {
     var formatDescription: CMVideoFormatDescription?
     let formatStatus = CMVideoFormatDescriptionCreateForImageBuffer(
         allocator: kCFAllocatorDefault,
