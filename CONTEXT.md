@@ -143,7 +143,8 @@ _Avoid_: rung, level, tier
 
 **Still-screen refresh**:
 A single high-quality key frame the host sends when the picture has stopped
-changing, so a still screen is sharp.
+changing, so a still screen is sharp. After one that was slow to send, the
+next waits a while.
 _Avoid_: sharpening, high-res snapshot
 
 ### Endings
