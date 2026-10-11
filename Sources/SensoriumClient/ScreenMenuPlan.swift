@@ -54,11 +54,9 @@ public struct StartWithMenuItem: Equatable, Sendable {
     public let target: StartTarget
     public let title: String
     public let isSelected: Bool
-    /// `false` during a host-screen session -- the same reason
-    /// `DisplayCountMenuItem.isEnabled` is: this menu cannot do anything
-    /// about the session that is live right now, only the next one, and a
-    /// row that only ever ends in a wait for the next launch is disabled
-    /// rather than left offering a pick nothing here can act on yet.
+    /// Whether the row can be picked. `ScreenMenuPlan.startWithMenu` keeps
+    /// every row enabled, a live host-screen session included, because a
+    /// pick only sets what the next session starts on.
     public let isEnabled: Bool
 
     public init(target: StartTarget, title: String, isSelected: Bool, isEnabled: Bool) {
