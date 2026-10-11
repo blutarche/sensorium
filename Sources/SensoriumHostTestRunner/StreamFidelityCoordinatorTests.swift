@@ -40,6 +40,30 @@ func runStreamFidelityCoordinatorTests() async {
         )
     }
 
+    /// What the pipeline and then the transport tell the recorder about a
+    /// still-screen refresh handed over at `seconds`, on the clock the
+    /// fidelity ticks run on, whose write ended `milliseconds` later.
+    func sendRefresh(
+        _ recorder: HostMediaLatencyRecorder,
+        on surface: CanvasSurfaceID = surfaceZero,
+        atSeconds seconds: Double,
+        taking milliseconds: Int64,
+        succeeded: Bool = true
+    ) {
+        let handedOffAt = Int64(seconds * 1_000_000_000)
+        recorder.recordHostRequestedFrameHandOff(
+            surface: surface,
+            presentationTimeNanoseconds: handedOffAt,
+            atNanoseconds: handedOffAt
+        )
+        recorder.recordSendCompleted(
+            surface: surface,
+            presentationTimeNanoseconds: handedOffAt,
+            atNanoseconds: handedOffAt + milliseconds * 1_000_000,
+            succeeded: succeeded
+        )
+    }
+
     func makeCoordinator(
         media: CanvasSurfaceSlots<any CanvasMediaStreaming>,
         videoSink: any CanvasVideoSending = FakeVideoSink(),
@@ -460,7 +484,12 @@ func runStreamFidelityCoordinatorTests() async {
     do {
         let media = FakeScalableCanvasMedia()
         let events = DiagnosticsRecorder()
-        let coordinator = makeCoordinator(media: onlyOnSurfaceZero(media), onEvent: { events.record($0) })
+        let recorder = HostMediaLatencyRecorder()
+        let coordinator = makeCoordinator(
+            media: onlyOnSurfaceZero(media),
+            latencyRecorder: recorder,
+            onEvent: { events.record($0) }
+        )
         _ = try! await coordinator.handleWritingResponse(
             .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
         )
@@ -478,17 +507,31 @@ func runStreamFidelityCoordinatorTests() async {
         // whole -- once, however long the screen stays still.
         let still = media.frameCounts
         for tick in 9...16 {
+            let refreshesBefore = media.stillRefreshCount
             media.frameCounts = still
             await coordinator.tickFidelity(atSeconds: Double(tick))
+            if media.stillRefreshCount > refreshesBefore {
+                expect(
+                    !events.messages.contains { $0.hasPrefix("still-screen refresh sent") },
+                    "a refresh handed to the transport is not yet a refresh sent, got \(events.messages)"
+                )
+                sendRefresh(recorder, atSeconds: Double(tick), taking: 40)
+            }
         }
         expect(
             media.stillRefreshCount == 1,
             "the still picture is refreshed exactly once, got \(media.stillRefreshCount)"
         )
         expect(
-            events.messages.filter { $0 == "still-screen refresh sent on canvas 0 (1.9 MB key frame)" }.count == 1,
-            "the refresh is one line in the log, naming how large the picture it sent was, "
-                + "got \(events.messages)"
+            await waitUntil(timeoutSeconds: 2) {
+                events.messages.contains("still-screen refresh sent on canvas 0 (1.9 MB key frame, 40 ms to send)")
+            },
+            "once its write ends, the refresh is a line in the log naming how large the picture it sent was "
+                + "and how long it took to send, got \(events.messages)"
+        )
+        expect(
+            events.messages.filter { $0.hasPrefix("still-screen refresh") }.count == 1,
+            "and that one line is all a refresh that sent quickly writes, got \(events.messages)"
         )
 
         // The screen moves and goes quiet again: a new picture, and its own
@@ -514,6 +557,286 @@ func runStreamFidelityCoordinatorTests() async {
         )
     }
     print("PASS: a still screen is sent one whole frame of the picture it is holding, once per still period")
+
+    // A refresh slow to send holds the next one off, for longer each time
+    do {
+        let media = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let recorder = HostMediaLatencyRecorder()
+        let coordinator = makeCoordinator(
+            media: onlyOnSurfaceZero(media),
+            latencyRecorder: recorder,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        var counts = HostFrameCounts(captured: 0, encoded: 0, encodeSubmissionFailures: 0)
+        var now = 0.0
+        func tick(moving: Bool) async {
+            if moving {
+                counts = HostFrameCounts(
+                    captured: counts.captured + 60,
+                    encoded: counts.encoded + 60,
+                    encodeSubmissionFailures: 0
+                )
+            }
+            media.frameCounts = counts
+            await coordinator.tickFidelity(atSeconds: now)
+            now += 1
+        }
+        /// Something moves, then nothing does until the picture is refreshed
+        /// or `limit` is reached. Answers when the refresh went out.
+        func moveThenWaitForRefresh(until limit: Double) async -> Double? {
+            await tick(moving: true)
+            let refreshesBefore = media.stillRefreshCount
+            while now < limit {
+                let tickedAt = now
+                await tick(moving: false)
+                if media.stillRefreshCount > refreshesBefore {
+                    return tickedAt
+                }
+            }
+            return nil
+        }
+        func refreshLines() -> [String] {
+            events.messages.filter { $0.hasPrefix("still-screen refresh") }
+        }
+
+        // The first reading and the warm-up.
+        for _ in 0...3 {
+            await tick(moving: true)
+        }
+        let first = await moveThenWaitForRefresh(until: 20) ?? -1
+        expect(first >= 0, "a still screen is refreshed")
+        sendRefresh(recorder, atSeconds: first, taking: 640)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { refreshLines().count == 2 },
+            "a slow refresh writes its own line and then the hold-off it starts, got \(refreshLines())"
+        )
+        expect(
+            refreshLines() == [
+                "still-screen refresh sent on canvas 0 (1.9 MB key frame, 640 ms to send)",
+                "still-screen refresh on canvas 0 took 640 ms to send; next one no sooner than 30 s"
+            ],
+            "the lines name the send time and how long the next refresh waits, got \(refreshLines())"
+        )
+
+        let firstHoldOffEnds = first + 0.64 + 30
+        expect(
+            await moveThenWaitForRefresh(until: firstHoldOffEnds.rounded(.down)) == nil,
+            "a new still picture inside the hold-off is not refreshed, got \(media.stillRefreshCount) refreshes"
+        )
+        let second = await moveThenWaitForRefresh(until: firstHoldOffEnds + 20) ?? -1
+        expect(
+            second >= firstHoldOffEnds && second < firstHoldOffEnds + 4,
+            "the next still picture after the hold-off is refreshed, got \(second) against \(firstHoldOffEnds)"
+        )
+        sendRefresh(recorder, atSeconds: second, taking: 300)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { refreshLines().count == 4 },
+            "a second slow refresh writes both lines again, got \(refreshLines())"
+        )
+        expect(
+            refreshLines().suffix(2) == [
+                "still-screen refresh sent on canvas 0 (1.9 MB key frame, 300 ms to send)",
+                "still-screen refresh on canvas 0 took 300 ms to send; next one no sooner than 60 s"
+            ],
+            "and the hold-off doubles, got \(refreshLines())"
+        )
+
+        let secondHoldOffEnds = second + 0.3 + 60
+        expect(
+            await moveThenWaitForRefresh(until: secondHoldOffEnds.rounded(.down)) == nil,
+            "the longer hold-off is waited out in full, got \(media.stillRefreshCount) refreshes"
+        )
+        let third = await moveThenWaitForRefresh(until: secondHoldOffEnds + 20) ?? -1
+        expect(third >= secondHoldOffEnds, "and then a still picture is refreshed again, got \(third)")
+        sendRefresh(recorder, atSeconds: third, taking: 40)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { refreshLines().count == 5 },
+            "a fast refresh writes one line, got \(refreshLines())"
+        )
+        expect(
+            refreshLines().last == "still-screen refresh sent on canvas 0 (1.9 MB key frame, 40 ms to send)",
+            "naming its send time and nothing about a hold-off, got \(refreshLines())"
+        )
+        let fourth = await moveThenWaitForRefresh(until: now + 10) ?? -1
+        expect(
+            fourth >= 0 && fourth - third < 5,
+            "and ends the hold-off, so the very next still picture is refreshed, got \(fourth) after \(third)"
+        )
+    }
+    print("PASS: a still-screen refresh slow to send holds the next one off for longer each time, and the log says how long")
+
+    // One surface's slow refresh holds off only that surface's next one
+    do {
+        let surfaceOne = CanvasSurfaceID.allCases[1]
+        let mediaZero = FakeScalableCanvasMedia()
+        let mediaOne = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let recorder = HostMediaLatencyRecorder()
+        let coordinator = makeCoordinator(
+            media: CanvasSurfaceSlots(surface0: mediaZero, surface1: mediaOne),
+            latencyRecorder: recorder,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        _ = try! await coordinator.handleWritingResponse(.displayCount(2))
+        var captured = 0
+        var now = 0.0
+        func tick(moving: Bool) async {
+            if moving {
+                captured += 60
+            }
+            let counts = HostFrameCounts(captured: captured, encoded: captured, encodeSubmissionFailures: 0)
+            mediaZero.frameCounts = counts
+            mediaOne.frameCounts = counts
+            await coordinator.tickFidelity(atSeconds: now)
+            now += 1
+        }
+
+        for _ in 0...4 {
+            await tick(moving: true)
+        }
+        while mediaOne.stillRefreshCount == 0 && now < 20 {
+            await tick(moving: false)
+        }
+        let refreshedAt = now - 1
+        expect(
+            mediaZero.stillRefreshCount == 1 && mediaOne.stillRefreshCount == 1,
+            "both still screens are refreshed, got \(mediaZero.stillRefreshCount) and \(mediaOne.stillRefreshCount)"
+        )
+        sendRefresh(recorder, on: surfaceZero, atSeconds: refreshedAt, taking: 640)
+        sendRefresh(recorder, on: surfaceOne, atSeconds: refreshedAt, taking: 40)
+        expect(
+            await waitUntil(timeoutSeconds: 2) {
+                events.messages.contains("still-screen refresh on canvas 0 took 640 ms to send; next one no sooner than 30 s")
+                    && events.messages.contains("still-screen refresh sent on canvas 1 (1.9 MB key frame, 40 ms to send)")
+            },
+            "each surface's refresh is logged on its own surface, got \(events.messages)"
+        )
+        expect(
+            !events.messages.contains { $0.hasPrefix("still-screen refresh on canvas 1") },
+            "and only the slow one holds anything off, got \(events.messages)"
+        )
+
+        await tick(moving: true)
+        let movedAt = now
+        while mediaOne.stillRefreshCount == 1 && now < movedAt + 10 {
+            await tick(moving: false)
+        }
+        expect(
+            mediaOne.stillRefreshCount == 2,
+            "the surface whose refresh sent quickly refreshes its next still picture, got \(mediaOne.stillRefreshCount)"
+        )
+        expect(
+            mediaZero.stillRefreshCount == 1,
+            "while the surface whose refresh was slow waits out its own hold-off, got \(mediaZero.stillRefreshCount)"
+        )
+    }
+    print("PASS: one surface's slow still-screen refresh holds off only that surface's next one")
+
+    // A surface that stops and comes back starts with no hold-off
+    do {
+        let surfaceOne = CanvasSurfaceID.allCases[1]
+        let mediaZero = FakeScalableCanvasMedia()
+        let mediaOne = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let recorder = HostMediaLatencyRecorder()
+        let coordinator = makeCoordinator(
+            media: CanvasSurfaceSlots(surface0: mediaZero, surface1: mediaOne),
+            latencyRecorder: recorder,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        _ = try! await coordinator.handleWritingResponse(.displayCount(2))
+        var captured = 0
+        var now = 0.0
+        func tick(moving: Bool) async {
+            if moving {
+                captured += 60
+            }
+            let counts = HostFrameCounts(captured: captured, encoded: captured, encodeSubmissionFailures: 0)
+            mediaZero.frameCounts = counts
+            mediaOne.frameCounts = counts
+            await coordinator.tickFidelity(atSeconds: now)
+            now += 1
+        }
+        /// Something moves, then nothing does until canvas 1 is refreshed or
+        /// `seconds` pass. Answers when the refresh went out.
+        func moveThenWaitForRefresh(within seconds: Double) async -> Double? {
+            await tick(moving: true)
+            let refreshesBefore = mediaOne.stillRefreshCount
+            let limit = now + seconds
+            while now < limit {
+                let tickedAt = now
+                await tick(moving: false)
+                if mediaOne.stillRefreshCount > refreshesBefore {
+                    return tickedAt
+                }
+            }
+            return nil
+        }
+        /// Canvas 1 goes away and is asked for again, which is a new session
+        /// on that surface: the first reading and the warm-up come first.
+        func restartCanvasOne() async {
+            _ = try! await coordinator.handleWritingResponse(.displayCount(1))
+            _ = try! await coordinator.handleWritingResponse(.displayCount(2))
+            for _ in 0...3 {
+                await tick(moving: true)
+            }
+        }
+
+        for _ in 0...3 {
+            await tick(moving: true)
+        }
+        let first = await moveThenWaitForRefresh(within: 10) ?? -1
+        expect(first >= 0, "canvas 1's still screen is refreshed")
+        sendRefresh(recorder, on: surfaceOne, atSeconds: first, taking: 640)
+        expect(
+            await waitUntil(timeoutSeconds: 2) {
+                events.messages.contains("still-screen refresh on canvas 1 took 640 ms to send; next one no sooner than 30 s")
+            },
+            "its slow send holds the next refresh off, got \(events.messages)"
+        )
+
+        await restartCanvasOne()
+        let second = await moveThenWaitForRefresh(within: 10) ?? -1
+        expect(
+            second >= 0 && second < first + 30,
+            "the session that replaced it starts with no hold-off, got \(second) after \(first)"
+        )
+
+        // That refresh is handed over, and the canvas goes away before its
+        // write ends.
+        let handedOffAt = Int64(second * 1_000_000_000)
+        recorder.recordHostRequestedFrameHandOff(
+            surface: surfaceOne,
+            presentationTimeNanoseconds: handedOffAt,
+            atNanoseconds: handedOffAt
+        )
+        await restartCanvasOne()
+        recorder.recordSendCompleted(
+            surface: surfaceOne,
+            presentationTimeNanoseconds: handedOffAt,
+            atNanoseconds: handedOffAt + 640_000_000
+        )
+        try? await Task.sleep(for: .milliseconds(100))
+        let slowSendLines = events.messages.filter { $0.contains("canvas 1") && $0.contains("640 ms") }
+        expect(
+            slowSendLines.count == 2,
+            "a write that ends after its canvas went away belongs to a session that is over, and writes nothing, "
+                + "got \(slowSendLines)"
+        )
+        let third = await moveThenWaitForRefresh(within: 10) ?? -1
+        expect(third >= 0, "and holds nothing off in the session after it, got \(mediaOne.stillRefreshCount) refreshes")
+    }
+    print("PASS: a surface that stops and comes back starts with no still-screen refresh held off")
 
     // A refresh that did not go out is never logged as one that did
     do {
@@ -555,6 +878,49 @@ func runStreamFidelityCoordinatorTests() async {
         }
     }
     print("PASS: a still-screen refresh that was skipped or refused is logged as such, never as one that was sent")
+
+    // A refresh whose write failed is not logged as sent, and still counts
+    do {
+        let media = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let recorder = HostMediaLatencyRecorder()
+        let coordinator = makeCoordinator(
+            media: onlyOnSurfaceZero(media),
+            latencyRecorder: recorder,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        for tick in 0...8 {
+            media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
+            await coordinator.tickFidelity(atSeconds: Double(tick))
+        }
+        let still = media.frameCounts
+        for tick in 9...16 {
+            let refreshesBefore = media.stillRefreshCount
+            media.frameCounts = still
+            await coordinator.tickFidelity(atSeconds: Double(tick))
+            if media.stillRefreshCount > refreshesBefore {
+                sendRefresh(recorder, atSeconds: Double(tick), taking: 640, succeeded: false)
+            }
+        }
+        expect(media.stillRefreshCount == 1, "the refresh was handed over once, got \(media.stillRefreshCount)")
+        let refreshLines = { events.messages.filter { $0.hasPrefix("still-screen refresh") } }
+        expect(
+            await waitUntil(timeoutSeconds: 2) { refreshLines().count == 2 },
+            "a write that failed is still reported, got \(refreshLines())"
+        )
+        expect(
+            refreshLines() == [
+                "still-screen refresh not sent on canvas 0. The write failed after 640 ms.",
+                "still-screen refresh on canvas 0 took 640 ms to send; next one no sooner than 30 s"
+            ],
+            "as a refresh that did not go out, whose time on the link still holds the next one off, "
+                + "got \(refreshLines())"
+        )
+    }
+    print("PASS: a still-screen refresh whose write failed is logged as not sent, and its time on the link still counts")
 
     // The controller lowers even a scale a person chose outright
     do {

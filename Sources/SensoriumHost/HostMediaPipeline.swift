@@ -273,6 +273,11 @@ public final class HostMediaPipeline {
             atNanoseconds: MonotonicClock.nowNanoseconds()
         )
         encoder.completeFramesRequestingKeyFrame()
+        latencyRecorder?.recordHostRequestedFrameHandOff(
+            surface: surface,
+            presentationTimeNanoseconds: presentationTime,
+            atNanoseconds: MonotonicClock.nowNanoseconds()
+        )
         guard deliverEncodedFrame(refreshed) else {
             throw HostMediaPipelineError.stillRefreshNotDelivered
         }

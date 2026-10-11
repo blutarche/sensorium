@@ -451,7 +451,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             self.latencyRecorder?.recordSendCompleted(
                 surface: surface,
                 presentationTimeNanoseconds: Int64(bitPattern: packet.presentationTimeNanoseconds),
-                atNanoseconds: MonotonicClock.nowNanoseconds()
+                atNanoseconds: MonotonicClock.nowNanoseconds(),
+                succeeded: !writeFailed
             )
             // The failure is noted in the same locked step that picks the next
             // frame, so a delta of this surface waiting behind the lost frame

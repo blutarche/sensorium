@@ -355,6 +355,9 @@ public final class HostSessionCoordinator {
     /// first tick and again whenever it stops streaming: a delta taken across
     /// a stopped stream would report a whole idle gap as one bad second.
     private var previousFidelityReading = CanvasSurfaceSlots<FidelityReading?> { _ in nil }
+    /// How large the still-screen refresh this surface last handed to the
+    /// transport is, until its write ends and it can be logged as sent.
+    private var pendingStillRefreshBytes = CanvasSurfaceSlots<Int?> { _ in nil }
     /// The counters behind the last capture-delivery line, so the next one
     /// reports an interval rather than a session total.
     private var previousCaptureDeliveryReading = CanvasSurfaceSlots<CaptureDeliveryReading?> { _ in nil }
@@ -570,6 +573,11 @@ public final class HostSessionCoordinator {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.onEvent?("key frame requested on \(self.surfaceLogName(surface)): \(cause.rawValue)")
+            }
+        }
+        latencyRecorder?.observeHostRequestedFrameSends { [weak self] surface, send in
+            Task { @MainActor [weak self] in
+                self?.stillRefreshFinishedSending(on: surface, send)
             }
         }
     }
@@ -2366,15 +2374,18 @@ public final class HostSessionCoordinator {
     /// that cannot send the frame now will not be able to a second later
     /// either. The next thing to move on that screen starts a new period, and
     /// with it a new attempt.
+    ///
+    /// A frame the transport took is not logged here: it has not been sent
+    /// until its write ends, which `stillRefreshFinishedSending` reports.
     private func refreshStillPicture(on surface: CanvasSurfaceID) async {
         do {
             guard let frameBytes = try await streamingMedia(on: surface).refreshStillPicture() else {
                 return
             }
-            onEvent?(
-                "still-screen refresh sent on \(surfaceLogName(surface)) "
-                    + "(\(HostOperatorLog.describeFrameSize(bytes: frameBytes)) key frame)"
-            )
+            // Before anything can read it: the end of the write is reported
+            // through a hop onto this actor, which cannot run until this
+            // function next suspends.
+            pendingStillRefreshBytes[surface] = frameBytes
         } catch StillFrameEncoderError.frameExceedsTransportLimit(let bytes) {
             // Its own line, because nothing went wrong: the picture was
             // encoded as softly as this host is willing to encode one and is
@@ -2390,6 +2401,39 @@ public final class HostSessionCoordinator {
                     + HostOperatorLog.describe(error)
             )
         }
+    }
+
+    /// The write carrying this surface's last still-screen refresh has ended.
+    private func stillRefreshFinishedSending(on surface: CanvasSurfaceID, _ send: HostRequestedFrameSend) {
+        guard let frameBytes = pendingStillRefreshBytes[surface] else {
+            return
+        }
+        pendingStillRefreshBytes[surface] = nil
+        let milliseconds = Int((Double(send.nanoseconds) / 1_000_000).rounded())
+        if send.succeeded {
+            onEvent?(
+                "still-screen refresh sent on \(surfaceLogName(surface)) "
+                    + "(\(HostOperatorLog.describeFrameSize(bytes: frameBytes)) key frame, \(milliseconds) ms to send)"
+            )
+        } else {
+            onEvent?(
+                "still-screen refresh not sent on \(surfaceLogName(surface)). "
+                    + "The write failed after \(milliseconds) ms."
+            )
+        }
+        // A failed write held the link for as long as a slow one did. The
+        // transport's clock is the one `nowSeconds()` reads, so the
+        // hold-off is measured on the same clock as every fidelity tick.
+        guard let holdOffSeconds = fidelity[surface].stillRefreshFinishedSending(
+            inSeconds: Double(send.nanoseconds) / 1_000_000_000,
+            atSeconds: Double(send.completedAtNanoseconds) / 1_000_000_000
+        ) else {
+            return
+        }
+        onEvent?(
+            "still-screen refresh on \(surfaceLogName(surface)) took \(milliseconds) ms to send; "
+                + "next one no sooner than \(Int(holdOffSeconds)) s"
+        )
     }
 
     private static func fidelityDescription(
@@ -2629,6 +2673,9 @@ public final class HostSessionCoordinator {
                 fidelity[surface] = StreamFidelityController(
                     requestedScale: fidelity[surface].requestedScale
                 )
+                // A refresh still on the wire belongs to the session that
+                // ended, and its send time is no evidence about the next one.
+                pendingStillRefreshBytes[surface] = nil
                 // The stream those counters described is gone, and the next
                 // one gets the same benefit of the doubt as the first.
                 captureDeliveryBaseline[surface] = nil

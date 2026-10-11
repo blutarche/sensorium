@@ -12,8 +12,9 @@ public enum StreamFidelityDecision: Equatable, Sendable {
     case liftQuality(to: StreamFidelityLevel)
     /// The picture a still screen is left holding was encoded as a delta on a
     /// moving one, at whatever the fidelity in force at the time allowed. Sent
-    /// again as a whole frame with a budget worth reading, once, while the
-    /// screen stays still. Nothing moves.
+    /// again as a whole frame with a budget worth reading, at most once while
+    /// the screen stays still, and not while an earlier refresh that was slow
+    /// to send is holding refreshes off. Nothing moves.
     case refreshStill
 
     /// A sharper picture is only visible once a whole frame is coded at the
@@ -95,6 +96,15 @@ public struct StreamFidelityController: Sendable {
     /// refusing bits has to be offered more of them to find out what it can
     /// carry now.
     public static let linkBudgetGrowthRate = 1.1
+    /// A still-screen refresh that took longer than this to send held the
+    /// link up for everything behind it, the next keystroke's frame included.
+    public static let slowStillRefreshSendSeconds = 0.1
+    /// How long the next still-screen refresh is held off after one was slow
+    /// to send.
+    public static let initialStillRefreshHoldOffSeconds: Double = 30
+    /// The longest a still-screen refresh is ever held off, however many slow
+    /// ones came before it.
+    public static let maximumStillRefreshHoldOffSeconds: Double = 240
 
     /// Where the two cheap levers stand: live settings on the encoder already
     /// running, where a change of scale rebuilds it.
@@ -160,8 +170,13 @@ public struct StreamFidelityController: Sendable {
     private var scaleStepsBeforeLastChange: Int?
     /// Whether the picture this still screen is holding has already been sent
     /// again properly. Cleared the moment anything moves, so every still
-    /// picture gets one refresh and no still screen gets a second.
+    /// picture gets at most one refresh and no still screen gets a second. A
+    /// refresh held off is not one sent: a picture still on screen when the
+    /// hold-off ends is refreshed then.
     private var hasRefreshedStill = false
+    /// How long still-screen refreshes are held off after the last one was
+    /// slow to send, and until when.
+    private var stillRefreshHoldOff: LeverCeiling?
     private var ceilings: [LeverPosition: LeverCeiling] = [:]
     /// How long each resolution a rebuild refused is left alone for, keyed by
     /// how many steps below the ask it is. A pipeline that could not be built
@@ -278,6 +293,27 @@ public struct StreamFidelityController: Sendable {
         // so a still screen is owed a refresh again.
         hasRefreshedStill = false
         forgetEvidence()
+    }
+
+    /// A still-screen refresh finished sending, or failed to, `sendSeconds`
+    /// after it was handed to the transport. A slow one holds the next
+    /// refresh off: `initialStillRefreshHoldOffSeconds` the first time, twice
+    /// as long for each slow one after it, never past
+    /// `maximumStillRefreshHoldOffSeconds`. A fast one ends the hold-off.
+    ///
+    /// Returns how long the hold-off that this refresh started or renewed
+    /// lasts, or `nil` when it was fast enough to hold nothing off.
+    public mutating func stillRefreshFinishedSending(inSeconds sendSeconds: Double, atSeconds: Double) -> Double? {
+        guard sendSeconds > Self.slowStillRefreshSendSeconds else {
+            stillRefreshHoldOff = nil
+            return nil
+        }
+        let seconds = Swift.min(
+            Self.maximumStillRefreshHoldOffSeconds,
+            stillRefreshHoldOff.map { $0.seconds * 2 } ?? Self.initialStillRefreshHoldOffSeconds
+        )
+        stillRefreshHoldOff = LeverCeiling(seconds: seconds, expiresAtSeconds: atSeconds + seconds)
+        return seconds
     }
 
     public mutating func observe(
@@ -461,6 +497,7 @@ public struct StreamFidelityController: Sendable {
             return decision
         }
         if quietTicks >= Self.stillTicksBeforeQualityLift, !hasRefreshedStill,
+           !Self.isHeldOff(stillRefreshHoldOff, atSeconds: atSeconds),
            canChangePicture(atSeconds: atSeconds) {
             // After the quality lift and the resolution: a lift changes what
             // the picture is worth and a resolution change replaces it

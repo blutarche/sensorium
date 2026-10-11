@@ -89,6 +89,20 @@ public struct HostFrameCounts: Equatable, Sendable {
     }
 }
 
+/// How long a frame this host asked for took to send: from the moment it was
+/// handed to the transport until its write ended, successfully or not.
+public struct HostRequestedFrameSend: Equatable, Sendable {
+    public let nanoseconds: Int64
+    public let completedAtNanoseconds: Int64
+    public let succeeded: Bool
+
+    public init(nanoseconds: Int64, completedAtNanoseconds: Int64, succeeded: Bool) {
+        self.nanoseconds = nanoseconds
+        self.completedAtNanoseconds = completedAtNanoseconds
+        self.succeeded = succeeded
+    }
+}
+
 /// Host-side per-frame latency, matched by presentation timestamp across the
 /// capture callback, the encoder's compressed-output callback, and the moment
 /// the encoded packet is actually handed off to the transport.
@@ -184,6 +198,19 @@ public final class HostMediaLatencyRecorder: @unchecked Sendable {
     /// above and holding the time they were marked, so an eviction sweep
     /// retires one whose frame never came out of the encoder.
     private var checkpointExemptEntries: [SurfaceFrameKey: Int64] = [:]
+    /// The host-requested frame each surface last handed to the transport,
+    /// and when, until its write ends. One per surface rather than one per
+    /// frame, and outside the age-based eviction below: a surface has at most
+    /// one such frame in flight, the next one replaces an entry whose frame
+    /// never reached the wire, and a send slow enough to outlive that
+    /// eviction is exactly the send this exists to measure.
+    private var hostRequestedHandOffs = CanvasSurfaceSlots<HostRequestedHandOff?> { _ in nil }
+    private var hostRequestedSendObserver: (@Sendable (CanvasSurfaceID, HostRequestedFrameSend) -> Void)?
+
+    private struct HostRequestedHandOff {
+        let presentationTimeNanoseconds: Int64
+        let atNanoseconds: Int64
+    }
 
     /// Frames dropped anywhere between capture and their matching later
     /// stage never produce the later call that would otherwise remove their
@@ -359,6 +386,32 @@ public final class HostMediaLatencyRecorder: @unchecked Sendable {
         evictStaleEntries(nowNanoseconds: atNanoseconds)
     }
 
+    /// Call at the moment a frame this host asked for is handed to the
+    /// transport, and before the hand-off: the write can end on another
+    /// thread before the call that started it returns.
+    public func recordHostRequestedFrameHandOff(
+        surface: CanvasSurfaceID,
+        presentationTimeNanoseconds: Int64,
+        atNanoseconds: Int64
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        hostRequestedHandOffs[surface] = HostRequestedHandOff(
+            presentationTimeNanoseconds: presentationTimeNanoseconds,
+            atNanoseconds: atNanoseconds
+        )
+    }
+
+    /// Told, from whichever thread ended the write, each time a frame
+    /// recorded by `recordHostRequestedFrameHandOff` finishes sending.
+    public func observeHostRequestedFrameSends(
+        _ observer: @escaping @Sendable (CanvasSurfaceID, HostRequestedFrameSend) -> Void
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        hostRequestedSendObserver = observer
+    }
+
     /// Call for every delivery the capture stream made that was not the screen
     /// changing.
     ///
@@ -460,25 +513,44 @@ public final class HostMediaLatencyRecorder: @unchecked Sendable {
     }
 
     /// Call once a frame's send has actually completed (or, absent transport
-    /// completion, once it has been handed off).
-    public func recordSendCompleted(surface: CanvasSurfaceID, presentationTimeNanoseconds: Int64, atNanoseconds: Int64) {
+    /// completion, once it has been handed off). `succeeded` is `false` for a
+    /// write that failed.
+    public func recordSendCompleted(
+        surface: CanvasSurfaceID,
+        presentationTimeNanoseconds: Int64,
+        atNanoseconds: Int64,
+        succeeded: Bool = true
+    ) {
         lock.lock()
-        defer { lock.unlock() }
-        guard let encodeAt = encodeEntries.removeValue(
+        if let encodeAt = encodeEntries.removeValue(
             forKey: SurfaceFrameKey(surface: surface, presentationTimeNanoseconds: presentationTimeNanoseconds)
-        ) else {
-            return
+        ) {
+            _ = metricsValue.record(
+                stage: .send,
+                startedAtNanoseconds: encodeAt,
+                endedAtNanoseconds: atNanoseconds
+            )
+            _ = perSurfaceMetrics[surface].record(
+                stage: .send,
+                startedAtNanoseconds: encodeAt,
+                endedAtNanoseconds: atNanoseconds
+            )
         }
-        _ = metricsValue.record(
-            stage: .send,
-            startedAtNanoseconds: encodeAt,
-            endedAtNanoseconds: atNanoseconds
-        )
-        _ = perSurfaceMetrics[surface].record(
-            stage: .send,
-            startedAtNanoseconds: encodeAt,
-            endedAtNanoseconds: atNanoseconds
-        )
+        var hostRequestedSend: HostRequestedFrameSend?
+        if let handOff = hostRequestedHandOffs[surface],
+           handOff.presentationTimeNanoseconds == presentationTimeNanoseconds {
+            hostRequestedHandOffs[surface] = nil
+            hostRequestedSend = HostRequestedFrameSend(
+                nanoseconds: atNanoseconds - handOff.atNanoseconds,
+                completedAtNanoseconds: atNanoseconds,
+                succeeded: succeeded
+            )
+        }
+        let observer = hostRequestedSendObserver
+        lock.unlock()
+        if let hostRequestedSend {
+            observer?(surface, hostRequestedSend)
+        }
     }
 }
 

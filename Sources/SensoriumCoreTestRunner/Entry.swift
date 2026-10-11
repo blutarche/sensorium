@@ -138,7 +138,11 @@ struct SensoriumCoreTestRunner {
             ("fidelity holds off a resolution the rebuild refused", testStreamFidelityHoldsOffAResolutionTheRebuildRefused),
             ("fidelity takes back quality, then resolution, then frame rate", testStreamFidelityTakesBackQualityThenResolutionThenFrameRate),
             ("fidelity hands a resolution that fails at once back as resolution", testStreamFidelityHandsAResolutionThatFailsAtOnceBackAsResolution),
-            ("fidelity settles at 45 fps at 2x without flapping", testStreamFidelitySettlesAtFortyFiveFramesASecondAtTwoXWithoutFlapping)
+            ("fidelity settles at 45 fps at 2x without flapping", testStreamFidelitySettlesAtFortyFiveFramesASecondAtTwoXWithoutFlapping),
+            ("fidelity holds the still refresh off after a slow send", testStreamFidelityHoldsTheStillRefreshOffAfterASlowSend),
+            ("fidelity doubles the still refresh hold-off up to four minutes", testStreamFidelityDoublesTheStillRefreshHoldOffUpToFourMinutes),
+            ("fidelity clears the still refresh hold-off after a fast send", testStreamFidelityClearsTheStillRefreshHoldOffAfterAFastSend),
+            ("fidelity leaves a still refresh it held off owed", testStreamFidelityLeavesAStillRefreshItHeldOffOwed)
         ]
 
         // The TIFF-to-PNG conversion is the system pasteboard's, which only

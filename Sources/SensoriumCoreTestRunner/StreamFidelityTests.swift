@@ -2007,3 +2007,127 @@ func testStreamFidelitySettlesAtFortyFiveFramesASecondAtTwoXWithoutFlapping() {
         "three minutes later the text is still at the full 2.00x, got \(controller.currentLevel)"
     )
 }
+
+func testStreamFidelityHoldsTheStillRefreshOffAfterASlowSend() {
+    var controller = StreamFidelityController(requestedScale: 1.0)
+    warmUp(&controller)
+    _ = controller.observe(stillTickObservation(), atSeconds: 0)
+    expect(
+        controller.observe(stillTickObservation(), atSeconds: 1) == .refreshStill,
+        "a still screen is sent one good frame of the picture it is holding"
+    )
+    expect(
+        controller.stillRefreshFinishedSending(inSeconds: 0.52, atSeconds: 1.5) == 30,
+        "a refresh that held the link for more than 100 ms holds the next one off for 30 s"
+    )
+
+    // The screen moves and goes quiet again well inside those 30 s: a new
+    // still picture, which would be refreshed at once if the link had not
+    // just spent half a second on the last one.
+    _ = controller.observe(healthyObservation(), atSeconds: 2)
+    for second in 3...30 {
+        expect(
+            controller.observe(stillTickObservation(), atSeconds: Double(second)) != .refreshStill,
+            "no refresh while it is held off, at second \(second)"
+        )
+    }
+
+    _ = controller.observe(healthyObservation(), atSeconds: 31)
+    _ = controller.observe(stillTickObservation(), atSeconds: 32)
+    expect(
+        controller.observe(stillTickObservation(), atSeconds: 33) == .refreshStill,
+        "once 30 s have passed since the slow refresh, a still screen is refreshed again"
+    )
+}
+
+func testStreamFidelityDoublesTheStillRefreshHoldOffUpToFourMinutes() {
+    var controller = StreamFidelityController(requestedScale: 1.0)
+    warmUp(&controller)
+    var now = 0.0
+    var refreshedAt: [Double] = []
+    var holdOffs: [Double?] = []
+    for _ in 0..<5 {
+        // Something moves, then the screen stays still until it is refreshed.
+        _ = controller.observe(healthyObservation(), atSeconds: now)
+        now += 1
+        var refreshed: Double?
+        while refreshed == nil, now < 1_000 {
+            if controller.observe(stillTickObservation(), atSeconds: now) == .refreshStill {
+                refreshed = now
+            }
+            now += 1
+        }
+        guard let refreshed else {
+            break
+        }
+        refreshedAt.append(refreshed)
+        holdOffs.append(controller.stillRefreshFinishedSending(inSeconds: 0.4, atSeconds: refreshed + 0.4))
+    }
+    expect(
+        holdOffs == [30, 60, 120, 240, 240],
+        "each slow refresh in a row holds the next one off twice as long, up to four minutes, got \(holdOffs)"
+    )
+    for index in 1..<refreshedAt.count {
+        let allowedFrom = refreshedAt[index - 1] + 0.4 + (holdOffs[index - 1] ?? 0)
+        expect(
+            refreshedAt[index] >= allowedFrom && refreshedAt[index] < allowedFrom + 2,
+            "refresh \(index) waits out the hold-off the last one earned and no longer, "
+                + "got \(refreshedAt[index]) against \(allowedFrom)"
+        )
+    }
+}
+
+func testStreamFidelityClearsTheStillRefreshHoldOffAfterAFastSend() {
+    var controller = StreamFidelityController(requestedScale: 1.0)
+    warmUp(&controller)
+    _ = controller.observe(stillTickObservation(), atSeconds: 0)
+    _ = controller.observe(stillTickObservation(), atSeconds: 1)
+    expect(
+        controller.stillRefreshFinishedSending(inSeconds: 0.3, atSeconds: 1.3) == 30,
+        "a slow refresh holds the next one off"
+    )
+    _ = controller.observe(healthyObservation(), atSeconds: 40)
+    _ = controller.observe(stillTickObservation(), atSeconds: 41)
+    expect(
+        controller.observe(stillTickObservation(), atSeconds: 42) == .refreshStill,
+        "the next still picture after the hold-off is refreshed"
+    )
+    expect(
+        controller.stillRefreshFinishedSending(inSeconds: 0.1, atSeconds: 42.1) == nil,
+        "a refresh sent in 100 ms or less holds nothing off"
+    )
+
+    _ = controller.observe(healthyObservation(), atSeconds: 43)
+    _ = controller.observe(stillTickObservation(), atSeconds: 44)
+    expect(
+        controller.observe(stillTickObservation(), atSeconds: 45) == .refreshStill,
+        "and clears the hold-off: the very next still picture is refreshed without waiting"
+    )
+    expect(
+        controller.stillRefreshFinishedSending(inSeconds: 0.3, atSeconds: 45.3) == 30,
+        "so a slow refresh after it starts again from 30 s rather than doubling the old hold-off"
+    )
+}
+
+func testStreamFidelityLeavesAStillRefreshItHeldOffOwed() {
+    var controller = StreamFidelityController(requestedScale: 1.0)
+    warmUp(&controller)
+    _ = controller.observe(stillTickObservation(), atSeconds: 0)
+    _ = controller.observe(stillTickObservation(), atSeconds: 1)
+    _ = controller.stillRefreshFinishedSending(inSeconds: 0.5, atSeconds: 1.5)
+
+    // A new still picture arrives inside the hold-off and is not refreshed.
+    // It is not counted as refreshed either, and nothing moves after it.
+    _ = controller.observe(healthyObservation(), atSeconds: 2)
+    for second in 3...31 {
+        _ = controller.observe(stillTickObservation(), atSeconds: Double(second))
+    }
+    expect(
+        controller.observe(stillTickObservation(), atSeconds: 32) == .refreshStill,
+        "the picture held off is still owed its refresh, so the first still tick after the hold-off sends it"
+    )
+    expect(
+        controller.observe(stillTickObservation(), atSeconds: 33) != .refreshStill,
+        "and only once"
+    )
+}
