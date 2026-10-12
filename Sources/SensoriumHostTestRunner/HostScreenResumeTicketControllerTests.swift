@@ -269,7 +269,7 @@ func runHostScreenResumeTicketControllerTests() async {
             token: secondToken, resumeTicket: mintedTicket
         ))
         expect(
-            response == .hostScreenRefused(reason: "host-screen-resume-refused"),
+            response == .hostScreenRefused(reason: "host-screen-resume-expired"),
             "a ticket past its own twelve-hour ceiling refuses on its own reason, never the .signed path's credential-unknown or needs-rearming"
         )
 
@@ -635,7 +635,7 @@ func runHostScreenResumeTicketControllerTests() async {
         let finalToken = offerAndExtractToken(finalController)
         let finalResponse = try! finalController.handle(.hostScreenRequest(token: finalToken, resumeTicket: mintedTicket))
         expect(
-            finalResponse == .hostScreenRefused(reason: "host-screen-resume-refused"),
+            finalResponse == .hostScreenRefused(reason: "host-screen-resume-expired"),
             "a ticket that only ever hit refused resumes is expired by its own original grace window, not kept alive by any of them -- got \(finalResponse as Any)"
         )
 
@@ -821,7 +821,7 @@ func runHostScreenResumeTicketControllerTests() async {
                 currentTicket = nextTicket
             } else {
                 expect(
-                    response == .hostScreenRefused(reason: "host-screen-resume-refused"),
+                    response == .hostScreenRefused(reason: "host-screen-resume-expired"),
                     "a chained resume past the *original* grant's own twelve-hour ceiling refuses on the resume path's own reason, even though every individual resume stayed inside its five-minute grace window -- got \(String(describing: response))"
                 )
                 sawCeilingRefusal = true

@@ -1030,7 +1030,7 @@ public final class HostSessionController {
         // identity rather than a live display resolution, so a display
         // this wake exists to recover is never mistaken for a binding
         // mismatch.
-        let resumeAccepted: Bool? = resumeTicket.map {
+        let resumeStatus: HostScreenResumeTicketStatus? = resumeTicket.map {
             // `armingFingerprint` is never nil here: the guard above already
             // proved `clientKey` has an arming record, the same `.first`
             // this was mapped from.
@@ -1045,9 +1045,19 @@ public final class HostSessionController {
         // display, is refused on its own terms rather than quietly demoted
         // to a fresh request: a viewer that believed it was resuming
         // should be told it was not.
-        guard resumeAccepted != false else {
+        // Only a ticket that matched and then timed out is called expired,
+        // which tells the viewer it was merely away too long. A ticket the
+        // host ended on purpose, or one it never minted, gets the plain
+        // refusal, which the viewer never answers with a new session.
+        switch resumeStatus {
+        case .expired:
+            return .refused(reason: "host-screen-resume-expired")
+        case .invalid:
             return .refused(reason: "host-screen-resume-refused")
+        case .valid, nil:
+            break
         }
+        let resumeAccepted: Bool? = resumeStatus.map { $0 == .valid }
         return .passed(
             clientKey: clientKey,
             arming: arming,
@@ -1303,11 +1313,11 @@ public final class HostSessionController {
         devicePublicKey: Data,
         displayIdentity: HostScreenDisplayIdentity,
         armingFingerprint: HostScreenArmingFingerprint
-    ) -> Bool {
+    ) -> HostScreenResumeTicketStatus {
         guard let hostScreenResumeTicketStore else {
-            return false
+            return .invalid
         }
-        return hostScreenResumeTicketStore.peek(
+        return hostScreenResumeTicketStore.resumeStatus(
             token: token,
             devicePublicKey: devicePublicKey,
             displayIdentity: displayIdentity,

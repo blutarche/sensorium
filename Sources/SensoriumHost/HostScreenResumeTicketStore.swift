@@ -67,28 +67,41 @@ public protocol HostScreenResumeTicketStoring: AnyObject, Sendable {
         armingFingerprint: HostScreenArmingFingerprint
     ) -> Bool
 
-    /// The same yes/no `validate` answers, read only: neither window is
-    /// refreshed on success, and an expired record is left in place rather
-    /// than deleted. For a caller that only needs to know whether a ticket
-    /// is presently good -- deciding whether a request is even worth
-    /// waking displays for, or worth admitting past a check that can still
-    /// refuse it for an unrelated reason -- without itself spending any of
-    /// the ticket's own grace window to find out.
-    func peek(
+    /// What `validate` would decide, read only: neither window is refreshed
+    /// and an expired record is left in place rather than deleted. For a
+    /// caller that only needs to know whether a ticket is presently good --
+    /// deciding whether a request is even worth waking displays for, or
+    /// worth admitting past a check that can still refuse it for an
+    /// unrelated reason -- without itself spending any of the ticket's own
+    /// grace window to find out. `.expired` is reported only for a ticket
+    /// whose record matches this device, display, and arming fingerprint
+    /// and whose grace window or ceiling has since closed; every other
+    /// refusal is `.invalid`.
+    func resumeStatus(
         token: Data,
         devicePublicKey: Data,
         displayIdentity: HostScreenDisplayIdentity,
         armingFingerprint: HostScreenArmingFingerprint
-    ) -> Bool
+    ) -> HostScreenResumeTicketStatus
 
     /// Every ticket this device currently holds stops resuming anything.
     func invalidateAll(for devicePublicKey: Data)
 }
 
+/// How a presented resume ticket classifies. The distinction exists so a
+/// viewer that was only away too long can be told so, while a ticket the
+/// host deliberately ended (a Stop, a restart, a changed arming record) is
+/// indistinguishable from one that never existed.
+public enum HostScreenResumeTicketStatus: Equatable, Sendable {
+    case valid
+    case expired
+    case invalid
+}
+
 /// One resume ticket's own record. Never handed whole to a caller outside
 /// this file -- the opaque `token` is returned once, at mint time, and
 /// nothing about a record crosses this store's boundary again except a
-/// plain yes/no from `validate`.
+/// plain yes/no from `validate` and a classification from `resumeStatus`.
 private struct HostScreenResumeTicketRecord {
     let devicePublicKey: Data
     let displayIdentity: HostScreenDisplayIdentity
@@ -184,25 +197,24 @@ public final class HostScreenResumeTicketStore: HostScreenResumeTicketStoring, @
         return true
     }
 
-    public func peek(
+    public func resumeStatus(
         token: Data,
         devicePublicKey: Data,
         displayIdentity: HostScreenDisplayIdentity,
         armingFingerprint: HostScreenArmingFingerprint
-    ) -> Bool {
+    ) -> HostScreenResumeTicketStatus {
         let atSeconds = now()
         lock.lock()
         defer { lock.unlock() }
-        guard let record = records[token] else {
-            return false
-        }
-        guard record.devicePublicKey == devicePublicKey,
+        guard let record = records[token],
+              record.devicePublicKey == devicePublicKey,
               record.displayIdentity == displayIdentity,
               record.armingFingerprint == armingFingerprint else {
-            return false
+            return .invalid
         }
-        return atSeconds - record.lastResumedAtSeconds <= Self.graceWindowSeconds
+        let inWindows = atSeconds - record.lastResumedAtSeconds <= Self.graceWindowSeconds
             && atSeconds - record.mintedAtSeconds <= Self.ceilingSeconds
+        return inWindows ? .valid : .expired
     }
 
     public func invalidateAll(for devicePublicKey: Data) {

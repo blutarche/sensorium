@@ -222,4 +222,47 @@ func runHostScreenResumeTicketStoreTests() async {
 
         print("PASS: a resume ticket does not survive a host restart, because nothing here is ever persisted to disk")
     }
+
+    do {
+        // Only a ticket that matched and then timed out reads as expired
+        let clock = FakeClock()
+        let store = HostScreenResumeTicketStore(now: clock.now)
+        let token = store.mint(devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint())
+        func status(
+            _ presented: Data? = nil, device: Data? = nil, on shown: HostScreenDisplayIdentity? = nil,
+            arming: HostScreenArmingFingerprint? = nil
+        ) -> HostScreenResumeTicketStatus {
+            store.resumeStatus(
+                token: presented ?? token, devicePublicKey: device ?? deviceKey,
+                displayIdentity: shown ?? display, armingFingerprint: arming ?? fingerprint()
+            )
+        }
+
+        expect(status() == .valid, "a fresh matching ticket classifies as valid")
+        expect(status(Data([0x01, 0x02])) == .invalid, "a token this store never minted classifies as invalid")
+        expect(status(device: Data([0xBB])) == .invalid, "a different device classifies as invalid")
+        expect(status(on: otherDisplay) == .invalid, "a different display classifies as invalid")
+        expect(status(arming: fingerprint(asksWhenInUse: true)) == .invalid, "a changed arming record classifies as invalid")
+
+        clock.advance(by: HostScreenResumeTicketStore.graceWindowSeconds + 1)
+        expect(status() == .expired, "a matching ticket past its grace window classifies as expired")
+        expect(status() == .expired, "and classifying it again changes nothing, the record is left in place")
+        expect(status(device: Data([0xBB])) == .invalid, "an expired ticket presented by another device is still invalid, not expired")
+        expect(
+            !store.validate(token: token, devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint()),
+            "validate still refuses it"
+        )
+        expect(status() == .invalid, "and validate deleting the dead record makes it unknown from then on")
+
+        let stopped = store.mint(devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint())
+        store.invalidateAll(for: deviceKey)
+        clock.advance(by: HostScreenResumeTicketStore.graceWindowSeconds + 1)
+        expect(status(stopped) == .invalid, "a ticket invalidated for its device is invalid even after its window would have closed")
+
+        let ceilinged = store.mint(devicePublicKey: deviceKey, displayIdentity: display, armingFingerprint: fingerprint())
+        clock.advance(by: HostScreenResumeTicketStore.ceilingSeconds + 1)
+        expect(status(ceilinged) == .expired, "a matching ticket past the twelve-hour ceiling classifies as expired")
+
+        print("PASS: a matching ticket past either window classifies as expired; every other refusal classifies as invalid")
+    }
 }
