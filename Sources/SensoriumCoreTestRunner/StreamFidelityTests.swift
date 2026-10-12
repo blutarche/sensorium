@@ -374,6 +374,63 @@ func testStreamFidelityPressureNamesTheStageThatCannotKeepUp() {
     )
 }
 
+/// Two frames landing inside one display refresh leave one to show, so a
+/// viewer presenting fewer frames than it decoded is not behind when the rest
+/// were replaced on time. Only frames it could not keep up with count against
+/// it.
+func testStreamFidelityPressureCountsFramesReplacedOnTimeAsKeptUp() {
+    func sustained(_ viewer: StreamFidelityViewerObservation, times: Int = 3) -> StreamFidelityPressure {
+        var history = StreamFidelityPressure.History()
+        var pressure = StreamFidelityPressure.none
+        let observation = StreamFidelityObservation(
+            capturedDelta: 60,
+            producedBitsPerSecond: 10_000_000,
+            sentBitsPerSecond: 10_000_000,
+            viewer: viewer
+        )
+        for _ in 0..<times {
+            pressure = StreamFidelityPressure.classify(
+                observation,
+                appliedFramesPerSecond: 60,
+                history: &history
+            )
+        }
+        return pressure
+    }
+
+    expect(
+        sustained(StreamFidelityViewerObservation(
+            presentedFramesPerSecond: 33,
+            decodedFramesPerSecond: 50,
+            supersededOnTimeFramesPerSecond: 15
+        )) == .none,
+        "a viewer presenting 33 and replacing 15 on time of 50 decoded is keeping up"
+    )
+    expect(
+        sustained(StreamFidelityViewerObservation(
+            presentedFramesPerSecond: 33,
+            decodedFramesPerSecond: 50
+        )) == .viewer,
+        "the same viewer without the on-time figure reads by the old rule"
+    )
+    expect(
+        sustained(StreamFidelityViewerObservation(
+            presentedFramesPerSecond: 5,
+            decodedFramesPerSecond: 20,
+            supersededOnTimeFramesPerSecond: 0
+        )) == .viewer,
+        "a viewer presenting 5 of 20 decoded and replacing none on time is behind"
+    )
+    expect(
+        sustained(StreamFidelityViewerObservation(
+            presentedFramesPerSecond: 20,
+            decodedFramesPerSecond: 50,
+            supersededOnTimeFramesPerSecond: 14
+        )) == .viewer,
+        "frames replaced on time do not hide a viewer that still falls short of the share it must keep"
+    )
+}
+
 func testStreamFidelityPressurePrefersTheEarliestStageThatIsBehind() {
     /// Every rule below the encoder's own median needs several ticks in a
     /// row, so each scenario is held long enough for all of them to be true

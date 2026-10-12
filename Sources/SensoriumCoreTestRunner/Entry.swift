@@ -110,6 +110,7 @@ struct SensoriumCoreTestRunner {
             ("viewerDecoderPreference round-trips and refuses malformed shapes", testViewerDecoderPreferenceRoundTripsAndRefusesMalformed),
             ("the fidelity ladder spends frame rate before resolution and quality", testStreamFidelityLadderSpendsFrameRateBeforeResolutionAndQuality),
             ("fidelity pressure names the stage that cannot keep up", testStreamFidelityPressureNamesTheStageThatCannotKeepUp),
+            ("fidelity pressure counts frames replaced on time as kept up", testStreamFidelityPressureCountsFramesReplacedOnTimeAsKeptUp),
             ("fidelity pressure prefers the earliest stage that is behind", testStreamFidelityPressurePrefersTheEarliestStageThatIsBehind),
             ("fidelity steps down after one pressured tick and back up after two", testStreamFidelityStepsDownAfterOnePressuredTickAndBackUpAfterTwo),
             ("fidelity applies at most one change every two seconds", testStreamFidelityAppliesAtMostOneChangeEveryTwoSeconds),

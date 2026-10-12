@@ -2303,7 +2303,8 @@ public final class HostSessionCoordinator {
                     decodeP95Nanoseconds: ($0.decoderOnly ?? $0.decode)?.p95Nanoseconds,
                     presentedFramesPerSecond: $0.presentedFramesPerSecond,
                     decodedFramesPerSecond: $0.decodedFramesPerSecond,
-                    receivedBitsPerSecond: $0.receivedBitsPerSecond
+                    receivedBitsPerSecond: $0.receivedBitsPerSecond,
+                    supersededOnTimeFramesPerSecond: $0.supersededOnTimeFramesPerSecond
                 )
             },
             // This tick's own wall-clock length, for judging the encoder

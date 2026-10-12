@@ -236,6 +236,50 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: the viewer's decode budget is judged on its decoder's own time when the viewer reports it")
 
+    // Frames the viewer replaced on time count as kept up with
+    do {
+        /// A viewer that decoded 50 frames a second and showed 33 of them,
+        /// with an idle encoder, so only the viewer rule can limit the stream.
+        func limitReason(supersededOnTime: Double?) async -> String? {
+            let media = FakeScalableCanvasMedia()
+            let coordinator = makeCoordinator(media: onlyOnSurfaceZero(media))
+            _ = try! await coordinator.handleWritingResponse(
+                .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+            )
+            for tick in 0...8 {
+                _ = try! await coordinator.handleWritingResponse(
+                    .viewerTelemetry(
+                        ViewerTelemetrySample(
+                            surfaceID: 0,
+                            endToEnd: nil,
+                            receive: nil,
+                            decode: nil,
+                            presentedFramesPerSecond: 33,
+                            decodedFramesPerSecond: 50,
+                            receivedBitsPerSecond: nil,
+                            supersededOnTimeFramesPerSecond: supersededOnTime
+                        )
+                    )
+                )
+                media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 0)
+                await coordinator.tickFidelity(atSeconds: Double(tick))
+            }
+            return coordinator.fidelityLimitReason(for: surfaceZero)
+        }
+
+        let withoutOnTime = await limitReason(supersededOnTime: nil)
+        expect(
+            withoutOnTime == FidelityLimitReason.viewer,
+            "a viewer showing 33 of 50 decoded frames and reporting no on-time figure is behind, got \(String(describing: withoutOnTime))"
+        )
+        let withOnTime = await limitReason(supersededOnTime: 15)
+        expect(
+            withOnTime == nil,
+            "the same viewer replacing 15 frames a second on time is keeping up, got \(String(describing: withOnTime))"
+        )
+    }
+    print("PASS: frames the viewer replaced on time count as kept up with in the stream's frame rate decision")
+
     // A fidelity change names the viewer's decoder and its decode time split
     do {
         let media = FakeScalableCanvasMedia()

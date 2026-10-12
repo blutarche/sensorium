@@ -283,12 +283,18 @@ public enum StreamFidelityPressure: String, Equatable, Sendable, CaseIterable {
     /// Against the viewer's own decoded count, never against the frame rate
     /// the host asked for: a viewer presenting everything that reached it is
     /// not the stage that is behind.
+    ///
+    /// A frame replaced on time by a newer one, because two landed inside one
+    /// display refresh, was kept up with and not shown by design, so it counts
+    /// with the frames presented. Only frames the viewer left waiting longer
+    /// than that count against it.
     private static func isPresentingLessThanDecoded(_ viewer: StreamFidelityViewerObservation?) -> Bool {
         guard let presentedFramesPerSecond = viewer?.presentedFramesPerSecond,
               let decodedFramesPerSecond = viewer?.decodedFramesPerSecond,
               decodedFramesPerSecond >= viewerMinimumDecodedFramesPerSecond else {
             return false
         }
-        return presentedFramesPerSecond < deliveredFraction * decodedFramesPerSecond
+        let keptUpWith = presentedFramesPerSecond + (viewer?.supersededOnTimeFramesPerSecond ?? 0)
+        return keptUpWith < deliveredFraction * decodedFramesPerSecond
     }
 }

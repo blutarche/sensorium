@@ -15,17 +15,22 @@ public struct StreamFidelityViewerObservation: Equatable, Sendable {
     public let presentedFramesPerSecond: Double?
     public let decodedFramesPerSecond: Double?
     public let receivedBitsPerSecond: Double?
+    /// Decoded frames the viewer replaced on time with a newer one, which it
+    /// kept up with even though it did not show them. Absent counts as none.
+    public let supersededOnTimeFramesPerSecond: Double?
 
     public init(
         decodeP95Nanoseconds: Int64? = nil,
         presentedFramesPerSecond: Double? = nil,
         decodedFramesPerSecond: Double? = nil,
-        receivedBitsPerSecond: Double? = nil
+        receivedBitsPerSecond: Double? = nil,
+        supersededOnTimeFramesPerSecond: Double? = nil
     ) {
         self.decodeP95Nanoseconds = decodeP95Nanoseconds
         self.presentedFramesPerSecond = presentedFramesPerSecond
         self.decodedFramesPerSecond = decodedFramesPerSecond
         self.receivedBitsPerSecond = receivedBitsPerSecond
+        self.supersededOnTimeFramesPerSecond = supersededOnTimeFramesPerSecond
     }
 }
 
