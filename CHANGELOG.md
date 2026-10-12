@@ -10,6 +10,10 @@ once it reaches 1.0.
 
 ### Changed
 
+- A viewer that was asleep for longer than the host keeps a session open
+  now starts a new session by itself when the host will not resume the old
+  one, instead of stopping with "could not resume". It asks once for the
+  same screen, and the host's usual checks apply.
 - The viewer no longer holds frames back while you are using the host.
   Within half a second of any click, key press, scroll or pointer move,
   each frame is shown as soon as it arrives, which takes about 30
