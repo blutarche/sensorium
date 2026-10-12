@@ -251,5 +251,129 @@ func testViewerPresentationPacingTests() {
         "and none of them is given up for a frame captured after it, got \(supersededWhileQueued)"
     )
 
+    // While the person is interacting nothing is held. A history this uneven
+    // holds a frame for the ceiling when they are not.
+    do {
+        var jittery = PresentationPacer()
+        var capture = start
+        for index in 0..<40 {
+            let arrived = capture + (index.isMultiple(of: 2) ? 20_000_000 : 300_000_000)
+            jittery.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: arrived)
+            _ = jittery.frameToPresent(nowNanoseconds: arrived + PresentationPacer.maximumHoldNanoseconds)
+            capture += interval
+        }
+        let arrival = capture + 20_000_000
+        var interacting = jittery
+        jittery.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: arrival)
+        expect(
+            jittery.frameToPresent(nowNanoseconds: arrival) == nil
+                && jittery.holdNanoseconds == PresentationPacer.maximumHoldNanoseconds,
+            "without interaction a frame on this link is still held, got hold \(jittery.holdNanoseconds)"
+        )
+
+        interacting.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: arrival, interacting: true)
+        expect(
+            interacting.holdNanoseconds == 0,
+            "while interacting the hold reports zero, got \(interacting.holdNanoseconds)"
+        )
+        let shown = interacting.frameToPresent(nowNanoseconds: arrival)
+        expect(
+            capturedAt(shown) == capture && shown?.dueAtNanoseconds == arrival,
+            "a frame admitted while interacting is due at once, got due \(String(describing: shown?.dueAtNanoseconds)) of \(arrival)"
+        )
+    }
+
+    // Frames already held when interaction begins are released, newest first.
+    do {
+        var held = warmedPacer(interval: interval, transit: transit, start: start, frames: warmUpFrames)
+        let first = start + Int64(warmUpFrames) * interval
+        let second = first + interval
+        let arrival = second + transit
+        held.admit(makePacedFrame(capturedAtNanoseconds: first), nowNanoseconds: arrival)
+        held.admit(makePacedFrame(capturedAtNanoseconds: second), nowNanoseconds: arrival)
+        expect(
+            held.frameToPresent(nowNanoseconds: arrival - transit) == nil,
+            "frames held before interaction began are not yet due"
+        )
+        let released = held.frameToPresent(nowNanoseconds: arrival - transit, interacting: true)
+        expect(
+            capturedAt(released) == second && released?.supersededCount == 1 && held.pendingCount == 0,
+            "interaction releases the newest held frame and supersedes the older one, got \(String(describing: capturedAt(released)))"
+        )
+    }
+
+    // The link keeps being measured while interacting, so pacing resumes
+    // calibrated when the window lapses.
+    do {
+        var resumed = warmedPacer(interval: interval, transit: transit, start: start, frames: warmUpFrames)
+        expect(resumed.holdNanoseconds == interval, "the steady link is held one frame interval")
+        var capture = start + Int64(warmUpFrames) * interval
+        for index in 0..<40 {
+            let arrived = capture + (index.isMultiple(of: 2) ? 20_000_000 : 300_000_000)
+            resumed.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: arrived, interacting: true)
+            _ = resumed.frameToPresent(nowNanoseconds: arrived, interacting: true)
+            capture += interval
+        }
+        expect(resumed.holdNanoseconds == 0, "interacting, the hold still reports zero")
+        let arrival = capture + 20_000_000
+        resumed.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: arrival)
+        expect(
+            resumed.holdNanoseconds == PresentationPacer.maximumHoldNanoseconds,
+            "after the window lapses the hold is computed from frames admitted during it, got \(resumed.holdNanoseconds)"
+        )
+        expect(
+            resumed.frameToPresent(nowNanoseconds: arrival) == nil,
+            "and the next frame is held by it"
+        )
+    }
+
     print("viewer presentation pacing tests passed")
+}
+
+/// The input stamp the frame presenters read, written by the session at the
+/// one place input leaves for the host.
+func testViewerInputActivityTests() async {
+    let activity = ViewerInputActivity()
+    expect(!activity.isInteracting(nowNanoseconds: 1_000), "no input yet means not interacting")
+    activity.recordInput(atNanoseconds: 1_000_000_000)
+    expect(
+        activity.isInteracting(nowNanoseconds: 1_000_000_000 + PresentationPacer.interactionWindowNanoseconds),
+        "interacting up to the end of the window"
+    )
+    expect(
+        !activity.isInteracting(nowNanoseconds: 1_000_000_001 + PresentationPacer.interactionWindowNanoseconds),
+        "not interacting once the window has lapsed"
+    )
+
+    let transport = ScriptedClientTransport(responses: [
+        .canvasReady(displayID: 7, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0)
+    ])
+    let controller = ClientSessionController(transport: transport)
+    _ = try! await controller.connect(deviceName: "Laptop")
+    expect(
+        !controller.inputActivity.isInteracting(nowNanoseconds: MonotonicClock.nowNanoseconds()),
+        "a connected session that has sent no input is not interacting"
+    )
+    try! await controller.sendInput(.pointerMoved(x: 10, y: 10))
+    expect(
+        controller.inputActivity.isInteracting(nowNanoseconds: MonotonicClock.nowNanoseconds()),
+        "sending an input event through the session stamps its input activity"
+    )
+
+    let other = ClientSessionController(transport: ScriptedClientTransport(responses: [
+        .canvasReady(displayID: 7, logicalWidth: 1920, logicalHeight: 1200, hostSignature: nil, surfaceID: 0)
+    ]))
+    _ = try! await other.connect(deviceName: "Laptop")
+    var refused = false
+    do {
+        try await other.sendInput(.pointerMoved(x: 99_999, y: 10))
+    } catch {
+        refused = true
+    }
+    expect(
+        refused && !other.inputActivity.isInteracting(nowNanoseconds: MonotonicClock.nowNanoseconds()),
+        "an input event the session refuses is not interaction"
+    )
+
+    print("PASS: sending input stamps the session's input activity")
 }

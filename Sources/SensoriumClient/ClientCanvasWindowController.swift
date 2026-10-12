@@ -202,6 +202,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
 
         metalView = MTKView(frame: contentRect)
         presenter = try MetalFramePresenter(view: metalView, drops: drops)
+        presenter.inputActivity = session.inputActivity
         viewport = ClientViewportController(
             mapper: VirtualCanvasInputMapper(
                 logicalWidth: Double(preset.logicalWidth),
@@ -666,6 +667,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// reconnect. The viewport stays disarmed until the new canvas is ready.
     public func attach(session: ClientSessionController) async {
         self.session = session
+        presenter.inputActivity = session.inputActivity
         // The new host has been told nothing, so the next transition — or
         // `show()` below — must report focus again from scratch.
         focusReporter?.reset()
@@ -937,6 +939,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// How far past its capture time this window is holding each frame to keep
     /// the motion even -- see `PresentationPacer`. Read once per telemetry
     /// tick, for the panel to show as latency this machine added on purpose.
+    /// Zero while the person is interacting, when no frame is held.
     public var presentationHoldNanoseconds: Int64 {
         presenter.holdNanoseconds
     }

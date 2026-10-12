@@ -80,6 +80,9 @@ public final class EGLFramePresenter {
     nonisolated(unsafe) private let surface: EGLSurface
     private let drops: ViewerFrameDropCounter?
     private var pacer = PresentationPacer()
+    /// The session's input stamp, which tells the pacer the person is
+    /// interacting. Set again when a window is pointed at a new session.
+    public var inputActivity: ViewerInputActivity?
     /// One program per colour conversion, of which a session uses one. Built
     /// on first use because the matrix is compiled into the shader.
     private var programs: [NV12ColorConversion: Program] = [:]
@@ -281,7 +284,12 @@ public final class EGLFramePresenter {
     /// Takes one decoded frame and returns. Nothing is drawn here: the frame
     /// waits until the frame callback its due time falls on.
     public func present(_ frame: DecodedFrame) {
-        let superseded = pacer.admit(frame, nowNanoseconds: MonotonicClock.nowNanoseconds())
+        let now = MonotonicClock.nowNanoseconds()
+        let superseded = pacer.admit(
+            frame,
+            nowNanoseconds: now,
+            interacting: inputActivity?.isInteracting(nowNanoseconds: now) ?? false
+        )
         drops?.recordDroppedBeforePresent(superseded)
     }
 
@@ -300,7 +308,10 @@ public final class EGLFramePresenter {
     @discardableResult
     public func drawIfDue(nowNanoseconds: Int64) -> Int64? {
         guard !hasTornDown else { return nil }
-        if let due = pacer.frameToPresent(nowNanoseconds: nowNanoseconds) {
+        if let due = pacer.frameToPresent(
+            nowNanoseconds: nowNanoseconds,
+            interacting: inputActivity?.isInteracting(nowNanoseconds: nowNanoseconds) ?? false
+        ) {
             drops?.recordDroppedBeforePresent(due.supersededCount)
             latestFrame = due.frame.payload as? AVFrameBox
             latestTiming = due.frame.timing

@@ -140,6 +140,10 @@ public actor ClientSessionController {
     /// This session's own counter for `SensoriumMessage.input`'s `sequence`
     /// tag -- see `SessionMetricStage.inputRoundTrip`.
     private var nextInputSequence: UInt64 = 0
+    /// Stamped by every input event this session sends, on whichever surface;
+    /// the window's frame presenter reads it to stop holding frames while the
+    /// person is interacting.
+    public nonisolated let inputActivity = ViewerInputActivity()
     /// Sequence -> the moment this session sent it, so a later `inputApplied`
     /// can be turned into an elapsed round trip. Bounded, not exact over the
     /// whole session: a host that never replies -- an old build, or every
@@ -733,7 +737,9 @@ public actor ClientSessionController {
         }
         let sequence = nextInputSequence
         nextInputSequence += 1
-        recordPendingInputSend(sequence: sequence, atNanoseconds: MonotonicClock.nowNanoseconds())
+        let sentAt = MonotonicClock.nowNanoseconds()
+        inputActivity.recordInput(atNanoseconds: sentAt)
+        recordPendingInputSend(sequence: sequence, atNanoseconds: sentAt)
         try await transport.send(.input(event, surfaceID: surfaceID, sequence: sequence))
     }
 

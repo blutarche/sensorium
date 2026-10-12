@@ -249,6 +249,13 @@ public final class WaylandSessionWindow:
             pinMemoryStore: pinMemoryStore,
             makeDecoder: makeDecoder
         )
+        presenter?.inputActivity = session.inputActivity
+    }
+
+    /// Points the frame presenter at the input stamp of the session this
+    /// window now shows.
+    func useInputActivity(of session: ClientSessionController) {
+        presenter?.inputActivity = session.inputActivity
     }
 
     // MARK: - Bring-up

@@ -35,6 +35,9 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
     /// in the same place as every other frame this viewer gave up.
     private let drops: ViewerFrameDropCounter?
     private var pacer = PresentationPacer()
+    /// The session's input stamp, which tells the pacer the person is
+    /// interacting. Set again when a window is pointed at a new session.
+    public var inputActivity: ViewerInputActivity?
     private var latestFrame: CVPixelBuffer?
     private var latestTiming: FrameTiming?
     /// When the frame in `latestFrame` was due on screen, which is what its
@@ -112,7 +115,12 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
         // Admitted first and counted second: an optional chain skips its own
         // argument, so a presenter with no counter attached would admit
         // nothing at all.
-        let superseded = pacer.admit(frame, nowNanoseconds: MonotonicClock.nowNanoseconds())
+        let now = MonotonicClock.nowNanoseconds()
+        let superseded = pacer.admit(
+            frame,
+            nowNanoseconds: now,
+            interacting: inputActivity?.isInteracting(nowNanoseconds: now) ?? false
+        )
         drops?.recordDroppedBeforePresent(superseded)
         updatePreferredFramesPerSecond()
     }
@@ -141,7 +149,10 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     public func draw(in view: MTKView) {
         let now = MonotonicClock.nowNanoseconds()
-        if let due = pacer.frameToPresent(nowNanoseconds: now) {
+        if let due = pacer.frameToPresent(
+            nowNanoseconds: now,
+            interacting: inputActivity?.isInteracting(nowNanoseconds: now) ?? false
+        ) {
             drops?.recordDroppedBeforePresent(due.supersededCount)
             latestFrame = due.frame.pixelBuffer
             latestTiming = due.frame.timing

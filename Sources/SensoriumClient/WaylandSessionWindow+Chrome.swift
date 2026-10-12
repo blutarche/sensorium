@@ -99,6 +99,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
     /// router, the mapper and the decode pipeline all belong to the window and
     /// survive; only where this window's input goes changes.
     public func attach(session: ClientSessionController) async {
+        useInputActivity(of: session)
         await canvasObserver().replacePointerSink(
             surfaceID == 0 ? session : SurfaceScopedInputSink(session: session, surfaceID: surfaceID)
         )

@@ -36,6 +36,15 @@ import SensoriumCore
 /// delay a typed character or a click. The frames after it are paced as above,
 /// and `holdNanoseconds` describes those.
 ///
+/// None of that applies while the person is interacting. A frame they are
+/// waiting on is the picture their last click or keystroke produced, and any
+/// hold is delay between their action and seeing it, which is felt far more
+/// than judder is seen. The caller says so with `interacting`, and then every
+/// frame is due the moment it is admitted, the newest one waiting is drawn at
+/// the next refresh whatever its due time, and `holdNanoseconds` reports zero
+/// because none is being added. The link is still measured throughout, so
+/// pacing resumes already calibrated when the interaction stops.
+///
 /// Pure and nonisolated: what to draw when is decided here, and the drawing
 /// itself, the display link and the GPU stay in `MetalFramePresenter`.
 public struct PresentationPacer: Sendable {
@@ -66,10 +75,22 @@ public struct PresentationPacer: Sendable {
     /// drawing at all, since a hold of at most 50 milliseconds cannot fill it.
     public static let maximumPending = 8
 
+    /// How long after the last input event the person still counts as
+    /// interacting. It must outlast the round trip from an input to the frame
+    /// that shows its effect, about 180 milliseconds at the 95th percentile
+    /// when measured, plus margin, so the frame a click produced is not held
+    /// the moment the click is over.
+    public static let interactionWindowNanoseconds: Int64 = 500_000_000
+
     /// How far past its capture stamp each frame is currently being held.
     /// Shown on the session panel, because it is latency this machine added
     /// on purpose and a person reading the panel should be able to see it.
-    public private(set) var holdNanoseconds: Int64 = 0
+    /// Zero while the person is interacting, when no frame is held.
+    public var holdNanoseconds: Int64 { isInteracting ? 0 : pacedHoldNanoseconds }
+
+    private var pacedHoldNanoseconds: Int64 = 0
+    /// What the caller last said, so `holdNanoseconds` follows it.
+    private var isInteracting = false
 
     /// Two seconds of a 60fps stream: long enough to have seen the link's
     /// spread, short enough to follow a link that changes.
@@ -98,10 +119,23 @@ public struct PresentationPacer: Sendable {
     /// A frame with no timing is due at once: without a capture stamp there is
     /// nothing to pace it against, and a viewer that has not yet tied its
     /// frames to the host's clock still has to show them.
+    ///
+    /// While `interacting`, the frame is due at once too, and so is every frame
+    /// already waiting, so the queue stays in due order. Its timing is still
+    /// recorded.
     @discardableResult
-    public mutating func admit(_ frame: DecodedFrame, nowNanoseconds: Int64) -> Int {
+    public mutating func admit(
+        _ frame: DecodedFrame,
+        nowNanoseconds: Int64,
+        interacting: Bool = false
+    ) -> Int {
+        isInteracting = interacting
         guard let timing = frame.timing else {
-            return append(frame, dueAtNanoseconds: nowNanoseconds)
+            return append(
+                frame,
+                dueAtNanoseconds: nowNanoseconds,
+                releasingWaitingAt: interacting ? nowNanoseconds : nil
+            )
         }
         let capturedAt = timing.hostCapturedAtNanoseconds
         let previousCapturedAt = lastCapturedAtNanoseconds
@@ -112,24 +146,45 @@ public struct PresentationPacer: Sendable {
         let spread = (percentile(arrivalDelays, 0.9) ?? baseline) - baseline
         // `spread` is never negative, so this is already at least one frame
         // interval.
-        holdNanoseconds = min(spread + interval, Self.maximumHoldNanoseconds)
+        pacedHoldNanoseconds = min(spread + interval, Self.maximumHoldNanoseconds)
         // Longer than a frame held for the most it can be, so the frame before
         // it was already on screen and nothing is left to keep even.
         let firstAfterStillness = pending.isEmpty
-            && previousCapturedAt.map { capturedAt - $0 > holdNanoseconds + interval } == true
+            && previousCapturedAt.map { capturedAt - $0 > pacedHoldNanoseconds + interval } == true
+        if interacting {
+            return append(
+                frame,
+                capturedAtNanoseconds: capturedAt,
+                dueAtNanoseconds: nowNanoseconds,
+                releasingWaitingAt: nowNanoseconds
+            )
+        }
         return append(
             frame,
             capturedAtNanoseconds: capturedAt,
             dueAtNanoseconds: firstAfterStillness
                 ? nowNanoseconds
-                : capturedAt + baseline + holdNanoseconds
+                : capturedAt + baseline + pacedHoldNanoseconds
         )
     }
 
     /// The newest frame that is due, and how many older ones it supersedes.
     /// `nil` when nothing waiting is due yet, which is the screen's cue to
     /// leave the picture it is already showing alone.
-    public mutating func frameToPresent(nowNanoseconds: Int64) -> Presentation? {
+    ///
+    /// While `interacting`, the newest waiting frame is presented whether or
+    /// not it is due, and every older one is superseded.
+    public mutating func frameToPresent(nowNanoseconds: Int64, interacting: Bool = false) -> Presentation? {
+        isInteracting = interacting
+        if interacting, let newest = pending.last {
+            let superseded = pending.count - 1
+            pending.removeAll()
+            return Presentation(
+                frame: newest.frame,
+                dueAtNanoseconds: min(newest.dueAtNanoseconds, nowNanoseconds),
+                supersededCount: superseded
+            )
+        }
         // Due times rise with position, so the last one that has passed is
         // both the newest frame due and the last waiting frame worth keeping.
         guard let index = pending.lastIndex(where: { $0.dueAtNanoseconds <= nowNanoseconds }) else {
@@ -153,7 +208,8 @@ public struct PresentationPacer: Sendable {
         captureIntervals.removeAll()
         lastCapturedAtNanoseconds = nil
         baselineNanoseconds = nil
-        holdNanoseconds = 0
+        pacedHoldNanoseconds = 0
+        isInteracting = false
     }
 
     /// The baseline follows the window's smallest delay upwards at once, since
@@ -203,12 +259,24 @@ public struct PresentationPacer: Sendable {
     private mutating func append(
         _ frame: DecodedFrame,
         capturedAtNanoseconds: Int64? = nil,
-        dueAtNanoseconds: Int64
+        dueAtNanoseconds: Int64,
+        releasingWaitingAt releaseNanoseconds: Int64? = nil
     ) -> Int {
+        if let releaseNanoseconds {
+            for index in pending.indices where pending[index].dueAtNanoseconds > releaseNanoseconds {
+                pending[index] = Waiting(
+                    frame: pending[index].frame,
+                    dueAtNanoseconds: releaseNanoseconds,
+                    capturedAtNanoseconds: pending[index].capturedAtNanoseconds
+                )
+            }
+        }
         var dueAt = dueAtNanoseconds
         if let last = pending.last {
             let separation: Int64
-            if let capturedAtNanoseconds, let lastCapturedAt = last.capturedAtNanoseconds {
+            if releaseNanoseconds != nil {
+                separation = 0
+            } else if let capturedAtNanoseconds, let lastCapturedAt = last.capturedAtNanoseconds {
                 separation = max(0, capturedAtNanoseconds - lastCapturedAt)
             } else {
                 separation = 0

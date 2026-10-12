@@ -45,7 +45,8 @@ public struct SessionHUDSnapshot: Equatable, Sendable {
     /// How far past its capture time this viewer is holding each frame so that
     /// frames arriving in groups still reach the screen evenly spaced --
     /// `PresentationPacer.holdNanoseconds`. Zero before the first frame has
-    /// been held at all, which the panel shows as not yet measured.
+    /// been held at all, and zero while the person is interacting, when
+    /// frames are shown without a hold; the panel shows both as no hold.
     public let presentationHoldNanoseconds: Int64?
     /// `TelemetryAttentionThreshold`'s verdict on the whole reading: drops,
     /// staleness, or an end-to-end p50 past its threshold. Not a row of its
