@@ -368,11 +368,26 @@ final class ClientSessionHost {
             if await controller.hostOffersCanvasIsKnown {
                 hostOffersCanvas = await controller.hostOffersCanvas
             }
-            if connectPlan.ticketToPresent != nil, case .hostScreenRefused = error {
+            if connectPlan.ticketToPresent != nil, case let .hostScreenRefused(reason) = error {
                 // A ticket the host refused is known bad and is
-                // never presented again. `ClientReconnectDriver` stops the
-                // whole run on this same error, so nothing here retries it.
+                // never presented again.
                 heldResumeTicket = nil
+                if HostScreenResumeTicketRetention.startsFreshSession(
+                    afterRefusal: reason, presentedTicket: connectPlan.ticketToPresent
+                ) {
+                    // The person was away past the host's grace window, so
+                    // this is a new session, started the way their own
+                    // Connect starts one: no ticket, a person-initiated
+                    // request for the same screen, every host-side gate
+                    // applying. At most once per refused resume -- that
+                    // attempt holds no ticket, so a refusal of it ends the
+                    // run through `ClientReconnectDriver` as usual.
+                    await transport.close()
+                    hostScreenConnectIsPersonInitiated = true
+                    return try await runOnce()
+                }
+                // `ClientReconnectDriver` stops the whole run on this same
+                // error, so nothing here retries it.
             }
             throw error
         }

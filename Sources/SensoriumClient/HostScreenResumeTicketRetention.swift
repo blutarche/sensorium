@@ -57,6 +57,18 @@ public enum HostScreenResumeTicketRetention {
         nil
     }
 
+    /// The host's answer to a resume ticket it no longer honours: the grace
+    /// window passed, the surface was torn down, or the arming record changed.
+    public static let resumeRefusedReason = "host-screen-resume-refused"
+
+    /// Whether a failed connect should be followed by one fresh session. Only
+    /// a refused resume qualifies, and only when a ticket was actually
+    /// presented: a connect that presented none is already a fresh session,
+    /// so a refusal of it ends the run instead of asking again.
+    public static func startsFreshSession(afterRefusal reason: String, presentedTicket: Data?) -> Bool {
+        presentedTicket != nil && reason == resumeRefusedReason
+    }
+
     /// Never in a retry loop: without a ticket the host reads a host-screen
     /// connect as a new session, so a host set to ask first puts its prompt
     /// up for it. An automatic redial holding no ticket therefore stops and

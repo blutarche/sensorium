@@ -50,6 +50,9 @@ public enum HostScreenRefusalCopy {
             // reaches that machine at all.
             return "The connection dropped before the screen came up. Connect again to ask for it."
         case "host-screen-resume-refused":
+            // A refused resume starts a fresh session by itself, so this
+            // line is shown only when that fresh attempt is itself answered
+            // this way.
             return "The connection was interrupted and could not resume."
         case "host-screen-session-active":
             return "That machine was already showing this machine a host screen. That session has ended."

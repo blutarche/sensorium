@@ -434,6 +434,9 @@ func testViewerApplicationTests() async {
     await testRowClickAfterUnreachableKeepsDiallingUntilHostAnswers()
     await testRedialAfterRequestWasSentWithoutTicketStops()
     await testRedialAfterLiveSessionDropPresentsHeldTicket()
+    await testRefusedResumeStartsOneFreshSession()
+    await testRefusedFreshSessionAfterRefusedResumeSurfacesItsOwnReason()
+    await testOtherRefusalOfAResumeStartsNoFreshSession()
 }
 
 /// docs/ux-spec.md line 61: a failed attempt keeps a short reason on the row,
@@ -912,4 +915,139 @@ private func testRedialAfterLiveSessionDropPresentsHeldTicket() async {
     harness.launch.onCloseRequested?()
     _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
     print("PASS: a live session dropped mid-stream redials presenting its held ticket")
+}
+
+/// One host-screen request as the host would see it: the screen asked for and
+/// the ticket presented, if any.
+private struct SentHostScreenRequest: Equatable {
+    let token: Data
+    let ticket: Data?
+}
+
+private func sentHostScreenRequests(of connection: UnreachableThenScriptedConnection) async -> [SentHostScreenRequest] {
+    var found: [SentHostScreenRequest] = []
+    for case let .hostScreenRequest(token, ticket) in await connection.sentMessages {
+        found.append(SentHostScreenRequest(token: token, ticket: ticket))
+    }
+    return found
+}
+
+/// Plays a host-screen session that drops, a redial that presents its ticket
+/// and is answered `resumeAnswer`, and every later dial answered
+/// `laterDialScript`. Waits for `expectedDials` connections (or the run
+/// stopping), then a moment longer so an unwanted extra dial would show up.
+@MainActor
+private func playRefusedResume(
+    resumeAnswer: SensoriumMessage,
+    laterDialScript: [SensoriumTransportPacket],
+    expectedDials: Int,
+    machineKey: UInt8
+) async -> (requestsPerDial: [[SentHostScreenRequest]], rowReasons: [String]) {
+    let ledger = StartLedger(failingStarts: 0)
+    let made = ConnectionsMade()
+    let harness = ViewerApplicationHarness {
+        let dial = made.all.count
+        let script: [SensoriumTransportPacket]
+        switch dial {
+        case 0: script = hostScreenScript()
+        case 1: script = [hostScreenScript()[0], .control(resumeAnswer)]
+        default: script = laterDialScript
+        }
+        let connection = UnreachableThenScriptedConnection(
+            ledger: ledger, responses: script, dropsWhenScriptEnds: dial == 0
+        )
+        made.append(connection)
+        return connection
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([machineKey]))
+    harness.store.save(machine)
+    await harness.viewer.run(arguments: [])
+    _ = await harness.settle(until: { harness.launch.showCount > 0 })
+    harness.launch.onConnect?(machine)
+    _ = await harness.settle(until: {
+        made.all.count >= expectedDials || harness.launch.stoppedTryingCount > 0
+    })
+    try? await Task.sleep(for: .milliseconds(200))
+    var requests: [[SentHostScreenRequest]] = []
+    for connection in made.all { requests.append(await sentHostScreenRequests(of: connection)) }
+    let reasons = harness.launch.attemptFailures.map(\.reason)
+    harness.launch.onCloseRequested?()
+    _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
+    return (requests, reasons)
+}
+
+/// A viewer that slept past the host's grace window redials with a ticket the
+/// host no longer honours. It then asks again for the same screen, once, the
+/// way a person's Connect would, and never shows the "could not resume" line.
+@MainActor
+private func testRefusedResumeStartsOneFreshSession() async {
+    let played = await playRefusedResume(
+        resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-refused"),
+        laterDialScript: hostScreenScript(),
+        expectedDials: 3,
+        machineKey: 11
+    )
+    let token = Data([0x0A])
+    expect(
+        played.requestsPerDial == [
+            [SentHostScreenRequest(token: token, ticket: nil)],
+            [SentHostScreenRequest(token: token, ticket: Data([0x66]))],
+            [SentHostScreenRequest(token: token, ticket: nil)]
+        ],
+        "a refused resume is followed by exactly one fresh request for the same screen, presenting no ticket -- "
+            + "requests per dial=\(played.requestsPerDial)"
+    )
+    expect(played.rowReasons.isEmpty, "and no failure is reported for the refused resume, got \(played.rowReasons)")
+    print("PASS: a refused resume starts exactly one fresh session for the same screen")
+}
+
+/// The fresh attempt is a manual connect in every way: whatever it fails with
+/// is shown as its own reason, and it is never answered with another attempt,
+/// even when that failure is a refused resume again.
+@MainActor
+private func testRefusedFreshSessionAfterRefusedResumeSurfacesItsOwnReason() async {
+    for freshReason in ["host-screen-not-allowed", "host-screen-resume-refused"] {
+        let played = await playRefusedResume(
+            resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-refused"),
+            laterDialScript: [hostScreenScript()[0], .control(.hostScreenRefused(reason: freshReason))],
+            expectedDials: 4,
+            machineKey: 12
+        )
+        expect(
+            played.requestsPerDial.count == 3,
+            "a failed fresh attempt (\(freshReason)) makes no further attempt -- "
+                + "dials=\(played.requestsPerDial.count)"
+        )
+        expect(
+            played.rowReasons == [ViewerSessionFailureCopy.rowLine(
+                for: .hostScreenRefused(reason: freshReason), hostLabel: "Studio"
+            )],
+            "and its own reason is the only one shown (\(freshReason)), got \(played.rowReasons)"
+        )
+    }
+    print("PASS: a failed fresh attempt after a refused resume surfaces its own reason and is not retried")
+}
+
+/// Only a refused resume starts a fresh session; any other host answer to the
+/// resume stops where it did before.
+@MainActor
+private func testOtherRefusalOfAResumeStartsNoFreshSession() async {
+    let played = await playRefusedResume(
+        resumeAnswer: .hostScreenRefused(reason: "host-screen-not-allowed"),
+        laterDialScript: hostScreenScript(),
+        expectedDials: 3,
+        machineKey: 13
+    )
+    expect(
+        played.requestsPerDial.count == 2,
+        "a resume refused for any other reason makes no fresh attempt -- dials=\(played.requestsPerDial.count)"
+    )
+    expect(
+        played.rowReasons == [ViewerSessionFailureCopy.rowLine(
+            for: .hostScreenRefused(reason: "host-screen-not-allowed"), hostLabel: "Studio"
+        )],
+        "and that refusal is shown as it was before, got \(played.rowReasons)"
+    )
+    print("PASS: a resume refused for another reason surfaces as before with no fresh attempt")
 }

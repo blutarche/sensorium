@@ -158,9 +158,9 @@ This applies everywhere else privacy is claimed in the product: the operator sta
 A grant belongs to a host-screen session, not to a transport connection, and the host decides what counts as the same session. At session start the host mints a short-lived opaque resume ticket with `hostScreenReady`. The viewer presents it on reconnect.
 
 - **Transport interruption.** The ticket is presented, the host still holds the surface, and the session resumes with no prompt.
-- **A new session prompts.** The ticket is expired or unknown, the surface was torn down, the host restarted, a different display was requested, or the arming record changed. The host refuses the resume attempt with `host-screen-resume-refused`, and the viewer falls back to its ordinary connect flow.
+- **A new session prompts.** The ticket is expired or unknown, the surface was torn down, the host restarted, a different display was requested, or the arming record changed. The host refuses the resume attempt with `host-screen-resume-refused`. The viewer then makes one fresh connection to the same machine, asking for the same screen, the way a person's Connect does, so every host-side gate applies as on a manual connect. The "could not resume" line is not shown for it. If that fresh attempt fails, its own reason is shown and nothing more is tried.
 - **Grace window and ceiling.** The grace window is five minutes, refreshed on each successful resume. A grant never survives more than twelve hours of resumes. The next reconnect after that prompts, and a live session is never interrupted mid-way.
-- **Never in a retry loop.** The check runs only on a user-initiated connect, at most once per action. Automatic reconnection either presents a valid ticket or stops and waits for the person.
+- **Never in a retry loop.** The check runs only on a user-initiated connect, at most once per action. Automatic reconnection either presents a valid ticket or stops and waits for the person. The one fresh attempt after a refused resume is the only exception, and it holds no ticket, so a refusal of it cannot start another.
 
 ### 6.5 Threat model
 
