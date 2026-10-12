@@ -32,7 +32,7 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 |---|---|
 | `Scripts/run-loopback-integration.sh` | The in-process host/client loopback -- pairing, authenticated handshake, canvas lifecycle, input path, recovery scenarios -- over an in-memory transport and a fake display adapter. No socket, no permission |
 | `Scripts/verify-tailscale-route.sh` | Prints the `tailscale ping --verbose` command to run by hand before a latency claim, and how to read direct versus DERP-relayed |
-| `Scripts/benchmark-session.sh` | A placeholder that does nothing yet and exits non-zero, naming the steps a real benchmark needs, rather than publish a number this project has not measured |
+| `Scripts/benchmark-session.sh` | A latency run between the stand-in host on this machine and a Linux viewer over SSH, with scripted pointer motion. See the stand-in section below. Needs a second machine, so nothing runs it automatically |
 | `Scripts/test-package-apps.sh` | The packager, `Scripts/package-apps.sh`, run only with signing identities guaranteed absent from the machine, so it never touches a real keychain identity |
 | `Scripts/test-release-macos.sh` | The release script `Scripts/release-macos.sh` in a scratch copy, with a stub packager and a generated key: zips, the signed manifest, and every refusal. Signs nothing with a real identity |
 | `Scripts/test-package-linux.sh` | The Fedora package `Scripts/package-linux.sh` builds: its desktop entry, its metainfo, its icons, the libraries it asks for, and that removing it leaves nothing behind. Runs only inside the CI Fedora container, where installing a package is safe |
@@ -51,6 +51,26 @@ SensoriumBenchHost <tailnet-address> <port> --state-dir <dir> --trace <path> [--
 It prints `bench-host pairing-code <code>` once at start. Its keys and paired devices live in `--state-dir`. It appends the host stage traces to `--trace`, prints `bench-host session-ended`, and exits after the first session that ends, after `--max-seconds` (default 180), or on SIGTERM.
 
 It never captures or lists a display, calls ScreenCaptureKit or any permission-gated API, creates a virtual display, posts input events, locks or unlocks the screen, holds a display awake, opens a window or menu-bar item, listens on port 7777, touches the clipboard, or reads or writes outside `--state-dir` and `--trace`. It accepts only a tailnet address.
+
+### Running the benchmark
+
+```sh
+Scripts/benchmark-session.sh --viewer <ssh-destination> [--runs N] [--ab] [--plan move:20,still:40,move:20] [--seconds 85] [--out <dir>]
+```
+
+Run it on the macOS machine that hosts the stand-in. It needs one thing from the other side: an SSH-reachable Linux machine with a Swift toolchain, KWin, `spectacle` and a GPU. That machine is never paired to anything real. The probe keeps its keys and its one paired host in a scratch directory under `--remote-dir` (default `sensorium-bench` in the remote home), and the stand-in keeps its own in the output directory.
+
+What it does:
+
+1. Builds `SensoriumBenchHost` in release mode under `.build/bench`.
+2. Copies the source tree to the viewer machine with `rsync` and builds `SensoriumViewerProbe` there.
+3. Starts the stand-in on this machine's Tailscale address and pairs the probe with it once, using the pairing code the stand-in prints.
+4. For each run, starts a fresh stand-in, runs `SensoriumViewerProbe view` inside a nested virtual KWin (`Scripts/linux-headless-session.sh`) while the pointer follows `--plan`, and waits for it to finish.
+5. Prints one line per run: viewer end-to-end, receive and present delays, presented and dropped frames, the longest freeze during motion, the time to the first frame after motion resumes, the stand-in's captured frame count and its encode delay.
+
+With `--ab` each run makes two sessions, one with the viewer's normal release-on-interaction behaviour and one with `--no-interaction-release`. The raw viewer and stand-in logs, the stand-in trace files, the screenshots and the `bench-viewer` JSON of every run stay in `--out`. They contain the real tailnet address, so keep them out of the repository; the script prints addresses as `<addr>`.
+
+The stand-in listens on port 7790 by default and refuses 7777. Interrupting the script stops the stand-in.
 
 ## Linux
 
