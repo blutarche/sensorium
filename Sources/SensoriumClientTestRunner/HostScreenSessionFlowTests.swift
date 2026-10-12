@@ -142,6 +142,16 @@ func testHostScreenSessionFlowTests() async {
     }
 
     do {
+        let line = HostScreenRefusalCopy.line(reason: "host-screen-resume-expired")
+        expect(
+            line == "The connection was away too long to resume.",
+            "host-screen-resume-expired says the connection was away too long -- got \(line)"
+        )
+
+        print("PASS: host-screen-resume-expired reads as a plain sentence, not the unknown-reason default")
+    }
+
+    do {
         // The remaining named reasons, rewritten to plain sentence
         // case and to name the host's own toggle exactly.
         let canvasSessionActive = HostScreenRefusalCopy.line(reason: "canvas-session-active")

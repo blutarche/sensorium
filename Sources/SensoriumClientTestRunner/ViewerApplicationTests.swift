@@ -434,9 +434,10 @@ func testViewerApplicationTests() async {
     await testRowClickAfterUnreachableKeepsDiallingUntilHostAnswers()
     await testRedialAfterRequestWasSentWithoutTicketStops()
     await testRedialAfterLiveSessionDropPresentsHeldTicket()
-    await testRefusedResumeStartsOneFreshSession()
-    await testRefusedFreshSessionAfterRefusedResumeSurfacesItsOwnReason()
+    await testExpiredResumeStartsOneFreshSession()
+    await testRefusedFreshSessionAfterExpiredResumeSurfacesItsOwnReason()
     await testOtherRefusalOfAResumeStartsNoFreshSession()
+    await testRefusedResumeStartsNoFreshSession()
 }
 
 /// docs/ux-spec.md line 61: a failed attempt keeps a short reason on the row,
@@ -978,12 +979,12 @@ private func playRefusedResume(
 }
 
 /// A viewer that slept past the host's grace window redials with a ticket the
-/// host no longer honours. It then asks again for the same screen, once, the
+/// host reports as expired. It then asks again for the same screen, once, the
 /// way a person's Connect would, and never shows the "could not resume" line.
 @MainActor
-private func testRefusedResumeStartsOneFreshSession() async {
+private func testExpiredResumeStartsOneFreshSession() async {
     let played = await playRefusedResume(
-        resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-refused"),
+        resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-expired"),
         laterDialScript: hostScreenScript(),
         expectedDials: 3,
         machineKey: 11
@@ -995,21 +996,21 @@ private func testRefusedResumeStartsOneFreshSession() async {
             [SentHostScreenRequest(token: token, ticket: Data([0x66]))],
             [SentHostScreenRequest(token: token, ticket: nil)]
         ],
-        "a refused resume is followed by exactly one fresh request for the same screen, presenting no ticket -- "
+        "an expired resume is followed by exactly one fresh request for the same screen, presenting no ticket -- "
             + "requests per dial=\(played.requestsPerDial)"
     )
-    expect(played.rowReasons.isEmpty, "and no failure is reported for the refused resume, got \(played.rowReasons)")
-    print("PASS: a refused resume starts exactly one fresh session for the same screen")
+    expect(played.rowReasons.isEmpty, "and no failure is reported for the expired resume, got \(played.rowReasons)")
+    print("PASS: an expired resume starts exactly one fresh session for the same screen")
 }
 
 /// The fresh attempt is a manual connect in every way: whatever it fails with
 /// is shown as its own reason, and it is never answered with another attempt,
-/// even when that failure is a refused resume again.
+/// even when that failure is a refused or expired resume again.
 @MainActor
-private func testRefusedFreshSessionAfterRefusedResumeSurfacesItsOwnReason() async {
-    for freshReason in ["host-screen-not-allowed", "host-screen-resume-refused"] {
+private func testRefusedFreshSessionAfterExpiredResumeSurfacesItsOwnReason() async {
+    for freshReason in ["host-screen-not-allowed", "host-screen-resume-refused", "host-screen-resume-expired"] {
         let played = await playRefusedResume(
-            resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-refused"),
+            resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-expired"),
             laterDialScript: [hostScreenScript()[0], .control(.hostScreenRefused(reason: freshReason))],
             expectedDials: 4,
             machineKey: 12
@@ -1026,10 +1027,10 @@ private func testRefusedFreshSessionAfterRefusedResumeSurfacesItsOwnReason() asy
             "and its own reason is the only one shown (\(freshReason)), got \(played.rowReasons)"
         )
     }
-    print("PASS: a failed fresh attempt after a refused resume surfaces its own reason and is not retried")
+    print("PASS: a failed fresh attempt after an expired resume surfaces its own reason and is not retried")
 }
 
-/// Only a refused resume starts a fresh session; any other host answer to the
+/// Only an expired resume starts a fresh session; any other host answer to the
 /// resume stops where it did before.
 @MainActor
 private func testOtherRefusalOfAResumeStartsNoFreshSession() async {
@@ -1050,4 +1051,29 @@ private func testOtherRefusalOfAResumeStartsNoFreshSession() async {
         "and that refusal is shown as it was before, got \(played.rowReasons)"
     )
     print("PASS: a resume refused for another reason surfaces as before with no fresh attempt")
+}
+
+/// A resume the host refused outright is what a deliberate Stop, a host
+/// restart or an arming change looks like to a viewer that missed it. It must
+/// end there, showing the host's reason, and never be answered with a new
+/// session the person at the host had just ended.
+@MainActor
+private func testRefusedResumeStartsNoFreshSession() async {
+    let played = await playRefusedResume(
+        resumeAnswer: .hostScreenRefused(reason: "host-screen-resume-refused"),
+        laterDialScript: hostScreenScript(),
+        expectedDials: 3,
+        machineKey: 14
+    )
+    expect(
+        played.requestsPerDial.count == 2,
+        "a refused resume makes no fresh attempt -- dials=\(played.requestsPerDial.count)"
+    )
+    expect(
+        played.rowReasons == [ViewerSessionFailureCopy.rowLine(
+            for: .hostScreenRefused(reason: "host-screen-resume-refused"), hostLabel: "Studio"
+        )],
+        "and its copy is shown, got \(played.rowReasons)"
+    )
+    print("PASS: a refused resume surfaces its copy and starts no fresh session")
 }

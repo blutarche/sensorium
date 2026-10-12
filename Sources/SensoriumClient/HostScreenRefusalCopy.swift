@@ -50,10 +50,15 @@ public enum HostScreenRefusalCopy {
             // reaches that machine at all.
             return "The connection dropped before the screen came up. Connect again to ask for it."
         case "host-screen-resume-refused":
-            // A refused resume starts a fresh session by itself, so this
-            // line is shown only when that fresh attempt is itself answered
-            // this way.
+            // The host ended or never knew the session this resume named: a
+            // Stop at the host, a restart, or a changed arming record. The
+            // viewer does not start a new session for it.
             return "The connection was interrupted and could not resume."
+        case "host-screen-resume-expired":
+            // An expired resume starts a fresh session by itself, so this
+            // line is shown only when that fresh attempt is itself answered
+            // this way, or by a viewer that does not start one.
+            return "The connection was away too long to resume."
         case "host-screen-session-active":
             return "That machine was already showing this machine a host screen. That session has ended."
         case "host-screen-already-live":
