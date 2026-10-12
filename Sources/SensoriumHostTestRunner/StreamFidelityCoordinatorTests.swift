@@ -678,10 +678,21 @@ func runStreamFidelityCoordinatorTests() async {
         )
 
         _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
+            drawsPerSecond: 0, noDrawablePerSecond: 0, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0
+        ))))
+        media.emit(packet(3))
+        expect(
+            lastVideoLine()?.hasSuffix("0 dropped to keep up; viewer draws 0/s") == true,
+            "a viewer asked to draw less often than it decodes is named even when no draw failed, got "
+                + (lastVideoLine() ?? "no line")
+        )
+
+        _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
             drawsPerSecond: 58, noDrawablePerSecond: 10, noCommandBufferPerSecond: 1,
             emptyDestinationPerSecond: 2, renderFailurePerSecond: 4
         ))))
-        media.emit(packet(3))
+        media.emit(packet(4))
         expect(
             lastVideoLine()?.hasSuffix(
                 "; viewer draws 58/s, not shown 17/s"

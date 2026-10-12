@@ -2515,17 +2515,28 @@ public final class HostSessionCoordinator {
             delays.append("receive p50 \(milliseconds(receive.p50Nanoseconds))"
                 + " p95 \(milliseconds(receive.p95Nanoseconds))")
         }
-        if let draws = viewerDrawDescription(sample.drawReport) {
+        if let draws = viewerDrawDescription(sample.drawReport, decodedFramesPerSecond: sample.decodedFramesPerSecond) {
             delays.append(draws)
         }
         return delays.isEmpty ? nil : delays.joined(separator: ", ")
     }
 
     /// How many draws the viewer made and how many of them showed nothing,
-    /// with the reasons that occurred; `nil` when none failed.
-    private static func viewerDrawDescription(_ report: ViewerDrawReport?) -> String? {
-        guard let report, report.notShownPerSecond > 0 else {
+    /// with the reasons that occurred; `nil` when none failed and the viewer
+    /// drew at least as often as it decoded.
+    private static func viewerDrawDescription(
+        _ report: ViewerDrawReport?,
+        decodedFramesPerSecond: Double?
+    ) -> String? {
+        guard let report else {
             return nil
+        }
+        // Fewer draw callbacks than decoded frames shows nothing without any
+        // draw failing: the view was simply not asked to draw, as when its
+        // display link is paused.
+        let drawsFewerThanDecoded = decodedFramesPerSecond.map { $0 >= 1 && report.drawsPerSecond < $0 } ?? false
+        guard report.notShownPerSecond > 0 else {
+            return drawsFewerThanDecoded ? String(format: "draws %.0f/s", report.drawsPerSecond) : nil
         }
         let reasons = [
             ("no drawable", report.noDrawablePerSecond),
