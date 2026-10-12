@@ -36,14 +36,29 @@ enum ViewVerbs {
         // Streams the host's offered screen rather than a session canvas,
         // which a host only creates when its owner has offered one.
         let streamsHostScreen = arguments.contains("--host-screen")
+        // Benchmark runs: `--pointer-plan` drives synthetic pointer motion on
+        // a schedule, and `--no-interaction-release` leaves the presenter
+        // unaware of input so the two pacing behaviours can be compared.
+        let releasesOnInteraction = !arguments.contains("--no-interaction-release")
+        var pointerPlan: BenchmarkPointerPlan?
+        if let flagIndex = arguments.firstIndex(of: "--pointer-plan") {
+            guard flagIndex + 1 < arguments.count,
+                  let plan = BenchmarkPointerPlan(parsing: arguments[flagIndex + 1]) else {
+                say("usage: --pointer-plan move:<seconds>|still:<seconds>[,...], for example move:20,still:40,move:20")
+                exit(2)
+            }
+            pointerPlan = plan
+            arguments.remove(at: flagIndex + 1)
+            arguments.remove(at: flagIndex)
+        }
         arguments.removeAll {
             $0 == "--capture" || $0 == "--clipboard" || $0 == "--clipboard-roundtrip" || $0 == "--trace"
-                || $0 == "--host-screen"
+                || $0 == "--host-screen" || $0 == "--no-interaction-release"
         }
         switch arguments.first {
         case "view":
             guard arguments.count == 3 || arguments.count == 4, let port = UInt16(arguments[2]) else {
-                say("usage: SensoriumViewerProbe view <host> <port> [seconds] [--capture] [--clipboard] [--trace] [--host-screen]")
+                say("usage: SensoriumViewerProbe view <host> <port> [seconds] [--capture] [--clipboard] [--trace] [--host-screen] [--pointer-plan <spec>] [--no-interaction-release]")
                 exit(2)
             }
             let host = arguments[1]
@@ -56,7 +71,9 @@ enum ViewVerbs {
                     capturesPointer: capturesPointer,
                     sharesClipboard: sharesClipboard,
                     tracesPresentation: tracesPresentation,
-                    streamsHostScreen: streamsHostScreen
+                    streamsHostScreen: streamsHostScreen,
+                    pointerPlan: pointerPlan,
+                    releasesOnInteraction: releasesOnInteraction
                 )
             }
         case "view-selftest":
@@ -100,6 +117,14 @@ enum ViewVerbs {
     /// `streamsHostScreen` asks for the host's offered screen, as the viewer
     /// app does by default, instead of a session canvas.
     ///
+    /// `pointerPlan` sends synthetic pointer motion through the session's
+    /// public input path, timed from the first presented frame. With or
+    /// without one, a run that streams ends by printing a `bench-viewer` line
+    /// of JSON: frame counts, latency percentiles and the longest freeze.
+    /// `releasesOnInteraction` is whether the frame presenter learns of the
+    /// input this process sends; off, it paces as it does with nobody at the
+    /// keyboard.
+    ///
     /// `sharesClipboard` is off unless asked for, unlike the viewer app. A
     /// clipboard session is built either way, so a tag 3 packet always
     /// reaches the real apply path rather than being silently dropped by a
@@ -113,7 +138,9 @@ enum ViewVerbs {
         capturesPointer: Bool,
         sharesClipboard: Bool,
         tracesPresentation: Bool,
-        streamsHostScreen: Bool
+        streamsHostScreen: Bool,
+        pointerPlan: BenchmarkPointerPlan?,
+        releasesOnInteraction: Bool
     ) async -> Int32 {
         guard let identity = ViewerProbe.loadIdentity() else { return 1 }
         let store = FileSavedHostStore(url: ViewerProbe.savedHostURL())
@@ -133,6 +160,9 @@ enum ViewVerbs {
         let window: WaylandSessionWindow
         let runner: ClientSessionRunner
         let controller: ClientSessionController
+        let bench = BenchRun(plan: pointerPlan)
+        var benchTasks: [Task<Void, Never>] = []
+        defer { benchTasks.forEach { $0.cancel() } }
         do {
             try await connection.start(timeout: SessionTimeouts.remoteDefault.handshake)
             controller = ClientSessionController(
@@ -147,11 +177,22 @@ enum ViewVerbs {
             // `connect()`. A viewport that is not listening by then holds
             // every frame of the session back. The title is the address
             // until the handshake says whose machine this is.
-            window = try WaylandSessionWindow(
-                title: saved.displayName,
-                session: controller,
-                makeDecoder: AVCodecVideoDecoder.factory
-            )
+            // The session-taking initialiser is the one that hands the
+            // presenter the session's input stamp; the sink-taking one
+            // leaves it unattached.
+            if releasesOnInteraction {
+                window = try WaylandSessionWindow(
+                    title: saved.displayName,
+                    session: controller,
+                    makeDecoder: AVCodecVideoDecoder.factory
+                )
+            } else {
+                window = try WaylandSessionWindow(
+                    title: saved.displayName,
+                    pointerSink: controller,
+                    makeDecoder: AVCodecVideoDecoder.factory
+                )
+            }
             openWindow = window
             if tracesPresentation {
                 window.onFirstDrawDiagnostics = { say("Sensorium: \($0)") }
@@ -165,6 +206,7 @@ enum ViewVerbs {
                 say("Session canvas ready, display \(displayID).")
             case let .hostScreen(geometry, _, _):
                 say("Host screen ready, \(geometry.logicalWidth)x\(geometry.logicalHeight).")
+                bench.bounds = (Double(geometry.logicalWidth), Double(geometry.logicalHeight))
             }
             window.updateTitle(ViewerWindowTitle.resolve(
                 hostMachineName: await controller.hostMachineName,
@@ -221,6 +263,7 @@ enum ViewVerbs {
                 Task { @MainActor in ending.finish(reason) }
             })
             shortcuts?.startInterceptingIfPermitted(log: { say($0) })
+            benchTasks = bench.start(window: window, controller: controller)
             if let seconds {
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(seconds))
@@ -235,6 +278,16 @@ enum ViewVerbs {
             say("\(error)")
             return 1
         }
+        benchTasks.forEach { $0.cancel() }
+        let endedAt = MonotonicClock.nowNanoseconds()
+        let latencyLine = await runner.latencySummary()
+        let report = bench.report(
+            window: window,
+            metrics: await runner.latency.metrics(),
+            latencySummary: latencyLine,
+            releasesOnInteraction: releasesOnInteraction,
+            endedAtNanoseconds: endedAt
+        )
         shortcuts?.stop()
         runner.stop()
         // Ends the session the way the macOS viewer does -- input released,
@@ -242,6 +295,7 @@ enum ViewVerbs {
         // that ended rather than one that dropped.
         await controller.disconnect()
         say(summary(of: window))
+        say(report)
         window.close()
         return 0
     }
@@ -357,6 +411,125 @@ enum ViewVerbs {
     private static func say(_ line: String) {
         print(line)
         fflush(nil)
+    }
+}
+
+/// What a benchmark run measures and drives while a `view` session streams:
+/// when the first frame reached the screen, how long the picture stood still
+/// between frames, and the synthetic pointer a `BenchmarkPointerPlan` asks for.
+@MainActor
+private final class BenchRun {
+    let plan: BenchmarkPointerPlan?
+    /// The extent synthetic pointer motion stays inside. A session canvas
+    /// accepts input over the same 1920x1200 the controller checks against;
+    /// a host screen's own size replaces it.
+    var bounds: (width: Double, height: Double) = (1920, 1200)
+    private var firstFrameAtNanoseconds: Int64?
+    private var gaps = PresentGapTracker()
+    private var inputsSent = 0
+    private var inputsRefused = 0
+
+    /// Frames are noticed by polling the presenter's count, so a gap is
+    /// resolved to this interval.
+    private static let samplingIntervalMilliseconds = 2.0
+    private static let pointerRate = 60.0
+
+    init(plan: BenchmarkPointerPlan?) {
+        self.plan = plan
+    }
+
+    func start(window: WaylandSessionWindow, controller: ClientSessionController) -> [Task<Void, Never>] {
+        var tasks = [Task { @MainActor in await self.sampleFrames(of: window) }]
+        if plan != nil {
+            tasks.append(Task { @MainActor in await self.drivePointer(through: controller) })
+        }
+        return tasks
+    }
+
+    private func secondsSinceFirstFrame(at nowNanoseconds: Int64) -> Double? {
+        firstFrameAtNanoseconds.map { Double(nowNanoseconds - $0) / 1_000_000_000 }
+    }
+
+    private func sampleFrames(of window: WaylandSessionWindow) async {
+        var seen = 0
+        while !Task.isCancelled {
+            let count = window.presentedFrameCount
+            if count > seen {
+                seen = count
+                let now = MonotonicClock.nowNanoseconds()
+                if firstFrameAtNanoseconds == nil { firstFrameAtNanoseconds = now }
+                let moving = secondsSinceFirstFrame(at: now).map { plan?.isMoving(atSeconds: $0) ?? false } ?? false
+                gaps.notePresented(atNanoseconds: now, moving: moving)
+            }
+            try? await Task.sleep(for: .milliseconds(Self.samplingIntervalMilliseconds))
+        }
+    }
+
+    /// Sends one pointer position per tick, at `pointerRate`, on absolute
+    /// deadlines so a slow send does not stretch the rate.
+    private func drivePointer(through controller: ClientSessionController) async {
+        guard let plan else { return }
+        while firstFrameAtNanoseconds == nil {
+            guard !Task.isCancelled else { return }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        let clock = ContinuousClock()
+        let origin = clock.now
+        var tick = 0
+        while !Task.isCancelled {
+            let seconds = Double(tick) / Self.pointerRate
+            guard seconds < plan.totalSeconds else { return }
+            if plan.isMoving(atSeconds: seconds) {
+                let point = BenchmarkPointerPlan.pointerPosition(atSeconds: seconds, width: bounds.width, height: bounds.height)
+                do {
+                    try await controller.sendInput(.pointerMoved(x: point.x, y: point.y), surfaceID: 0)
+                    inputsSent += 1
+                } catch {
+                    inputsRefused += 1
+                }
+            }
+            tick += 1
+            try? await clock.sleep(until: origin + .seconds(Double(tick) / Self.pointerRate))
+        }
+    }
+
+    func report(
+        window: WaylandSessionWindow,
+        metrics: SessionMetrics,
+        latencySummary: String?,
+        releasesOnInteraction: Bool,
+        endedAtNanoseconds: Int64
+    ) -> String {
+        func milliseconds(_ nanoseconds: Int64?) -> Any {
+            nanoseconds.map { Double($0) / 1_000_000 } ?? NSNull()
+        }
+        let presented = window.presentedFrameCount
+        let runSeconds = secondsSinceFirstFrame(at: endedAtNanoseconds)
+        let roundTrip = metrics.samples(for: .inputRoundTrip)
+        var fields: [String: Any] = [
+            "pointerPlan": plan?.specification ?? NSNull(),
+            "interactionRelease": releasesOnInteraction,
+            "latencySummary": latencySummary ?? NSNull(),
+            "traces": BenchmarkReport.traceObjects(from: metrics.traceLines()),
+            "presentedFrames": presented,
+            "decodedFrames": metrics.samples(for: .decode).count,
+            "droppedFrames": window.droppedFrameCount,
+            "meanPresentLatencyMs": milliseconds(window.meanPresentLatencyNanoseconds),
+            "inputRoundTripP50Ms": milliseconds(roundTrip.p50),
+            "inputRoundTripP95Ms": milliseconds(roundTrip.p95),
+            "inputRoundTripCount": roundTrip.count,
+            "syntheticInputsSent": inputsSent,
+            "syntheticInputsRefused": inputsRefused,
+            "longestPresentGapMs": milliseconds(gaps.longestGapNanoseconds),
+            "longestPresentGapDuringMoveMs": milliseconds(gaps.longestMovingGapNanoseconds),
+            "presentGapResolutionMs": Self.samplingIntervalMilliseconds
+        ]
+        if let runSeconds, runSeconds > 0 {
+            fields["measuredSeconds"] = runSeconds
+            fields["meanPresentedFps"] = Double(presented) / runSeconds
+            fields["meanDecodedFps"] = Double(metrics.samples(for: .decode).count) / runSeconds
+        }
+        return BenchmarkReport.line(fields)
     }
 }
 
