@@ -160,7 +160,11 @@ bench_bin=$(swift build -c release --scratch-path .build/bench --product Sensori
 [ -x "$bench_bin" ] || fail "the stand-in host binary was not found"
 
 say "syncing the tree to the viewer"
-vssh "mkdir -p '$remote_dir/tree' '$remote_dir/runs' '$remote_dir/xdg'" || fail "cannot reach the viewer over SSH"
+# The probe's scratch config starts empty: each invocation's stand-in has a new
+# identity, and a pin saved for an earlier one at the same address would be
+# chosen over the fresh pairing.
+vssh "rm -rf '$remote_dir/xdg' && mkdir -p '$remote_dir/tree' '$remote_dir/runs' '$remote_dir/xdg'" \
+    || fail "cannot reach the viewer over SSH"
 remote_abs=$(vssh "cd '$remote_dir' && pwd") || fail "cannot resolve the remote directory"
 [[ $remote_abs =~ ^/[A-Za-z0-9._/-]+$ ]] || fail "the remote directory resolved to an unexpected path"
 rsync -a --delete --exclude .build --exclude .git --exclude Artifacts -e ssh \
