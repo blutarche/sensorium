@@ -2523,7 +2523,7 @@ public final class HostSessionCoordinator {
 
     /// How many draws the viewer made and how many of them showed nothing,
     /// with the reasons that occurred; `nil` when none failed and the viewer
-    /// drew at least as often as it decoded.
+    /// drew at least half as often as it decoded.
     private static func viewerDrawDescription(
         _ report: ViewerDrawReport?,
         decodedFramesPerSecond: Double?
@@ -2531,12 +2531,15 @@ public final class HostSessionCoordinator {
         guard let report else {
             return nil
         }
-        // Fewer draw callbacks than decoded frames shows nothing without any
-        // draw failing: the view was simply not asked to draw, as when its
-        // display link is paused.
-        let drawsFewerThanDecoded = decodedFramesPerSecond.map { $0 >= 1 && report.drawsPerSecond < $0 } ?? false
+        // A viewer draws once per display refresh, so drawing somewhat less
+        // often than it decodes is normal. Drawing under half as often leaves
+        // frames unshown without any draw failing: the view was not asked to
+        // draw, as when its display link is paused.
+        let drawsFarFewerThanDecoded = decodedFramesPerSecond.map {
+            $0 >= 1 && report.drawsPerSecond * 2 < $0
+        } ?? false
         guard report.notShownPerSecond > 0 else {
-            return drawsFewerThanDecoded ? String(format: "draws %.0f/s", report.drawsPerSecond) : nil
+            return drawsFarFewerThanDecoded ? String(format: "draws %.0f/s", report.drawsPerSecond) : nil
         }
         let reasons = [
             ("no drawable", report.noDrawablePerSecond),

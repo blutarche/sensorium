@@ -616,16 +616,17 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: the periodic video line carries the viewer's end-to-end and receive delay when it has reported them")
 
-    // Both lines say why the viewer's draws showed nothing, only when they did
+    // Both lines say why the viewer's draws showed nothing, or that it drew far
+    // less often than it decoded, and stay quiet otherwise
     do {
-        func sample(_ report: ViewerDrawReport?) -> ViewerTelemetrySample {
+        func sample(_ report: ViewerDrawReport?, decodedFramesPerSecond: Double = 20) -> ViewerTelemetrySample {
             ViewerTelemetrySample(
                 surfaceID: 0,
                 endToEnd: nil,
                 receive: nil,
                 decode: nil,
                 presentedFramesPerSecond: 5,
-                decodedFramesPerSecond: 20,
+                decodedFramesPerSecond: decodedFramesPerSecond,
                 receivedBitsPerSecond: nil,
                 drawReport: report
             )
@@ -684,7 +685,18 @@ func runStreamFidelityCoordinatorTests() async {
         media.emit(packet(3))
         expect(
             lastVideoLine()?.hasSuffix("0 dropped to keep up; viewer draws 0/s") == true,
-            "a viewer asked to draw less often than it decodes is named even when no draw failed, got "
+            "a viewer asked to draw far less often than it decodes is named even when no draw failed, got "
+                + (lastVideoLine() ?? "no line")
+        )
+
+        _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
+            drawsPerSecond: 59, noDrawablePerSecond: 0, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0
+        ), decodedFramesPerSecond: 61)))
+        media.emit(packet(4))
+        expect(
+            lastVideoLine()?.hasSuffix("0 dropped to keep up") == true,
+            "a viewer drawing once per refresh while decoding a little faster adds nothing, got "
                 + (lastVideoLine() ?? "no line")
         )
 
@@ -692,7 +704,7 @@ func runStreamFidelityCoordinatorTests() async {
             drawsPerSecond: 58, noDrawablePerSecond: 10, noCommandBufferPerSecond: 1,
             emptyDestinationPerSecond: 2, renderFailurePerSecond: 4
         ))))
-        media.emit(packet(4))
+        media.emit(packet(5))
         expect(
             lastVideoLine()?.hasSuffix(
                 "; viewer draws 58/s, not shown 17/s"
@@ -711,7 +723,7 @@ func runStreamFidelityCoordinatorTests() async {
             "the fidelity line carries the same words, got \(fidelityLine ?? "no line")"
         )
     }
-    print("PASS: the video and fidelity lines say why the viewer's draws showed nothing, only when some did")
+    print("PASS: the video and fidelity lines name a viewer's draws only when some showed nothing or it drew far less often than it decoded")
 
     // A still screen is sent one good frame of the picture it holds
     do {
