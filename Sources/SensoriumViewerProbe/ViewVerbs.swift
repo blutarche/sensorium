@@ -425,7 +425,7 @@ private final class BenchRun {
     /// a host screen's own size replaces it.
     var bounds: (width: Double, height: Double) = (1920, 1200)
     private var firstFrameAtNanoseconds: Int64?
-    private var gaps = PresentGapTracker()
+    private var gaps: PresentGapTracker
     private var inputsSent = 0
     private var inputsRefused = 0
 
@@ -436,6 +436,7 @@ private final class BenchRun {
 
     init(plan: BenchmarkPointerPlan?) {
         self.plan = plan
+        gaps = PresentGapTracker(plan: plan)
     }
 
     func start(window: WaylandSessionWindow, controller: ClientSessionController) -> [Task<Void, Never>] {
@@ -458,8 +459,7 @@ private final class BenchRun {
                 seen = count
                 let now = MonotonicClock.nowNanoseconds()
                 if firstFrameAtNanoseconds == nil { firstFrameAtNanoseconds = now }
-                let moving = secondsSinceFirstFrame(at: now).map { plan?.isMoving(atSeconds: $0) ?? false } ?? false
-                gaps.notePresented(atNanoseconds: now, moving: moving)
+                gaps.notePresented(atNanoseconds: now, secondsIntoPlan: secondsSinceFirstFrame(at: now))
             }
             try? await Task.sleep(for: .milliseconds(Self.samplingIntervalMilliseconds))
         }
@@ -522,6 +522,7 @@ private final class BenchRun {
             "syntheticInputsRefused": inputsRefused,
             "longestPresentGapMs": milliseconds(gaps.longestGapNanoseconds),
             "longestPresentGapDuringMoveMs": milliseconds(gaps.longestMovingGapNanoseconds),
+            "firstFrameAfterMoveStartMs": milliseconds(gaps.firstFrameAfterMoveStartNanoseconds),
             "presentGapResolutionMs": Self.samplingIntervalMilliseconds
         ]
         if let runSeconds, runSeconds > 0 {

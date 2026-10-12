@@ -66,6 +66,33 @@ public struct BenchmarkPointerPlan: Equatable, Sendable {
         return nil
     }
 
+    /// The index in `phases` of the phase running `seconds` after the start.
+    public func phaseIndex(atSeconds seconds: Double) -> Int? {
+        guard seconds >= 0 else { return nil }
+        var phaseStart = 0.0
+        for (index, phase) in phases.enumerated() {
+            if seconds < phaseStart + phase.seconds {
+                return index
+            }
+            phaseStart += phase.seconds
+        }
+        return nil
+    }
+
+    /// The index and start time of each move phase that directly follows a
+    /// still phase.
+    func moveStartsFollowingStill() -> [(phase: Int, startSeconds: Double)] {
+        var starts: [(phase: Int, startSeconds: Double)] = []
+        var phaseStart = 0.0
+        for (index, phase) in phases.enumerated() {
+            if phase.kind == .move, index > 0, phases[index - 1].kind == .still {
+                starts.append((index, phaseStart))
+            }
+            phaseStart += phase.seconds
+        }
+        return starts
+    }
+
     public func isMoving(atSeconds seconds: Double) -> Bool {
         phase(atSeconds: seconds) == .move
     }
@@ -84,25 +111,46 @@ public struct BenchmarkPointerPlan: Equatable, Sendable {
     private static let ellipseRadiusFraction = 0.3
 }
 
-/// The longest stretch between two consecutive presented frames, which is how
-/// long the picture stood still: overall, and counting only stretches that
-/// touch a moving phase.
+/// How long the picture stood still between consecutive presented frames:
+/// the longest stretch overall, the longest within a single move phase, and
+/// how long motion took to show a frame after a move phase began.
 public struct PresentGapTracker: Sendable {
     public private(set) var longestGapNanoseconds: Int64?
     public private(set) var longestMovingGapNanoseconds: Int64?
-    private var previous: (atNanoseconds: Int64, moving: Bool)?
+    /// The largest wait, across move phases that follow a still phase, from
+    /// the phase's start to the first frame presented at or after it.
+    public private(set) var firstFrameAfterMoveStartNanoseconds: Int64?
+    private let plan: BenchmarkPointerPlan?
+    private var previous: (atNanoseconds: Int64, movePhase: Int?)?
+    private var awaitingFirstFrame: [(phase: Int, startSeconds: Double)]
 
-    public init() {}
+    /// `plan` places each frame in a phase; without one only the overall
+    /// longest gap is known.
+    public init(plan: BenchmarkPointerPlan?) {
+        self.plan = plan
+        awaitingFirstFrame = plan?.moveStartsFollowingStill() ?? []
+    }
 
-    /// A gap counts as moving when either frame that bounds it was presented
-    /// during motion, so a freeze that starts while the pointer moves is not
-    /// credited to the still phase that follows it.
-    public mutating func notePresented(atNanoseconds: Int64, moving: Bool) {
-        defer { previous = (atNanoseconds, moving) }
+    /// `secondsIntoPlan` is when the frame was presented, counted from the
+    /// plan's start; `nil` if the plan has not started. A gap counts as moving
+    /// only when both frames that bound it fall in the same move phase, so a
+    /// still phase is never credited as a freeze during motion.
+    public mutating func notePresented(atNanoseconds: Int64, secondsIntoPlan: Double?) {
+        let movePhase = secondsIntoPlan.flatMap { seconds in
+            plan?.phaseIndex(atSeconds: seconds).flatMap { plan?.phases[$0].kind == .move ? $0 : nil }
+        }
+        defer { previous = (atNanoseconds, movePhase) }
+        if let secondsIntoPlan {
+            while let next = awaitingFirstFrame.first, secondsIntoPlan >= next.startSeconds {
+                let wait = Int64(((secondsIntoPlan - next.startSeconds) * 1_000_000_000).rounded())
+                firstFrameAfterMoveStartNanoseconds = max(firstFrameAfterMoveStartNanoseconds ?? wait, wait)
+                awaitingFirstFrame.removeFirst()
+            }
+        }
         guard let previous else { return }
         let gap = atNanoseconds - previous.atNanoseconds
         longestGapNanoseconds = max(longestGapNanoseconds ?? gap, gap)
-        if moving || previous.moving {
+        if let movePhase, movePhase == previous.movePhase {
             longestMovingGapNanoseconds = max(longestMovingGapNanoseconds ?? gap, gap)
         }
     }
