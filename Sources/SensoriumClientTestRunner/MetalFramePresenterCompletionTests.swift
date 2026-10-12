@@ -74,6 +74,38 @@ func testMetalFramePresenterMeasuresRealCompletionNotJustScheduling() async {
 }
 
 
+/// A draw callback that had a frame waiting and showed nothing is counted with
+/// the reason, and one with nothing waiting is only a draw. A view with no
+/// size has no drawable to hand out, which makes the first case deterministic
+/// without a window.
+@MainActor
+func testMetalFramePresenterCountsADrawThatShowedNothing() async {
+    guard MTLCreateSystemDefaultDevice() != nil else {
+        print("PASS: no Metal device available in this environment; draw counting not exercised")
+        return
+    }
+    let view = MTKView(frame: .zero)
+    let draws = ViewerDrawCounter()
+    guard let presenter = try? MetalFramePresenter(view: view, draws: draws) else {
+        print("FAIL: could not construct MetalFramePresenter against a real Metal device")
+        Foundation.exit(1)
+    }
+
+    presenter.draw(in: view)
+    expect(
+        draws.counts == ViewerDrawCounts(draws: 1),
+        "a draw with nothing waiting is a draw and nothing more, got \(draws.counts)"
+    )
+
+    presenter.present(DecodedFrame(pixelBuffer: makeTestPixelBuffer()))
+    presenter.draw(in: view)
+    expect(
+        draws.counts == ViewerDrawCounts(draws: 2, noDrawable: 1),
+        "a draw with a frame waiting and no drawable to put it on is counted as that, got \(draws.counts)"
+    )
+    print("PASS: a Metal draw that had a frame waiting and showed nothing is counted with its reason")
+}
+
 /// Frames the host captured a frame apart must reach the screen a frame apart.
 /// Two arriving off the network together used to land in one draw cycle, where
 /// the newer overwrote the older and the refresh after it repeated a picture:

@@ -14,6 +14,7 @@ public struct ViewerTelemetryBuilder: Sendable {
     private struct Tick {
         var presentedFrameCount: Int
         var supersededOnTimeFrameCount: Int
+        var drawCounts: ViewerDrawCounts?
         var decodedFrameCount: Int
         var atNanoseconds: Int64
     }
@@ -44,6 +45,7 @@ public struct ViewerTelemetryBuilder: Sendable {
         stream: ClientStreamReading,
         presentedFrameCount: Int,
         supersededOnTimeFrameCount: Int = 0,
+        drawCounts: ViewerDrawCounts? = nil,
         atNanoseconds now: Int64,
         roundTripNanoseconds: Int64? = nil,
         decodesInHardware: Bool? = nil
@@ -78,12 +80,14 @@ public struct ViewerTelemetryBuilder: Sendable {
                 count: supersededOnTimeFrameCount,
                 atNanoseconds: now,
                 since: \.supersededOnTimeFrameCount
-            )
+            ),
+            drawReport: drawReport(surfaceID: surfaceID, counts: drawCounts, atNanoseconds: now)
         )
         if let index = Self.index(for: surfaceID) {
             lastTick[index] = Tick(
                 presentedFrameCount: presentedFrameCount,
                 supersededOnTimeFrameCount: supersededOnTimeFrameCount,
+                drawCounts: drawCounts,
                 decodedFrameCount: stream.decodedFrameCount,
                 atNanoseconds: now
             )
@@ -111,6 +115,41 @@ public struct ViewerTelemetryBuilder: Sendable {
             return nil
         }
         return Double(count - previous[keyPath: previousCount]) / elapsedSeconds
+    }
+
+    /// The draw counts as rates over the real gap between ticks, like every
+    /// other rate here, or `nil` without an earlier reading to measure from or
+    /// when a count went backwards.
+    private func drawReport(
+        surfaceID: UInt32,
+        counts: ViewerDrawCounts?,
+        atNanoseconds now: Int64
+    ) -> ViewerDrawReport? {
+        guard let counts,
+              let index = Self.index(for: surfaceID),
+              let previous = lastTick[index],
+              let before = previous.drawCounts else {
+            return nil
+        }
+        let elapsedSeconds = Double(now - previous.atNanoseconds) / 1_000_000_000
+        let deltas = [
+            counts.draws - before.draws,
+            counts.noDrawable - before.noDrawable,
+            counts.noCommandBuffer - before.noCommandBuffer,
+            counts.emptyDestination - before.emptyDestination,
+            counts.renderFailure - before.renderFailure
+        ]
+        guard elapsedSeconds > 0, deltas.allSatisfy({ $0 >= 0 }) else {
+            return nil
+        }
+        let rates = deltas.map { Double($0) / elapsedSeconds }
+        return ViewerDrawReport(
+            drawsPerSecond: rates[0],
+            noDrawablePerSecond: rates[1],
+            noCommandBufferPerSecond: rates[2],
+            emptyDestinationPerSecond: rates[3],
+            renderFailurePerSecond: rates[4]
+        )
     }
 
     private static func stage(_ metrics: SessionMetrics, _ stage: SessionMetricStage) -> StageLatencySample? {

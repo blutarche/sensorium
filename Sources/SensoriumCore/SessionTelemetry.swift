@@ -139,6 +139,46 @@ public struct SurfaceTelemetrySample: Equatable, Sendable {
     }
 }
 
+/// What a viewer's draw callbacks did over the last interval, per second.
+///
+/// A viewer can decode frames and still show none of them, and from outside a
+/// display that was never asked to draw looks the same as one that was asked
+/// and could not. `drawsPerSecond` counts the callbacks; the rest count the
+/// callbacks that had a decoded frame waiting and ended without showing it,
+/// by what stopped them. Counts only: nothing here names a window, a screen
+/// or a device.
+public struct ViewerDrawReport: Codable, Equatable, Sendable {
+    /// Draw callbacks, whether or not a frame was waiting.
+    public let drawsPerSecond: Double
+    /// The view had no drawable to put the frame on.
+    public let noDrawablePerSecond: Double
+    /// The GPU had no command buffer to give.
+    public let noCommandBufferPerSecond: Double
+    /// The drawable left no room to draw the frame into.
+    public let emptyDestinationPerSecond: Double
+    /// The frame could not be drawn at all, and was given up.
+    public let renderFailurePerSecond: Double
+
+    public init(
+        drawsPerSecond: Double,
+        noDrawablePerSecond: Double,
+        noCommandBufferPerSecond: Double,
+        emptyDestinationPerSecond: Double,
+        renderFailurePerSecond: Double
+    ) {
+        self.drawsPerSecond = drawsPerSecond
+        self.noDrawablePerSecond = noDrawablePerSecond
+        self.noCommandBufferPerSecond = noCommandBufferPerSecond
+        self.emptyDestinationPerSecond = emptyDestinationPerSecond
+        self.renderFailurePerSecond = renderFailurePerSecond
+    }
+
+    /// Draws that had a frame waiting and showed none, for any reason.
+    public var notShownPerSecond: Double {
+        noDrawablePerSecond + noCommandBufferPerSecond + emptyDestinationPerSecond + renderFailurePerSecond
+    }
+}
+
 /// One viewer-measured snapshot for one surface: where the frame's time went
 /// after it left the wire, and how much of it arrived. The mirror image of
 /// `SurfaceTelemetrySample`, and the same discipline throughout -- a stage
@@ -212,6 +252,10 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
     /// or has no earlier tick to measure a rate against; the host reads that
     /// as none.
     public let supersededOnTimeFramesPerSecond: Double?
+    /// What this viewer's draw callbacks did, for the host's log alone: no
+    /// fidelity decision reads it. `nil` from a viewer that predates it, on a
+    /// surface's first tick, or from a window that counts no draws.
+    public let drawReport: ViewerDrawReport?
 
     public init(
         surfaceID: UInt32,
@@ -225,7 +269,8 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         decodesInHardware: Bool? = nil,
         decoderOnly: StageLatencySample? = nil,
         decodeQueueWait: StageLatencySample? = nil,
-        supersededOnTimeFramesPerSecond: Double? = nil
+        supersededOnTimeFramesPerSecond: Double? = nil,
+        drawReport: ViewerDrawReport? = nil
     ) {
         self.surfaceID = surfaceID
         self.endToEnd = endToEnd
@@ -239,6 +284,7 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         self.decoderOnly = decoderOnly
         self.decodeQueueWait = decodeQueueWait
         self.supersededOnTimeFramesPerSecond = supersededOnTimeFramesPerSecond
+        self.drawReport = drawReport
     }
 }
 
@@ -301,6 +347,17 @@ public struct ViewerTelemetryStore: Equatable, Sendable {
         ] {
             guard let rate else { continue }
             guard rate.isFinite, rate >= 0 else { return false }
+        }
+        if let report = sample.drawReport {
+            for rate in [
+                report.drawsPerSecond,
+                report.noDrawablePerSecond,
+                report.noCommandBufferPerSecond,
+                report.emptyDestinationPerSecond,
+                report.renderFailurePerSecond
+            ] {
+                guard rate.isFinite, rate >= 0 else { return false }
+            }
         }
         for stage in [sample.endToEnd, sample.receive, sample.decode, sample.decoderOnly, sample.decodeQueueWait] {
             guard let stage else { continue }

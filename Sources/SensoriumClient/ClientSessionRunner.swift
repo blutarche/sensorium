@@ -517,6 +517,7 @@ public final class ClientSessionRunner {
                 // screen -- the builder turns two of them into a rate.
                 presentedFrameCount: metrics.samples(for: .present).count,
                 supersededOnTimeFrameCount: router.supersededOnTimeCount(surfaceID: surfaceID),
+                drawCounts: router.drawCounts(surfaceID: surfaceID),
                 atNanoseconds: nowNanoseconds,
                 roundTripNanoseconds: roundTripNanoseconds,
                 decodesInHardware: router.decoderHardwareAcceleration(surfaceID: surfaceID)?.decodesInHardware

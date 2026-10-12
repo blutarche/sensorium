@@ -34,6 +34,9 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
     /// Frames superseded while they waited for their turn on screen. Counted
     /// in the same place as every other frame this viewer gave up.
     private let drops: ViewerFrameDropCounter?
+    /// Every draw callback, and the ones that had a frame waiting and ended
+    /// without showing it, by the reason.
+    private let draws: ViewerDrawCounter?
     private var pacer = PresentationPacer()
     /// The session's input stamp, which tells the pacer the person is
     /// interacting. Set again when a window is pointed at a new session.
@@ -63,7 +66,8 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
     public init(
         view: MTKView,
         device: MTLDevice? = MTLCreateSystemDefaultDevice(),
-        drops: ViewerFrameDropCounter? = nil
+        drops: ViewerFrameDropCounter? = nil,
+        draws: ViewerDrawCounter? = nil
     ) throws {
         guard let device, let commandQueue = device.makeCommandQueue() else {
             throw MetalFramePresenterError.deviceUnavailable
@@ -72,6 +76,7 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
         self.device = device
         self.commandQueue = commandQueue
         self.drops = drops
+        self.draws = draws
         // The package has no compiled Metal library: the command line tools
         // carry no shader compiler, so the shaders are compiled here from
         // source, once per presenter.
@@ -148,6 +153,7 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
     }
 
     public func draw(in view: MTKView) {
+        draws?.recordDraw()
         let now = MonotonicClock.nowNanoseconds()
         if let due = pacer.frameToPresent(
             nowNanoseconds: now,
@@ -165,19 +171,28 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
         // The frame is kept rather than released for the same reason: a
         // session that has stopped decoding is deliberately showing its last
         // picture, and the drawables rotate underneath it.
-        guard hasUndrawnFrame,
-              let pixelBuffer = latestFrame,
-              let drawable = view.currentDrawable,
-              let commandBuffer = commandQueue.makeCommandBuffer() else {
+        guard hasUndrawnFrame, let pixelBuffer = latestFrame else {
+            return
+        }
+        // A frame refused here stays waiting, so it is counted again on every
+        // draw that refuses it: each is a callback that showed nothing.
+        guard let drawable = view.currentDrawable else {
+            draws?.recordNotShown(.noDrawable)
+            return
+        }
+        guard let commandBuffer = commandQueue.makeCommandBuffer() else {
+            draws?.recordNotShown(.noCommandBuffer)
             return
         }
         let dueAt = dueAtNanoseconds
         do {
             guard try encodeFrame(pixelBuffer, into: drawable.texture, commandBuffer: commandBuffer) else {
+                draws?.recordNotShown(.emptyDestination)
                 return
             }
         } catch {
             reportRenderFailure(error)
+            draws?.recordNotShown(.renderFailure)
             // Given up rather than kept: a frame the GPU refused once it will
             // refuse on every refresh after it, and holding on to it would
             // keep the frames behind it off the screen as well.

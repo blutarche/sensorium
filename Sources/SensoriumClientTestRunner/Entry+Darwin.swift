@@ -27,6 +27,7 @@ func runDarwinClientTests() async {
     await testMetalFramePresenterMeasuresRealCompletionNotJustScheduling()
     await testMetalFramePresenterDrawsBurstedFramesOnSuccessiveRefreshes()
     await testMetalFramePresenterRenderTests()
+    await testMetalFramePresenterCountsADrawThatShowedNothing()
     testViewerIdentityFailureCopyReadsAsASentence()
     await testViewerIdentityRecoveryTests()
     await testViewerIdentityFailureButtonsTests()

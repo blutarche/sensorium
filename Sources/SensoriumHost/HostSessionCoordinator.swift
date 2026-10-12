@@ -2501,8 +2501,10 @@ public final class HostSessionCoordinator {
         return description
     }
 
-    /// The viewer's end-to-end and receive delays as the log words them, or
-    /// `nil` when it reported neither.
+    /// The viewer's end-to-end and receive delays, and how many of its draws
+    /// showed nothing, as the log words them, or `nil` when it reported none
+    /// of these. The draw counts appear only when a draw with a frame waiting
+    /// showed nothing.
     private static func viewerDelayDescription(_ sample: ViewerTelemetrySample) -> String? {
         var delays: [String] = []
         if let endToEnd = sample.endToEnd {
@@ -2513,7 +2515,30 @@ public final class HostSessionCoordinator {
             delays.append("receive p50 \(milliseconds(receive.p50Nanoseconds))"
                 + " p95 \(milliseconds(receive.p95Nanoseconds))")
         }
+        if let draws = viewerDrawDescription(sample.drawReport) {
+            delays.append(draws)
+        }
         return delays.isEmpty ? nil : delays.joined(separator: ", ")
+    }
+
+    /// How many draws the viewer made and how many of them showed nothing,
+    /// with the reasons that occurred; `nil` when none failed.
+    private static func viewerDrawDescription(_ report: ViewerDrawReport?) -> String? {
+        guard let report, report.notShownPerSecond > 0 else {
+            return nil
+        }
+        let reasons = [
+            ("no drawable", report.noDrawablePerSecond),
+            ("no command buffer", report.noCommandBufferPerSecond),
+            ("zero-size destination", report.emptyDestinationPerSecond),
+            ("render failure", report.renderFailurePerSecond)
+        ].filter { $0.1 > 0 }.map { String(format: "%@ %.0f", $0.0, $0.1) }
+        return String(
+            format: "draws %.0f/s, not shown %.0f/s (%@)",
+            report.drawsPerSecond,
+            report.notShownPerSecond,
+            reasons.joined(separator: ", ")
+        )
     }
 
     /// One interval's video line, with the viewer's latest delay appended when

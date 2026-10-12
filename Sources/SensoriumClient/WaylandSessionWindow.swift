@@ -149,6 +149,7 @@ public final class WaylandSessionWindow:
     private var isFullscreen = false
     private var isMaximized = false
     private let drops = ViewerFrameDropCounter()
+    private let draws = ViewerDrawCounter()
     private let makeDecoder: VideoDecoderFactory
     private let initialStreamScalePreference: StreamScalePreference
     private let pointerSink: any CanvasInputSending
@@ -348,7 +349,8 @@ public final class WaylandSessionWindow:
             eglWindow: eglWindow,
             pixelWidth: state.drawablePixelWidth,
             pixelHeight: state.drawablePixelHeight,
-            drops: drops
+            drops: drops,
+            draws: draws
         )
         self.presenter = presenter
         viewport = ClientViewportController(
@@ -558,6 +560,7 @@ public final class WaylandSessionWindow:
     public var droppedBeforeDecodeCount: Int { drops.droppedBeforeDecode }
     public var droppedBeforePresentCount: Int { drops.droppedBeforePresent }
     public var supersededOnTimeCount: Int { drops.supersededOnTime }
+    public var drawCounts: ViewerDrawCounts? { draws.counts }
 
     // MARK: - Window
 

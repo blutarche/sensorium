@@ -79,6 +79,9 @@ public final class EGLFramePresenter {
     nonisolated(unsafe) private let context: EGLContext
     nonisolated(unsafe) private let surface: EGLSurface
     private let drops: ViewerFrameDropCounter?
+    /// Every frame callback this presenter was asked to draw on, and the ones
+    /// that had a frame waiting and could not show it.
+    private let draws: ViewerDrawCounter?
     private var pacer = PresentationPacer()
     /// The session's input stamp, which tells the pacer the person is
     /// interacting. Set again when a window is pointed at a new session.
@@ -162,9 +165,11 @@ public final class EGLFramePresenter {
         eglWindow: OpaquePointer,
         pixelWidth: Int,
         pixelHeight: Int,
-        drops: ViewerFrameDropCounter? = nil
+        drops: ViewerFrameDropCounter? = nil,
+        draws: ViewerDrawCounter? = nil
     ) throws {
         self.drops = drops
+        self.draws = draws
         guard let display = sensorium_egl_display_for_native(UnsafeMutableRawPointer(waylandDisplay)),
               display != sensorium_egl_no_display() else {
             throw EGLFramePresenterError.displayUnavailable(eglGetError().magnitude)
@@ -311,6 +316,7 @@ public final class EGLFramePresenter {
         refreshIntervalNanoseconds: Int64 = PresentationPacer.defaultFrameIntervalNanoseconds
     ) -> Int64? {
         guard !hasTornDown else { return nil }
+        draws?.recordDraw()
         if let due = pacer.frameToPresent(
             nowNanoseconds: nowNanoseconds,
             interacting: inputActivity?.isInteracting(nowNanoseconds: nowNanoseconds) ?? false,
@@ -340,6 +346,7 @@ public final class EGLFramePresenter {
                 release = try draw(frame)
             } catch {
                 reportRenderFailure(error)
+                draws?.recordNotShown(.renderFailure)
                 // Given up rather than kept: a frame the GPU refused once it
                 // will refuse on every callback after it, and holding on to it
                 // would keep the frames behind it off the screen as well.

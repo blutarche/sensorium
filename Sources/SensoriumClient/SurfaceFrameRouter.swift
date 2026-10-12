@@ -42,6 +42,9 @@ public protocol CanvasSurfaceWindow: AnyObject {
     /// within a display refresh and a quarter of its becoming due. Read for
     /// the viewer telemetry the host's frame-rate decision uses.
     var supersededOnTimeCount: Int { get }
+    /// What this window's presenter did on each draw callback, `nil` when it
+    /// counts none.
+    var drawCounts: ViewerDrawCounts? { get }
 }
 
 public extension CanvasSurfaceWindow {
@@ -60,6 +63,7 @@ public extension CanvasSurfaceWindow {
     var droppedBeforeDecodeCount: Int { 0 }
     var droppedBeforePresentCount: Int { 0 }
     var supersededOnTimeCount: Int { 0 }
+    var drawCounts: ViewerDrawCounts? { nil }
 }
 
 /// Demuxes a surface's video frames through its own per-surface ingress and
@@ -175,6 +179,12 @@ public final class SurfaceFrameRouter: @unchecked Sendable {
     /// One surface's decoded frames a newer one replaced on time.
     public func supersededOnTimeCount(surfaceID: UInt32) -> Int {
         window(atSurfaceID: surfaceID)?.supersededOnTimeCount ?? 0
+    }
+
+    /// One surface's draw callback counts, for the viewer telemetry's draw
+    /// report.
+    public func drawCounts(surfaceID: UInt32) -> ViewerDrawCounts? {
+        window(atSurfaceID: surfaceID)?.drawCounts
     }
 
     public func isPointerCaptured(surfaceID: UInt32) -> Bool {

@@ -309,6 +309,92 @@ func testViewerTelemetryCarriesTheSupersededOnTimeRateAndStaysCompatible() {
     expect(!store.record(reading(.infinity), atSeconds: 1), "an infinite rate drops the whole sample")
 }
 
+/// What each of the viewer's draw callbacks did, so a stream decoded at 15
+/// frames a second and presented at none can be told apart from a display that
+/// was never asked to draw. An older viewer omits the report and a newer host
+/// then has nothing to say about it.
+func testViewerTelemetryCarriesTheDrawReportAndStaysCompatible() {
+    let report = ViewerDrawReport(
+        drawsPerSecond: 60,
+        noDrawablePerSecond: 14,
+        noCommandBufferPerSecond: 1,
+        emptyDestinationPerSecond: 2,
+        renderFailurePerSecond: 3
+    )
+    expect(report.notShownPerSecond == 20, "the frames not shown are the four reasons added together")
+
+    let withReport = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: 5,
+            decodedFramesPerSecond: 20,
+            receivedBitsPerSecond: nil,
+            drawReport: report
+        )
+    )
+    expect(
+        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withReport)) == withReport,
+        "the draw report round-trips unchanged"
+    )
+
+    guard case let .viewerTelemetry(oldViewer) = try! SensoriumFrameCodec.decode(viewerTelemetryFrame([
+        "type": "viewerTelemetry",
+        "viewerTelemetry": ["surfaceID": 0, "decodedFramesPerSecond": 20]
+    ])) else {
+        expect(false, "a viewer telemetry message without the draw report still decodes as one")
+        return
+    }
+    expect(oldViewer.drawReport == nil, "a viewer that predates the report sends none, not a report of zeroes")
+
+    let unreported = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil
+        )
+    )
+    expect(
+        !String(decoding: try! SensoriumFrameCodec.encode(unreported), as: UTF8.self).contains("drawReport"),
+        "a viewer with no report omits the field rather than sending a null"
+    )
+
+    func reading(_ report: ViewerDrawReport) -> ViewerTelemetrySample {
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil,
+            drawReport: report
+        )
+    }
+    var store = ViewerTelemetryStore()
+    expect(store.record(reading(report), atSeconds: 1), "an ordinary report is kept")
+    expect(
+        !store.record(reading(ViewerDrawReport(
+            drawsPerSecond: 60, noDrawablePerSecond: -1, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0
+        )), atSeconds: 1),
+        "a negative count drops the whole sample"
+    )
+    expect(
+        !store.record(reading(ViewerDrawReport(
+            drawsPerSecond: .nan, noDrawablePerSecond: 0, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0
+        )), atSeconds: 1),
+        "a count that is not a number drops the whole sample"
+    )
+}
+
 /// The other half of the same conversation: what the host applied, and why it
 /// is below what the viewer asked for. Absent from a host that predates the
 /// fields, which the viewer must read as "unknown" rather than as a limit.

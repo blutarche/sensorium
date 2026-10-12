@@ -47,6 +47,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// Outlives one decode session: a reconnect behind this same window keeps
     /// counting.
     private let drops = ViewerFrameDropCounter()
+    private let draws = ViewerDrawCounter()
     /// This window's video entry point, and the receipt ledger behind it.
     /// Owned by this window alone, never shared -- so two windows' receipts
     /// can never collide even though `FrameReceiptLedger` keys only by
@@ -201,7 +202,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         self.focusReporter = focusReporter
 
         metalView = MTKView(frame: contentRect)
-        presenter = try MetalFramePresenter(view: metalView, drops: drops)
+        presenter = try MetalFramePresenter(view: metalView, drops: drops, draws: draws)
         presenter.inputActivity = session.inputActivity
         viewport = ClientViewportController(
             mapper: VirtualCanvasInputMapper(
@@ -598,6 +599,10 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// Decoded frames a newer one replaced on time.
     public var supersededOnTimeCount: Int {
         drops.supersededOnTime
+    }
+
+    public var drawCounts: ViewerDrawCounts? {
+        draws.counts
     }
 
     public var droppedFrameCount: Int {

@@ -616,6 +616,92 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: the periodic video line carries the viewer's end-to-end and receive delay when it has reported them")
 
+    // Both lines say why the viewer's draws showed nothing, only when they did
+    do {
+        func sample(_ report: ViewerDrawReport?) -> ViewerTelemetrySample {
+            ViewerTelemetrySample(
+                surfaceID: 0,
+                endToEnd: nil,
+                receive: nil,
+                decode: nil,
+                presentedFramesPerSecond: 5,
+                decodedFramesPerSecond: 20,
+                receivedBitsPerSecond: nil,
+                drawReport: report
+            )
+        }
+        func packet(_ sequence: UInt64) -> EncodedVideoFramePacket {
+            EncodedVideoFramePacket(
+                sequence: sequence,
+                presentationTimeNanoseconds: sequence * 1_000_000,
+                isKeyFrame: false,
+                codecConfiguration: nil,
+                payload: Data([UInt8(sequence & 0xFF)])
+            )
+        }
+        let media = FakeScalableCanvasMedia()
+        let sink = FakeVideoSink()
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(
+            media: onlyOnSurfaceZero(media),
+            videoSink: sink,
+            flowReportSeconds: 0,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        func lastVideoLine() -> String? {
+            events.messages.last { $0.hasPrefix("video ") }
+        }
+
+        _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
+            drawsPerSecond: 60, noDrawablePerSecond: 0, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0
+        ))))
+        media.emit(packet(1))
+        expect(
+            lastVideoLine()?.hasSuffix("0 dropped to keep up") == true,
+            "draws that all showed their frame add nothing to the video line, got \(lastVideoLine() ?? "no line")"
+        )
+
+        _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
+            drawsPerSecond: 60, noDrawablePerSecond: 14, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0
+        ))))
+        media.emit(packet(2))
+        expect(
+            lastVideoLine()?.hasSuffix(
+                "0 dropped to keep up; viewer draws 60/s, not shown 14/s (no drawable 14)"
+            ) == true,
+            "the video line says how many draws showed nothing and why, got \(lastVideoLine() ?? "no line")"
+        )
+
+        _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
+            drawsPerSecond: 58, noDrawablePerSecond: 10, noCommandBufferPerSecond: 1,
+            emptyDestinationPerSecond: 2, renderFailurePerSecond: 4
+        ))))
+        media.emit(packet(3))
+        expect(
+            lastVideoLine()?.hasSuffix(
+                "; viewer draws 58/s, not shown 17/s"
+                    + " (no drawable 10, no command buffer 1, zero-size destination 2, render failure 4)"
+            ) == true,
+            "every reason that occurred is named, in a fixed order, got \(lastVideoLine() ?? "no line")"
+        )
+
+        for tick in 0...8 {
+            media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
+            await coordinator.tickFidelity(atSeconds: Double(tick))
+        }
+        let fidelityLine = events.messages.last { $0.hasPrefix("fidelity now") }
+        expect(
+            fidelityLine?.contains("; viewer draws 58/s, not shown 17/s (no drawable 10, no command buffer 1,") == true,
+            "the fidelity line carries the same words, got \(fidelityLine ?? "no line")"
+        )
+    }
+    print("PASS: the video and fidelity lines say why the viewer's draws showed nothing, only when some did")
+
     // A still screen is sent one good frame of the picture it holds
     do {
         let media = FakeScalableCanvasMedia()
