@@ -400,6 +400,10 @@ public final class HostSessionCoordinator {
     /// sink. What the viewer reports receiving is only meaningful against
     /// what this host actually produced.
     private let producedBytes = SurfaceByteCounter()
+    /// The viewer's latest end-to-end and receive delay per surface, worded
+    /// for the periodic video line, which is written from the encoder's
+    /// callback thread.
+    private let viewerDelays = ViewerDelayBox()
     /// This process's own record of whether it can still capture anything on
     /// this machine. Written here, and read by every canvas request that
     /// follows on any connection.
@@ -725,6 +729,14 @@ public final class HostSessionCoordinator {
 
         if case let .hostScreenRefused(reason) = response {
             onEvent?("host screen refused for \(hostScreenLogName()): \(reason)")
+        }
+
+        if case let .viewerTelemetry(sample) = message,
+           let surface = CanvasSurfaceID(wireValue: sample.surfaceID) {
+            // Read back from the controller, which is what refused a report
+            // from an unauthenticated viewer or one with impossible numbers.
+            let accepted = controller.latestViewerTelemetry(for: surface, atSeconds: Self.nowSeconds())
+            viewerDelays.record(accepted.flatMap(Self.viewerDelayDescription), for: surface, atSeconds: Self.nowSeconds())
         }
 
         if case let .viewerTelemetry(sample) = message,
@@ -2473,16 +2485,7 @@ public final class HostSessionCoordinator {
         let decode = sample.decode.map { milliseconds($0.p95Nanoseconds) } ?? "?"
         let decoded = sample.decodedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
         let presented = sample.presentedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
-        var delays: [String] = []
-        if let endToEnd = sample.endToEnd {
-            delays.append("end to end p50 \(milliseconds(endToEnd.p50Nanoseconds))"
-                + " p95 \(milliseconds(endToEnd.p95Nanoseconds))")
-        }
-        if let receive = sample.receive {
-            delays.append("receive p50 \(milliseconds(receive.p50Nanoseconds))"
-                + " p95 \(milliseconds(receive.p95Nanoseconds))")
-        }
-        let leading = delays.isEmpty ? "" : delays.joined(separator: ", ") + ", "
+        let leading = viewerDelayDescription(sample).map { $0 + ", " } ?? ""
         var description = "; viewer \(leading)decode p95 \(decode), decoded \(decoded) fps, presented \(presented) fps"
         if let decodesInHardware = sample.decodesInHardware {
             description += decodesInHardware ? ", hardware decoder" : ", software decoder"
@@ -2495,6 +2498,40 @@ public final class HostSessionCoordinator {
             description += ", queue wait p95 \(milliseconds(queueWait.p95Nanoseconds))"
         }
         return description
+    }
+
+    /// The viewer's end-to-end and receive delays as the log words them, or
+    /// `nil` when it reported neither.
+    private static func viewerDelayDescription(_ sample: ViewerTelemetrySample) -> String? {
+        var delays: [String] = []
+        if let endToEnd = sample.endToEnd {
+            delays.append("end to end p50 \(milliseconds(endToEnd.p50Nanoseconds))"
+                + " p95 \(milliseconds(endToEnd.p95Nanoseconds))")
+        }
+        if let receive = sample.receive {
+            delays.append("receive p50 \(milliseconds(receive.p50Nanoseconds))"
+                + " p95 \(milliseconds(receive.p95Nanoseconds))")
+        }
+        return delays.isEmpty ? nil : delays.joined(separator: ", ")
+    }
+
+    /// One interval's video line, with the viewer's latest delay appended when
+    /// it has reported one.
+    private nonisolated static func videoReportLine(
+        _ label: String,
+        _ report: MediaFlowReport,
+        viewerDelay: String?
+    ) -> String {
+        let line = String(
+            format: "%@ %d frames in %.1fs (%.1f frames/s, %.2f Mbit/s), %d dropped to keep up",
+            label,
+            report.frames,
+            report.seconds,
+            report.framesPerSecond,
+            report.megabitsPerSecond,
+            report.droppedFrames
+        )
+        return viewerDelay.map { line + "; viewer " + $0 } ?? line
     }
 
     private static func milliseconds(_ nanoseconds: Int64) -> String {
@@ -2564,7 +2601,7 @@ public final class HostSessionCoordinator {
         return "viewer \(name)"
     }
 
-    private static func nowSeconds() -> Double {
+    private nonisolated static func nowSeconds() -> Double {
         Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
     }
 
@@ -2578,6 +2615,7 @@ public final class HostSessionCoordinator {
         let flow = flow
         let onEvent = onEvent
         let producedBytes = producedBytes
+        let viewerDelays = viewerDelays
         let startedAt = Date()
         // Wired before `start`, so a capture that stops the instant it comes
         // up is still caught.
@@ -2619,13 +2657,8 @@ public final class HostSessionCoordinator {
                 // stops changing entirely -- which is why what the capture
                 // stream delivered has its own line, per surface, from the
                 // fidelity tick.
-                onEvent?(String(
-                    format: "video %d frames in %.1fs (%.1f frames/s, %.2f Mbit/s), %d dropped to keep up",
-                    report.frames,
-                    report.seconds,
-                    report.framesPerSecond,
-                    report.megabitsPerSecond,
-                    report.droppedFrames
+                onEvent?(Self.videoReportLine(
+                    "video", report, viewerDelay: viewerDelays.latest(for: surface, atSeconds: Self.nowSeconds())
                 ))
             }
             return taken
@@ -2809,6 +2842,7 @@ public final class HostSessionCoordinator {
         let flow = flow
         let onEvent = onEvent
         let producedBytes = producedBytes
+        let viewerDelays = viewerDelays
         if hostScreenStreamStartedAt == nil {
             hostScreenStreamStartedAt = Date()
         }
@@ -2857,13 +2891,8 @@ public final class HostSessionCoordinator {
                 droppedFramesTotal: { videoSink.droppedVideoFrameCount },
                 atSeconds: Date().timeIntervalSince(startedAt)
             ) {
-                onEvent?(String(
-                    format: "host-screen video %d frames in %.1fs (%.1f frames/s, %.2f Mbit/s), %d dropped to keep up",
-                    report.frames,
-                    report.seconds,
-                    report.framesPerSecond,
-                    report.megabitsPerSecond,
-                    report.droppedFrames
+                onEvent?(Self.videoReportLine(
+                    "host-screen video", report, viewerDelay: viewerDelays.latest(for: telemetrySurface, atSeconds: Self.nowSeconds())
                 ))
             }
             return taken
@@ -2929,6 +2958,29 @@ final class SurfaceByteCounter: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return bytes[surface.index]
+    }
+}
+
+/// The viewer's latest delay wording per surface, written on the main actor
+/// and read from the encoder's callback thread. A reading older than the
+/// staleness window every other telemetry reading is judged by reads as none.
+final class ViewerDelayBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var slots = [(text: String, atSeconds: Double)?](repeating: nil, count: CanvasSurfaceID.capacity)
+
+    func record(_ text: String?, for surface: CanvasSurfaceID, atSeconds now: Double) {
+        lock.lock()
+        defer { lock.unlock() }
+        slots[surface.index] = text.map { ($0, now) }
+    }
+
+    func latest(for surface: CanvasSurfaceID, atSeconds now: Double) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let slot = slots[surface.index], now - slot.atSeconds <= TelemetryPolicy.staleAfterSeconds else {
+            return nil
+        }
+        return slot.text
     }
 }
 

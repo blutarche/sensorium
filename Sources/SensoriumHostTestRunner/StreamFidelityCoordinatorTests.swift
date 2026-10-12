@@ -516,6 +516,62 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: the periodic video line reports the frames this interval dropped, not the session's running total")
 
+    // The periodic video line carries the viewer's latest delay report
+    do {
+        let media = FakeScalableCanvasMedia()
+        let sink = FakeVideoSink()
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(
+            media: onlyOnSurfaceZero(media),
+            videoSink: sink,
+            flowReportSeconds: 0,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        func lastVideoLine() -> String? {
+            events.messages.last { $0.hasPrefix("video ") }
+        }
+        func packet(_ sequence: UInt64) -> EncodedVideoFramePacket {
+            EncodedVideoFramePacket(
+                sequence: sequence,
+                presentationTimeNanoseconds: sequence * 1_000_000,
+                isKeyFrame: false,
+                codecConfiguration: nil,
+                payload: Data([UInt8(sequence & 0xFF)])
+            )
+        }
+
+        media.emit(packet(1))
+        expect(
+            lastVideoLine()?.hasSuffix("0 dropped to keep up") == true,
+            "before the viewer reports anything the line ends where it always did, got \(lastVideoLine() ?? "no line")"
+        )
+
+        _ = try! await coordinator.handleWritingResponse(
+            .viewerTelemetry(
+                ViewerTelemetrySample(
+                    surfaceID: 0,
+                    endToEnd: StageLatencySample(p50Nanoseconds: 41_000_000, p95Nanoseconds: 63_000_000),
+                    receive: StageLatencySample(p50Nanoseconds: 18_000_000, p95Nanoseconds: 30_000_000),
+                    decode: nil,
+                    presentedFramesPerSecond: 60,
+                    decodedFramesPerSecond: 60,
+                    receivedBitsPerSecond: nil
+                )
+            )
+        )
+        media.emit(packet(2))
+        expect(
+            lastVideoLine()?.hasSuffix(
+                "0 dropped to keep up; viewer end to end p50 41.0ms p95 63.0ms, receive p50 18.0ms p95 30.0ms"
+            ) == true,
+            "the line carries the viewer's end-to-end and receive delay, got \(lastVideoLine() ?? "no line")"
+        )
+    }
+    print("PASS: the periodic video line carries the viewer's end-to-end and receive delay when it has reported them")
+
     // A still screen is sent one good frame of the picture it holds
     do {
         let media = FakeScalableCanvasMedia()
