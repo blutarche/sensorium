@@ -2463,8 +2463,9 @@ public final class HostSessionCoordinator {
 
     /// The viewer's own report behind a fidelity change, so a "limited by
     /// the viewer" line can be checked against the numbers it rests on.
-    /// Empty when no fresh report has arrived. The decoder and the split of
-    /// its decode time are added only when the viewer reported them.
+    /// Empty when no fresh report has arrived. The end-to-end and receive
+    /// delays, the decoder and the split of its decode time are added only
+    /// when the viewer reported them.
     private static func viewerTelemetryDescription(_ sample: ViewerTelemetrySample?) -> String {
         guard let sample else {
             return ""
@@ -2472,7 +2473,17 @@ public final class HostSessionCoordinator {
         let decode = sample.decode.map { milliseconds($0.p95Nanoseconds) } ?? "?"
         let decoded = sample.decodedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
         let presented = sample.presentedFramesPerSecond.map { String(format: "%.0f", $0) } ?? "?"
-        var description = "; viewer decode p95 \(decode), decoded \(decoded) fps, presented \(presented) fps"
+        var delays: [String] = []
+        if let endToEnd = sample.endToEnd {
+            delays.append("end to end p50 \(milliseconds(endToEnd.p50Nanoseconds))"
+                + " p95 \(milliseconds(endToEnd.p95Nanoseconds))")
+        }
+        if let receive = sample.receive {
+            delays.append("receive p50 \(milliseconds(receive.p50Nanoseconds))"
+                + " p95 \(milliseconds(receive.p95Nanoseconds))")
+        }
+        let leading = delays.isEmpty ? "" : delays.joined(separator: ", ") + ", "
+        var description = "; viewer \(leading)decode p95 \(decode), decoded \(decoded) fps, presented \(presented) fps"
         if let decodesInHardware = sample.decodesInHardware {
             description += decodesInHardware ? ", hardware decoder" : ", software decoder"
         }

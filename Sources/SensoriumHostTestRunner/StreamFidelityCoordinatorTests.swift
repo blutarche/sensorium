@@ -275,6 +275,42 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: a fidelity change line names the viewer's decoder and splits the decoder's own time from the wait ahead of it")
 
+    // A fidelity change names the viewer's whole-path and receive delay
+    do {
+        let media = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(media: onlyOnSurfaceZero(media), onEvent: { events.record($0) })
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .viewerTelemetry(
+                ViewerTelemetrySample(
+                    surfaceID: 0,
+                    endToEnd: StageLatencySample(p50Nanoseconds: 21_000_000, p95Nanoseconds: 34_500_000),
+                    receive: StageLatencySample(p50Nanoseconds: 9_000_000, p95Nanoseconds: 12_250_000),
+                    decode: StageLatencySample(p50Nanoseconds: 3_000_000, p95Nanoseconds: 4_250_000),
+                    presentedFramesPerSecond: 59.6,
+                    decodedFramesPerSecond: 60,
+                    receivedBitsPerSecond: nil
+                )
+            )
+        )
+        for tick in 0...8 {
+            media.frameCounts = counts(afterTicks: tick + 1, droppingPerTick: 6)
+            await coordinator.tickFidelity(atSeconds: Double(tick))
+        }
+        let fidelityLines = events.messages.filter { $0.hasPrefix("fidelity now") }
+        expect(
+            fidelityLines.last
+                == "fidelity now 30 fps, quality 100%, 1.00x on canvas 0 (limited by the encoder)"
+                + "; viewer end to end p50 21.0ms p95 34.5ms, receive p50 9.0ms p95 12.2ms"
+                + ", decode p95 4.2ms, decoded 60 fps, presented 60 fps",
+            "the line leads with the viewer's end-to-end and receive delay, got \(fidelityLines.last ?? "nothing")"
+        )
+    }
+    print("PASS: a fidelity change line carries the viewer's end-to-end and receive delay when it has reported them")
+
     // The viewer's decoder is named once per surface it streams
     do {
         let surfaceOne = CanvasSurfaceID.allCases[1]
