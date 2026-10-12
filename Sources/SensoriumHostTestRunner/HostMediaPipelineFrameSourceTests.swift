@@ -113,5 +113,31 @@ func runHostMediaPipelineFrameSourceTests() async {
     try! await pipeline.stop()
     expect(source?.stopCount == 1, "stopping the pipeline stops its frame source, got \(String(describing: source?.stopCount))")
 
+    let packets = EncodedFrameCounter()
+    var packetSource: ScriptedFrameSource?
+    let packetPipeline = try! HostMediaPipeline(
+        surface: surface,
+        configuration: configuration,
+        sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
+            capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
+        ),
+        frameSourceFactory: { _, _, _, frameHandler in
+            let made = ScriptedFrameSource(frameHandler: frameHandler)
+            packetSource = made
+            return made
+        },
+        encodedPacketHandler: { _ in
+            packets.record()
+            return true
+        }
+    )
+    try! await packetPipeline.start()
+    packetSource!.frameHandler(scriptedSampleBuffer(width: configuration.captureWidth, height: configuration.captureHeight))
+    for _ in 0..<100 where packets.value == 0 {
+        try? await Task.sleep(nanoseconds: 50_000_000)
+    }
+    expect(packets.value >= 1, "a packetizing pipeline built from a frame source hands its encoded frame on as a packet, got \(packets.value)")
+    try! await packetPipeline.stop()
+
     print("PASS: a pipeline built from a scripted frame source records a capture, admits the frame to the encoder, and drives the source's start, frame rate and stop")
 }

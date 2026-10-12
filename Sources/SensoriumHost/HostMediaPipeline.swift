@@ -106,16 +106,7 @@ public final class HostMediaPipeline {
             focus: focus,
             sendFeedback: sendFeedback,
             streamStoppedHandler: streamStoppedHandler,
-            frameSourceFactory: { configuration, deliveryHandler, streamStoppedHandler, frameHandler in
-                try ScreenCaptureSession(
-                    contentFilter: contentFilter,
-                    configuration: configuration,
-                    captureTarget: captureTarget,
-                    deliveryHandler: deliveryHandler,
-                    streamStoppedHandler: streamStoppedHandler,
-                    frameHandler: frameHandler
-                )
-            },
+            frameSourceFactory: Self.screenCapture(of: contentFilter, captureTarget: captureTarget),
             encodedFrameHandler: encodedFrameHandler
         )
     }
@@ -212,15 +203,42 @@ public final class HostMediaPipeline {
         encodedPacketHandler: @escaping @Sendable (EncodedVideoFramePacket) -> Bool
     ) throws {
         try self.init(
-            contentFilter: contentFilter,
             surface: surface,
             configuration: configuration,
             latencyRecorder: latencyRecorder,
             sessionAdmissionGate: sessionAdmissionGate,
             focus: focus,
             sendFeedback: sendFeedback,
-            captureTarget: captureTarget,
+            packetizer: packetizer,
             streamStoppedHandler: streamStoppedHandler,
+            frameSourceFactory: Self.screenCapture(of: contentFilter, captureTarget: captureTarget),
+            encodedPacketHandler: encodedPacketHandler
+        )
+    }
+
+    /// The same as the packetizing initializer above, with the frames
+    /// coming from `frameSourceFactory`.
+    public convenience init(
+        surface: CanvasSurfaceID,
+        configuration: VideoEncoderConfiguration = .remoteDefault,
+        latencyRecorder: HostMediaLatencyRecorder? = nil,
+        sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
+        focus: CanvasFocusTracker = CanvasFocusTracker(),
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
+        packetizer: H264SampleBufferPacketizer = H264SampleBufferPacketizer(),
+        streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
+        frameSourceFactory: HostFrameSourceFactory,
+        encodedPacketHandler: @escaping @Sendable (EncodedVideoFramePacket) -> Bool
+    ) throws {
+        try self.init(
+            surface: surface,
+            configuration: configuration,
+            latencyRecorder: latencyRecorder,
+            sessionAdmissionGate: sessionAdmissionGate,
+            focus: focus,
+            sendFeedback: sendFeedback,
+            streamStoppedHandler: streamStoppedHandler,
+            frameSourceFactory: frameSourceFactory,
             // Through `deliver`, not `packet(from:)`: the sequence number and
             // the hand-off to the transport are one step, so a still-screen
             // refresh raced against a stream frame cannot reach the transport
@@ -231,6 +249,22 @@ public final class HostMediaPipeline {
                 }) ?? false
             }
         )
+    }
+
+    private static func screenCapture(
+        of contentFilter: SCContentFilter,
+        captureTarget: CaptureCursorPolicy.Target
+    ) -> HostFrameSourceFactory {
+        { configuration, deliveryHandler, streamStoppedHandler, frameHandler in
+            try ScreenCaptureSession(
+                contentFilter: contentFilter,
+                configuration: configuration,
+                captureTarget: captureTarget,
+                deliveryHandler: deliveryHandler,
+                streamStoppedHandler: streamStoppedHandler,
+                frameHandler: frameHandler
+            )
+        }
     }
 
     /// The encoder is told first: it must already expect the new rate when
