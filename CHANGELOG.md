@@ -63,6 +63,11 @@ once it reaches 1.0.
   frame away. If one is still lost, the host sends nothing more for
   that screen until a full frame, and asks for one at once. The host
   log notes each time it asks.
+- The stream no longer drops its frame rate while you drag a window or
+  move the pointer. Frames that arrive together can only show the newest,
+  and the host used to read that as a viewer falling behind and cut the
+  rate from 60 to 45. It now counts them as kept up with and lowers the
+  rate only for a viewer that really is behind.
 
 ## [0.5.0] - 2026-10-11
 
