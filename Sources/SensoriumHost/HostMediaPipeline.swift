@@ -12,10 +12,37 @@ public enum HostMediaPipelineError: Error, Equatable {
     case stillRefreshNotDelivered
 }
 
+/// Where a `HostMediaPipeline` gets its frames: ScreenCaptureKit in the host,
+/// or anything else that can deliver sample buffers carrying an image buffer.
+/// The surface it covers is exactly the part of `ScreenCaptureSession` the
+/// pipeline drives.
+@available(macOS 13.0, *)
+@MainActor
+public protocol HostFrameSource: AnyObject {
+    func start() async throws
+    func stop() async throws
+    func apply(framesPerSecond: Int) async throws
+}
+
+@available(macOS 13.0, *)
+extension ScreenCaptureSession: HostFrameSource {}
+
+/// Builds the frame source for one pipeline, given the encoder configuration
+/// the pipeline was built with and the closures the pipeline listens on: what
+/// each delivery turned out to be, the stream ending by itself, and every
+/// frame that should be encoded.
+@available(macOS 13.0, *)
+public typealias HostFrameSourceFactory = @MainActor (
+    _ configuration: VideoEncoderConfiguration,
+    _ deliveryHandler: @escaping @Sendable (ScreenCaptureDelivery) -> Void,
+    _ streamStoppedHandler: (@Sendable (Error) -> Void)?,
+    _ frameHandler: @escaping @Sendable (CMSampleBuffer) -> Void
+) throws -> any HostFrameSource
+
 @available(macOS 13.0, *)
 @MainActor
 public final class HostMediaPipeline {
-    private let capture: ScreenCaptureSession
+    private let capture: any HostFrameSource
     private let encoder: VideoToolboxEncoder
     private let admissionGate: EncodeAdmissionGate
     private let lastCapturedFrame = LastCapturedFrame()
@@ -57,7 +84,9 @@ public final class HostMediaPipeline {
     /// link.
     public var droppedCaptureFrameCount: Int { admissionGate.droppedFrameCount }
 
-    public init(
+    /// The screen-capture pipeline: frames come from a ScreenCaptureKit
+    /// stream over `contentFilter`.
+    public convenience init(
         contentFilter: SCContentFilter,
         surface: CanvasSurfaceID,
         configuration: VideoEncoderConfiguration = .remoteDefault,
@@ -67,6 +96,41 @@ public final class HostMediaPipeline {
         sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         captureTarget: CaptureCursorPolicy.Target,
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
+        encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Bool
+    ) throws {
+        try self.init(
+            surface: surface,
+            configuration: configuration,
+            latencyRecorder: latencyRecorder,
+            sessionAdmissionGate: sessionAdmissionGate,
+            focus: focus,
+            sendFeedback: sendFeedback,
+            streamStoppedHandler: streamStoppedHandler,
+            frameSourceFactory: { configuration, deliveryHandler, streamStoppedHandler, frameHandler in
+                try ScreenCaptureSession(
+                    contentFilter: contentFilter,
+                    configuration: configuration,
+                    captureTarget: captureTarget,
+                    deliveryHandler: deliveryHandler,
+                    streamStoppedHandler: streamStoppedHandler,
+                    frameHandler: frameHandler
+                )
+            },
+            encodedFrameHandler: encodedFrameHandler
+        )
+    }
+
+    /// `frameSourceFactory` is called once, with the closures that feed this
+    /// pipeline's capture bookkeeping and encoder admission.
+    public init(
+        surface: CanvasSurfaceID,
+        configuration: VideoEncoderConfiguration = .remoteDefault,
+        latencyRecorder: HostMediaLatencyRecorder? = nil,
+        sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
+        focus: CanvasFocusTracker = CanvasFocusTracker(),
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
+        streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
+        frameSourceFactory: HostFrameSourceFactory,
         encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Bool
     ) throws {
         // Bounds the frames outstanding between capture and
@@ -112,14 +176,12 @@ public final class HostMediaPipeline {
         self.surface = surface
         self.latencyRecorder = latencyRecorder
         let lastCapturedFrame = lastCapturedFrame
-        capture = try ScreenCaptureSession(
-            contentFilter: contentFilter,
-            configuration: configuration,
-            captureTarget: captureTarget,
-            deliveryHandler: { delivery in
+        capture = try frameSourceFactory(
+            configuration,
+            { delivery in
                 latencyRecorder?.recordCaptureDelivery(delivery, surface: surface)
             },
-            streamStoppedHandler: streamStoppedHandler
+            streamStoppedHandler
         ) { sampleBuffer in
             lastCapturedFrame.record(sampleBuffer)
             if let latencyRecorder, let presentationTime = CMSampleBufferPresentationTiming.nanoseconds(sampleBuffer) {
