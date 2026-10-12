@@ -38,6 +38,10 @@ public protocol CanvasSurfaceWindow: AnyObject {
     /// HUD, which names the two apart because they cost different things.
     var droppedBeforeDecodeCount: Int { get }
     var droppedBeforePresentCount: Int { get }
+    /// The part of `droppedBeforePresentCount` that a newer frame replaced
+    /// within a display refresh and a quarter of its becoming due. Read for
+    /// the viewer telemetry the host's frame-rate decision uses.
+    var supersededOnTimeCount: Int { get }
 }
 
 public extension CanvasSurfaceWindow {
@@ -55,6 +59,7 @@ public extension CanvasSurfaceWindow {
     var droppedFrameCount: Int { 0 }
     var droppedBeforeDecodeCount: Int { 0 }
     var droppedBeforePresentCount: Int { 0 }
+    var supersededOnTimeCount: Int { 0 }
 }
 
 /// Demuxes a surface's video frames through its own per-surface ingress and
@@ -165,6 +170,11 @@ public final class SurfaceFrameRouter: @unchecked Sendable {
     /// One surface's decoded frames given up before presentation.
     public func droppedBeforePresentCount(surfaceID: UInt32) -> Int {
         window(atSurfaceID: surfaceID)?.droppedBeforePresentCount ?? 0
+    }
+
+    /// One surface's decoded frames a newer one replaced on time.
+    public func supersededOnTimeCount(surfaceID: UInt32) -> Int {
+        window(atSurfaceID: surfaceID)?.supersededOnTimeCount ?? 0
     }
 
     public func isPointerCaptured(surfaceID: UInt32) -> Bool {

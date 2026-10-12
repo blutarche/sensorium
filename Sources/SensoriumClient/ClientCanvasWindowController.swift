@@ -595,6 +595,11 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         drops.droppedBeforePresent
     }
 
+    /// Decoded frames a newer one replaced on time.
+    public var supersededOnTimeCount: Int {
+        drops.supersededOnTime
+    }
+
     public var droppedFrameCount: Int {
         drops.total
     }

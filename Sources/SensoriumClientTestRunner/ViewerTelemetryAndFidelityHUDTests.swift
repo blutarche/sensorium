@@ -7,6 +7,7 @@ import SensoriumCore
 func runViewerTelemetryAndFidelityHUDTests() {
     viewerTelemetryBuilderReportsOnlyWhatWasMeasured()
     viewerTelemetryBuilderCarriesTheRoundTripWhenGiven()
+    viewerTelemetryBuilderReportsTheOnTimeSupersededRate()
     viewerTelemetryReportsTheDecoderSplitOverTheLastWindow()
     fidelitySectionNamesTheFrameRateQualityAndReason()
     streamSectionNamesTheFramesThisViewerGaveUp()
@@ -14,6 +15,64 @@ func runViewerTelemetryAndFidelityHUDTests() {
     heldBackSentenceNamesNoStageWithoutACeilingOrAClampedChoice()
     heldBackSentenceNamesBothMachinesNumbersWhenTheHostsEchoDisagrees()
     print("PASS: the viewer reports its own stages and the panel names what is holding fidelity back")
+}
+
+/// Frames replaced on time are counted on the viewer and travel as a rate,
+/// measured against the real gap between ticks like the presented rate beside
+/// it.
+private func viewerTelemetryBuilderReportsTheOnTimeSupersededRate() {
+    var builder = ViewerTelemetryBuilder()
+    let second: Int64 = 1_000_000_000
+    let stream = ClientStreamReading(pixelWidth: nil, pixelHeight: nil, bitsPerSecond: nil)
+
+    let firstTick = builder.sample(
+        surfaceID: 0,
+        metrics: SessionMetrics(),
+        stream: stream,
+        presentedFrameCount: 0,
+        supersededOnTimeFrameCount: 0,
+        atNanoseconds: 10 * second
+    )
+    expect(
+        firstTick.supersededOnTimeFramesPerSecond == nil,
+        "with no earlier tick there is no rate, not a zero"
+    )
+    let secondTick = builder.sample(
+        surfaceID: 0,
+        metrics: SessionMetrics(),
+        stream: stream,
+        presentedFrameCount: 33,
+        supersededOnTimeFrameCount: 15,
+        atNanoseconds: 11 * second
+    )
+    expect(
+        secondTick.supersededOnTimeFramesPerSecond == 15 && secondTick.presentedFramesPerSecond == 33,
+        "15 frames replaced on time over one second is 15 a second beside the 33 presented"
+    )
+    let halfTick = builder.sample(
+        surfaceID: 0,
+        metrics: SessionMetrics(),
+        stream: stream,
+        presentedFrameCount: 49,
+        supersededOnTimeFrameCount: 23,
+        atNanoseconds: 11 * second + second / 2
+    )
+    expect(
+        halfTick.supersededOnTimeFramesPerSecond == 16,
+        "the rate is measured against the real gap between ticks, got \(String(describing: halfTick.supersededOnTimeFramesPerSecond))"
+    )
+    let otherSurface = builder.sample(
+        surfaceID: 1,
+        metrics: SessionMetrics(),
+        stream: stream,
+        presentedFrameCount: 900,
+        supersededOnTimeFrameCount: 400,
+        atNanoseconds: 12 * second
+    )
+    expect(
+        otherSurface.supersededOnTimeFramesPerSecond == nil,
+        "the second surface keeps its own count, so its first tick has no rate"
+    )
 }
 
 /// Field evidence: a host-screen session whose applied scale was held below

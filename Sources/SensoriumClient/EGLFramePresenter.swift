@@ -306,13 +306,18 @@ public final class EGLFramePresenter {
     /// Called on every frame callback, and drawing nothing is a normal
     /// outcome: the picture already on screen is then still the right one.
     @discardableResult
-    public func drawIfDue(nowNanoseconds: Int64) -> Int64? {
+    public func drawIfDue(
+        nowNanoseconds: Int64,
+        refreshIntervalNanoseconds: Int64 = PresentationPacer.defaultFrameIntervalNanoseconds
+    ) -> Int64? {
         guard !hasTornDown else { return nil }
         if let due = pacer.frameToPresent(
             nowNanoseconds: nowNanoseconds,
-            interacting: inputActivity?.isInteracting(nowNanoseconds: nowNanoseconds) ?? false
+            interacting: inputActivity?.isInteracting(nowNanoseconds: nowNanoseconds) ?? false,
+            refreshIntervalNanoseconds: refreshIntervalNanoseconds
         ) {
             drops?.recordDroppedBeforePresent(due.supersededCount)
+            drops?.recordSupersededOnTime(due.supersededOnTimeCount)
             latestFrame = due.frame.payload as? AVFrameBox
             latestTiming = due.frame.timing
             dueAtNanoseconds = due.dueAtNanoseconds

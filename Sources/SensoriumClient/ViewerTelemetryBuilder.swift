@@ -13,6 +13,7 @@ import SensoriumCore
 public struct ViewerTelemetryBuilder: Sendable {
     private struct Tick {
         var presentedFrameCount: Int
+        var supersededOnTimeFrameCount: Int
         var decodedFrameCount: Int
         var atNanoseconds: Int64
     }
@@ -42,6 +43,7 @@ public struct ViewerTelemetryBuilder: Sendable {
         metrics: SessionMetrics,
         stream: ClientStreamReading,
         presentedFrameCount: Int,
+        supersededOnTimeFrameCount: Int = 0,
         atNanoseconds now: Int64,
         roundTripNanoseconds: Int64? = nil,
         decodesInHardware: Bool? = nil
@@ -70,11 +72,18 @@ public struct ViewerTelemetryBuilder: Sendable {
             roundTripNanoseconds: roundTripNanoseconds,
             decodesInHardware: decodesInHardware,
             decoderOnly: stream.decoderOnly,
-            decodeQueueWait: stream.decodeQueueWait
+            decodeQueueWait: stream.decodeQueueWait,
+            supersededOnTimeFramesPerSecond: rate(
+                surfaceID: surfaceID,
+                count: supersededOnTimeFrameCount,
+                atNanoseconds: now,
+                since: \.supersededOnTimeFrameCount
+            )
         )
         if let index = Self.index(for: surfaceID) {
             lastTick[index] = Tick(
                 presentedFrameCount: presentedFrameCount,
+                supersededOnTimeFrameCount: supersededOnTimeFrameCount,
                 decodedFrameCount: stream.decodedFrameCount,
                 atNanoseconds: now
             )

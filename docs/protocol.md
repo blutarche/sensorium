@@ -218,9 +218,10 @@ endToEnd / receive / decode: { p50Nanoseconds, p95Nanoseconds }?
 presentedFramesPerSecond: Double?
 decodedFramesPerSecond: Double?
 receivedBitsPerSecond: Double?
+supersededOnTimeFramesPerSecond: Double?
 ```
 
-This exists because the host measures only its own stages: everything after a frame leaves the host is otherwise invisible to it. `receivedBitsPerSecond` is counted on the viewer, since what left the host is not what arrived.
+This exists because the host measures only its own stages: everything after a frame leaves the host is otherwise invisible to it. `receivedBitsPerSecond` is counted on the viewer, since what left the host is not what arrived. `supersededOnTimeFramesPerSecond` counts decoded frames that a newer one replaced within a display refresh and a quarter of their becoming due. Two frames that land inside one refresh leave only the newer to show, so the host adds this rate to `presentedFramesPerSecond` before judging whether the viewer shows enough of what it decodes. A viewer that omits it is read as reporting none.
 
 A stage with no samples yet is absent, never a zero. Sent once per `TelemetryPolicy.sendIntervalSeconds`, from the viewer's own display refresh, for each canvas that exists. A send that fails is not reported as session loss. Same forward-compatibility path as `telemetry`, and the same authentication gate as `viewerFocus`. `ViewerTelemetryStore` keeps the latest reading per surface and returns nothing once older than `TelemetryPolicy.staleAfterSeconds`.
 

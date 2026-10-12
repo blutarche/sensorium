@@ -557,6 +557,7 @@ public final class WaylandSessionWindow:
     public var droppedFrameCount: Int { drops.total }
     public var droppedBeforeDecodeCount: Int { drops.droppedBeforeDecode }
     public var droppedBeforePresentCount: Int { drops.droppedBeforePresent }
+    public var supersededOnTimeCount: Int { drops.supersededOnTime }
 
     // MARK: - Window
 
@@ -810,7 +811,10 @@ public final class WaylandSessionWindow:
                 Unmanaged.passUnretained(self).toOpaque()
             )
         }
-        let dueAt = presenter.drawIfDue(nowNanoseconds: MonotonicClock.nowNanoseconds())
+        let dueAt = presenter.drawIfDue(
+            nowNanoseconds: MonotonicClock.nowNanoseconds(),
+            refreshIntervalNanoseconds: state.refreshIntervalNanoseconds
+        )
         if dueAt != nil {
             // The swap that carried it committed the parent surface, so the
             // overlays held to it have arrived and can go back to their own

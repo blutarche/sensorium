@@ -20,6 +20,7 @@ public final class ViewerFrameDropCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var beforeDecode = 0
     private var beforePresent = 0
+    private var onTime = 0
 
     public init() {}
 
@@ -35,6 +36,16 @@ public final class ViewerFrameDropCounter: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return beforePresent
+    }
+
+    /// The part of `droppedBeforePresent` that a newer frame replaced on time:
+    /// two frames landed inside one display refresh and only the newer could
+    /// be shown. These are not a viewer falling behind, so they are counted
+    /// again here for the host to tell them from the rest.
+    public var supersededOnTime: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return onTime
     }
 
     /// Both together, which is what the session's latency summary reports:
@@ -60,6 +71,13 @@ public final class ViewerFrameDropCounter: @unchecked Sendable {
         lock.unlock()
     }
 
+    public func recordSupersededOnTime(_ count: Int = 1) {
+        guard count > 0 else { return }
+        lock.lock()
+        onTime += count
+        lock.unlock()
+    }
+
     /// Cumulative for the life of one window, so a reconnect behind the same
     /// window keeps counting rather than starting over: what a person wants to
     /// know is whether this viewer has been skipping frames, not whether it
@@ -68,6 +86,7 @@ public final class ViewerFrameDropCounter: @unchecked Sendable {
         lock.lock()
         beforeDecode = 0
         beforePresent = 0
+        onTime = 0
         lock.unlock()
     }
 }

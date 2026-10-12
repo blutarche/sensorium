@@ -52,10 +52,22 @@ public struct PresentationPacer: Sendable {
     public struct Presentation: Sendable {
         public let frame: DecodedFrame
         public let dueAtNanoseconds: Int64
-        /// Frames older than this one that were still waiting and are now
-        /// given up, because this one is a whole newer picture.
-        public let supersededCount: Int
+        /// Older frames that were still waiting and are given up because this
+        /// one is a whole newer picture, and had been due for no more than a
+        /// refresh and a quarter when it replaced them. Two frames landing in
+        /// one refresh is the link's unevenness, not the viewer falling
+        /// behind.
+        public let supersededOnTimeCount: Int
+        /// The same, for frames that had been due for longer than that: the
+        /// refreshes that should have shown them came and went.
+        public let supersededLateCount: Int
+        /// Both together.
+        public var supersededCount: Int { supersededOnTimeCount + supersededLateCount }
     }
+
+    /// How long a frame may have been due, in quarters of a refresh, and still
+    /// have been replaced on time.
+    private static let onTimeQuartersOfRefresh: Int64 = 5
 
     /// One frame waiting its turn. The capture time is kept alongside the due
     /// time because the next frame's due time is placed relative to both.
@@ -174,15 +186,25 @@ public struct PresentationPacer: Sendable {
     ///
     /// While `interacting`, the newest waiting frame is presented whether or
     /// not it is due, and every older one is superseded.
-    public mutating func frameToPresent(nowNanoseconds: Int64, interacting: Bool = false) -> Presentation? {
+    ///
+    /// `refreshIntervalNanoseconds` is the display's own refresh interval, which
+    /// is what separates a superseded frame that was on time from one that was
+    /// late.
+    public mutating func frameToPresent(
+        nowNanoseconds: Int64,
+        interacting: Bool = false,
+        refreshIntervalNanoseconds: Int64 = PresentationPacer.defaultFrameIntervalNanoseconds
+    ) -> Presentation? {
         isInteracting = interacting
         if interacting, let newest = pending.last {
-            let superseded = pending.count - 1
+            let superseded = pending.dropLast()
             pending.removeAll()
-            return Presentation(
-                frame: newest.frame,
+            return presentation(
+                of: newest,
                 dueAtNanoseconds: min(newest.dueAtNanoseconds, nowNanoseconds),
-                supersededCount: superseded
+                superseding: superseded,
+                nowNanoseconds: nowNanoseconds,
+                refreshIntervalNanoseconds: refreshIntervalNanoseconds
             )
         }
         // Due times rise with position, so the last one that has passed is
@@ -191,11 +213,34 @@ public struct PresentationPacer: Sendable {
             return nil
         }
         let due = pending[index]
+        let superseded = pending[..<index]
         pending.removeFirst(index + 1)
-        return Presentation(
-            frame: due.frame,
+        return presentation(
+            of: due,
             dueAtNanoseconds: due.dueAtNanoseconds,
-            supersededCount: index
+            superseding: superseded,
+            nowNanoseconds: nowNanoseconds,
+            refreshIntervalNanoseconds: refreshIntervalNanoseconds
+        )
+    }
+
+    /// A frame still ahead of its due time when it is replaced, which only
+    /// interaction does, has not been waited on and so is on time.
+    private func presentation(
+        of shown: Waiting,
+        dueAtNanoseconds: Int64,
+        superseding superseded: ArraySlice<Waiting>,
+        nowNanoseconds: Int64,
+        refreshIntervalNanoseconds: Int64
+    ) -> Presentation {
+        let onTime = superseded.filter {
+            (nowNanoseconds - $0.dueAtNanoseconds) * 4 <= refreshIntervalNanoseconds * Self.onTimeQuartersOfRefresh
+        }.count
+        return Presentation(
+            frame: shown.frame,
+            dueAtNanoseconds: dueAtNanoseconds,
+            supersededOnTimeCount: onTime,
+            supersededLateCount: superseded.count - onTime
         )
     }
 

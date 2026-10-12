@@ -516,6 +516,7 @@ public final class ClientSessionRunner {
                 // count is how many frames this canvas has actually put on
                 // screen -- the builder turns two of them into a rate.
                 presentedFrameCount: metrics.samples(for: .present).count,
+                supersededOnTimeFrameCount: router.supersededOnTimeCount(surfaceID: surfaceID),
                 atNanoseconds: nowNanoseconds,
                 roundTripNanoseconds: roundTripNanoseconds,
                 decodesInHardware: router.decoderHardwareAcceleration(surfaceID: surfaceID)?.decodesInHardware

@@ -240,6 +240,75 @@ func testViewerTelemetryCarriesTheDecoderFieldsAndStaysCompatibleBothWays() {
     )
 }
 
+/// Frames that arrive together inside one display refresh can only show the
+/// newest, so the viewer reports how many it replaced on time. An older viewer
+/// omits the rate, and the host must read that as none.
+func testViewerTelemetryCarriesTheSupersededOnTimeRateAndStaysCompatible() {
+    let withRate = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: 33,
+            decodedFramesPerSecond: 50,
+            receivedBitsPerSecond: nil,
+            supersededOnTimeFramesPerSecond: 9.5
+        )
+    )
+    expect(
+        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(withRate)) == withRate,
+        "the on-time superseded rate round-trips unchanged"
+    )
+
+    guard case let .viewerTelemetry(oldViewer) = try! SensoriumFrameCodec.decode(viewerTelemetryFrame([
+        "type": "viewerTelemetry",
+        "viewerTelemetry": ["surfaceID": 0, "presentedFramesPerSecond": 33, "decodedFramesPerSecond": 50]
+    ])) else {
+        expect(false, "a viewer telemetry message without the rate still decodes as one")
+        return
+    }
+    expect(
+        oldViewer.presentedFramesPerSecond == 33 && oldViewer.supersededOnTimeFramesPerSecond == nil,
+        "a viewer that predates the rate reports none, not a zero"
+    )
+
+    let unreported = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil
+        )
+    )
+    expect(
+        !String(decoding: try! SensoriumFrameCodec.encode(unreported), as: UTF8.self)
+            .contains("supersededOnTimeFramesPerSecond"),
+        "a viewer with no rate to report omits the field rather than sending a null"
+    )
+
+    func reading(_ rate: Double) -> ViewerTelemetrySample {
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: 30,
+            decodedFramesPerSecond: 60,
+            receivedBitsPerSecond: nil,
+            supersededOnTimeFramesPerSecond: rate
+        )
+    }
+    var store = ViewerTelemetryStore()
+    expect(store.record(reading(0), atSeconds: 1), "a rate of zero is kept")
+    expect(!store.record(reading(-1), atSeconds: 1), "a negative rate drops the whole sample")
+    expect(!store.record(reading(.nan), atSeconds: 1), "a rate that is not a number drops the whole sample")
+    expect(!store.record(reading(.infinity), atSeconds: 1), "an infinite rate drops the whole sample")
+}
+
 /// The other half of the same conversation: what the host applied, and why it
 /// is below what the viewer asked for. Absent from a host that predates the
 /// fields, which the viewer must read as "unknown" rather than as a limit.

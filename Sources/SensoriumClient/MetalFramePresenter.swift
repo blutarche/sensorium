@@ -151,9 +151,11 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
         let now = MonotonicClock.nowNanoseconds()
         if let due = pacer.frameToPresent(
             nowNanoseconds: now,
-            interacting: inputActivity?.isInteracting(nowNanoseconds: now) ?? false
+            interacting: inputActivity?.isInteracting(nowNanoseconds: now) ?? false,
+            refreshIntervalNanoseconds: refreshIntervalNanoseconds
         ) {
             drops?.recordDroppedBeforePresent(due.supersededCount)
+            drops?.recordSupersededOnTime(due.supersededOnTimeCount)
             latestFrame = due.frame.pixelBuffer
             latestTiming = due.frame.timing
             dueAtNanoseconds = due.dueAtNanoseconds
@@ -205,6 +207,14 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
     }
 
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+    /// One refresh of the display link this view runs, which is what the pacer
+    /// measures how long a superseded frame was due against.
+    private var refreshIntervalNanoseconds: Int64 {
+        let framesPerSecond = view.preferredFramesPerSecond
+        guard framesPerSecond > 0 else { return PresentationPacer.defaultFrameIntervalNanoseconds }
+        return 1_000_000_000 / Int64(framesPerSecond)
+    }
 
     /// Encodes the aspect-fitted quad for one frame. Returns false when the
     /// destination leaves no room to draw into, in which case nothing was

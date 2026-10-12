@@ -203,6 +203,15 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
     /// to the decoder, which is time spent waiting behind earlier packets.
     /// Same window and the same `nil` rule as `decoderOnly`.
     public let decodeQueueWait: StageLatencySample?
+    /// Frames per second that were decoded and then replaced by a newer one
+    /// within a display refresh and a quarter of becoming due. Two frames
+    /// landing inside one refresh leave only the newer to show, so these are
+    /// frames the viewer kept up with, not frames it fell behind on: added to
+    /// `presentedFramesPerSecond` they say how much of what was decoded this
+    /// machine handled in time. `nil` from a viewer that predates this field
+    /// or has no earlier tick to measure a rate against; the host reads that
+    /// as none.
+    public let supersededOnTimeFramesPerSecond: Double?
 
     public init(
         surfaceID: UInt32,
@@ -215,7 +224,8 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         roundTripNanoseconds: Int64? = nil,
         decodesInHardware: Bool? = nil,
         decoderOnly: StageLatencySample? = nil,
-        decodeQueueWait: StageLatencySample? = nil
+        decodeQueueWait: StageLatencySample? = nil,
+        supersededOnTimeFramesPerSecond: Double? = nil
     ) {
         self.surfaceID = surfaceID
         self.endToEnd = endToEnd
@@ -228,6 +238,7 @@ public struct ViewerTelemetrySample: Codable, Equatable, Sendable {
         self.decodesInHardware = decodesInHardware
         self.decoderOnly = decoderOnly
         self.decodeQueueWait = decodeQueueWait
+        self.supersededOnTimeFramesPerSecond = supersededOnTimeFramesPerSecond
     }
 }
 
@@ -285,7 +296,8 @@ public struct ViewerTelemetryStore: Equatable, Sendable {
         for rate in [
             sample.presentedFramesPerSecond,
             sample.decodedFramesPerSecond,
-            sample.receivedBitsPerSecond
+            sample.receivedBitsPerSecond,
+            sample.supersededOnTimeFramesPerSecond
         ] {
             guard let rate else { continue }
             guard rate.isFinite, rate >= 0 else { return false }

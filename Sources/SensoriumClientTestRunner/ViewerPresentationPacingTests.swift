@@ -330,6 +330,77 @@ func testViewerPresentationPacingTests() {
     print("viewer presentation pacing tests passed")
 }
 
+/// A frame replaced within a refresh of becoming due is a frame the viewer kept
+/// up with: two arrived inside one refresh and only the newer can be shown. One
+/// that waited several refreshes before being replaced is the viewer falling
+/// behind. The two are reported apart so the host reads only the second as a
+/// sign of trouble.
+func testViewerPresentationPacingClassifiesSupersededFramesByHowLongTheyWereDue() {
+    let refresh = PresentationPacer.defaultFrameIntervalNanoseconds
+    let start: Int64 = 1_000_000_000
+
+    var onTime = PresentationPacer()
+    onTime.admit(makeTestDecodedFrame(), nowNanoseconds: start)
+    onTime.admit(makeTestDecodedFrame(), nowNanoseconds: start + 1_000_000)
+    let sameRefresh = onTime.frameToPresent(nowNanoseconds: start + refresh, refreshIntervalNanoseconds: refresh)
+    expect(
+        sameRefresh?.supersededOnTimeCount == 1 && sameRefresh?.supersededLateCount == 0
+            && sameRefresh?.supersededCount == 1,
+        "a frame replaced within one refresh of being due is on time, got \(String(describing: sameRefresh))"
+    )
+
+    var late = PresentationPacer()
+    late.admit(makeTestDecodedFrame(), nowNanoseconds: start)
+    late.admit(makeTestDecodedFrame(), nowNanoseconds: start + 4 * refresh)
+    late.admit(makeTestDecodedFrame(), nowNanoseconds: start + 4 * refresh + 1_000_000)
+    let afterWaiting = late.frameToPresent(
+        nowNanoseconds: start + 4 * refresh + refresh,
+        refreshIntervalNanoseconds: refresh
+    )
+    expect(
+        afterWaiting?.supersededLateCount == 1 && afterWaiting?.supersededOnTimeCount == 1
+            && afterWaiting?.supersededCount == 2,
+        "a frame that waited several refreshes is late and the one behind it on time, got \(String(describing: afterWaiting))"
+    )
+
+    var edge = PresentationPacer()
+    edge.admit(makeTestDecodedFrame(), nowNanoseconds: start)
+    edge.admit(makeTestDecodedFrame(), nowNanoseconds: start)
+    let atLimit = edge.frameToPresent(
+        nowNanoseconds: start + refresh * 5 / 4,
+        refreshIntervalNanoseconds: refresh
+    )
+    expect(
+        atLimit?.supersededOnTimeCount == 1,
+        "due for exactly one and a quarter refreshes still counts as on time, got \(String(describing: atLimit))"
+    )
+    edge.admit(makeTestDecodedFrame(), nowNanoseconds: start)
+    edge.admit(makeTestDecodedFrame(), nowNanoseconds: start)
+    let pastLimit = edge.frameToPresent(
+        nowNanoseconds: start + refresh * 5 / 4 + 1_000,
+        refreshIntervalNanoseconds: refresh
+    )
+    expect(
+        pastLimit?.supersededLateCount == 1,
+        "a little past that it is late, got \(String(describing: pastLimit))"
+    )
+
+    var held = warmedPacer(interval: refresh, transit: 20_000_000, start: start, frames: 30)
+    let first = start + 30 * refresh
+    let arrival = first + refresh + 20_000_000
+    held.admit(makePacedFrame(capturedAtNanoseconds: first), nowNanoseconds: arrival)
+    held.admit(makePacedFrame(capturedAtNanoseconds: first + refresh), nowNanoseconds: arrival)
+    let released = held.frameToPresent(
+        nowNanoseconds: arrival - 20_000_000,
+        interacting: true,
+        refreshIntervalNanoseconds: refresh
+    )
+    expect(
+        released?.supersededOnTimeCount == 1 && released?.supersededLateCount == 0,
+        "a frame released early by interaction, still before its due time, is not late, got \(String(describing: released))"
+    )
+}
+
 /// The input stamp the frame presenters read, written by the session at the
 /// one place input leaves for the host.
 func testViewerInputActivityTests() async {

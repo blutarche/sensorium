@@ -43,6 +43,7 @@ struct SensoriumClientTestRunner {
         await runDarwinClientTests()
         await testViewerFrameCoalescingTests()
         testViewerPresentationPacingTests()
+        testViewerPresentationPacingClassifiesSupersededFramesByHowLongTheyWereDue()
         testBenchmarkPointerPlanTests()
         await testViewerInputActivityTests()
         testViewerMenuBarModelTests()
