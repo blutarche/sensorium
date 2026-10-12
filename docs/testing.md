@@ -38,6 +38,20 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 | `Scripts/test-package-linux.sh` | The Fedora package `Scripts/package-linux.sh` builds: its desktop entry, its metainfo, its icons, the libraries it asks for, and that removing it leaves nothing behind. Runs only inside the CI Fedora container, where installing a package is safe |
 | `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-machine boundaries, and do not regress to an earlier, stale claim |
 
+## Stand-in host for latency benchmarks
+
+`SensoriumBenchHost` is test scaffolding for an unattended latency run. It is not bundled into either app, and `Scripts/package-apps.sh` does not build it.
+
+It streams synthetic frames through the real host media pipeline (VideoToolbox encoder, admission gates, fidelity control, latency recorder) and over the real QUIC listener to a real viewer on another machine. The picture is a fixed, dense pattern of small text-like rectangles that shifts with the pointer position the viewer sends. A frame is sent only when the picture changed, as ScreenCaptureKit does, so the still-screen refresh runs while the pointer rests.
+
+```sh
+SensoriumBenchHost <tailnet-address> <port> --state-dir <dir> --trace <path> [--max-seconds N]
+```
+
+It prints `bench-host pairing-code <code>` once at start. Its keys and paired devices live in `--state-dir`. It appends the host stage traces to `--trace`, prints `bench-host session-ended`, and exits after the first session that ends, after `--max-seconds` (default 180), or on SIGTERM.
+
+It never captures or lists a display, calls ScreenCaptureKit or any permission-gated API, creates a virtual display, posts input events, locks or unlocks the screen, holds a display awake, opens a window or menu-bar item, listens on port 7777, touches the clipboard, or reads or writes outside `--state-dir` and `--trace`. It accepts only a tailnet address.
+
 ## Linux
 
 The viewer also runs on Fedora 44 with Wayland. There is no Linux host, so

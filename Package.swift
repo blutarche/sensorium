@@ -19,6 +19,7 @@ let package = Package(
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
         .executable(name: "SensoriumQuicProbe", targets: ["SensoriumQuicProbe"]),
         .executable(name: "SensoriumCanvasExerciser", targets: ["SensoriumCanvasExerciser"]),
+        .executable(name: "SensoriumBenchHost", targets: ["SensoriumBenchHost"]),
         .executable(name: "SensoriumLocalWorkspaceInputProbe", targets: ["SensoriumLocalWorkspaceInputProbe"]),
         .executable(name: "SensoriumLocalHostScreenProbe", targets: ["SensoriumLocalHostScreenProbe"]),
         .executable(name: "SensoriumViewerProbe", targets: ["SensoriumViewerProbe"])
@@ -161,6 +162,9 @@ let package = Package(
         .executableTarget(name: "SensoriumVirtualDisplayPreflight", dependencies: ["SensoriumHost"]),
         .executableTarget(name: "SensoriumQuicProbe", dependencies: ["SensoriumCore", "SensoriumClient"]),
         .executableTarget(name: "SensoriumCanvasExerciser", dependencies: ["SensoriumCore"]),
+        // Test scaffolding, never bundled: streams synthetic frames through the
+        // real host pipeline and listener.
+        .executableTarget(name: "SensoriumBenchHost", dependencies: ["SensoriumHost", "SensoriumCore"]),
         .executableTarget(name: "SensoriumLocalWorkspaceInputProbe", dependencies: ["SensoriumCore", "SensoriumClient"]),
         // Depends on SensoriumHost for the arming record and display inventory
         // this rig has to write and read exactly as the host does.
