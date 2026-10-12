@@ -10,6 +10,11 @@ once it reaches 1.0.
 
 ### Changed
 
+- The viewer no longer holds frames back while you are using the host.
+  Within half a second of any click, key press, scroll or pointer move,
+  each frame is shown as soon as it arrives, which takes about 30
+  milliseconds off the wait for what you just did. Video and animation
+  you only watch are still paced evenly.
 - A host with no monitor now streams a sharp picture. macOS gives such a
   host a placeholder screen of 1920x1080 pixels at 1x, which looks soft on
   a high-density viewer. A session on it now streams a screen of 1920x1080
