@@ -600,6 +600,13 @@ public final class EGLFramePresenter {
                 GLfloat(2 * videoRect.x / Double(drawablePixelWidth) - 1),
                 GLfloat(1 - 2 * videoRect.y / Double(drawablePixelHeight))
             )
+            // Bicubic luma only when the picture is drawn larger than the luma
+            // plane; shrinking stays with the hardware's bilinear filter.
+            glUniform2f(program.lumaTexelSize, GLfloat(1 / Double(frame.width)), GLfloat(1 / Double(frame.height)))
+            glUniform1i(
+                program.magnify,
+                videoRect.width > Double(frame.width) || videoRect.height > Double(frame.height) ? 1 : 0
+            )
             for (index, sampler) in program.samplers.enumerated() where index < source.layout.planeCount {
                 glUniform1i(sampler, GLint(index))
             }
@@ -902,6 +909,8 @@ public final class EGLFramePresenter {
         let identifier: GLuint
         let scale: GLint
         let offset: GLint
+        let lumaTexelSize: GLint
+        let magnify: GLint
         let samplers: [GLint]
     }
 
@@ -941,6 +950,8 @@ public final class EGLFramePresenter {
             identifier: program,
             scale: glGetUniformLocation(program, "placementScale"),
             offset: glGetUniformLocation(program, "placementOffset"),
+            lumaTexelSize: glGetUniformLocation(program, "lumaTexelSize"),
+            magnify: glGetUniformLocation(program, "magnify"),
             samplers: samplerNames.map { glGetUniformLocation(program, $0) }
         )
     }
@@ -1008,7 +1019,7 @@ public final class EGLFramePresenter {
             uniform sampler2D chroma;
             """
             encoded = """
-            vec3(texture(luma, textureCoordinate).r, texture(chroma, textureCoordinate).rg)
+            vec3(sampleLuma(), texture(chroma, textureCoordinate).rg)
             """
         case .triplanar:
             samplers = """
@@ -1017,7 +1028,7 @@ public final class EGLFramePresenter {
             uniform sampler2D redChroma;
             """
             encoded = """
-            vec3(texture(luma, textureCoordinate).r,
+            vec3(sampleLuma(),
                  texture(blueChroma, textureCoordinate).r,
                  texture(redChroma, textureCoordinate).r)
             """
@@ -1026,8 +1037,43 @@ public final class EGLFramePresenter {
         #version 300 es
         precision highp float;
         \(samplers)
+        uniform vec2 lumaTexelSize;
+        uniform int magnify;
         in vec2 textureCoordinate;
         out vec4 fragmentColor;
+
+        // Catmull-Rom through nine bilinear fetches. Its sharper falloff keeps
+        // text crisp when the picture is enlarged. Chroma stays bilinear: it
+        // is stored at half resolution and carries no edges worth sharpening.
+        float catmullRomLuma() {
+            vec2 position = textureCoordinate / lumaTexelSize;
+            vec2 center = floor(position - 0.5) + 0.5;
+            vec2 f = position - center;
+            vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+            vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+            vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+            vec2 w3 = f * f * (-0.5 + 0.5 * f);
+            vec2 w12 = w1 + w2;
+            vec2 tapLow = (center - 1.0) * lumaTexelSize;
+            vec2 tapMid = (center + w2 / w12) * lumaTexelSize;
+            vec2 tapHigh = (center + 2.0) * lumaTexelSize;
+            float result = 0.0;
+            result += texture(luma, vec2(tapLow.x, tapLow.y)).r * (w0.x * w0.y);
+            result += texture(luma, vec2(tapMid.x, tapLow.y)).r * (w12.x * w0.y);
+            result += texture(luma, vec2(tapHigh.x, tapLow.y)).r * (w3.x * w0.y);
+            result += texture(luma, vec2(tapLow.x, tapMid.y)).r * (w0.x * w12.y);
+            result += texture(luma, vec2(tapMid.x, tapMid.y)).r * (w12.x * w12.y);
+            result += texture(luma, vec2(tapHigh.x, tapMid.y)).r * (w3.x * w12.y);
+            result += texture(luma, vec2(tapLow.x, tapHigh.y)).r * (w0.x * w3.y);
+            result += texture(luma, vec2(tapMid.x, tapHigh.y)).r * (w12.x * w3.y);
+            result += texture(luma, vec2(tapHigh.x, tapHigh.y)).r * (w3.x * w3.y);
+            return result;
+        }
+
+        float sampleLuma() {
+            return magnify != 0 ? catmullRomLuma() : texture(luma, textureCoordinate).r;
+        }
+
         void main() {
             vec3 encoded = \(encoded);
             vec3 linearRGB = \(conversion.glslMatrixLiteral) * (encoded - \(conversion.glslOffsetLiteral));

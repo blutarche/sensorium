@@ -22,6 +22,79 @@ func testMetalFramePresenterRenderTests() async {
     await testRendersVideoRangeBiplanarFrame()
     await testRendersOddSizedBiplanarFrame()
     await testGivesUpAFrameTheGPUCannotRead()
+    await testMagnifiedEdgeIsSharperThanBilinear()
+    await testMinifiedFrameKeepsBilinearSampling()
+}
+
+/// A hard vertical edge, black on the left and white on the right, drawn 1.5
+/// times larger. The edge falls on an output pixel boundary, so bilinear
+/// sampling reads 17% and 83% white either side of it (a step of 169 once
+/// converted from video range). Catmull-Rom pulls those towards black and
+/// white, which makes the step between the two neighbouring pixels larger.
+@MainActor
+private func testMagnifiedEdgeIsSharperThanBilinear() async {
+    let device = MTLCreateSystemDefaultDevice()!
+    let view = MTKView(frame: NSRect(x: 0, y: 0, width: 64, height: 40))
+    guard let presenter = try? MetalFramePresenter(view: view) else {
+        print("FAIL: could not construct MetalFramePresenter against a real Metal device")
+        Foundation.exit(1)
+    }
+    let biplanar = makeEdgeBiplanarPixelBuffer(width: 16, height: 16)
+    let packed = makeEdgeBGRAPixelBuffer(width: 16, height: 16)
+    for (name, buffer) in [("biplanar", biplanar), ("packed", packed)] {
+        let target = makeReadableTexture(device: device, width: 24, height: 24)
+        do {
+            try presenter.render(buffer, into: target)
+        } catch {
+            print("FAIL: rendering a magnified \(name) edge threw \(error)")
+            Foundation.exit(1)
+        }
+        let image = readBack(texture: target, device: device)
+        let row = (0..<24).map { image.pixel(x: $0, y: 12).green }
+        let steepestStep = zip(row, row.dropFirst()).map { abs($1 - $0) }.max() ?? 0
+        expect(
+            steepestStep >= 185,
+            "a \(name) edge magnified 1.5 times stays steeper than bilinear, got steepest step"
+                + " \(steepestStep): \(row)"
+        )
+    }
+    print("PASS: MetalFramePresenter keeps a magnified edge steeper than bilinear sampling would")
+}
+
+/// Shrinking a frame is left to the hardware's bilinear filter: the output
+/// must be what a plain bilinear read of the source gives.
+@MainActor
+private func testMinifiedFrameKeepsBilinearSampling() async {
+    let device = MTLCreateSystemDefaultDevice()!
+    let view = MTKView(frame: NSRect(x: 0, y: 0, width: 64, height: 40))
+    guard let presenter = try? MetalFramePresenter(view: view) else {
+        print("FAIL: could not construct MetalFramePresenter against a real Metal device")
+        Foundation.exit(1)
+    }
+    let buffer = makeEdgeBGRAPixelBuffer(width: 16, height: 16)
+    let target = makeReadableTexture(device: device, width: 12, height: 12)
+    do {
+        try presenter.render(buffer, into: target)
+    } catch {
+        print("FAIL: rendering a minified edge threw \(error)")
+        Foundation.exit(1)
+    }
+    let image = readBack(texture: target, device: device)
+    let row = (0..<12).map { image.pixel(x: $0, y: 6).green }
+    // Output pixel i is centred on source position (i + 0.5) / 0.75; the
+    // edge sits between source texels 7 and 8, and a bilinear read ramps
+    // between their centres at 7.5 and 8.5.
+    let expected = (0..<12).map { index -> Int in
+        let position = (Double(index) + 0.5) / 0.75
+        let white = min(max(position - 7.5, 0), 1)
+        return Int((white * 255).rounded())
+    }
+    let worst = zip(row, expected).map { abs($0 - $1) }.max() ?? 0
+    expect(
+        worst <= 3,
+        "a minified frame is sampled bilinearly, got \(row), wanted \(expected)"
+    )
+    print("PASS: MetalFramePresenter samples a minified frame bilinearly")
 }
 
 @MainActor
@@ -288,6 +361,38 @@ private func makeFilledBGRAPixelBuffer(width: Int, height: Int, blue: UInt8, gre
             rows[offset + 1] = green
             rows[offset + 2] = red
             rows[offset + 3] = 255
+        }
+    }
+    return buffer
+}
+
+/// Left half black, right half white, with neutral chroma.
+private func makeEdgeBiplanarPixelBuffer(width: Int, height: Int) -> CVPixelBuffer {
+    let buffer = makeFilledBiplanarPixelBuffer(width: width, height: height, luma: 16, cb: 128, cr: 128)
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+    let plane = CVPixelBufferGetBaseAddressOfPlane(buffer, 0)!.assumingMemoryBound(to: UInt8.self)
+    let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+    for y in 0..<height {
+        for x in (width / 2)..<width {
+            plane[y * bytesPerRow + x] = 235
+        }
+    }
+    return buffer
+}
+
+/// Left half black, right half white.
+private func makeEdgeBGRAPixelBuffer(width: Int, height: Int) -> CVPixelBuffer {
+    let buffer = makeFilledBGRAPixelBuffer(width: width, height: height, blue: 0, green: 0, red: 0)
+    CVPixelBufferLockBaseAddress(buffer, [])
+    defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+    let rows = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+    for y in 0..<height {
+        for x in (width / 2)..<width {
+            for channel in 0..<3 {
+                rows[y * bytesPerRow + x * 4 + channel] = 255
+            }
         }
     }
     return buffer

@@ -273,6 +273,12 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
         encoder.setRenderPipelineState(pipeline)
         encoder.setVertexBytes(&placement, length: MemoryLayout<QuadPlacement>.stride, index: 0)
         encoder.setFragmentSamplerState(sampler, index: 0)
+        var sampling = FrameSampling(
+            videoRect: videoRect,
+            textureWidth: source.textures[0].width,
+            textureHeight: source.textures[0].height
+        )
+        encoder.setFragmentBytes(&sampling, length: MemoryLayout<FrameSampling>.stride, index: 1)
         for (index, plane) in source.textures.enumerated() {
             encoder.setFragmentTexture(plane, index: index)
         }
@@ -349,6 +355,40 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
         float3 offset;
     };
 
+    struct FrameSampling {
+        float2 texelSize;
+        uint magnify;
+    };
+
+    // Catmull-Rom through nine bilinear fetches. Its sharper falloff keeps
+    // text crisp when the picture is enlarged; the weights can go negative,
+    // so callers clamp the result.
+    float4 sensoriumCatmullRom(texture2d<float> source, sampler frameSampler,
+                               float2 coordinate, float2 texelSize) {
+        float2 position = coordinate / texelSize;
+        float2 center = floor(position - 0.5) + 0.5;
+        float2 f = position - center;
+        float2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+        float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+        float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+        float2 w3 = f * f * (-0.5 + 0.5 * f);
+        float2 w12 = w1 + w2;
+        float2 near = (center - 1.0) * texelSize;
+        float2 middle = (center + w2 / w12) * texelSize;
+        float2 far = (center + 2.0) * texelSize;
+        float4 result = float4(0.0);
+        result += source.sample(frameSampler, float2(near.x, near.y)) * (w0.x * w0.y);
+        result += source.sample(frameSampler, float2(middle.x, near.y)) * (w12.x * w0.y);
+        result += source.sample(frameSampler, float2(far.x, near.y)) * (w3.x * w0.y);
+        result += source.sample(frameSampler, float2(near.x, middle.y)) * (w0.x * w12.y);
+        result += source.sample(frameSampler, float2(middle.x, middle.y)) * (w12.x * w12.y);
+        result += source.sample(frameSampler, float2(far.x, middle.y)) * (w3.x * w12.y);
+        result += source.sample(frameSampler, float2(near.x, far.y)) * (w0.x * w3.y);
+        result += source.sample(frameSampler, float2(middle.x, far.y)) * (w12.x * w3.y);
+        result += source.sample(frameSampler, float2(far.x, far.y)) * (w3.x * w3.y);
+        return result;
+    }
+
     vertex QuadVertex sensoriumFrameVertex(uint vertexID [[vertex_id]],
                                            constant QuadPlacement &placement [[buffer(0)]]) {
         float2 corner = float2(float(vertexID & 1u), float((vertexID >> 1u) & 1u));
@@ -360,16 +400,26 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     fragment float4 sensoriumFrameFragmentPacked(QuadVertex in [[stage_in]],
                                                  texture2d<float> frame [[texture(0)]],
-                                                 sampler frameSampler [[sampler(0)]]) {
-        return float4(frame.sample(frameSampler, in.textureCoordinate).rgb, 1.0);
+                                                 sampler frameSampler [[sampler(0)]],
+                                                 constant FrameSampling &sampling [[buffer(1)]]) {
+        float3 color = sampling.magnify != 0u
+            ? sensoriumCatmullRom(frame, frameSampler, in.textureCoordinate, sampling.texelSize).rgb
+            : frame.sample(frameSampler, in.textureCoordinate).rgb;
+        return float4(saturate(color), 1.0);
     }
 
     fragment float4 sensoriumFrameFragmentBiplanar(QuadVertex in [[stage_in]],
                                                    texture2d<float> luma [[texture(0)]],
                                                    texture2d<float> chroma [[texture(1)]],
                                                    sampler frameSampler [[sampler(0)]],
-                                                   constant ColorConversion &conversion [[buffer(0)]]) {
-        float3 encoded = float3(luma.sample(frameSampler, in.textureCoordinate).r,
+                                                   constant ColorConversion &conversion [[buffer(0)]],
+                                                   constant FrameSampling &sampling [[buffer(1)]]) {
+        // Chroma is stored at half resolution and carries no edges worth
+        // sharpening, so only luma takes the bicubic path.
+        float lumaValue = sampling.magnify != 0u
+            ? sensoriumCatmullRom(luma, frameSampler, in.textureCoordinate, sampling.texelSize).r
+            : luma.sample(frameSampler, in.textureCoordinate).r;
+        float3 encoded = float3(lumaValue,
                                 chroma.sample(frameSampler, in.textureCoordinate).rg);
         return float4(saturate(conversion.matrix * (encoded - conversion.offset)), 1.0);
     }
@@ -394,6 +444,19 @@ private struct QuadPlacement {
             Float(2 * videoRect.x / destinationWidth - 1),
             Float(1 - 2 * videoRect.y / destinationHeight)
         )
+    }
+}
+
+/// What the fragment shader needs to choose its filter. Bicubic sampling is
+/// used only when the picture is drawn larger than the texture it comes from;
+/// shrinking is left to the hardware's bilinear filter.
+private struct FrameSampling {
+    var texelSize: SIMD2<Float>
+    var magnify: UInt32
+
+    init(videoRect: CanvasVideoRect, textureWidth: Int, textureHeight: Int) {
+        texelSize = SIMD2(1 / Float(textureWidth), 1 / Float(textureHeight))
+        magnify = videoRect.width > Double(textureWidth) || videoRect.height > Double(textureHeight) ? 1 : 0
     }
 }
 
