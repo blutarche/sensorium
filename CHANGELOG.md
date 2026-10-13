@@ -34,6 +34,9 @@ once it reaches 1.0.
   only if 30 frames a second is still too much, and softer only after
   that. As things improve, the full size comes back before the frame
   rate climbs above 30.
+- Text stays crisper when the viewer's window is larger than the picture
+  the host sends. The viewer now enlarges the picture with a sharper
+  filter. A picture drawn at its own size or smaller looks as before.
 
 ### Fixed
 
