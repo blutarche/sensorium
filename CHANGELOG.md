@@ -40,6 +40,12 @@ once it reaches 1.0.
 
 ### Fixed
 
+- The viewer's picture could freeze for a minute or more after its window
+  had been in the background. While hidden, the viewer took in each frame
+  late, and then mistook that delay for the network's. Every later frame
+  was held for that long, and a newer one replaced it before its turn
+  came. Only while you clicked or typed did the picture move. A frame now
+  waits at most 50 milliseconds after it arrives.
 - A host screen session could end by itself a couple of minutes after
   the screen went still. The sharp picture the host sends of a still
   screen could freeze the host. A frozen host read nothing from the
