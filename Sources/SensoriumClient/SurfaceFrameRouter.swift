@@ -45,6 +45,9 @@ public protocol CanvasSurfaceWindow: AnyObject {
     /// What this window's presenter did on each draw callback, `nil` when it
     /// counts none.
     var drawCounts: ViewerDrawCounts? { get }
+    /// Reads and resets this window's draw timing for the next telemetry
+    /// report, `nil` when it measures none.
+    func takeDrawWindow() -> ViewerDrawWindow?
 }
 
 public extension CanvasSurfaceWindow {
@@ -64,6 +67,9 @@ public extension CanvasSurfaceWindow {
     var droppedBeforePresentCount: Int { 0 }
     var supersededOnTimeCount: Int { 0 }
     var drawCounts: ViewerDrawCounts? { nil }
+    /// Defaulted the same way, which is also how a viewer without the
+    /// heartbeat sends no timing.
+    func takeDrawWindow() -> ViewerDrawWindow? { nil }
 }
 
 /// Demuxes a surface's video frames through its own per-surface ingress and
@@ -185,6 +191,11 @@ public final class SurfaceFrameRouter: @unchecked Sendable {
     /// report.
     public func drawCounts(surfaceID: UInt32) -> ViewerDrawCounts? {
         window(atSurfaceID: surfaceID)?.drawCounts
+    }
+
+    /// One surface's draw timing since the last report, which it resets.
+    public func takeDrawWindow(surfaceID: UInt32) -> ViewerDrawWindow? {
+        window(atSurfaceID: surfaceID)?.takeDrawWindow()
     }
 
     public func isPointerCaptured(surfaceID: UInt32) -> Bool {

@@ -722,6 +722,22 @@ func runStreamFidelityCoordinatorTests() async {
             fidelityLine?.contains("; viewer draws 58/s, not shown 17/s (no drawable 10, no command buffer 1,") == true,
             "the fidelity line carries the same words, got \(fidelityLine ?? "no line")"
         )
+
+        _ = try! await coordinator.handleWritingResponse(.viewerTelemetry(sample(ViewerDrawReport(
+            drawsPerSecond: 0, noDrawablePerSecond: 0, noCommandBufferPerSecond: 0,
+            emptyDestinationPerSecond: 0, renderFailurePerSecond: 0,
+            longestDrawGapMilliseconds: 4210, longestMainThreadStallMilliseconds: 4180,
+            hiddenFraction: 0, preferredFramesPerSecond: 60
+        ))))
+        media.emit(packet(6))
+        expect(
+            lastVideoLine()?.hasSuffix(
+                "0 dropped to keep up; viewer draws 0/s"
+                    + " (longest gap 4210 ms, main thread stalled up to 4180 ms, hidden 0%, 60 Hz)"
+            ) == true,
+            "a viewer that drew far less often names the gap, stall, hidden share and rate, got "
+                + (lastVideoLine() ?? "no line")
+        )
     }
     print("PASS: the video and fidelity lines name a viewer's draws only when some showed nothing or it drew far less often than it decoded")
 

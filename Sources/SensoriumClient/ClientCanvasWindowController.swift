@@ -48,6 +48,11 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// counting.
     private let drops = ViewerFrameDropCounter()
     private let draws = ViewerDrawCounter()
+    /// Ticks every `ViewerDrawTiming.heartbeatIntervalNanoseconds` on the main
+    /// run loop while a session is decoding, so a main thread that stalls
+    /// shows up as a late tick. Only ever invalidated off the main actor, in
+    /// `deinit`, which Timer allows from any thread.
+    nonisolated(unsafe) private var heartbeat: Timer?
     /// This window's video entry point, and the receipt ledger behind it.
     /// Owned by this window alone, never shared -- so two windows' receipts
     /// can never collide even though `FrameReceiptLedger` keys only by
@@ -475,6 +480,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     }
 
     deinit {
+        heartbeat?.invalidate()
         for observer in focusObservers {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -547,6 +553,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     ) throws {
         let viewport = viewport
         let surfaceID = surfaceID
+        startHeartbeat()
         // Measured where the frame really reaches the screen, not where it is
         // handed over: the presenter holds each frame until the refresh it
         // belongs on, and a session that reported the handover would leave
@@ -603,6 +610,35 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
 
     public var drawCounts: ViewerDrawCounts? {
         draws.counts
+    }
+
+    public func takeDrawWindow() -> ViewerDrawWindow? {
+        var reading = draws.takeTimingWindow()
+        reading.preferredFramesPerSecond = metalView.preferredFramesPerSecond
+        return reading
+    }
+
+    private func startHeartbeat() {
+        heartbeat?.invalidate()
+        draws.restartHeartbeat()
+        let timer = Timer(
+            timeInterval: Double(ViewerDrawTiming.heartbeatIntervalNanoseconds) / 1_000_000_000,
+            repeats: true
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let visible = self.window.occlusionState.contains(.visible)
+                self.draws.recordHeartbeat(hidden: !visible)
+            }
+        }
+        timer.tolerance = 0
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeat = timer
+    }
+
+    private func stopHeartbeat() {
+        heartbeat?.invalidate()
+        heartbeat = nil
     }
 
     public var droppedFrameCount: Int {
@@ -1005,6 +1041,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// handed to a session about to be invalidated. A decode already running
     /// holds the decoder's own lock, which is what `reset()` then waits on.
     public func stopDecoding() {
+        stopHeartbeat()
         presenter.onFramePresented = nil
         presenter.discardPendingFrames()
         videoSink.attach(nil)
@@ -1021,6 +1058,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// good, not on an ordinary per-session disconnect — a reconnect reuses
     /// this same window, so closing it there would flash it away and back.
     public func close() {
+        stopHeartbeat()
         surfaceView.forceRestoreCursor()
         window.orderOut(nil)
     }

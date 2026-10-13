@@ -79,3 +79,47 @@ func testViewerDrawCounterTests() {
     expect(withoutCounts.drawReport == nil, "a window that counts no draws reports no draw report")
     print("PASS: draw callbacks are counted by reason and reported as rates over the real gap between ticks")
 }
+
+/// The evidence that tells a display link that stopped firing from a main
+/// thread that stopped running, fed timestamps instead of timers.
+func testViewerDrawTimingTests() {
+    let millisecond: Int64 = 1_000_000
+    var timing = ViewerDrawTiming()
+    expect(timing.take() == ViewerDrawWindow(), "a window with nothing in it reports none of the fields")
+
+    timing.recordDraw(atNanoseconds: 1_000 * millisecond)
+    expect(timing.take().longestDrawGapMilliseconds == nil, "one draw has no gap to a previous one")
+    timing.recordDraw(atNanoseconds: 1_016 * millisecond)
+    timing.recordDraw(atNanoseconds: 5_016 * millisecond)
+    timing.recordDraw(atNanoseconds: 5_032 * millisecond)
+    expect(timing.take().longestDrawGapMilliseconds == 4_000, "two draws 4 s apart give a 4000 ms longest gap")
+    timing.recordDraw(atNanoseconds: 5_048 * millisecond)
+    expect(
+        timing.take().longestDrawGapMilliseconds == 16,
+        "the gap resets with the window, but starts from the last draw before it"
+    )
+
+    timing.recordHeartbeat(atNanoseconds: 0, hidden: false)
+    timing.recordHeartbeat(atNanoseconds: 50 * millisecond, hidden: false)
+    timing.recordHeartbeat(atNanoseconds: 100 * millisecond, hidden: true)
+    timing.recordHeartbeat(atNanoseconds: 1_650 * millisecond, hidden: false)
+    let reading = timing.take()
+    expect(
+        reading.longestMainThreadStallMilliseconds == 1_500,
+        "a tick 1550 ms after the last, due at 50, is a 1500 ms stall, got \(String(describing: reading.longestMainThreadStallMilliseconds))"
+    )
+    expect(reading.hiddenFraction == 0.25, "one of four ticks hidden is 0.25, got \(String(describing: reading.hiddenFraction))")
+    expect(timing.take() == ViewerDrawWindow(), "the heartbeat window resets, leaving no fraction without ticks")
+
+    timing.recordHeartbeat(atNanoseconds: 1_700 * millisecond, hidden: false)
+    expect(timing.take().longestMainThreadStallMilliseconds == 0, "an on-time tick across windows is no stall")
+    timing.recordHeartbeat(atNanoseconds: 1_720 * millisecond, hidden: false)
+    expect(timing.take().longestMainThreadStallMilliseconds == 0, "an early tick is no stall")
+    timing.restartHeartbeat()
+    timing.recordHeartbeat(atNanoseconds: 9_000 * millisecond, hidden: false)
+    expect(
+        timing.take().longestMainThreadStallMilliseconds == nil,
+        "a heartbeat stopped and started again does not count the pause as a stall"
+    )
+    print("PASS: draw gaps, main thread stalls and hidden share are measured per window from timestamps")
+}

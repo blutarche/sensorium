@@ -395,6 +395,59 @@ func testViewerTelemetryCarriesTheDrawReportAndStaysCompatible() {
     )
 }
 
+/// The stall evidence rides on the same report, and a viewer that predates it
+/// sends the report without those keys.
+func testViewerDrawReportCarriesStallEvidenceAndStaysCompatible() {
+    guard case let .viewerTelemetry(oldViewer) = try! SensoriumFrameCodec.decode(viewerTelemetryFrame([
+        "type": "viewerTelemetry",
+        "viewerTelemetry": [
+            "surfaceID": 0,
+            "drawReport": [
+                "drawsPerSecond": 2,
+                "noDrawablePerSecond": 0,
+                "noCommandBufferPerSecond": 0,
+                "emptyDestinationPerSecond": 0,
+                "renderFailurePerSecond": 0
+            ]
+        ]
+    ])), let report = oldViewer.drawReport else {
+        expect(false, "a draw report without the stall fields still decodes")
+        return
+    }
+    expect(
+        report.longestDrawGapMilliseconds == nil && report.longestMainThreadStallMilliseconds == nil
+            && report.hiddenFraction == nil && report.preferredFramesPerSecond == nil,
+        "a report from an older viewer carries none of the stall fields"
+    )
+
+    let full = SensoriumMessage.viewerTelemetry(
+        ViewerTelemetrySample(
+            surfaceID: 0,
+            endToEnd: nil,
+            receive: nil,
+            decode: nil,
+            presentedFramesPerSecond: nil,
+            decodedFramesPerSecond: nil,
+            receivedBitsPerSecond: nil,
+            drawReport: ViewerDrawReport(
+                drawsPerSecond: 2,
+                noDrawablePerSecond: 0,
+                noCommandBufferPerSecond: 0,
+                emptyDestinationPerSecond: 0,
+                renderFailurePerSecond: 0,
+                longestDrawGapMilliseconds: 4210,
+                longestMainThreadStallMilliseconds: 4180,
+                hiddenFraction: 0.25,
+                preferredFramesPerSecond: 60
+            )
+        )
+    )
+    expect(
+        try! SensoriumFrameCodec.decode(try! SensoriumFrameCodec.encode(full)) == full,
+        "the stall fields round-trip unchanged"
+    )
+}
+
 /// The other half of the same conversation: what the host applied, and why it
 /// is below what the viewer asked for. Absent from a host that predates the
 /// fields, which the viewer must read as "unknown" rather than as a limit.

@@ -67,6 +67,7 @@ struct SensoriumCoreTestRunner {
             ("viewer telemetry carries the decoder fields and stays compatible both ways", testViewerTelemetryCarriesTheDecoderFieldsAndStaysCompatibleBothWays),
             ("viewer telemetry carries the on-time superseded rate and stays compatible both ways", testViewerTelemetryCarriesTheSupersededOnTimeRateAndStaysCompatible),
             ("viewer telemetry carries the draw report and stays compatible both ways", testViewerTelemetryCarriesTheDrawReportAndStaysCompatible),
+            ("the draw report carries stall evidence and stays compatible both ways", testViewerDrawReportCarriesStallEvidenceAndStaysCompatible),
             ("telemetry carries the applied frame rate, quality and limit reason", testTelemetryCarriesTheAppliedFrameRateQualityAndLimit),
             ("the viewer telemetry store forgets a reading that stopped arriving", testViewerTelemetryStoreForgetsAReadingThatStoppedArriving),
             ("the viewer telemetry store refuses impossible numbers", testViewerTelemetryStoreRefusesImpossibleNumbers),

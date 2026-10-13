@@ -2539,7 +2539,8 @@ public final class HostSessionCoordinator {
             $0 >= 1 && report.drawsPerSecond * 2 < $0
         } ?? false
         guard report.notShownPerSecond > 0 else {
-            return drawsFarFewerThanDecoded ? String(format: "draws %.0f/s", report.drawsPerSecond) : nil
+            guard drawsFarFewerThanDecoded else { return nil }
+            return String(format: "draws %.0f/s", report.drawsPerSecond) + stallEvidence(report)
         }
         let reasons = [
             ("no drawable", report.noDrawablePerSecond),
@@ -2552,7 +2553,26 @@ public final class HostSessionCoordinator {
             report.drawsPerSecond,
             report.notShownPerSecond,
             reasons.joined(separator: ", ")
-        )
+        ) + stallEvidence(report)
+    }
+
+    /// What the viewer measured about why its draws were few, as a
+    /// parenthesised suffix; empty when it measured none of it.
+    private static func stallEvidence(_ report: ViewerDrawReport) -> String {
+        var parts: [String] = []
+        if let gap = report.longestDrawGapMilliseconds {
+            parts.append(String(format: "longest gap %.0f ms", gap))
+        }
+        if let stall = report.longestMainThreadStallMilliseconds {
+            parts.append(String(format: "main thread stalled up to %.0f ms", stall))
+        }
+        if let hidden = report.hiddenFraction {
+            parts.append(String(format: "hidden %.0f%%", hidden * 100))
+        }
+        if let rate = report.preferredFramesPerSecond {
+            parts.append("\(rate) Hz")
+        }
+        return parts.isEmpty ? "" : " (" + parts.joined(separator: ", ") + ")"
     }
 
     /// One interval's video line, with the viewer's latest delay appended when

@@ -158,19 +158,41 @@ public struct ViewerDrawReport: Codable, Equatable, Sendable {
     public let emptyDestinationPerSecond: Double
     /// The frame could not be drawn at all, and was given up.
     public let renderFailurePerSecond: Double
+    /// The longest interval between two consecutive draw callbacks in the
+    /// report's window, counting the one from the last draw before it. Tells
+    /// a display link that stopped firing from one that fired and was refused.
+    public let longestDrawGapMilliseconds: Double?
+    /// The longest time the viewer's main thread ran late for a heartbeat that
+    /// should come every 50 ms, in the report's window. A large value with a
+    /// large draw gap points at the main thread rather than at the display.
+    public let longestMainThreadStallMilliseconds: Double?
+    /// The share, 0 to 1, of the window's heartbeats at which the viewer's
+    /// window was not visible, which is when the system pauses its drawing.
+    public let hiddenFraction: Double?
+    /// The refresh rate the viewer's view asked its display link for when the
+    /// report was built.
+    public let preferredFramesPerSecond: Int?
 
     public init(
         drawsPerSecond: Double,
         noDrawablePerSecond: Double,
         noCommandBufferPerSecond: Double,
         emptyDestinationPerSecond: Double,
-        renderFailurePerSecond: Double
+        renderFailurePerSecond: Double,
+        longestDrawGapMilliseconds: Double? = nil,
+        longestMainThreadStallMilliseconds: Double? = nil,
+        hiddenFraction: Double? = nil,
+        preferredFramesPerSecond: Int? = nil
     ) {
         self.drawsPerSecond = drawsPerSecond
         self.noDrawablePerSecond = noDrawablePerSecond
         self.noCommandBufferPerSecond = noCommandBufferPerSecond
         self.emptyDestinationPerSecond = emptyDestinationPerSecond
         self.renderFailurePerSecond = renderFailurePerSecond
+        self.longestDrawGapMilliseconds = longestDrawGapMilliseconds
+        self.longestMainThreadStallMilliseconds = longestMainThreadStallMilliseconds
+        self.hiddenFraction = hiddenFraction
+        self.preferredFramesPerSecond = preferredFramesPerSecond
     }
 
     /// Draws that had a frame waiting and showed none, for any reason.
@@ -357,6 +379,14 @@ public struct ViewerTelemetryStore: Equatable, Sendable {
                 report.renderFailurePerSecond
             ] {
                 guard rate.isFinite, rate >= 0 else { return false }
+            }
+            for measure in [
+                report.longestDrawGapMilliseconds,
+                report.longestMainThreadStallMilliseconds,
+                report.hiddenFraction
+            ] {
+                guard let measure else { continue }
+                guard measure.isFinite, measure >= 0 else { return false }
             }
         }
         for stage in [sample.endToEnd, sample.receive, sample.decode, sample.decoderOnly, sample.decodeQueueWait] {

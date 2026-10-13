@@ -518,6 +518,7 @@ public final class ClientSessionRunner {
                 presentedFrameCount: metrics.samples(for: .present).count,
                 supersededOnTimeFrameCount: router.supersededOnTimeCount(surfaceID: surfaceID),
                 drawCounts: router.drawCounts(surfaceID: surfaceID),
+                drawWindow: router.takeDrawWindow(surfaceID: surfaceID),
                 atNanoseconds: nowNanoseconds,
                 roundTripNanoseconds: roundTripNanoseconds,
                 decodesInHardware: router.decoderHardwareAcceleration(surfaceID: surfaceID)?.decodesInHardware

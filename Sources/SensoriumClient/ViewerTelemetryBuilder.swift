@@ -46,6 +46,7 @@ public struct ViewerTelemetryBuilder: Sendable {
         presentedFrameCount: Int,
         supersededOnTimeFrameCount: Int = 0,
         drawCounts: ViewerDrawCounts? = nil,
+        drawWindow: ViewerDrawWindow? = nil,
         atNanoseconds now: Int64,
         roundTripNanoseconds: Int64? = nil,
         decodesInHardware: Bool? = nil
@@ -81,7 +82,7 @@ public struct ViewerTelemetryBuilder: Sendable {
                 atNanoseconds: now,
                 since: \.supersededOnTimeFrameCount
             ),
-            drawReport: drawReport(surfaceID: surfaceID, counts: drawCounts, atNanoseconds: now)
+            drawReport: drawReport(surfaceID: surfaceID, counts: drawCounts, window: drawWindow, atNanoseconds: now)
         )
         if let index = Self.index(for: surfaceID) {
             lastTick[index] = Tick(
@@ -123,6 +124,7 @@ public struct ViewerTelemetryBuilder: Sendable {
     private func drawReport(
         surfaceID: UInt32,
         counts: ViewerDrawCounts?,
+        window: ViewerDrawWindow?,
         atNanoseconds now: Int64
     ) -> ViewerDrawReport? {
         guard let counts,
@@ -148,7 +150,11 @@ public struct ViewerTelemetryBuilder: Sendable {
             noDrawablePerSecond: rates[1],
             noCommandBufferPerSecond: rates[2],
             emptyDestinationPerSecond: rates[3],
-            renderFailurePerSecond: rates[4]
+            renderFailurePerSecond: rates[4],
+            longestDrawGapMilliseconds: window?.longestDrawGapMilliseconds,
+            longestMainThreadStallMilliseconds: window?.longestMainThreadStallMilliseconds,
+            hiddenFraction: window?.hiddenFraction,
+            preferredFramesPerSecond: window?.preferredFramesPerSecond
         )
     }
 
