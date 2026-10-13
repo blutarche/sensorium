@@ -263,8 +263,7 @@ public final class SharpScreenManager {
         }
         isReady = true
         log(
-            "sharp screen \(created.rawValue) is ready: \(SharpScreen.configuration.logicalWidth)x"
-                + "\(SharpScreen.configuration.logicalHeight) at \(SharpScreen.configuration.scale)x, "
+            "sharp screen \(created.rawValue) is ready: \(Self.modeWords(of: displays().first { $0.id == created.rawValue })), "
                 + "standing in for macOS's placeholder screen"
         )
         return created.rawValue
@@ -327,6 +326,23 @@ public final class SharpScreenManager {
 
     private func logNotUsed(_ why: String) {
         log("sharp screen not used: \(why); streaming macOS's placeholder screen instead")
+    }
+
+    /// The mode the sharp screen actually came up in, read back rather than
+    /// assumed from what it asked for: macOS picks the mode, and one that
+    /// lands below the asked-for pixel size streams no sharper than the
+    /// placeholder it replaced.
+    private static func modeWords(of display: DisplaySnapshot?) -> String {
+        let asked = SharpScreen.configuration
+        let askedPixels = "\(asked.logicalWidth * asked.scale)x\(asked.logicalHeight * asked.scale) px"
+        guard let display else {
+            return "mode unknown, asked for \(askedPixels)"
+        }
+        let words = "\(display.modeWidth)x\(display.modeHeight) points backed by "
+            + "\(display.modePixelWidth)x\(display.modePixelHeight) px"
+        let isAsked = display.modePixelWidth == asked.logicalWidth * asked.scale
+            && display.modePixelHeight == asked.logicalHeight * asked.scale
+        return isAsked ? words : "\(words), not the \(askedPixels) it asked for"
     }
 
     private static func secondsWords(_ seconds: Double) -> String {

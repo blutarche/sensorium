@@ -69,15 +69,15 @@ func canvasSnapshot(id: UInt32) -> DisplaySnapshot {
 /// A sharp screen as macOS reports it once it is up: Sensorium's vendor and
 /// the sharp screen's serial, 1920x1080 points at 2x, and the name it was
 /// created with.
-func sharpScreenSnapshot(id: UInt32, online: Bool = true) -> DisplaySnapshot {
+func sharpScreenSnapshot(id: UInt32, online: Bool = true, pixelScale: Int = 2) -> DisplaySnapshot {
     DisplaySnapshot(
         id: id,
-        pixelWidth: 3840,
-        pixelHeight: 2160,
+        pixelWidth: 1920 * pixelScale,
+        pixelHeight: 1080 * pixelScale,
         modeWidth: 1920,
         modeHeight: 1080,
-        modePixelWidth: 3840,
-        modePixelHeight: 2160,
+        modePixelWidth: 1920 * pixelScale,
+        modePixelHeight: 1080 * pixelScale,
         bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080),
         online: online,
         builtin: false,

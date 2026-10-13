@@ -24,6 +24,9 @@ final class FakeHeadlessHost: VirtualDisplayCreating {
     /// bare process once read a new virtual display back.
     var sharpScreenReportsNoMode = false { didSet { sync() } }
     var sharpScreenNeverComesOnline = false { didSet { sync() } }
+    /// The sharp screen comes up in a 1x mode at its logical size, the way
+    /// a real one was observed to when no 2x mode at that size was offered.
+    var sharpScreenComesUpAtOneX = false { didSet { sync() } }
     var monitorConnected = false { didSet { sync() } }
     /// The sharp screen is gone from the display list while this process
     /// still holds it.
@@ -86,6 +89,8 @@ final class FakeHeadlessHost: VirtualDisplayCreating {
                     modelNumber: CanvasDisplayIdentity.productID,
                     serialNumber: SharpScreen.identity.serialNumber
                 ))
+            } else if sharpScreenComesUpAtOneX {
+                displays.append(sharpScreenSnapshot(id: sharpID, pixelScale: 1))
             } else {
                 displays.append(sharpScreenSnapshot(id: sharpID))
             }
@@ -147,11 +152,31 @@ func runSharpScreenManagerTests() async {
         expect(manager.displayID == host.sharpID, "and the manager reports it as its one sharp screen")
         expect(shutdown.liveCanvasCount == 1, "it is recorded for release at quit, like a canvas")
         expect(
-            log.messages.contains { $0.contains("sharp screen") && $0.contains("ready") },
-            "the host log says the sharp screen is ready, got \(log.messages)"
+            log.messages.contains {
+                $0.contains("sharp screen") && $0.contains("ready: 1920x1080 points backed by 3840x2160 px,")
+            },
+            "the host log says the sharp screen is ready and the pixel size it actually came up at, got \(log.messages)"
         )
     }
     print("PASS: a session admitted on macOS's placeholder screen gets a sharp screen, created once at 1920x1080 and 2x")
+
+    do {
+        let host = FakeHeadlessHost()
+        host.sharpScreenComesUpAtOneX = true
+        let log = DiagnosticsRecorder()
+        let manager = makeSharpScreenManager(host: host, log: log)
+        let outcome = await manager.lease(forAdmittedDisplayID: host.placeholderID) { _ in }
+        guard case .leased = outcome else {
+            expect(false, "a sharp screen at 1x is still no softer than the placeholder, so it streams, got \(outcome)")
+            return
+        }
+        let ready = log.messages.first { $0.contains("sharp screen") && $0.contains("ready") }
+        expect(
+            ready?.contains("ready: 1920x1080 points backed by 1920x1080 px, not the 3840x2160 px it asked for,") == true,
+            "the host log says the sharp screen came up below the pixel size it asked for, got \(ready ?? "no line")"
+        )
+    }
+    print("PASS: a sharp screen that comes up below 2x says so in the host log, with the pixel size it got")
 
     do {
         let host = FakeHeadlessHost()
