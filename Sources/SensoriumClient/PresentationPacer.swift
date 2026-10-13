@@ -176,7 +176,10 @@ public struct PresentationPacer: Sendable {
             capturedAtNanoseconds: capturedAt,
             dueAtNanoseconds: firstAfterStillness
                 ? nowNanoseconds
-                : capturedAt + baseline + pacedHoldNanoseconds
+                : capturedAt + baseline + pacedHoldNanoseconds,
+            // A hold is measured from when the frame got here, so a stale
+            // baseline or an inflated chain cannot push it further out.
+            notLaterThan: nowNanoseconds + Self.maximumHoldNanoseconds
         )
     }
 
@@ -305,7 +308,8 @@ public struct PresentationPacer: Sendable {
         _ frame: DecodedFrame,
         capturedAtNanoseconds: Int64? = nil,
         dueAtNanoseconds: Int64,
-        releasingWaitingAt releaseNanoseconds: Int64? = nil
+        releasingWaitingAt releaseNanoseconds: Int64? = nil,
+        notLaterThan latestNanoseconds: Int64? = nil
     ) -> Int {
         if let releaseNanoseconds {
             for index in pending.indices where pending[index].dueAtNanoseconds > releaseNanoseconds {
@@ -327,6 +331,11 @@ public struct PresentationPacer: Sendable {
                 separation = 0
             }
             dueAt = max(dueAt, last.dueAtNanoseconds + separation)
+        }
+        if let latestNanoseconds {
+            dueAt = min(dueAt, latestNanoseconds)
+            // Keeps due times rising with position should admit times ever run backwards.
+            if let last = pending.last { dueAt = max(dueAt, last.dueAtNanoseconds) }
         }
         pending.append(
             Waiting(

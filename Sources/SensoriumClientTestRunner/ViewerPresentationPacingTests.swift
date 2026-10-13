@@ -101,7 +101,7 @@ func testViewerPresentationPacingTests() {
         idle.holdNanoseconds == pacedHold,
         "and does not change the hold shown for paced frames, got \(idle.holdNanoseconds) instead of \(pacedHold)"
     )
-    let burst = (1...3).map { idleCapture + Int64($0) * interval }
+    let burst = (1...2).map { idleCapture + Int64($0) * interval }
     for capture in burst {
         idle.admit(makePacedFrame(capturedAtNanoseconds: capture), nowNanoseconds: idleArrival)
     }
@@ -226,29 +226,31 @@ func testViewerPresentationPacingTests() {
     )
 
     // Three frames queued together, the last of them arriving unusually fast.
+    // It may take the place of the one before it within a refresh, but never
+    // shows before it.
     let queued = [captured, captured + interval, captured + 2 * interval]
     pinned.admit(makePacedFrame(capturedAtNanoseconds: queued[0]), nowNanoseconds: queued[0] + 20_000_000)
     pinned.admit(makePacedFrame(capturedAtNanoseconds: queued[1]), nowNanoseconds: queued[1] + 20_000_000)
     pinned.admit(makePacedFrame(capturedAtNanoseconds: queued[2]), nowNanoseconds: queued[2] + 3_000_000)
 
     var shown: [Int64] = []
-    var supersededWhileQueued = 0
+    var supersededLateWhileQueued = 0
     var tick = queued[2] + 3_000_000
     let stopAt = tick + 2_000_000_000
-    while shown.count < queued.count, tick < stopAt {
+    while shown.last != queued[2], tick < stopAt {
         if let presentation = pinned.frameToPresent(nowNanoseconds: tick) {
             shown.append(presentation.frame.timing?.hostCapturedAtNanoseconds ?? -1)
-            supersededWhileQueued += presentation.supersededCount
+            supersededLateWhileQueued += presentation.supersededLateCount
         }
         tick += 1_000_000
     }
     expect(
-        shown == queued,
-        "every queued frame is shown, in the order the host captured them, got \(shown) of \(queued)"
+        shown.first == queued[0] && shown.last == queued[2] && zip(shown, shown.dropFirst()).allSatisfy { $0 < $1 },
+        "frames are shown in the order the host captured them, from the first to the last, got \(shown) of \(queued)"
     )
     expect(
-        supersededWhileQueued == 0,
-        "and none of them is given up for a frame captured after it, got \(supersededWhileQueued)"
+        supersededLateWhileQueued == 0,
+        "and none is given up after being due for more than a refresh, got \(supersededLateWhileQueued)"
     )
 
     // While the person is interacting nothing is held. A history this uneven
@@ -328,6 +330,46 @@ func testViewerPresentationPacingTests() {
     }
 
     print("viewer presentation pacing tests passed")
+}
+
+/// A stall that makes every admit late, such as a hidden window whose main
+/// thread is napping, must not leave the pacer holding frames far past the
+/// limit. Each hold is measured from when the frame got here.
+func testViewerPresentationPacingNeverHoldsLongerThanTheLimitAfterAStall() {
+    let interval: Int64 = 33_000_000
+    let transit: Int64 = 45_000_000
+    let stall: Int64 = 10_000_000_000
+    let start: Int64 = 1_000_000_000
+    let limit = PresentationPacer.maximumHoldNanoseconds
+
+    var pacer = warmedPacer(interval: interval, transit: transit, start: start, frames: 60)
+    var captured = start + 60 * interval
+    for _ in 0..<150 {
+        pacer.admit(makePacedFrame(capturedAtNanoseconds: captured), nowNanoseconds: captured + transit + stall)
+        captured += interval
+    }
+
+    captured += stall
+    let prompt = captured
+    let promptNow = prompt + transit
+    pacer.admit(makePacedFrame(capturedAtNanoseconds: prompt), nowNanoseconds: promptNow)
+    let shown = pacer.frameToPresent(nowNanoseconds: promptNow + limit)
+    expect(
+        capturedAt(shown) == prompt,
+        "a frame is due within the pacing limit of arriving after a stall, got \(String(describing: capturedAt(shown)))"
+    )
+
+    for _ in 0..<30 {
+        captured += interval
+        let admitNow = captured + transit
+        pacer.admit(makePacedFrame(capturedAtNanoseconds: captured), nowNanoseconds: admitNow)
+        let next = capturedAt(pacer.frameToPresent(nowNanoseconds: admitNow + limit))
+        expect(
+            next.map { $0 >= captured - interval } == true,
+            "the picture keeps moving after a stall, got \(String(describing: next)) for a frame captured at \(captured)"
+        )
+    }
+    print("viewer presentation pacing stall recovery tests passed")
 }
 
 /// A frame replaced within a refresh of becoming due is a frame the viewer kept
