@@ -36,6 +36,9 @@ import SensoriumHost
 struct SensoriumLocalHostScreenProbe {
     private struct SavedApproval: Codable {
         let hostPublicKey: Data
+        /// Carried even over TCP, where nothing pins it: the host binds every
+        /// authenticated hello to its own certificate hash.
+        let tlsCertificateHash: Data?
     }
 
     private static let deviceName = "Sensorium local host screen probe"
@@ -120,7 +123,7 @@ struct SensoriumLocalHostScreenProbe {
         try await connection.start()
         let session = ClientSessionController(transport: connection, identity: identity)
         let approval = try await session.pair(deviceName: deviceName, code: code)
-        try JSONEncoder().encode(SavedApproval(hostPublicKey: approval.hostPublicKey))
+        try JSONEncoder().encode(SavedApproval(hostPublicKey: approval.hostPublicKey, tlsCertificateHash: approval.tlsCertificateHash))
             .write(to: approvalURL(), options: .atomic)
         await connection.close()
         print("host_screen_probe_paired=yes")
@@ -193,6 +196,7 @@ struct SensoriumLocalHostScreenProbe {
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
             port: port,
+            tlsCertificateHash: approval.tlsCertificateHash,
             transport: .tcpLocalVerification
         )
         try await connection.start()
