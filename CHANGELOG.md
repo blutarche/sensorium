@@ -40,6 +40,10 @@ once it reaches 1.0.
 
 ### Fixed
 
+- The delay the viewer shows grew over a long session even when nothing
+  changed. The two machines' clocks drift apart slowly, and the viewer
+  measured the difference between them only once. It now keeps measuring,
+  so the figure stays true after hours.
 - The viewer's picture could freeze for a minute or more after its window
   had been in the background. While hidden, the viewer took in each frame
   late, and then mistook that delay for the network's. Every later frame

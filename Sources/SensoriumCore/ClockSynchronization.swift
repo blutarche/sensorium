@@ -93,7 +93,8 @@ public struct SessionClockSynchronizer: Sendable {
     /// `estimator`'s lowest-recent selection: `roundTripNanoseconds` below is
     /// the best recent clock-offset evidence, which is exactly the wrong
     /// number for a live ping display -- a link that has since gotten worse
-    /// would show its best recent moment for minutes. This is updated on every accepted reply, better or worse.
+    /// would show its best recent moment for minutes. This is updated on
+    /// every accepted reply, better or worse.
     private var latestSample: Int64?
 
     public init() {}
