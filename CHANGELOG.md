@@ -40,6 +40,11 @@ once it reaches 1.0.
 
 ### Fixed
 
+- Copied text could bounce between the two machines for minutes. When
+  something else on a machine wrote the same text back to its clipboard,
+  such as the system's own clipboard syncing, Sensorium sent it across
+  again. The same text is no longer sent back within 30 seconds, so a new
+  copy is not overwritten by an old one coming back.
 - The delay the viewer shows grew over a long session even when nothing
   changed. The two machines' clocks drift apart slowly, and the viewer kept
   using its best measurement of the difference from early in the session.
