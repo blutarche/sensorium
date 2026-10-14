@@ -46,6 +46,9 @@ once it reaches 1.0.
   was held for that long, and a newer one replaced it before its turn
   came. Only while you clicked or typed did the picture move. A frame now
   waits at most 50 milliseconds after it arrives.
+- Asking for a screen the host had just lost, such as a monitor that went
+  to sleep, said that host screen was turned off for this machine. The
+  viewer now says the screen you chose is no longer available there.
 - A host screen session could end by itself a couple of minutes after
   the screen went still. The sharp picture the host sends of a still
   screen could freeze the host. A frozen host read nothing from the
