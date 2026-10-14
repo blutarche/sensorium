@@ -97,6 +97,25 @@ private enum HostScreenLockWatchPolicy {
 private struct VideoSendState {
     var queues = SurfaceVideoSendQueues()
     var pacer: KeyFrameRecoveryPacer
+    /// Surfaces whose viewer asked for a key frame that has not yet been taken
+    /// for sending. Apart from `queues`' own wait, because the viewer's loss
+    /// does not stop this host sending deltas: only the viewer knows it
+    /// cannot use them.
+    var viewerAwaitingKeyFrame = CanvasSurfaceSlots { _ in false }
+
+    func isAwaitingKeyFrame(_ surface: CanvasSurfaceID) -> Bool {
+        queues.isAwaitingKeyFrame(surface) || viewerAwaitingKeyFrame[surface]
+    }
+
+    /// A key frame of `surface` was taken for sending, which ends whatever
+    /// wait its viewer asked about.
+    mutating func keyFrameTaken(on surface: CanvasSurfaceID) {
+        guard viewerAwaitingKeyFrame[surface] else {
+            return
+        }
+        viewerAwaitingKeyFrame[surface] = false
+        pacer.keyFrameArrived(on: surface)
+    }
 }
 
 private final class LockedVideoSendState: @unchecked Sendable {
@@ -414,8 +433,17 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         guard isPeerSurfaceAware.isSet || surface == CanvasSurfaceID.allCases[0] else {
             return false
         }
-        let (admission, effects) = changeVideoQueues(cause: .sendQueueDiscard) {
-            $0.enqueue(packet, surface: surface, priority: priority)
+        let (admission, effects) = changeVideoQueues(cause: .sendQueueDiscard) { state in
+            let admission = state.queues.enqueue(packet, surface: surface, priority: priority)
+            switch admission {
+            case .sendNow, .queued, .replacedStaleFrame:
+                if packet.isKeyFrame {
+                    state.keyFrameTaken(on: surface)
+                }
+            case .droppedIncoming, .awaitingKeyFrame:
+                break
+            }
+            return admission
         }
         apply(effects)
         switch admission {
@@ -464,11 +492,11 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             // The failure is noted in the same locked step that picks the next
             // frame, so a delta of this surface waiting behind the lost frame
             // is never the one picked.
-            let (next, effects) = self.changeVideoQueues(cause: .writeFailure) { queues in
+            let (next, effects) = self.changeVideoQueues(cause: .writeFailure) { state in
                 if writeFailed {
-                    _ = queues.noteWriteFailed(surface)
+                    _ = state.queues.noteWriteFailed(surface)
                 }
-                return queues.completeSend()
+                return state.queues.completeSend()
             }
             self.apply(effects)
             guard let next else {
@@ -486,12 +514,12 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// too, so a gate never reads a slot the queues have already changed.
     private func changeVideoQueues<T>(
         cause: KeyFrameRecoveryCause,
-        _ change: (inout SurfaceVideoSendQueues) -> T
+        _ change: (inout VideoSendState) -> T
     ) -> (T, VideoSendEffects) {
         videoQueues.withLock { state in
             let wasAwaiting = CanvasSurfaceSlots { state.queues.isAwaitingKeyFrame($0) }
             let hadWaitingFrame = CanvasSurfaceSlots { state.queues.hasWaitingFrame($0) }
-            let result = change(&state.queues)
+            let result = change(&state)
             var effects = VideoSendEffects()
             for surface in CanvasSurfaceID.allCases {
                 let isAwaiting = state.queues.isAwaitingKeyFrame(surface)
@@ -550,7 +578,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             let cause = self.videoQueues.withLock { state in
                 state.pacer.deferredRequestDue(
                     on: surface,
-                    isStillAwaiting: state.queues.isAwaitingKeyFrame(surface),
+                    isStillAwaiting: state.isAwaitingKeyFrame(surface),
                     atNanoseconds: MonotonicClock.nowNanoseconds()
                 )
             }
@@ -558,6 +586,32 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 self.requestRecoveryKeyFrame(on: surface, cause: cause)
             }
         })
+    }
+
+    /// The viewer gave up a group of frames on `surface` and asked for a key
+    /// frame. Paced exactly as a frame lost on the way out is: one request
+    /// outstanding per surface, at most one per interval, and one held inside
+    /// the interval is made once it is up, unless a key frame was taken for
+    /// sending first.
+    public func viewerRequestedKeyFrame(on surface: CanvasSurfaceID) {
+        let effects = videoQueues.withLock { state in
+            state.viewerAwaitingKeyFrame[surface] = true
+            var effects = VideoSendEffects()
+            switch state.pacer.keyFrameNeeded(
+                on: surface,
+                cause: .viewerRequest,
+                atNanoseconds: MonotonicClock.nowNanoseconds()
+            ) {
+            case .requestNow:
+                effects.keyFrameRequests.append((surface, .viewerRequest))
+            case let .requestAt(dueNanoseconds):
+                effects.heldRequests.append((surface, dueNanoseconds))
+            case .none:
+                break
+            }
+            return effects
+        }
+        apply(effects)
     }
 
     /// Reports every key frame this session asks an encoder for after losing

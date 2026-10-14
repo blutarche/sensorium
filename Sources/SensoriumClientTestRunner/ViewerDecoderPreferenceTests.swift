@@ -53,13 +53,13 @@ func testViewerDecoderPreferenceTests() async {
     ).connect(deviceName: "Laptop")
     let askingSent = await asking.sent
     expect(
-        askingSent.count >= 3,
-        "the connect sent a hello, a preference and a target request -- got \(askingSent)"
+        askingSent.count >= 4,
+        "the connect sent a hello, a preference, its key-frame declaration and a target request -- got \(askingSent)"
     )
-    if askingSent.count >= 3 {
+    if askingSent.count >= 4 {
         guard case .authenticatedHello = askingSent[0],
               askingSent[1] == .viewerDecoderPreference(h264Profile: .constrainedBaseline),
-              case .canvasRequest = askingSent[2] else {
+              case .canvasRequest = askingSent[3] else {
             expect(false, "the preference follows the hello and precedes the target request -- got \(askingSent)")
             return
         }

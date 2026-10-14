@@ -205,6 +205,17 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// requirement: it can only lower the profile the host encodes at, and a
     /// host that does not know it skips it.
     case viewerDecoderPreference(h264Profile: ViewerH264Profile)
+    /// This viewer asks for a key frame with `keyFrameRequest` whenever it
+    /// needs one, so the host need not send one every second to bound its
+    /// wait. Sent once right after `authenticatedHello`. Viewer to host only.
+    /// A host that does not know it skips it and keeps its one-second key
+    /// frames.
+    case viewerKeyFrameRecovery
+    /// The viewer gave up a group of frames on one surface and shows nothing
+    /// new until the next key frame. The host sends one as soon as its
+    /// recovery pacing allows. Sent once per group given up. Viewer to host
+    /// only. A host that does not know it skips it.
+    case keyFrameRequest(surfaceID: UInt32?)
     /// A wire `type` this build does not know, from a peer running a
     /// different protocol revision. Decode-only: nothing ever constructs this
     /// to send, and `encode` refuses it -- fabricating wire bytes for it
@@ -957,6 +968,10 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "hostScreenUnlockResult", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: outcome.wireReason, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenUnlockOutcome: outcome.wireToken)
         case let .hostScreenLockState(locked):
             wire = WireMessage(type: "hostScreenLockState", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenLocked: locked)
+        case .viewerKeyFrameRecovery:
+            wire = WireMessage(type: "viewerKeyFrameRecovery", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
+        case let .keyFrameRequest(surfaceID):
+            wire = WireMessage(type: "keyFrameRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: surfaceID, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case .unrecognized:
             // Decode-only sentinel: sending it would fabricate a wire type
             // nobody agreed on.
@@ -1059,6 +1074,12 @@ public enum SensoriumFrameCodec {
                 throw SensoriumProtocolError.malformedMessage
             }
             return .viewerDecoderPreference(h264Profile: profile)
+        case "viewerKeyFrameRecovery":
+            return .viewerKeyFrameRecovery
+        case "keyFrameRequest":
+            // `surfaceID` is checked by the host, which ignores a request for
+            // any surface it is not streaming.
+            return .keyFrameRequest(surfaceID: wire.surfaceID)
         case "clipboardRefused":
             // An unknown reason token is malformed rather than
             // `.unrecognized`, the same rule `streamScalePreference`'s kind

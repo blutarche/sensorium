@@ -132,6 +132,10 @@ public protocol CanvasVideoSending: AnyObject, Sendable {
     /// call, which starts the next window. A sink that does not time its
     /// writes reports none.
     func takeKeyFrameSendWindow(for surface: CanvasSurfaceID) -> KeyFrameSendWindow
+    /// The viewer gave up a group of frames on `surface`, which is streaming,
+    /// and asked for a key frame. A sink with no key-frame pacing of its own
+    /// does nothing.
+    func viewerRequestedKeyFrame(on surface: CanvasSurfaceID)
 }
 
 public extension CanvasVideoSending {
@@ -146,6 +150,8 @@ public extension CanvasVideoSending {
     ) {}
 
     func takeKeyFrameSendWindow(for surface: CanvasSurfaceID) -> KeyFrameSendWindow { KeyFrameSendWindow() }
+
+    func viewerRequestedKeyFrame(on surface: CanvasSurfaceID) {}
 }
 
 /// The three steps share one catch, so each names itself; a workspace that
@@ -757,6 +763,14 @@ public final class HostSessionCoordinator {
             onEvent?(
                 "\(viewerLogName()) decodes in \(decodesInHardware ? "hardware" : "software") on \(surfaceLogName(surface))"
             )
+        }
+
+        if case let .keyFrameRequest(surfaceID) = message,
+           let surface = CanvasSurfaceID(wireValue: surfaceID),
+           isStreaming[surface] {
+            // A request for a surface not streaming is ignored: there is no
+            // encoder to ask, and the next one to start opens on a key frame.
+            videoSink.viewerRequestedKeyFrame(on: surface)
         }
 
         if case .viewerFocus = message {

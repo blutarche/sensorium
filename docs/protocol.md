@@ -75,6 +75,8 @@ Tag 3 carries text or an image between the two machines' pasteboards, in both di
 | `displayCount(count)` | client → host | The viewer's live choice of `1` or `2` session displays |
 | `clipboardSharing(enabled)` | client → host | The viewer's on/off choice, sent after every connect and on every change. No reply |
 | `viewerDecoderPreference(h264Profile)` | client → host | The H.264 profile the viewer's decoder shows without delay. Sent right after `authenticatedHello`, before any target is requested. No reply. See Viewer decoder preference below |
+| `viewerKeyFrameRecovery` | client → host | Says this viewer asks for a key frame when it needs one. Sent right after `authenticatedHello` and any `viewerDecoderPreference`, before any target is requested. No reply. See Key-frame requests below |
+| `keyFrameRequest(surfaceID)` | client → host | The viewer gave up a group of frames on this surface and needs a key frame. No reply. See Key-frame requests below |
 | `clipboardRefused(reason)` | host → client | A clipboard the host did not share: `too-large` (with `clipboardByteCount` and `clipboardLimit`), `excluded-type`, or `unsupported-content`. Never carries content |
 | `timeSyncRequest(clientTimeNanoseconds)` | client → host | Relates the two monotonic clocks. Requires authentication |
 | `timeSyncReply(clientTimeNanoseconds, hostTimeNanoseconds)` | host → client | Echoes the request timestamp and stamps the host clock |
@@ -248,6 +250,23 @@ This host already encodes every connection in Constrained Baseline, so the messa
 
 It can only lower the profile, never raise it, and it is a separate message rather than a field on `authenticatedHello` so the signed hello transcript is unchanged. `protocolVersion` is not bumped for it.
 
+## Key-frame requests
+
+Every frame after a key frame is a difference from the one before it. A viewer whose decode queue reaches its bound gives the rest of that group up, and shows nothing new until the next key frame arrives. `keyFrameRequest(surfaceID)` asks the host for that key frame at once. The viewer sends one each time its queue gives a group up. It never sends one before the surface's first key frame, or because it stopped decoding.
+
+`viewerKeyFrameRecovery` carries nothing. It tells the host that this viewer sends those requests. Every viewer sends it once per connection, whatever its decoder.
+
+| Rule | Behaviour |
+|---|---|
+| Authentication | Both are required to come from an authenticated viewer, like `viewerDecoderPreference`. Unauthenticated, either is refused and the connection ends |
+| Surface | A host-screen session takes requests under surface 0, the surface it reports under. A request for a surface the host is not streaming is ignored, and so is one outside `{0, 1}` |
+| Pacing | A request is paced like a frame the host lost on its way out. Each surface has at most one request outstanding, and at most one a second. A request inside that second is made once the second is up, unless a key frame went out first |
+| Declaration | Taken at any point in the connection, and kept for the rest of it, across a `goodbye` |
+| Older host | Decodes both as `.unrecognized` and skips them. It still sends a key frame every second, which is how the viewer recovers |
+| Older viewer | Sends neither, and the host still sends it a key frame every second |
+
+`protocolVersion` is not bumped for either.
+
 ## Host screen
 
 The host-screen path offers one of the host's own displays instead of a session canvas, and uses its own message family.
@@ -288,7 +307,7 @@ No shipping viewer sends `hostScreenUnlockRequest`. A locked host is unlocked by
 - Control messages travel on a reliable ordered stream.
 - A surface's `canvasReady` is written before that surface's capture starts, and its workspace window is placed before the reply: a refused placement is answered as a failed canvas request, not as a canvas the client has already been promised. The client still has to tolerate video arriving mid-handshake, held by `DeferredPacketQueue`.
 - Pointer motion is latest-wins, collapsing to the newest point queued behind an in-flight send. Buttons, scrolls, and keys are never coalesced.
-- Video frames are decoded in the order they arrived. A viewer that fell behind catches up rather than skipping ahead, because each frame is a difference from the one before it. Only a decode queue that reaches its bound gives a group up, and the next key frame recovers from that.
+- Video frames are decoded in the order they arrived. A viewer that fell behind catches up rather than skipping ahead, because each frame is a difference from the one before it. Only a decode queue that reaches its bound gives a group up. The viewer then asks the host for a key frame with `keyFrameRequest`, and that key frame recovers from it.
 - The viewer draws on its screen's own refresh. Each decoded frame is held a short time past the capture time the host stamped it with, so frames that arrive together are drawn one refresh apart instead of one of them being thrown away. The hold is measured from how unevenly frames arrive and never exceeds 50 milliseconds. A frame that arrives later than that is drawn at once. While the person is interacting, meaning the viewer sent any input to the host in the last 500 milliseconds, nothing is held: each frame is drawn at the next refresh, and the unevenness is measured all the same.
 - `hostScreenUnlockRequest` is answered only for an already-authenticated, already-streaming host-screen session; see `docs/host-screen-design.md` §9.
 

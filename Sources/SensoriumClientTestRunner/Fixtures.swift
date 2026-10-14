@@ -431,15 +431,24 @@ actor ScriptedControlConnection: ClientControlConnection {
     private var responses: [SensoriumTransportPacket]
     private(set) var sentMessages: [SensoriumMessage] = []
     private(set) var sentPackets: [SensoriumTransportPacket] = []
+    private let enqueued = LockedPacketList()
 
     init(responses: [SensoriumTransportPacket]) {
         self.responses = responses
     }
 
+    /// Everything handed to `enqueue`, in order. Read without awaiting, since
+    /// `enqueue` itself is called from threads that cannot await.
+    nonisolated var enqueuedPackets: [SensoriumTransportPacket] {
+        enqueued.packets
+    }
+
     func start(timeout: TimeInterval) async throws {}
     nonisolated func beginHostSilenceWatch() {}
     nonisolated func endHostSilenceWatch() {}
-    nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
+    nonisolated func enqueue(_ packet: SensoriumTransportPacket) {
+        enqueued.append(packet)
+    }
 
     func send(_ message: SensoriumMessage) async throws {
         sentMessages.append(message)
@@ -457,6 +466,23 @@ actor ScriptedControlConnection: ClientControlConnection {
     }
 
     func close() async {}
+}
+
+final class LockedPacketList: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [SensoriumTransportPacket] = []
+
+    var packets: [SensoriumTransportPacket] {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func append(_ packet: SensoriumTransportPacket) {
+        lock.lock()
+        stored.append(packet)
+        lock.unlock()
+    }
 }
 
 final class UncheckedFlag: @unchecked Sendable {

@@ -116,6 +116,7 @@ struct SensoriumCoreTestRunner {
             ("clipboardSharing round-trips both values and refuses malformed shapes", testClipboardSharingRoundTripsAndRefusesMalformed),
             ("clipboardRefused round-trips every reason and refuses malformed shapes", testClipboardRefusedRoundTripsAndRefusesMalformed),
             ("viewerDecoderPreference round-trips and refuses malformed shapes", testViewerDecoderPreferenceRoundTripsAndRefusesMalformed),
+            ("key-frame recovery messages round-trip and an old peer skips them", testKeyFrameRecoveryMessagesRoundTripAndAreIgnorableByAnOldPeer),
             ("the fidelity ladder spends frame rate before resolution and quality", testStreamFidelityLadderSpendsFrameRateBeforeResolutionAndQuality),
             ("fidelity pressure names the stage that cannot keep up", testStreamFidelityPressureNamesTheStageThatCannotKeepUp),
             ("fidelity pressure counts frames replaced on time as kept up", testStreamFidelityPressureCountsFramesReplacedOnTimeAsKeptUp),

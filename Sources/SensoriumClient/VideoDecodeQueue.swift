@@ -24,6 +24,10 @@ public final class VideoDecodeQueue: @unchecked Sendable {
     private var isDecoding = false
     private var isStopped = false
     private var failure: Error?
+    /// Whether a key frame has been admitted since this queue was made. A
+    /// group given up before then is not one the host can be asked to end.
+    private var hasAdmittedKeyFrame = false
+    private var groupGivenUpHandler: (@Sendable () -> Void)?
     private let queue: DispatchQueue
     private let decode: Decode
     private let drops: ViewerFrameDropCounter?
@@ -51,13 +55,20 @@ public final class VideoDecodeQueue: @unchecked Sendable {
             lock.unlock()
             return
         }
+        let wasAwaitingKeyFrame = backlog.isAwaitingKeyFrame
         let dropped = backlog.admit(packet)
+        if packet.isKeyFrame {
+            hasAdmittedKeyFrame = true
+        }
+        let gaveGroupUp = hasAdmittedKeyFrame && !wasAwaitingKeyFrame && backlog.isAwaitingKeyFrame
+        let onGroupGivenUp = gaveGroupUp ? groupGivenUpHandler : nil
         let shouldStart = !isDecoding && backlog.count > 0
         if shouldStart {
             isDecoding = true
         }
         lock.unlock()
         drops?.recordDroppedBeforeDecode(dropped)
+        onGroupGivenUp?()
         guard shouldStart else { return }
         queue.async { [weak self] in
             self?.decodePending()
@@ -83,6 +94,16 @@ public final class VideoDecodeQueue: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return backlog.isAwaitingKeyFrame
+    }
+
+    /// Runs once each time this queue gives a group of frames up and so shows
+    /// nothing new until the next key frame: on the thread that submitted the
+    /// packet that cost the group, outside this queue's lock. Never before the
+    /// first key frame, and never because the queue stopped.
+    public func setGroupGivenUpHandler(_ handler: (@Sendable () -> Void)?) {
+        lock.lock()
+        groupGivenUpHandler = handler
+        lock.unlock()
     }
 
     /// Gives up everything waiting and takes nothing further. A decode already

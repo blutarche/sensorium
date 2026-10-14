@@ -161,7 +161,9 @@ private final class IdlePreferenceSignal: HostLocalActivitySignal, @unchecked Se
 }
 
 @MainActor
-private func makeHostScreenPreferenceFixture(
+func makeHostScreenPreferenceFixture(
+    videoSink: any CanvasVideoSending = FakeVideoSink(),
+    onEvent: (@Sendable (String) -> Void)? = nil,
     hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController) {
     let display = DisplaySnapshot(
@@ -206,14 +208,15 @@ private func makeHostScreenPreferenceFixture(
     let coordinator = HostSessionCoordinator(
         controller: controller,
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
-        videoSink: FakeVideoSink(),
+        videoSink: videoSink,
+        onEvent: onEvent,
         hostScreenMediaFactory: hostScreenMediaFactory
     )
     return (coordinator, controller)
 }
 
 @MainActor
-private func hostScreenPreferenceToken(_ controller: HostSessionController) -> Data {
+func hostScreenPreferenceToken(_ controller: HostSessionController) -> Data {
     guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
         expect(false, "the fixture offers one display")
         return Data()

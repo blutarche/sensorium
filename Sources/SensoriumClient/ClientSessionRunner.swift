@@ -127,10 +127,21 @@ public final class ClientSessionRunner {
         self.hostName = hostName
         self.hostAddress = hostAddress
         router.setWindow(window, atSurfaceID: 0)
-        router.setVideoSink(window.videoSink, atSurfaceID: 0)
+        registerVideoSink(of: window, atSurfaceID: 0)
         if let secondaryWindow {
             router.setWindow(secondaryWindow, atSurfaceID: 1)
-            router.setVideoSink(secondaryWindow.videoSink, atSurfaceID: 1)
+            registerVideoSink(of: secondaryWindow, atSurfaceID: 1)
+        }
+    }
+
+    /// Routes a surface's frames to its window's decoder, and has every group
+    /// of frames that decoder gives up ask the host for that surface's key
+    /// frame. Enqueued rather than sent: the decoder reports from whichever
+    /// thread read the socket, and that thread cannot wait on a send.
+    private func registerVideoSink(of window: any SessionCanvasWindow, atSurfaceID surfaceID: UInt32) {
+        router.setVideoSink(window.videoSink, atSurfaceID: surfaceID)
+        window.videoSink.setKeyFrameNeededHandler { [connection] in
+            connection.enqueue(.control(.keyFrameRequest(surfaceID: surfaceID)))
         }
     }
 
@@ -220,7 +231,7 @@ public final class ClientSessionRunner {
     public func attachSecondDisplay(_ window: any SessionCanvasWindow) async throws {
         secondaryWindow = window
         router.setWindow(window, atSurfaceID: 1)
-        router.setVideoSink(window.videoSink, atSurfaceID: 1)
+        registerVideoSink(of: window, atSurfaceID: 1)
         if clipboard != nil {
             window.onDidBecomeKey = { [weak self] in self?.pollClipboardNow() }
         }
@@ -249,6 +260,7 @@ public final class ClientSessionRunner {
         secondaryWindow = nil
         router.setWindow(nil, atSurfaceID: 1)
         router.setVideoSink(nil, atSurfaceID: 1)
+        window.videoSink.setKeyFrameNeededHandler(nil)
         return window
     }
 

@@ -23,6 +23,7 @@ func runVideoSendRecoveryTests() async {
     await expectEachRecoveryRequestIsLoggedOnce()
     await expectCapturesHeldForTheLinkReadAsLinkPressure()
     await expectEachKeyFrameWriteIsTimedForItsSurface()
+    await expectViewerRequestsArePacedLikeSendLosses()
 }
 
 private let surfaceZero = CanvasSurfaceID.allCases[0]
@@ -753,4 +754,53 @@ private func expectEachKeyFrameWriteIsTimedForItsSurface() async {
     )
     channel.cancel()
     print("PASS: each key frame's write is timed from start to completion and counted against its own surface")
+}
+
+/// A viewer's request for a key frame takes the same pacing as a frame the
+/// send path lost: asked for at once, nothing more while it is outstanding, and
+/// one inside the interval held until the interval is up, unless a key frame
+/// goes out first.
+@MainActor
+private func expectViewerRequestsArePacedLikeSendLosses() async {
+    let channel = FakeHostByteChannel(scriptedMessages: [])
+    let listener = RecordingFeedbackListener()
+    let (session, _, requests) = makeRecoverySession(
+        channel: channel,
+        listener: listener,
+        keyFrameRecoveryInterval: .milliseconds(300)
+    )
+    let sink: any CanvasVideoSending = session
+    session.start()
+    func asked() -> Int {
+        listener.events.filter { $0 == "key frame" }.count
+    }
+
+    sink.viewerRequestedKeyFrame(on: surfaceZero)
+    expect(asked() == 1, "the viewer's request asks the encoder for a key frame at once, got \(listener.events)")
+    expect(requests.requests == ["surface 0: viewer request"], "and is reported as the viewer's, got \(requests.requests)")
+    sink.viewerRequestedKeyFrame(on: surfaceZero)
+    expect(asked() == 1, "a second request while the first is outstanding asks for nothing, got \(listener.events)")
+
+    expect(session.send(recoveryFrame(1, keyFrame: true), surface: surfaceZero, priority: .normal), "the key frame is sent")
+    sink.viewerRequestedKeyFrame(on: surfaceZero)
+    expect(asked() == 1, "a request inside the interval is held, not made at once, got \(listener.events)")
+    expect(
+        await waitUntil(timeoutSeconds: 2) { asked() == 2 },
+        "and is made when the interval is up, got \(listener.events)"
+    )
+    expect(
+        requests.requests == ["surface 0: viewer request", "surface 0: viewer request"],
+        "the held request is reported as the viewer's too, got \(requests.requests)"
+    )
+
+    expect(session.send(recoveryFrame(2, keyFrame: true), surface: surfaceZero, priority: .normal), "the key frame is sent")
+    sink.viewerRequestedKeyFrame(on: surfaceZero)
+    expect(session.send(recoveryFrame(3, keyFrame: true), surface: surfaceZero, priority: .normal), "a key frame goes out")
+    try? await Task.sleep(for: .milliseconds(450))
+    expect(asked() == 2, "a held request is dropped when a key frame went out before it was due, got \(listener.events)")
+
+    sink.viewerRequestedKeyFrame(on: surfaceZero)
+    expect(asked() == 3, "once the interval is up a new request is made at once, got \(listener.events)")
+    channel.cancel()
+    print("PASS: a viewer's key-frame request is paced like a send loss: one outstanding, one per interval, a held one dropped if a key frame came first")
 }

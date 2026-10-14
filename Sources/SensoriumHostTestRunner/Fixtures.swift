@@ -1113,6 +1113,21 @@ final class FakeVideoSink: CanvasVideoSending, @unchecked Sendable {
         repeating: KeyFrameSendWindow(),
         count: CanvasSurfaceID.capacity
     )
+    private var viewerRequests: [CanvasSurfaceID] = []
+
+    /// Every surface the coordinator passed a viewer's key-frame request on
+    /// for, in order.
+    var viewerKeyFrameRequests: [CanvasSurfaceID] {
+        lock.lock()
+        defer { lock.unlock() }
+        return viewerRequests
+    }
+
+    func viewerRequestedKeyFrame(on surface: CanvasSurfaceID) {
+        lock.lock()
+        defer { lock.unlock() }
+        viewerRequests.append(surface)
+    }
 
     /// Stands in for the transport finishing a key frame's write on `surface`.
     func recordKeyFrameSent(bytes: Int, nanoseconds: Int64, on surface: CanvasSurfaceID) {

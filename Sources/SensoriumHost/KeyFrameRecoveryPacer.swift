@@ -7,10 +7,12 @@ public enum KeyFrameRecoveryCause: String, Equatable, Sendable {
     case sendQueueDiscard = "send-queue discard"
     /// A frame's write to the transport failed.
     case writeFailure = "write failure"
+    /// The viewer gave up a group of frames and asked for one.
+    case viewerRequest = "viewer request"
 }
 
-/// Decides when a surface that lost a frame on the way out asks its encoder
-/// for a key frame. A key frame costs many deltas' worth of bits, so the ask is
+/// Decides when a surface that lost a frame, on the way out or at the viewer,
+/// asks its encoder for a key frame. A key frame costs many deltas' worth of bits, so the ask is
 /// bounded: one outstanding request per surface, and requests at least
 /// `minimumIntervalNanoseconds` apart. A loss inside that interval is not
 /// forgotten; its request is made once the interval is up, unless a key frame

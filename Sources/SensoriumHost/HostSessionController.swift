@@ -382,6 +382,11 @@ public final class HostSessionController {
     /// life: it describes the viewer's decoder, which a `goodbye` does not
     /// change.
     public private(set) var viewerRequestedProfileLevel: VideoEncoderProfileLevel?
+    /// Whether this connection's viewer said it asks for a key frame whenever
+    /// it needs one. Kept for the connection's whole life, for the same reason
+    /// the profile above is: it describes the viewer, which a `goodbye` does
+    /// not change.
+    public private(set) var viewerDeclaredKeyFrameRecovery = false
 
     /// Set immediately before this controller calls `hostScreenPresenceGate.ask`
     /// while handling a `.hostScreenRequest`, and reset to `nil` at the start
@@ -1398,6 +1403,24 @@ public final class HostSessionController {
             case .constrainedBaseline:
                 viewerRequestedProfileLevel = .constrainedBaselineAutoLevel
             }
+            return nil
+        case .viewerKeyFrameRecovery:
+            guard !requireAuthentication || isAuthenticated else {
+                throw HostSessionControllerError.authenticationRequired
+            }
+            // Taken at any point in the connection, unlike the profile above:
+            // a key-frame interval can change on an encoder that is already
+            // running.
+            viewerDeclaredKeyFrameRecovery = true
+            return nil
+        case .keyFrameRequest:
+            guard !requireAuthentication || isAuthenticated else {
+                throw HostSessionControllerError.authenticationRequired
+            }
+            // Whether the surface it names is streaming is the coordinator's
+            // to know. A request for one that is not is ignored there rather
+            // than refused here: it can cross the wire with that surface's
+            // teardown, and is no fault of the viewer's.
             return nil
         case let .authenticatedHello(protocolVersion, deviceName, publicKey, helloCertificateHash, signature):
             guard !isAuthenticated else {

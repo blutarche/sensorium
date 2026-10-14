@@ -334,6 +334,10 @@ public actor ClientSessionController {
             if let decoderPreference {
                 try await transport.send(.viewerDecoderPreference(h264Profile: decoderPreference))
             }
+            // Every viewer's decode queue asks for a key frame when it gives
+            // a group of frames up, whatever its decoder, so every
+            // authenticated connect says so.
+            try await transport.send(.viewerKeyFrameRecovery)
         } else {
             try await transport.send(.hello(protocolVersion: 1, deviceName: deviceName))
         }

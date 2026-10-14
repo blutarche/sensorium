@@ -39,6 +39,7 @@ struct SensoriumClientTestRunner {
         testHardwareSurfaceImportCacheTests()
         await testAuthenticatedHelloNamesThePinnedCertificate()
         await testViewerDecoderPreferenceTests()
+        await testKeyFrameRequestTests()
         await testCanvasSurfaceEventRouterSourceOriginTests()
         await runDarwinClientTests()
         await testViewerFrameCoalescingTests()

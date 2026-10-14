@@ -29,6 +29,7 @@ public final class SurfaceVideoSink: SurfaceVideoReceiving, @unchecked Sendable 
 
     private let lock = NSLock()
     private var queue: VideoDecodeQueue?
+    private var keyFrameNeededHandler: (@Sendable () -> Void)?
 
     public init() {}
 
@@ -38,6 +39,25 @@ public final class SurfaceVideoSink: SurfaceVideoReceiving, @unchecked Sendable 
         lock.lock()
         self.queue = queue
         lock.unlock()
+        queue?.setGroupGivenUpHandler { [weak self] in
+            self?.keyFrameNeeded()
+        }
+    }
+
+    /// Runs each time the attached decode queue gives a group of frames up and
+    /// needs a key frame to show anything new. Kept across `attach`, so every
+    /// decode session this window starts reports to it.
+    public func setKeyFrameNeededHandler(_ handler: (@Sendable () -> Void)?) {
+        lock.lock()
+        keyFrameNeededHandler = handler
+        lock.unlock()
+    }
+
+    private func keyFrameNeeded() {
+        lock.lock()
+        let handler = keyFrameNeededHandler
+        lock.unlock()
+        handler?()
     }
 
     /// Takes one packet and returns. A decode that failed on the decode queue's
