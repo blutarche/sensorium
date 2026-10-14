@@ -148,6 +148,24 @@ for base, dirs, files in os.walk(sys.argv[1]):
             bad = True
 sys.exit(1 if bad else 0)
 PY
+  # A linker debug map left in an executable names every source folder and
+  # object file by its absolute path on the build machine.
+  python3 -I - "$APP" "/Users/" "$HOME" "$ROOT" <<'PY' || die "$LABEL: a file in $ZIP names a folder of the machine that built it"
+import os, sys
+needles = [s.encode() for s in sys.argv[2:] if s]
+bad = False
+for base, dirs, files in os.walk(sys.argv[1]):
+    for name in files:
+        path = os.path.join(base, name)
+        if os.path.islink(path):
+            continue
+        with open(path, 'rb') as f:
+            data = f.read()
+        if any(needle in data for needle in needles):
+            print(os.path.relpath(path, sys.argv[1]), file=sys.stderr)
+            bad = True
+sys.exit(1 if bad else 0)
+PY
   codesign --verify --strict --all-architectures "$APP" 2>/dev/null ||
     die "$LABEL: the signature in $ZIP does not verify"
 

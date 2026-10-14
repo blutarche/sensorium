@@ -13,6 +13,10 @@ once it reaches 1.0.
 - The disk images open to a designed window: drag the app onto
   Applications.
 
+### Fixed
+
+- Release builds no longer contain the build machine's folder paths.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added

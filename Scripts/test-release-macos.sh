@@ -113,6 +113,10 @@ if [ -n "\${STUB_OUTSIDE_LINK:-}" ]; then
   ln -s /etc "\$KIT/Sensorium.app/Contents/Resources/escape"
   codesign --force --sign - "\$KIT/Sensorium.app" >/dev/null 2>&1
 fi
+if [ -n "\${STUB_BUILD_PATH:-}" ]; then
+  printf '%s/Sources/Example/Example.swift\n' "\$ROOT" > "\$KIT/Sensorium.app/Contents/Resources/build-path"
+  codesign --force --sign - "\$KIT/Sensorium.app" >/dev/null 2>&1
+fi
 STUB
 chmod +x "$REPO/Scripts/package-apps.sh" "$REPO/Scripts/release-macos.sh"
 
@@ -293,6 +297,10 @@ grep -qF "icon" "$WORK/out" || fail "missing icon refusal should name the icon"
 # A symbolic link that points outside an app is refused.
 (STUB_OUTSIDE_LINK=1 run_release) && fail "a symlink pointing outside the app must be refused"
 grep -qF "symbolic link" "$WORK/out" || fail "symlink refusal should be named"
+
+# An app holding a path of the machine that built it is refused.
+(STUB_BUILD_PATH=1 run_release) && fail "an app naming a folder of the build machine must be refused"
+grep -qF "machine that built it" "$WORK/out" || fail "build path refusal should be named"
 
 # Key file refusals.
 (SENSORIUM_UPDATE_KEY="$WORK/no-such-key" run_release) && fail "a missing key file must be refused"

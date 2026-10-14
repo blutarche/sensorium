@@ -59,6 +59,7 @@ The script refuses to continue when:
 - the key does not match the public key compiled into the apps
 - either app is signed with a certificate other than the pinned release certificate
 - a zip does not unpack to one app, or holds a link that points outside it
+- a file in an app names a folder of the machine that built it
 - an app fails `--update-self-test`
 - a disk image does not attach, or shows anything but the app and a link named `Applications` that points to `/Applications`
 - an app has no icon for its disk image
