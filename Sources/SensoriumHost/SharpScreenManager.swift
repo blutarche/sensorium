@@ -316,8 +316,8 @@ public final class SharpScreenManager {
         let target = SharpScreen.configuration
         let width = target.logicalWidth
         let height = target.logicalHeight
-        let pixelWidth = target.modePixelWidth
-        let pixelHeight = target.modePixelHeight
+        let pixelWidth = target.logicalWidth * target.scale
+        let pixelHeight = target.logicalHeight * target.scale
         func readsBackAtTarget() -> Bool {
             guard let display = displays().first(where: { $0.id == id && $0.online }) else {
                 return false
@@ -328,10 +328,14 @@ public final class SharpScreenManager {
         if readsBackAtTarget() {
             return nil
         }
-        guard let mode = modeSetter.modes(for: id).first(where: {
+        let offered = modeSetter.modes(for: id)
+        guard let mode = offered.first(where: {
             $0.width == width && $0.height == height && $0.pixelWidth == pixelWidth && $0.pixelHeight == pixelHeight
         }) else {
-            return "macOS offers no mode of \(width)x\(height) points at \(target.scale)x for it"
+            let list = offered.isEmpty
+                ? "no modes"
+                : offered.map { "\($0.width)x\($0.height)/\($0.pixelWidth)x\($0.pixelHeight)" }.joined(separator: ", ")
+            return "macOS offers no mode of \(width)x\(height) points at \(target.scale)x for it; it offers \(list)"
         }
         guard modeSetter.set(modeID: mode.id, on: id) else {
             return "macOS refused to set it to \(width)x\(height) points at \(target.scale)x"

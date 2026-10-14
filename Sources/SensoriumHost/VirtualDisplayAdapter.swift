@@ -4,26 +4,26 @@ public struct VirtualCanvasConfiguration: Equatable, Sendable {
     public let logicalWidth: Int
     public let logicalHeight: Int
     public let scale: Int
-    /// How many times its one declared mode's pixel size the display may be
-    /// backed by at most, in each direction. macOS offers a mode at 2x only
-    /// when its pixel size is at most half that largest backing, so a display
-    /// that must be set to its own logical size at 2x after it is created
-    /// asks for 2. A session canvas asks for 1.
-    public let maxPixelHeadroom: Int
+    /// Whether the one mode the display declares is its logical size rather
+    /// than its pixel size. macOS offers a display at its logical size at 2x
+    /// only when the one mode it declares is that logical size, with a
+    /// largest backing of twice it. A session canvas declares its mode at its
+    /// pixel size.
+    public let declaresModeInPoints: Bool
 
-    public init(logicalWidth: Int, logicalHeight: Int, scale: Int, maxPixelHeadroom: Int = 1) {
+    public init(logicalWidth: Int, logicalHeight: Int, scale: Int, declaresModeInPoints: Bool = false) {
         self.logicalWidth = logicalWidth
         self.logicalHeight = logicalHeight
         self.scale = scale
-        self.maxPixelHeadroom = maxPixelHeadroom
+        self.declaresModeInPoints = declaresModeInPoints
     }
 
-    /// The pixel size of the one mode the display is created with.
-    public var modePixelWidth: Int { logicalWidth * scale }
-    public var modePixelHeight: Int { logicalHeight * scale }
+    /// The size of the one mode the display is created with.
+    public var declaredModeWidth: Int { declaresModeInPoints ? logicalWidth : logicalWidth * scale }
+    public var declaredModeHeight: Int { declaresModeInPoints ? logicalHeight : logicalHeight * scale }
     /// The largest pixel size the display may be backed by.
-    public var maxPixelWidth: Int { modePixelWidth * maxPixelHeadroom }
-    public var maxPixelHeight: Int { modePixelHeight * maxPixelHeadroom }
+    public var maxPixelWidth: Int { logicalWidth * scale }
+    public var maxPixelHeight: Int { logicalHeight * scale }
 
     public static let remoteDefault = Self(logicalWidth: 1920, logicalHeight: 1200, scale: 2)
 }

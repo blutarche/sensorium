@@ -178,9 +178,9 @@ func runSharpScreenManagerTests() async {
         expect(host.attemptedIdentities == [SharpScreen.identity], "it is created once, with the sharp screen's own identity")
         expect(
             host.attemptedConfigurations == [
-                VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2, maxPixelHeadroom: 2)
+                VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2, declaresModeInPoints: true)
             ],
-            "at 1920x1080 points and 2x, with room to be backed at 2x, got \(host.attemptedConfigurations)"
+            "at 1920x1080 points and 2x, declaring its mode in points, got \(host.attemptedConfigurations)"
         )
         expect(host.modeSets.isEmpty, "a sharp screen already at 2x has no mode set on it, got \(host.modeSets)")
         expect(lease.displayID == host.sharpID, "the lease names the sharp screen's own display")
@@ -245,6 +245,10 @@ func runSharpScreenManagerTests() async {
         expect(
             lines.first?.contains("macOS offers no mode of 1920x1080 points at 2x for it") == true,
             "naming the mode macOS did not offer, got \(lines)"
+        )
+        expect(
+            lines.first?.contains("it offers 3840x2160/3840x2160, 1920x1080/1920x1080, 960x540/1920x1080") == true,
+            "and the modes it did offer, as points/pixels, got \(lines)"
         )
         expect(
             host.read().contains { $0.id == host.placeholderID && $0.id != originalPlaceholder },
