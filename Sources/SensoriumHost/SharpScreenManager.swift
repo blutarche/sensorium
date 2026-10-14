@@ -381,10 +381,9 @@ public final class SharpScreenManager {
         log("sharp screen not used: \(why); streaming macOS's placeholder screen instead")
     }
 
-    /// The mode the sharp screen actually came up in, read back rather than
-    /// assumed from what it asked for: macOS picks the mode, and one that
-    /// lands below the asked-for pixel size streams no sharper than the
-    /// placeholder it replaced.
+    /// The mode the sharp screen is on, read back rather than assumed from
+    /// what it asked for: one below the asked-for pixel size streams no
+    /// sharper than the placeholder it replaced.
     private static func modeWords(of display: DisplaySnapshot?) -> String {
         let asked = SharpScreen.configuration
         let askedPixels = "\(asked.logicalWidth * asked.scale)x\(asked.logicalHeight * asked.scale) px"
