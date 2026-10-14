@@ -8,6 +8,13 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-15
+
+### Added
+
+- The disk images open to a designed window: drag the app onto
+  Applications.
+
 ### Changed
 
 - The host now sends a full picture every 10 seconds instead of every
@@ -51,6 +58,7 @@ once it reaches 1.0.
 
 ### Fixed
 
+- Release builds no longer contain the build machine's folder paths.
 - Copied text could bounce between the two machines for minutes. When
   something else on a machine wrote the same text back to its clipboard,
   such as the system's own clipboard syncing, Sensorium sent it across
@@ -101,17 +109,6 @@ once it reaches 1.0.
   and the host used to read that as a viewer falling behind and cut the
   rate from 60 to 45. It now counts them as kept up with and lowers the
   rate only for a viewer that really is behind.
-
-## [0.5.1] - 2026-10-15
-
-### Added
-
-- The disk images open to a designed window: drag the app onto
-  Applications.
-
-### Fixed
-
-- Release builds no longer contain the build machine's folder paths.
 
 ## [0.5.0] - 2026-10-11
 
