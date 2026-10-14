@@ -288,6 +288,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// viewer's reading against those bytes would read every tick after the
     /// first drop as a starved link.
     private let sentBytes = SurfaceByteCounter()
+    private let keyFrameSends = KeyFrameSendWindows()
     /// Set only once this connection has actually written a `canvasReady`
     /// carrying a surfaceID — which the controller echoes only for a request
     /// that supplied one. Until then every frame goes out on tag 1.
@@ -432,15 +433,21 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         Task { [weak self] in
             guard let self else { return }
             var writeFailed = false
+            let writeStartedAtNanoseconds = MonotonicClock.nowNanoseconds()
             do {
                 try await self.send(self.videoPacket(packet, on: surface))
+                let bytes = packet.payload.count + (packet.codecConfiguration?.count ?? 0)
                 // Counted at send completion on the same basis the viewer
                 // counts bytes received: a failed write put nothing on the
                 // wire.
-                self.sentBytes.record(
-                    bytes: packet.payload.count + (packet.codecConfiguration?.count ?? 0),
-                    surface: surface
-                )
+                self.sentBytes.record(bytes: bytes, surface: surface)
+                if packet.isKeyFrame {
+                    self.keyFrameSends.record(
+                        bytes: bytes,
+                        nanoseconds: MonotonicClock.nowNanoseconds() - writeStartedAtNanoseconds,
+                        surface: surface
+                    )
+                }
             } catch {
                 // Nothing reached the wire; sentBytes stays where it was.
                 writeFailed = true
@@ -601,6 +608,10 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
 
     public func sentVideoByteCount(for surface: CanvasSurfaceID) -> Int? {
         sentBytes.total(for: surface)
+    }
+
+    public func takeKeyFrameSendWindow(for surface: CanvasSurfaceID) -> KeyFrameSendWindow {
+        keyFrameSends.take(for: surface)
     }
 
     public func start() {

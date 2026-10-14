@@ -1109,6 +1109,25 @@ final class FakeVideoSink: CanvasVideoSending, @unchecked Sendable {
     private var dropped = 0
     private var refuses = false
     private var keyFrameRecoveryObserver: (@Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void)?
+    private var keyFrameSendWindows = [KeyFrameSendWindow](
+        repeating: KeyFrameSendWindow(),
+        count: CanvasSurfaceID.capacity
+    )
+
+    /// Stands in for the transport finishing a key frame's write on `surface`.
+    func recordKeyFrameSent(bytes: Int, nanoseconds: Int64, on surface: CanvasSurfaceID) {
+        lock.lock()
+        defer { lock.unlock() }
+        keyFrameSendWindows[Int(surface.wireValue)].record(bytes: bytes, nanoseconds: nanoseconds)
+    }
+
+    func takeKeyFrameSendWindow(for surface: CanvasSurfaceID) -> KeyFrameSendWindow {
+        lock.lock()
+        defer { lock.unlock() }
+        let taken = keyFrameSendWindows[Int(surface.wireValue)]
+        keyFrameSendWindows[Int(surface.wireValue)] = KeyFrameSendWindow()
+        return taken
+    }
 
     func observeKeyFrameRecoveryRequests(
         _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void

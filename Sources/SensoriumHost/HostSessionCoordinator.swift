@@ -128,6 +128,10 @@ public protocol CanvasVideoSending: AnyObject, Sendable {
     func observeKeyFrameRecoveryRequests(
         _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void
     )
+    /// The key frames this sink finished writing for `surface` since the last
+    /// call, which starts the next window. A sink that does not time its
+    /// writes reports none.
+    func takeKeyFrameSendWindow(for surface: CanvasSurfaceID) -> KeyFrameSendWindow
 }
 
 public extension CanvasVideoSending {
@@ -140,6 +144,8 @@ public extension CanvasVideoSending {
     func observeKeyFrameRecoveryRequests(
         _ observer: @escaping @Sendable (CanvasSurfaceID, KeyFrameRecoveryCause) -> Void
     ) {}
+
+    func takeKeyFrameSendWindow(for surface: CanvasSurfaceID) -> KeyFrameSendWindow { KeyFrameSendWindow() }
 }
 
 /// The three steps share one catch, so each names itself; a workspace that
@@ -2575,14 +2581,16 @@ public final class HostSessionCoordinator {
         return parts.isEmpty ? "" : " (" + parts.joined(separator: ", ") + ")"
     }
 
-    /// One interval's video line, with the viewer's latest delay appended when
-    /// it has reported one.
+    /// One interval's video line, with what the reporting surface's key frames
+    /// cost when it sent any, and the viewer's latest delay when it has
+    /// reported one.
     private nonisolated static func videoReportLine(
         _ label: String,
         _ report: MediaFlowReport,
+        keyFrames: KeyFrameSendWindow,
         viewerDelay: String?
     ) -> String {
-        let line = String(
+        var line = String(
             format: "%@ %d frames in %.1fs (%.1f frames/s, %.2f Mbit/s), %d dropped to keep up",
             label,
             report.frames,
@@ -2591,6 +2599,12 @@ public final class HostSessionCoordinator {
             report.megabitsPerSecond,
             report.droppedFrames
         )
+        if keyFrames.count > 0 {
+            let milliseconds = Int((Double(keyFrames.slowestNanoseconds) / 1_000_000).rounded())
+            line += ", \(keyFrames.count) key \(keyFrames.count == 1 ? "frame" : "frames") "
+                + "(largest \(HostOperatorLog.describeFrameSize(bytes: keyFrames.largestBytes)), "
+                + "slowest \(milliseconds) ms to send)"
+        }
         return viewerDelay.map { line + "; viewer " + $0 } ?? line
     }
 
@@ -2718,7 +2732,10 @@ public final class HostSessionCoordinator {
                 // stream delivered has its own line, per surface, from the
                 // fidelity tick.
                 onEvent?(Self.videoReportLine(
-                    "video", report, viewerDelay: viewerDelays.latest(for: surface, atSeconds: Self.nowSeconds())
+                    "video",
+                    report,
+                    keyFrames: videoSink.takeKeyFrameSendWindow(for: surface),
+                    viewerDelay: viewerDelays.latest(for: surface, atSeconds: Self.nowSeconds())
                 ))
             }
             return taken
@@ -2952,7 +2969,10 @@ public final class HostSessionCoordinator {
                 atSeconds: Date().timeIntervalSince(startedAt)
             ) {
                 onEvent?(Self.videoReportLine(
-                    "host-screen video", report, viewerDelay: viewerDelays.latest(for: telemetrySurface, atSeconds: Self.nowSeconds())
+                    "host-screen video",
+                    report,
+                    keyFrames: videoSink.takeKeyFrameSendWindow(for: telemetrySurface),
+                    viewerDelay: viewerDelays.latest(for: telemetrySurface, atSeconds: Self.nowSeconds())
                 ))
             }
             return taken

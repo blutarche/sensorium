@@ -616,6 +616,60 @@ func runStreamFidelityCoordinatorTests() async {
     }
     print("PASS: the periodic video line carries the viewer's end-to-end and receive delay when it has reported them")
 
+    // The periodic video line says what this surface's key frames cost
+    do {
+        let media = FakeScalableCanvasMedia()
+        let sink = FakeVideoSink()
+        let events = DiagnosticsRecorder()
+        let coordinator = makeCoordinator(
+            media: onlyOnSurfaceZero(media),
+            videoSink: sink,
+            flowReportSeconds: 0,
+            onEvent: { events.record($0) }
+        )
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        func lastVideoLine() -> String? {
+            events.messages.last { $0.hasPrefix("video ") }
+        }
+        func packet(_ sequence: UInt64) -> EncodedVideoFramePacket {
+            EncodedVideoFramePacket(
+                sequence: sequence,
+                presentationTimeNanoseconds: sequence * 1_000_000,
+                isKeyFrame: false,
+                codecConfiguration: nil,
+                payload: Data([UInt8(sequence & 0xFF)])
+            )
+        }
+
+        sink.recordKeyFrameSent(bytes: 230_000, nanoseconds: 41_200_000, on: surfaceZero)
+        sink.recordKeyFrameSent(bytes: 412_000, nanoseconds: 95_600_000, on: surfaceZero)
+        sink.recordKeyFrameSent(bytes: 1_900_000, nanoseconds: 300_000_000, on: CanvasSurfaceID.allCases[1])
+        media.emit(packet(1))
+        expect(
+            lastVideoLine()?.hasSuffix(
+                "0 dropped to keep up, 2 key frames (largest 412 KB, slowest 96 ms to send)"
+            ) == true,
+            "the line counts this surface's key frames, its largest and its slowest write, "
+                + "got \(lastVideoLine() ?? "no line")"
+        )
+
+        sink.recordKeyFrameSent(bytes: 593_000, nanoseconds: 55_000_000, on: surfaceZero)
+        media.emit(packet(2))
+        expect(
+            lastVideoLine()?.hasSuffix("0 dropped to keep up, 1 key frame (largest 593 KB, slowest 55 ms to send)") == true,
+            "each line counts only that window's key frames, got \(lastVideoLine() ?? "no line")"
+        )
+
+        media.emit(packet(3))
+        expect(
+            lastVideoLine()?.hasSuffix("0 dropped to keep up") == true,
+            "a window that sent no key frame says nothing about them, got \(lastVideoLine() ?? "no line")"
+        )
+    }
+    print("PASS: the periodic video line names how many key frames this surface sent, the largest and the slowest write")
+
     // Both lines say why the viewer's draws showed nothing, or that it drew far
     // less often than it decoded, and stay quiet otherwise
     do {

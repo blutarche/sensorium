@@ -22,6 +22,7 @@ func runVideoSendRecoveryTests() async {
     await expectCanvasMediaCarriesTheSessionsSendFeedbackIntoEveryPipeline()
     await expectEachRecoveryRequestIsLoggedOnce()
     await expectCapturesHeldForTheLinkReadAsLinkPressure()
+    await expectEachKeyFrameWriteIsTimedForItsSurface()
 }
 
 private let surfaceZero = CanvasSurfaceID.allCases[0]
@@ -708,4 +709,48 @@ private func expectCapturesHeldForTheLinkReadAsLinkPressure() async {
     )
     gate.shutDown()
     print("PASS: captures lost waiting for the link count as link drops, so a congested link is still named the link")
+}
+
+/// A key frame's write is timed from its start to its completion and counted
+/// against its own surface, for the periodic video line. A delta is not
+/// counted, a failed write is not counted, and taking the window starts the
+/// next one.
+@MainActor
+private func expectEachKeyFrameWriteIsTimedForItsSurface() async {
+    let channel = FakeHostByteChannel(scriptedMessages: [])
+    channel.sendDelay = .milliseconds(60)
+    let (session, _, _) = makeRecoverySession(channel: channel, listener: RecordingFeedbackListener())
+    let sink: any CanvasVideoSending = session
+    session.start()
+
+    expect(session.send(recoveryFrame(1, keyFrame: true), surface: surfaceZero, priority: .normal), "a key frame is sent")
+    expect(session.send(recoveryFrame(2), surface: surfaceZero, priority: .normal), "a delta waits behind it")
+    expect(
+        await waitUntil(timeoutSeconds: 2) { sentVideoSequences(channel) == [1, 2] },
+        "both frames are written, got \(sentVideoSequences(channel))"
+    )
+    try? await Task.sleep(for: .milliseconds(50))
+    let window = sink.takeKeyFrameSendWindow(for: surfaceZero)
+    expect(window.count == 1, "the one key frame is counted and the delta is not, got \(window)")
+    expect(
+        window.largestBytes == 4,
+        "its size is payload plus codec configuration, got \(window.largestBytes)"
+    )
+    expect(
+        window.slowestNanoseconds >= 60_000_000 && window.slowestNanoseconds < 2_000_000_000,
+        "its write is timed from start to completion, got \(window.slowestNanoseconds) ns"
+    )
+    expect(sink.takeKeyFrameSendWindow(for: surfaceZero).count == 0, "taking the window starts the next one")
+    expect(sink.takeKeyFrameSendWindow(for: surfaceOne).count == 0, "and no other surface was charged for it")
+
+    channel.sendBytesError = HostNetworkSessionError.closed
+    expect(session.send(recoveryFrame(3, keyFrame: true), surface: surfaceZero, priority: .normal), "a key frame is handed over")
+    _ = await waitUntil(timeoutSeconds: 2) { channel.peakConcurrentSends >= 1 }
+    try? await Task.sleep(for: .milliseconds(150))
+    expect(
+        sink.takeKeyFrameSendWindow(for: surfaceZero).count == 0,
+        "a key frame whose write failed put nothing on the wire and is not counted"
+    )
+    channel.cancel()
+    print("PASS: each key frame's write is timed from start to completion and counted against its own surface")
 }
