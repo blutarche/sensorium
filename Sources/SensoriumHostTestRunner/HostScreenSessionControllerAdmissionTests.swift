@@ -41,6 +41,11 @@ private final class DisarmingPresenceGate: HostScreenPresenceGating, @unchecked 
     }
 }
 
+private final class HostScreenDisplaysBox: @unchecked Sendable {
+    var displays: [DisplaySnapshot]
+    init(_ displays: [DisplaySnapshot]) { self.displays = displays }
+}
+
 private final class HostScreenArmingBox: @unchecked Sendable {
     var arming: HostScreenArming
     init(_ arming: HostScreenArming) { self.arming = arming }
@@ -459,6 +464,46 @@ func runHostScreenSessionControllerAdmissionTests() async {
         expectNoInjectorWasBuilt(fixture.injectorFactory, "unminted token")
 
         print("PASS: a token this session never minted is refused, indistinguishable from an unarmed device")
+    }
+
+    do {
+        // An armed device asking for a display that went away since the
+        // offer is told the screen is gone, not that host screen is off.
+        let identity = try! DeviceIdentity.generate()
+        let deviceKey = identity.publicKey
+        let displaysBox = HostScreenDisplaysBox([hostScreenTestDisplay()])
+        let arming = HostScreenArming(devices: [
+            HostScreenDeviceArming(
+                devicePublicKey: deviceKey, deviceName: "Kestrel Laptop Pro", armedAt: Date(),
+                asksWhenSomeoneIsUsingThisMachine: false
+            )
+        ])
+        let injectorFactory = FakeInputInjectorFactory()
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            approvedPublicKeys: [deviceKey],
+            requireAuthentication: true,
+            inputInjectorFactory: injectorFactory,
+            keyConfinement: .hostScreen,
+            hostScreenArmingProvider: { arming },
+            hostScreenCurrentDisplaysProvider: { displaysBox.displays }
+        )
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, hostCertificateHash: nil
+        )
+        _ = try! controller.handle(.authenticatedHello(
+            protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, signature: try! identity.sign(transcript)
+        ))
+        let token = offerAndExtractToken(controller)
+        displaysBox.displays = []
+        let response = try! controller.handle(.hostScreenRequest(token: token, resumeTicket: nil))
+        expect(
+            response == .hostScreenRefused(reason: "host-screen-display-unavailable"),
+            "an armed device asking for an offered display that is gone is told so -- got \(String(describing: response))"
+        )
+        expectNoInjectorWasBuilt(injectorFactory, "a display gone since the offer")
+
+        print("PASS: an offered display that went away refuses with host-screen-display-unavailable")
     }
 
     do {

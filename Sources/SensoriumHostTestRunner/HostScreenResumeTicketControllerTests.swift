@@ -617,7 +617,7 @@ func runHostScreenResumeTicketControllerTests() async {
             box.displays = [offlineDisplay]
             let response = try! controller.handle(.hostScreenRequest(token: token, resumeTicket: mintedTicket))
             expect(
-                response == .hostScreenRefused(reason: "host-screen-not-allowed"),
+                response == .hostScreenRefused(reason: "host-screen-display-unavailable"),
                 "attempt \(attempt): a resume whose display has gone offline refuses on that obligation, not the ticket's own -- got \(response as Any)"
             )
         }

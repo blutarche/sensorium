@@ -1866,6 +1866,12 @@ public final class HostSessionController {
                             return .hostScreenRefused(reason: "host-screen-presence-check-required")
                         }
                     }
+                    // The guard checks arming and the token before the display, so
+                    // `.displayGone` is only ever reached by an armed device and
+                    // tells an unarmed one nothing.
+                    if case .failure(.displayGone) = admission {
+                        return .hostScreenRefused(reason: "host-screen-display-unavailable")
+                    }
                     return .hostScreenRefused(reason: "host-screen-not-allowed")
                 }
 
@@ -1881,14 +1887,22 @@ public final class HostSessionController {
                       let currentArming = hostScreenArmingProvider?(),
                       currentArming.devices
                           .first(where: { $0.devicePublicKey == clientKey })
-                          .map(HostScreenArmingFingerprint.init) == armingFingerprint,
-                      case .success(displayID) = HostScreenSelectionGuard.admit(
-                          deviceKey: clientKey,
-                          token: token,
-                          mintedTokens: hostScreenMintedTokens,
-                          arming: currentArming,
-                          currentDisplays: currentDisplays
-                      ) else {
+                          .map(HostScreenArmingFingerprint.init) == armingFingerprint else {
+                    return .hostScreenRefused(reason: "host-screen-not-allowed")
+                }
+                switch HostScreenSelectionGuard.admit(
+                    deviceKey: clientKey,
+                    token: token,
+                    mintedTokens: hostScreenMintedTokens,
+                    arming: currentArming,
+                    currentDisplays: currentDisplays
+                ) {
+                case let .success(recheckedID) where recheckedID == displayID:
+                    break
+                case .failure(.displayGone):
+                    // Same order argument as above: arming and token passed.
+                    return .hostScreenRefused(reason: "host-screen-display-unavailable")
+                default:
                     return .hostScreenRefused(reason: "host-screen-not-allowed")
                 }
 
