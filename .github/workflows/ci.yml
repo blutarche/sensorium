@@ -47,6 +47,11 @@ jobs:
       - name: SensoriumUpdateTestRunner (release)
         run: swift run -c release SensoriumUpdateTestRunner
 
+      - name: Disk image window
+        run: |
+          sh Scripts/test-make-dmg-background.sh
+          sh Scripts/test-make-dmg-layout.sh
+
       - name: Release script
         run: sh Scripts/test-release-macos.sh
 

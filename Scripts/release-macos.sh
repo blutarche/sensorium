@@ -5,7 +5,9 @@
 #   Sensorium-<version>.dmg, Sensorium-Host-<version>.dmg, SHA256SUMS,
 #   sensorium-update.json and sensorium-update.json.sig
 # The zips are for self-update. The disk images are downloads for people and
-# are not signed themselves; the app inside each is the signed app.
+# are not signed themselves; the app inside each is the signed app. Each opens
+# to a window drawn by Scripts/make-dmg-background.swift and laid out by
+# Scripts/make-dmg-layout.swift.
 # The manifest is signed with the update key (SENSORIUM_UPDATE_KEY, else
 # $HOME/.sensorium-release/update-key), whose public half must be the one
 # compiled into the apps. Uploads to the GitHub release v<version> only with
@@ -146,6 +148,24 @@ for base, dirs, files in os.walk(sys.argv[1]):
             bad = True
 sys.exit(1 if bad else 0)
 PY
+  # A linker debug map left in an executable names every source folder and
+  # object file by its absolute path on the build machine.
+  python3 -I - "$APP" "/Users/" "$HOME" "$ROOT" <<'PY' || die "$LABEL: a file in $ZIP names a folder of the machine that built it"
+import os, sys
+needles = [s.encode() for s in sys.argv[2:] if s]
+bad = False
+for base, dirs, files in os.walk(sys.argv[1]):
+    for name in files:
+        path = os.path.join(base, name)
+        if os.path.islink(path):
+            continue
+        with open(path, 'rb') as f:
+            data = f.read()
+        if any(needle in data for needle in needles):
+            print(os.path.relpath(path, sys.argv[1]), file=sys.stderr)
+            bad = True
+sys.exit(1 if bad else 0)
+PY
   codesign --verify --strict --all-architectures "$APP" 2>/dev/null ||
     die "$LABEL: the signature in $ZIP does not verify"
 
@@ -198,27 +218,82 @@ verify_dmg() {
   [ -L "$MNT/Applications" ] || die "$LABEL: $DMG must hold Applications as a symbolic link"
   [ "$(readlink "$MNT/Applications")" = "/Applications" ] ||
     die "$LABEL: Applications in $DMG must point to /Applications"
+  for item in .DS_Store .background/background.tiff .VolumeIcon.icns; do
+    [ -f "$MNT/$item" ] && [ ! -L "$MNT/$item" ] || die "$LABEL: $DMG must hold $item as a regular file"
+  done
+  has_custom_icon "$MNT" || die "$LABEL: the volume of $DMG does not use its custom icon"
+  python3 -I - "$MNT/.DS_Store" "$OUT" "$SCRATCH" "$HOME" "/Users/" "/private/" ".dmg" <<'PY' || die "$LABEL: the .DS_Store in $DMG names a path of this machine"
+import sys
+data = open(sys.argv[1], 'rb').read()
+sys.exit(1 if any(s.encode(e) in data for s in sys.argv[2:] for e in ('utf-8', 'utf-16-be', 'utf-16-le')) else 0)
+PY
   verify_app "$MNT/$APP_NAME" "$DMG" "$APP_NAME" "$LABEL" "$ARCHS"
   same_slices "$SCRATCH/$SRC_ZIP/$APP_NAME" "$MNT/$APP_NAME" "$LABEL" "$SRC_ZIP" "$DMG" "$ARCHS"
   detach_volume "$MNT" || die "$LABEL: $DMG could not be detached"
   ATTACHED=""
 }
 
-# make_dmg <dmg name> <app file name> <volume name>
+# Finder shows a volume's .VolumeIcon.icns only when the custom icon flag,
+# 0x0400 in the Finder flags at bytes 8 and 9 of the root folder's Finder
+# info, is set.
+has_custom_icon() {
+  FLAGS="$(xattr -px com.apple.FinderInfo "$1" 2>/dev/null | tr -d ' \n' | cut -c17-18)"
+  [ -n "$FLAGS" ] && [ "$(( 0x$FLAGS & 0x04 ))" != 0 ]
+}
+
+set_custom_icon() {
+  INFO="$(xattr -px com.apple.FinderInfo "$1" 2>/dev/null | tr -d ' \n' || true)"
+  [ -n "$INFO" ] || INFO="$(printf '%064d' 0)"
+  FLAGS="$(printf '%02x' "$(( 0x$(printf '%s' "$INFO" | cut -c17-18) | 0x04 ))")"
+  INFO="$(printf '%s' "$INFO" | cut -c1-16)$FLAGS$(printf '%s' "$INFO" | cut -c19-64)"
+  xattr -wx com.apple.FinderInfo "$INFO" "$1"
+}
+
+# make_dmg <dmg name> <app file name> <volume name> <art folder>
+# Builds a writable image, lays out its window, then compresses it.
 make_dmg() {
+  ART="$4"
   STAGE="$SCRATCH/stage-$1"
-  mkdir "$STAGE"
+  mkdir "$STAGE" "$STAGE/.background"
   ditto "$KIT/$2" "$STAGE/$2"
   ln -s /Applications "$STAGE/Applications"
-  hdiutil create -volname "$3" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$OUT/$1" >/dev/null ||
+  cp "$ART/background.tiff" "$STAGE/.background/background.tiff"
+  ICON="$(plist_value "$KIT/$2" CFBundleIconFile)"
+  [ -n "$ICON" ] || die "$2 names no icon (CFBundleIconFile), so its disk image would have none"
+  ICON="${ICON%.icns}.icns"
+  [ -f "$KIT/$2/Contents/Resources/$ICON" ] || die "$2 has no icon file Contents/Resources/$ICON"
+  cp "$KIT/$2/Contents/Resources/$ICON" "$STAGE/.VolumeIcon.icns"
+
+  WRITABLE="$SCRATCH/writable-$1"
+  hdiutil create -volname "$3" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov "$WRITABLE" >/dev/null ||
     die "$1 could not be created"
+  MNT="$SCRATCH/writable-$1-mnt"
+  mkdir "$MNT"
+  hdiutil attach -readwrite -nobrowse -noautoopen -mountpoint "$MNT" "$WRITABLE" >/dev/null ||
+    die "$1 could not be attached to lay out its window"
+  ATTACHED="$MNT"
+  swift "$ROOT/Scripts/make-dmg-layout.swift" write "$MNT" "$3" "$2" "$ART/layout.json" ||
+    die "the window of $1 could not be laid out"
+  set_custom_icon "$MNT" && has_custom_icon "$MNT" || die "the volume icon of $1 could not be turned on"
+  chflags hidden "$MNT/.background" "$MNT/.VolumeIcon.icns" || die "the layout files of $1 could not be hidden"
+  detach_volume "$MNT" || die "$1 could not be detached after laying out its window"
+  ATTACHED=""
+  hdiutil convert "$WRITABLE" -format UDZO -ov -o "$OUT/$1" >/dev/null || die "$1 could not be compressed"
+  rm -f "$WRITABLE"
 }
 
 verify_zip "$VIEWER_ZIP" "Sensorium.app" Viewer "arm64 x86_64"
 verify_zip "$HOST_ZIP" "Sensorium Host.app" Host "arm64"
 
-make_dmg "$VIEWER_DMG" "Sensorium.app" "Sensorium"
-make_dmg "$HOST_DMG" "Sensorium Host.app" "Sensorium Host"
+# Each disk image has its own window picture, drawn for its app's role.
+for role in viewer host; do
+  swift "$ROOT/Scripts/make-dmg-background.swift" "$role" "$SCRATCH/dmg-art-$role" >/dev/null ||
+    die "the $role disk image background could not be drawn"
+  (cd "$SCRATCH/dmg-art-$role" && tiffutil -cathidpicheck background.png background@2x.png -out background.tiff >/dev/null) ||
+    die "the 1x and 2x $role disk image backgrounds could not be joined"
+done
+make_dmg "$VIEWER_DMG" "Sensorium.app" "Sensorium" "$SCRATCH/dmg-art-viewer"
+make_dmg "$HOST_DMG" "Sensorium Host.app" "Sensorium Host" "$SCRATCH/dmg-art-host"
 verify_dmg "$VIEWER_DMG" "Sensorium.app" Viewer "arm64 x86_64" "$VIEWER_ZIP"
 verify_dmg "$HOST_DMG" "Sensorium Host.app" Host "arm64" "$HOST_ZIP"
 

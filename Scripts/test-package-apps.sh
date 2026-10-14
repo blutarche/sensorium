@@ -77,6 +77,35 @@ case "$(file "$KIT/Sensorium Host.app/Contents/MacOS/SensoriumHost")" in
   *) echo "Host binary is not arm64" >&2; exit 1 ;;
 esac
 
+# The apps go to other people's machines, so no Mach-O file in them may name a
+# folder of the machine that built them. `strings` skips these paths, so the
+# raw bytes are searched.
+python3 -I - "$ROOT" "/Users/" "$KIT/Sensorium.app" "$KIT/Sensorium Host.app" <<'PY' || { echo "A packaged Mach-O file names a folder of the build machine" >&2; exit 1; }
+import os, sys
+needles = [s.encode() for s in sys.argv[1:3]]
+magics = {bytes.fromhex(m) for m in ('feedface', 'feedfacf', 'cefaedfe', 'cffaedfe', 'cafebabe', 'cafebabf')}
+bad = False
+for bundle in sys.argv[3:]:
+    machos = 0
+    for base, dirs, files in os.walk(bundle):
+        for name in files:
+            path = os.path.join(base, name)
+            if os.path.islink(path):
+                continue
+            with open(path, 'rb') as f:
+                data = f.read()
+            if data[:4] not in magics:
+                continue
+            machos += 1
+            if any(needle in data for needle in needles):
+                print(os.path.relpath(path, os.path.dirname(bundle)), file=sys.stderr)
+                bad = True
+    if machos == 0:
+        print(f'no Mach-O file found in {bundle}', file=sys.stderr)
+        bad = True
+sys.exit(1 if bad else 0)
+PY
+
 # The apps ship flat by role. A folder named after one machine is a folder
 # the next machine's owner has to be told to ignore.
 for stale in x86_64-Viewer arm64-Host; do

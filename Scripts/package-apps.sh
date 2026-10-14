@@ -37,6 +37,13 @@ mkdir -p \
 
 install -m 755 "$CLIENT_BIN" "$KIT/Sensorium.app/Contents/MacOS/Sensorium"
 install -m 755 "$HOST_BIN" "$KIT/Sensorium Host.app/Contents/MacOS/SensoriumHost"
+# The linker's debug map names every source folder and object file by its
+# absolute path on the build machine. -S removes only that debug map; the
+# symbol table that names functions in crash reports stays. The signature
+# this invalidates is replaced when the bundles are signed below.
+strip -S -no_code_signature_warning \
+  "$KIT/Sensorium.app/Contents/MacOS/Sensorium" \
+  "$KIT/Sensorium Host.app/Contents/MacOS/SensoriumHost"
 
 cat > "$KIT/Sensorium.app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
