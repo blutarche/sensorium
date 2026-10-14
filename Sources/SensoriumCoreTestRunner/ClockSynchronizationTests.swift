@@ -53,6 +53,39 @@ func testClockOffsetEstimatorPrefersTheLowestRoundTripSample() {
     expect(estimator.offsetNanoseconds == 1_000, "a rejected sample cannot move the offset")
 }
 
+func testClockOffsetEstimatorFollowsDriftOnceTheBestSampleLeavesTheWindow() {
+    var estimator = HostClockOffsetEstimator()
+    let windowSize = 30
+
+    // Early best sample: 200 ns round trip, host 1_000 ns ahead.
+    estimator.record(ClockOffsetSample(
+        clientSentNanoseconds: 10_000,
+        hostRepliedNanoseconds: 11_100,
+        clientReceivedNanoseconds: 10_200
+    ))
+    expect(estimator.offsetNanoseconds == 1_000, "the early sample sets the offset")
+
+    // Later samples have a slightly higher round trip and a drifted offset of 2_000 ns.
+    func drifted(_ index: Int64) -> ClockOffsetSample {
+        let sent = 1_000_000 + index * 10_000
+        return ClockOffsetSample(
+            clientSentNanoseconds: sent,
+            hostRepliedNanoseconds: sent + 150 + 2_000,
+            clientReceivedNanoseconds: sent + 300
+        )
+    }
+
+    for index in 0..<Int64(windowSize - 1) {
+        estimator.record(drifted(index))
+    }
+    expect(estimator.offsetNanoseconds == 1_000, "the early best sample still counts while it is inside the window")
+    expect(estimator.roundTripNanoseconds == 200, "its round trip is still the retained one")
+
+    estimator.record(drifted(Int64(windowSize - 1)))
+    expect(estimator.offsetNanoseconds == 2_000, "the offset follows the drift once the early sample has left the window")
+    expect(estimator.roundTripNanoseconds == 300, "the retained round trip is the lowest among recent samples")
+}
+
 func testTimeSyncMessagesRoundTripThroughVersionedFrame() {
     let request = SensoriumMessage.timeSyncRequest(clientTimeNanoseconds: 1_234_567_890_123)
     expect(

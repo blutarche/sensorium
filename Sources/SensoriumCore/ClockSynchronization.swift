@@ -33,11 +33,20 @@ public struct ClockOffsetSample: Equatable, Sendable {
     }
 }
 
-/// Retains the single lowest-round-trip sample rather than averaging. An average
-/// lets one queued reply drag the estimate; the minimum-delay sample is the one
-/// whose symmetry assumption is closest to true.
+/// Estimates the host-minus-client offset from the lowest-round-trip sample among
+/// the most recent ones, rather than averaging. An average lets one queued reply
+/// drag the estimate; the minimum-delay sample is the one whose symmetry
+/// assumption is closest to true.
+///
+/// Only recent samples are considered because the two machines' clocks drift
+/// apart, so an old best sample describes an offset that no longer holds.
 public struct HostClockOffsetEstimator: Equatable, Sendable {
-    private var best: ClockOffsetSample?
+    /// At the 10 second time-sync cadence this spans five minutes, over which
+    /// clocks that differ by a few parts per million drift apart by at most a
+    /// few milliseconds.
+    public static let windowSize = 30
+
+    private var recent: [ClockOffsetSample] = []
 
     public init() {}
 
@@ -46,11 +55,15 @@ public struct HostClockOffsetEstimator: Equatable, Sendable {
         guard sample.roundTripNanoseconds >= 0 else {
             return false
         }
-        if let best, best.roundTripNanoseconds <= sample.roundTripNanoseconds {
-            return true
+        recent.append(sample)
+        if recent.count > Self.windowSize {
+            recent.removeFirst(recent.count - Self.windowSize)
         }
-        best = sample
         return true
+    }
+
+    private var best: ClockOffsetSample? {
+        recent.min { $0.roundTripNanoseconds < $1.roundTripNanoseconds }
     }
 
     public var offsetNanoseconds: Int64? { best?.offsetNanoseconds }
@@ -77,11 +90,10 @@ public struct SessionClockSynchronizer: Sendable {
     private var outstanding: [Int64] = []
     private var estimator = HostClockOffsetEstimator()
     /// The most recently accepted sample's own round trip, independent of
-    /// `estimator`'s lowest-ever selection: `roundTripNanoseconds` below is
-    /// the best clock-offset evidence this session has ever seen, which is
-    /// exactly the wrong number for a live ping display -- a link that has
-    /// since gotten worse would show its best moment forever. This is
-    /// updated on every accepted reply, better or worse.
+    /// `estimator`'s lowest-recent selection: `roundTripNanoseconds` below is
+    /// the best recent clock-offset evidence, which is exactly the wrong
+    /// number for a live ping display -- a link that has since gotten worse
+    /// would show its best recent moment for minutes. This is updated on every accepted reply, better or worse.
     private var latestSample: Int64?
 
     public init() {}

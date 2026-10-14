@@ -44,6 +44,7 @@ struct SensoriumCoreTestRunner {
             ("a corrupt device identity file is refused, not replaced", testFileDeviceIdentityStoreRefusesACorruptFileRatherThanReplacingIt),
             ("media flow monitor reports rates and silence", testMediaFlowMonitorReportsRatesAndSilence),
             ("clock offset estimator prefers the lowest round trip sample", testClockOffsetEstimatorPrefersTheLowestRoundTripSample),
+            ("clock offset estimator follows drift once the best sample leaves the window", testClockOffsetEstimatorFollowsDriftOnceTheBestSampleLeavesTheWindow),
             ("time sync messages round-trip through versioned frame", testTimeSyncMessagesRoundTripThroughVersionedFrame),
             ("session latency recorder needs clock sync before reporting end-to-end", testSessionLatencyRecorderNeedsClockSyncBeforeReportingEndToEnd),
             ("latency trace writer appends one JSON line for each stage", testLatencyTraceWriterAppendsOneJSONLineForEachStage),
