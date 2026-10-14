@@ -33,6 +33,8 @@ private final class FakeMediaPipeline: CanvasMediaPipelining {
 
     func apply(qualityScale: Double) throws {}
 
+    func apply(keyFrameIntervalSeconds: Double) throws {}
+
     func requestKeyFrame() {}
 
     func refreshStillPicture() async throws -> Int? { id }

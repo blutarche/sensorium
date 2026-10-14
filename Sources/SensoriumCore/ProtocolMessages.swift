@@ -207,9 +207,9 @@ public enum SensoriumMessage: Equatable, Sendable {
     case viewerDecoderPreference(h264Profile: ViewerH264Profile)
     /// This viewer asks for a key frame with `keyFrameRequest` whenever it
     /// needs one, so the host need not send one every second to bound its
-    /// wait. Sent once right after `authenticatedHello`. Viewer to host only.
-    /// A host that does not know it skips it and keeps its one-second key
-    /// frames.
+    /// wait, and sends its periodic key frame every 10 seconds instead. Sent
+    /// once right after `authenticatedHello`. Viewer to host only. A host that
+    /// does not know it skips it and keeps its one-second key frames.
     case viewerKeyFrameRecovery
     /// The viewer gave up a group of frames on one surface and shows nothing
     /// new until the next key frame. The host sends one as soon as its

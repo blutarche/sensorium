@@ -295,6 +295,12 @@ public final class HostMediaPipeline {
         try encoder.apply(qualityScale: qualityScale)
     }
 
+    /// An encoder-side lever only, like quality: capture delivers the same
+    /// frames whatever the encoder makes of them.
+    public func apply(keyFrameIntervalSeconds: Double) throws {
+        try encoder.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+    }
+
     public func requestKeyFrame() {
         encoder.requestKeyFrame()
     }
@@ -473,6 +479,7 @@ public protocol CanvasMediaPipelining: AnyObject {
     func stop() async throws
     func apply(framesPerSecond: Int) async throws
     func apply(qualityScale: Double) throws
+    func apply(keyFrameIntervalSeconds: Double) throws
     func requestKeyFrame()
     @discardableResult
     func refreshStillPicture() async throws -> Int?

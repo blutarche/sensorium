@@ -10,6 +10,11 @@ once it reaches 1.0.
 
 ### Changed
 
+- The host now sends a full picture every 10 seconds instead of every
+  second, when the viewer can ask for one. A full picture is many times
+  the size of a normal frame and holds up the frames behind it, so this
+  removes most of the regular delay spikes. When the viewer misses
+  frames, it asks, and the host still sends a full picture at once.
 - A viewer that was asleep for longer than the host keeps a session open
   now starts a new session by itself when the host reports the old one
   expired, instead of stopping with "could not resume". It asks once for

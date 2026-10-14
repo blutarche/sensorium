@@ -261,7 +261,7 @@ Every frame after a key frame is a difference from the one before it. A viewer w
 | Authentication | Both are required to come from an authenticated viewer, like `viewerDecoderPreference`. Unauthenticated, either is refused and the connection ends |
 | Surface | A host-screen session takes requests under surface 0, the surface it reports under. A request for a surface the host is not streaming is ignored, and so is one outside `{0, 1}` |
 | Pacing | A request is paced like a frame the host lost on its way out. Each surface has at most one request outstanding, and at most one a second. A request inside that second is made once the second is up, unless a key frame went out first |
-| Declaration | Taken at any point in the connection, and kept for the rest of it, across a `goodbye` |
+| Declaration | Taken at any point in the connection, and kept for the rest of it, across a `goodbye`. From then on the host sends its periodic key frame every 10 seconds instead of every second, on every surface of this connection, including one already streaming |
 | Older host | Decodes both as `.unrecognized` and skips them. It still sends a key frame every second, which is how the viewer recovers |
 | Older viewer | Sends neither, and the host still sends it a key frame every second |
 

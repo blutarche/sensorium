@@ -150,6 +150,7 @@ private final class ProfileRecordingPipeline: CanvasMediaPipelining {
     func stop() async throws {}
     func apply(framesPerSecond: Int) async throws {}
     func apply(qualityScale: Double) throws {}
+    func apply(keyFrameIntervalSeconds: Double) throws {}
     func requestKeyFrame() {}
     func refreshStillPicture() async throws -> Int? { nil }
 }

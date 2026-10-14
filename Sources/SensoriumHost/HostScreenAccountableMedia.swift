@@ -208,6 +208,10 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         try await inner?.apply(qualityScale: qualityScale)
     }
 
+    public func apply(keyFrameIntervalSeconds: Double) async throws {
+        try await inner?.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+    }
+
     public func requestKeyFrame() async {
         await inner?.requestKeyFrame()
     }

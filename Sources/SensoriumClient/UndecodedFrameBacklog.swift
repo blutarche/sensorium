@@ -16,17 +16,17 @@ import SensoriumCore
 /// arriving together is what a viewer sees every time it was busy for a moment,
 /// and a hardware decode costs a few milliseconds, so catching up on thirty
 /// held packets costs about a tenth of a second. Giving the group up instead
-/// holds the picture still until the next key frame, which the host's encoder
-/// bounds at one second. Catching up is the cheaper of the two by a wide
-/// margin, so this type always catches up.
+/// holds the picture still until the next key frame, which the viewer has to
+/// ask the host for and then wait to receive. Catching up is the cheaper of the
+/// two by a wide margin, so this type always catches up.
 ///
 /// `maximumPending` is a memory bound and nothing more: a group that reaches it
 /// is given up because a viewer must not grow a queue without end. Nothing is
-/// taken after that until the next key frame arrives. The host bounds that
-/// wait: its encoder asks for a key frame at least once a second
-/// (`kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration`), and sends one
-/// besides whenever fidelity changes, a still screen is refreshed, or a frame
-/// is lost on its way out.
+/// taken after that until the next key frame arrives. The viewer asks the host
+/// for that key frame the moment a group is given up (`keyFrameRequest`). The
+/// host also sends one whenever fidelity changes, a still screen is refreshed,
+/// or a frame is lost on its way out, and its encoder sends one at least every
+/// 10 seconds, or every second to a viewer that does not ask.
 ///
 /// Admitting nothing before the session's first key frame is not this type's
 /// job -- `VideoFrameIngress` already refuses a delta it has no picture to

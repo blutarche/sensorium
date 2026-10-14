@@ -197,6 +197,8 @@ final class FakeScalableCanvasMedia: CanvasMediaStreaming {
     /// taken exactly once.
     private(set) var appliedFramesPerSecond: [Int] = []
     private(set) var appliedQualityScales: [Double] = []
+    /// Every key-frame interval this media was asked to apply, in order.
+    private(set) var appliedKeyFrameIntervals: [Double] = []
     private(set) var keyFrameRequestCount = 0
     /// How many times this surface was asked to send its last captured frame
     /// again, and what to answer with.
@@ -303,6 +305,10 @@ final class FakeScalableCanvasMedia: CanvasMediaStreaming {
             throw fidelityFailure
         }
         currentQualityScale = qualityScale
+    }
+
+    func apply(keyFrameIntervalSeconds: Double) async throws {
+        appliedKeyFrameIntervals.append(keyFrameIntervalSeconds)
     }
 
     func refreshStillPicture() async throws -> Int? {
@@ -613,6 +619,19 @@ final class FakeCanvasMedia: CanvasMediaStreaming {
     var currentFramesPerSecond = VideoEncoderConfiguration.remoteDefault.framesPerSecond
     var currentQualityScale = 1.0
     var frameCounts = HostFrameCounts(captured: 0, encoded: 0, encodeSubmissionFailures: 0)
+    /// Every key-frame interval this media was asked to apply, each with how
+    /// many times it had already been started when it was asked.
+    private(set) var appliedKeyFrameIntervals: [(seconds: Double, startsBefore: Int)] = []
+    /// `nil` applies successfully; otherwise the error thrown instead, which
+    /// is what an encoder refusing the change looks like to a caller.
+    var keyFrameIntervalFailure: (any Error)?
+
+    func apply(keyFrameIntervalSeconds: Double) async throws {
+        if let keyFrameIntervalFailure {
+            throw keyFrameIntervalFailure
+        }
+        appliedKeyFrameIntervals.append((keyFrameIntervalSeconds, startedDisplayIDs.count))
+    }
 
     func apply(framesPerSecond: Int) async throws {
         appliedFramesPerSecond.append(framesPerSecond)

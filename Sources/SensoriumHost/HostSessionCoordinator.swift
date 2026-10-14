@@ -71,11 +71,19 @@ public protocol CanvasMediaStreaming: AnyObject {
     /// Sets the profile every encoder this media builds from now on uses.
     /// Called only before `start`.
     func use(profileLevel: VideoEncoderProfileLevel)
+    /// Changes how long the encoder may go without a key frame, on the
+    /// running stream and with no rebuild. Before `start`, and after `stop`,
+    /// the value is recorded, and every encoder this media builds from then
+    /// on, a rebuild at a new resolution included, opens at it. Throws when
+    /// the running encoder refuses it, which leaves the interval it had.
+    /// Default no-op below, for a conformer with no encoder of its own.
+    func apply(keyFrameIntervalSeconds: Double) async throws
 }
 
 public extension CanvasMediaStreaming {
     func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {}
     func use(profileLevel: VideoEncoderProfileLevel) {}
+    func apply(keyFrameIntervalSeconds: Double) async throws {}
 }
 
 public enum CanvasMediaReconfigurationError: Error, Equatable {
@@ -382,6 +390,11 @@ public final class HostSessionCoordinator {
     /// been logged; `nil` until then and again once the surface stops. A
     /// later change shows on the fidelity line rather than a line of its own.
     private var loggedViewerDecoderKind = CanvasSurfaceSlots<Bool?> { _ in nil }
+    /// Whether this surface's stream has been said to send its periodic key
+    /// frame at the long interval. Cleared once the surface stops, so the next
+    /// stream on it says so again; a capture rebuilt for the same stream does
+    /// not.
+    private var loggedViewerKeyFrameInterval = CanvasSurfaceSlots { _ in false }
     /// How many capture-delivery reports in a row have found this surface's
     /// stream delivering nothing whatsoever.
     private var silentCaptureReports = CanvasSurfaceSlots { _ in 0 }
@@ -771,6 +784,12 @@ public final class HostSessionCoordinator {
             // A request for a surface not streaming is ignored: there is no
             // encoder to ask, and the next one to start opens on a key frame.
             videoSink.viewerRequestedKeyFrame(on: surface)
+        }
+
+        if case .viewerKeyFrameRecovery = message {
+            for surface in CanvasSurfaceID.allCases {
+                await useViewerKeyFrameInterval(on: surface)
+            }
         }
 
         if case .viewerFocus = message {
@@ -1669,6 +1688,42 @@ public final class HostSessionCoordinator {
             return "the host screen"
         }
         return "host-screen display \(displayID)"
+    }
+
+    /// Moves the stream on `surface` to the long key-frame interval once the
+    /// viewer has said it asks for its own key frames, and says so once per
+    /// stream. Called whenever either half becomes true: the declaration
+    /// arriving, or a stream starting after it. Setting the interval a stream
+    /// already has is harmless, so this does not track whether it was set.
+    ///
+    /// An encoder that refuses the change keeps the standard interval, which
+    /// still bounds the viewer's wait, and the host says that instead.
+    private func useViewerKeyFrameInterval(on surface: CanvasSurfaceID) async {
+        guard controller.viewerDeclaredKeyFrameRecovery, isStreaming[surface] else {
+            return
+        }
+        let interval = VideoEncoderConfiguration.viewerRecoveryKeyFrameIntervalSeconds
+        do {
+            try await streamingMedia(on: surface).apply(keyFrameIntervalSeconds: interval)
+        } catch {
+            onEvent?(String(
+                format: "key frames stay every %g s on %@: the encoder refused %g s (%@)",
+                VideoEncoderConfiguration.standardKeyFrameIntervalSeconds,
+                surfaceLogName(surface),
+                interval,
+                String(describing: error)
+            ))
+            return
+        }
+        guard !loggedViewerKeyFrameInterval[surface] else {
+            return
+        }
+        loggedViewerKeyFrameInterval[surface] = true
+        onEvent?(String(
+            format: "key frames every %g s on %@: the viewer asks for one when it needs it",
+            interval,
+            surfaceLogName(surface)
+        ))
     }
 
     /// The dimensions a stream scale on this surface is a fraction of.
@@ -2754,6 +2809,7 @@ public final class HostSessionCoordinator {
             }
             return taken
         }
+        await useViewerKeyFrameInterval(on: surface)
     }
 
     /// Stops every streaming surface in `surfacesToStop` -- every surface by
@@ -2815,6 +2871,7 @@ public final class HostSessionCoordinator {
                 // one gets the same benefit of the doubt as the first.
                 captureDeliveryBaseline[surface] = nil
                 loggedViewerDecoderKind[surface] = nil
+                loggedViewerKeyFrameInterval[surface] = false
                 silentCaptureReports[surface] = 0
                 didRebuildSilentCapture[surface] = false
                 didRebuildStoppedCanvasCapture[surface] = false
@@ -2891,6 +2948,7 @@ public final class HostSessionCoordinator {
         hostScreenMedia = media
         isHostScreenStreaming = true
         try await beginHostScreenCapture(media: media, sizing: sizing, displayID: displayID)
+        await useViewerKeyFrameInterval(on: Self.hostScreenTelemetrySurface)
     }
 
     /// How big this geometry may actually be encoded, saying so out loud
@@ -2900,6 +2958,17 @@ public final class HostSessionCoordinator {
         if let profileLevel = controller.viewerRequestedProfileLevel {
             sizing = HostScreenEncoderSizing.Result(
                 configuration: sizing.configuration.with(profileLevel: profileLevel),
+                wasClamped: sizing.wasClamped
+            )
+        }
+        if controller.viewerDeclaredKeyFrameRecovery {
+            // Built at it, not only moved to it once running: a capture
+            // rebuilt for a new display mode is built from this, and must
+            // open at the interval its session already had.
+            sizing = HostScreenEncoderSizing.Result(
+                configuration: sizing.configuration.with(
+                    keyFrameIntervalSeconds: VideoEncoderConfiguration.viewerRecoveryKeyFrameIntervalSeconds
+                ),
                 wasClamped: sizing.wasClamped
             )
         }

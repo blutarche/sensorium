@@ -51,8 +51,9 @@ public protocol VideoFrameEncoding: AnyObject {
 public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable {
     private var session: VTCompressionSession?
     /// What this session was created with. Its dimensions are fixed for the
-    /// session's whole life; its frame rate and quality are only the opening
-    /// ones, and `applied` below is what is actually in force now.
+    /// session's whole life; its frame rate, quality and key-frame interval
+    /// are only the opening ones, and `applied` below is what is actually in
+    /// force now.
     public let configuration: VideoEncoderConfiguration
     private let callbackBox: CallbackBox
     /// `encode` runs on the capture queue, and both the key-frame request and
@@ -147,21 +148,19 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         VTSessionSetProperty(
             createdSession,
             key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-            value: configuration.framesPerSecond as CFNumber
+            value: configuration.maxKeyFrameIntervalFrames as CFNumber
         )
         // `MaxKeyFrameInterval` alone counts frames, and capture is
         // change-driven: a screen producing far fewer than `framesPerSecond`
-        // real frames stretches the intended one-IDR-per-second recovery
-        // point out to minutes on a quiet screen -- exactly backwards, since
-        // that is also when a viewer reconnect or an ingress reset is most
-        // likely to land on a viewer with nothing to recover with (see
-        // `VideoFrameIngress.reset()`). Setting the duration bound alongside
-        // the frame-count bound enforces the interval this was always meant
-        // to be, regardless of how many frames actually arrived within it.
+        // real frames stretches the key-frame interval out to minutes on a
+        // quiet screen -- exactly when a viewer that has given a group of
+        // frames up is most likely to be left with nothing to recover with.
+        // Setting the duration bound alongside the frame-count bound enforces
+        // `keyFrameIntervalSeconds` however few frames arrive within it.
         VTSessionSetProperty(
             createdSession,
             key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
-            value: 1.0 as CFNumber
+            value: configuration.keyFrameIntervalSeconds as CFNumber
         )
         VTSessionSetProperty(
             createdSession,
@@ -287,14 +286,15 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     /// no rebuild. `ExpectedFrameRate` is what the rate controller spends its
     /// bit budget against, so leaving it at the old rate makes every frame at
     /// a lower one look starved. `MaxKeyFrameInterval` counts frames, so it
-    /// moves with the rate to stay one second's worth;
-    /// `MaxKeyFrameIntervalDuration` is deliberately not touched, because the
-    /// one-second recovery point it enforces is exactly what must not change
-    /// when the frame rate does.
+    /// moves with the rate to stay the frame rate times the key-frame interval
+    /// in force; `MaxKeyFrameIntervalDuration` is deliberately not touched,
+    /// because the interval it enforces is exactly what must not change when
+    /// the frame rate does.
     public func apply(framesPerSecond: Int) throws {
         guard let session else {
             throw VideoEncoderError.propertyUpdateFailed(-1)
         }
+        let target = currentlyApplied().with(framesPerSecond: framesPerSecond)
         let expectedRateStatus = VTSessionSetProperty(
             session,
             key: kVTCompressionPropertyKey_ExpectedFrameRate,
@@ -306,12 +306,73 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         let keyFrameIntervalStatus = VTSessionSetProperty(
             session,
             key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-            value: framesPerSecond as CFNumber
+            value: target.maxKeyFrameIntervalFrames as CFNumber
         )
         guard keyFrameIntervalStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(keyFrameIntervalStatus)
         }
-        try applyRate(currentlyApplied().with(framesPerSecond: framesPerSecond), to: session)
+        try applyRate(target, to: session)
+    }
+
+    /// Changes how long the running session may go without a key frame, with
+    /// no rebuild. Both bounds move together, the frame count at the frame
+    /// rate in force, so neither one cuts the other's interval short.
+    ///
+    /// `applied` is advanced only once both have been accepted, so a later
+    /// frame-rate change keeps whichever interval the session actually has.
+    public func apply(keyFrameIntervalSeconds: Double) throws {
+        guard let session else {
+            throw VideoEncoderError.propertyUpdateFailed(-1)
+        }
+        let target = currentlyApplied().with(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+        let framesStatus = VTSessionSetProperty(
+            session,
+            key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
+            value: target.maxKeyFrameIntervalFrames as CFNumber
+        )
+        guard framesStatus == noErr else {
+            throw VideoEncoderError.propertyUpdateFailed(framesStatus)
+        }
+        let durationStatus = VTSessionSetProperty(
+            session,
+            key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
+            value: target.keyFrameIntervalSeconds as CFNumber
+        )
+        guard durationStatus == noErr else {
+            throw VideoEncoderError.propertyUpdateFailed(durationStatus)
+        }
+        stateLock.lock()
+        applied = target
+        stateLock.unlock()
+    }
+
+    /// The two key-frame bounds the live session holds, read back from
+    /// VideoToolbox rather than from what this encoder asked for. `nil` when
+    /// there is no session or either property cannot be read. For this
+    /// package's tests.
+    package func sessionKeyFrameIntervalBounds() -> (frames: Int, seconds: Double)? {
+        guard let session else {
+            return nil
+        }
+        var frames: CFTypeRef?
+        var seconds: CFTypeRef?
+        guard VTSessionCopyProperty(
+            session,
+            key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
+            allocator: kCFAllocatorDefault,
+            valueOut: &frames
+        ) == noErr,
+            VTSessionCopyProperty(
+                session,
+                key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
+                allocator: kCFAllocatorDefault,
+                valueOut: &seconds
+            ) == noErr,
+            let frameCount = (frames as? NSNumber)?.intValue,
+            let duration = (seconds as? NSNumber)?.doubleValue else {
+            return nil
+        }
+        return (frameCount, duration)
     }
 
     /// Makes the next frame this encoder accepts a key frame, whatever the

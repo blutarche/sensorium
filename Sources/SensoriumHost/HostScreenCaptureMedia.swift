@@ -97,6 +97,11 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         configuration = configuration.with(qualityScale: qualityScale)
     }
 
+    public func apply(keyFrameIntervalSeconds: Double) async throws {
+        try pipeline?.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+        configuration = configuration.with(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+    }
+
     public func requestKeyFrame() async {
         pipeline?.requestKeyFrame()
     }

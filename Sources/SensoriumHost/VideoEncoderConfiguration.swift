@@ -60,6 +60,12 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
     /// `dataRateLimitBytes` already have it applied, so nothing downstream
     /// multiplies by it a second time.
     public let qualityScale: Double
+    /// The longest the encoder goes without a key frame when nothing else
+    /// asked for one, in seconds. Both of VideoToolbox's key-frame bounds are
+    /// set from it: `kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration`
+    /// directly, and `kVTCompressionPropertyKey_MaxKeyFrameInterval` as
+    /// `maxKeyFrameIntervalFrames`.
+    public let keyFrameIntervalSeconds: Double
 
     public init(
         width: Int,
@@ -77,7 +83,8 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
         maxFrameDelayCount: Int,
         profileLevel: VideoEncoderProfileLevel,
         requiresHardwareAcceleration: Bool,
-        qualityScale: Double = 1.0
+        qualityScale: Double = 1.0,
+        keyFrameIntervalSeconds: Double = standardKeyFrameIntervalSeconds
     ) {
         self.width = width
         self.height = height
@@ -95,6 +102,51 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
         self.profileLevel = profileLevel
         self.requiresHardwareAcceleration = requiresHardwareAcceleration
         self.qualityScale = Self.clampedQualityScale(qualityScale)
+        self.keyFrameIntervalSeconds = keyFrameIntervalSeconds
+    }
+
+    /// The interval for a viewer that cannot ask for a key frame. A viewer
+    /// that gives a group of frames up shows nothing new until the next key
+    /// frame, so this is the longest it can be left waiting.
+    public static let standardKeyFrameIntervalSeconds: Double = 1
+
+    /// The interval for a viewer that asks for a key frame whenever it gives
+    /// a group up (`viewerKeyFrameRecovery`). Its wait no longer depends on
+    /// this interval, and every key frame is several times the size of a
+    /// delta on a link that carries video and control in order, so they are
+    /// sent far less often.
+    public static let viewerRecoveryKeyFrameIntervalSeconds: Double = 10
+
+    /// `kVTCompressionPropertyKey_MaxKeyFrameInterval`: the same interval
+    /// counted in frames at this frame rate. Capture is change-driven, so a
+    /// quiet screen delivers far fewer frames than this a second, and the
+    /// duration bound is what holds the interval there.
+    public var maxKeyFrameIntervalFrames: Int {
+        max(1, Int((Double(framesPerSecond) * keyFrameIntervalSeconds).rounded()))
+    }
+
+    /// The same configuration with a different key-frame interval.
+    /// Everything else, bitrate included, is unchanged.
+    public func with(keyFrameIntervalSeconds newKeyFrameIntervalSeconds: Double) -> Self {
+        Self(
+            width: width,
+            height: height,
+            framesPerSecond: framesPerSecond,
+            codec: codec,
+            maxQueueDepth: maxQueueDepth,
+            captureWidth: captureWidth,
+            captureHeight: captureHeight,
+            encodeWidth: encodeWidth,
+            encodeHeight: encodeHeight,
+            averageBitRate: averageBitRate,
+            dataRateLimitBytes: dataRateLimitBytes,
+            dataRateLimitSeconds: dataRateLimitSeconds,
+            maxFrameDelayCount: maxFrameDelayCount,
+            profileLevel: profileLevel,
+            requiresHardwareAcceleration: requiresHardwareAcceleration,
+            qualityScale: qualityScale,
+            keyFrameIntervalSeconds: newKeyFrameIntervalSeconds
+        )
     }
 
     /// The fraction of the canvas's native resolution this configuration
@@ -109,7 +161,8 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
     /// not of the current encode size, so repeated changes cannot compound.
     /// Both axes take the same factor, so aspect ratio is exact, and the
     /// bitrate and its burst ceiling follow the new pixel count. The frame
-    /// rate and quality currently in force are carried over.
+    /// rate, quality and key-frame interval currently in force are carried
+    /// over.
     public func scaled(toStreamScale scale: Double) -> Self {
         let scaledWidth = Int((Double(width) * scale).rounded())
         let scaledHeight = Int((Double(height) * scale).rounded())
@@ -135,7 +188,8 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
             maxFrameDelayCount: maxFrameDelayCount,
             profileLevel: profileLevel,
             requiresHardwareAcceleration: requiresHardwareAcceleration,
-            qualityScale: qualityScale
+            qualityScale: qualityScale,
+            keyFrameIntervalSeconds: keyFrameIntervalSeconds
         )
     }
 
@@ -165,7 +219,8 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
             maxFrameDelayCount: maxFrameDelayCount,
             profileLevel: profileLevel,
             requiresHardwareAcceleration: requiresHardwareAcceleration,
-            qualityScale: qualityScale
+            qualityScale: qualityScale,
+            keyFrameIntervalSeconds: keyFrameIntervalSeconds
         )
     }
 
@@ -198,7 +253,8 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
             maxFrameDelayCount: maxFrameDelayCount,
             profileLevel: profileLevel,
             requiresHardwareAcceleration: requiresHardwareAcceleration,
-            qualityScale: clamped
+            qualityScale: clamped,
+            keyFrameIntervalSeconds: keyFrameIntervalSeconds
         )
     }
 
@@ -221,7 +277,8 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
             maxFrameDelayCount: maxFrameDelayCount,
             profileLevel: newProfileLevel,
             requiresHardwareAcceleration: requiresHardwareAcceleration,
-            qualityScale: qualityScale
+            qualityScale: qualityScale,
+            keyFrameIntervalSeconds: keyFrameIntervalSeconds
         )
     }
 
