@@ -50,7 +50,8 @@ One exception covers a host with no physical display. There macOS shows
 its own placeholder screen. A host-screen session on it replaces the
 placeholder with a sharp screen: a session-owned virtual display, 1920x1080
 points at 2x, offered to the viewer as the placeholder was and with no
-display modes. macOS restores the placeholder when the sharp screen is
+display modes. When macOS brings it up at another mode, the host sets it
+to 1920x1080 points at 2x right after creating it. macOS restores the placeholder when the sharp screen is
 released: 10 seconds after the last session on it ends, when the host
 quits, or at once when a monitor is connected. Sensorium still never
 creates, destroys, resizes, re-arranges, mirrors or blanks a physical
@@ -65,7 +66,8 @@ management only.
 Capturing a display with ScreenCaptureKit under a granted Screen Recording
 permission is allowed; a mode change through `CGDisplaySetDisplayMode` or
 `CGBeginDisplayConfiguration` is allowed only for the host screen a session
-is streaming, on the viewer's request, and is always undone.
+is streaming, on the viewer's request, and is always undone, and for the
+sharp screen as the host creates it.
 
 Host screen is gated, and no frame of it may leave the host until all of
 these hold. Screen Recording is granted. The connecting device is paired
