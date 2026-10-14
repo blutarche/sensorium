@@ -53,6 +53,7 @@ public final class SharpScreenManager {
     private let displays: @MainActor () -> [DisplaySnapshot]
     private let isRuntimeAvailable: @MainActor () -> Bool
     private let isCaptureResolvable: @MainActor (UInt32) async -> Bool
+    private let modeSetter: any SharpScreenModeSetting
     private let shutdown: CanvasShutdown?
     private let log: @MainActor (String) -> Void
     private let readinessBoundSeconds: Double
@@ -79,6 +80,7 @@ public final class SharpScreenManager {
     ///     runtime at all. Asked before anything is created.
     ///   - isCaptureResolvable: whether ScreenCaptureKit can find a display,
     ///     part of deciding it is ready.
+    ///   - modeSetter: lists the sharp screen's modes and sets the 2x one.
     ///   - readinessBoundSeconds: how long a new display has to become ready.
     ///   - releaseGraceSeconds: how long the display outlives its last lease.
     public init(
@@ -86,6 +88,7 @@ public final class SharpScreenManager {
         displays: @escaping @MainActor () -> [DisplaySnapshot],
         isRuntimeAvailable: @escaping @MainActor () -> Bool,
         isCaptureResolvable: @escaping @MainActor (UInt32) async -> Bool,
+        modeSetter: any SharpScreenModeSetting = CoreGraphicsSharpScreenModeSetter(),
         shutdown: CanvasShutdown? = nil,
         log: @escaping @MainActor (String) -> Void,
         readinessBoundSeconds: Double = 5,
@@ -102,6 +105,7 @@ public final class SharpScreenManager {
         self.displays = displays
         self.isRuntimeAvailable = isRuntimeAvailable
         self.isCaptureResolvable = isCaptureResolvable
+        self.modeSetter = modeSetter
         self.shutdown = shutdown
         self.log = log
         self.readinessBoundSeconds = max(readinessBoundSeconds, 0)
@@ -249,7 +253,11 @@ public final class SharpScreenManager {
         shutdown?.record(created) { [self] recorded in
             releaseAtQuit(recorded)
         }
-        if let why = await waitUntilReady(created.rawValue) {
+        var notUsed = await waitUntilReady(created.rawValue)
+        if notUsed == nil, handle == created {
+            notUsed = await setTwoX(created.rawValue)
+        }
+        if let why = notUsed {
             if handle == created {
                 release(created)
             }
@@ -292,6 +300,51 @@ public final class SharpScreenManager {
             }
             guard now() < deadline else {
                 return "\(missing) within \(Self.secondsWords(readinessBoundSeconds))"
+            }
+            await wait(pollSeconds)
+        }
+    }
+
+    /// Puts the new display on its own logical size at 2x, from the modes
+    /// macOS reports for it, since macOS picks a new display's first mode
+    /// itself and not this one. Then waits up to `readinessBoundSeconds` for
+    /// it to read back at that mode. Set once and never put back: the
+    /// display is destroyed when it is released. `nil` once it reads back at
+    /// that mode, at once or after the set; otherwise why not, in words for
+    /// the host log.
+    private func setTwoX(_ id: UInt32) async -> String? {
+        let target = SharpScreen.configuration
+        let width = target.logicalWidth
+        let height = target.logicalHeight
+        let pixelWidth = target.modePixelWidth
+        let pixelHeight = target.modePixelHeight
+        func readsBackAtTarget() -> Bool {
+            guard let display = displays().first(where: { $0.id == id && $0.online }) else {
+                return false
+            }
+            return display.modeWidth == width && display.modeHeight == height
+                && display.modePixelWidth == pixelWidth && display.modePixelHeight == pixelHeight
+        }
+        if readsBackAtTarget() {
+            return nil
+        }
+        guard let mode = modeSetter.modes(for: id).first(where: {
+            $0.width == width && $0.height == height && $0.pixelWidth == pixelWidth && $0.pixelHeight == pixelHeight
+        }) else {
+            return "macOS offers no mode of \(width)x\(height) points at \(target.scale)x for it"
+        }
+        guard modeSetter.set(modeID: mode.id, on: id) else {
+            return "macOS refused to set it to \(width)x\(height) points at \(target.scale)x"
+        }
+        let deadline = now() + readinessBoundSeconds
+        while true {
+            if readsBackAtTarget() {
+                log("sharp screen \(id) set to \(width)x\(height) points at \(target.scale)x")
+                return nil
+            }
+            guard now() < deadline else {
+                return "it did not read back at \(width)x\(height) points at \(target.scale)x "
+                    + "within \(Self.secondsWords(readinessBoundSeconds))"
             }
             await wait(pollSeconds)
         }

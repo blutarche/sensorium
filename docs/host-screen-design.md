@@ -245,7 +245,7 @@ Because the host can open itself at login, it locks the screen shortly after lau
 
 A host with no monitor still has one display online: macOS's own placeholder screen, the stand-in of §8. It is 1920x1080 pixels at 1x, with a single mode. A viewer on a high-density screen has to scale that picture up, and it looks soft.
 
-A host-screen session that starts on the placeholder streams a sharp screen instead. The host creates it for the purpose: a virtual display fixed at 1920x1080 points at 2x, which is 3840x2160 pixels. macOS takes the placeholder away while it exists, and brings it back under a new display ID once it is released. There is no setting for this.
+A host-screen session that starts on the placeholder streams a sharp screen instead. The host creates it for the purpose: a virtual display fixed at 1920x1080 points at 2x, which is 3840x2160 pixels. Right after creating it, the host sets it to that mode, chosen from the modes macOS offers for it. If macOS offers no such mode, or the mode does not take, the host releases the sharp screen and the session streams the placeholder. macOS takes the placeholder away while the sharp screen exists, and brings it back under a new display ID once it is released. There is no setting for this.
 
 ### 10.1 When it is used
 

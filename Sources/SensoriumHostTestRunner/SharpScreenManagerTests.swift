@@ -11,7 +11,8 @@ import SensoriumHost
 
 /// A host with no monitor, as the window server presents it. `list` always
 /// holds what `read()` would return, for code that reads a `FakeDisplayList`.
-final class FakeHeadlessHost: VirtualDisplayCreating {
+/// It also reports and sets the sharp screen's display modes.
+final class FakeHeadlessHost: VirtualDisplayCreating, SharpScreenModeSetting {
     let list = FakeDisplayList([])
     private(set) var placeholderID: UInt32 = 4 { didSet { sync() } }
     private(set) var sharpID: UInt32? { didSet { sync() } }
@@ -24,9 +25,24 @@ final class FakeHeadlessHost: VirtualDisplayCreating {
     /// bare process once read a new virtual display back.
     var sharpScreenReportsNoMode = false { didSet { sync() } }
     var sharpScreenNeverComesOnline = false { didSet { sync() } }
-    /// The sharp screen comes up in a 1x mode at its logical size, the way
-    /// a real one was observed to when no 2x mode at that size was offered.
+    /// The sharp screen comes up in a 1x mode at its logical size, and stays
+    /// there until `twoXMode` is set on it.
     var sharpScreenComesUpAtOneX = false { didSet { sync() } }
+    /// 1920x1080 points backed by 3840x2160 pixels.
+    static let twoXMode = SharpScreenMode(id: 4, width: 1920, height: 1080, pixelWidth: 3840, pixelHeight: 2160)
+    /// Modes that share either the points or the pixels of `twoXMode`, but
+    /// not both.
+    static let otherModes = [
+        SharpScreenMode(id: 1, width: 3840, height: 2160, pixelWidth: 3840, pixelHeight: 2160),
+        SharpScreenMode(id: 2, width: 1920, height: 1080, pixelWidth: 1920, pixelHeight: 1080),
+        SharpScreenMode(id: 3, width: 960, height: 540, pixelWidth: 1920, pixelHeight: 1080)
+    ]
+    /// The modes macOS reports for the sharp screen.
+    var offeredModes = otherModes + [twoXMode]
+    var refusesModeSet = false
+    /// macOS accepts the mode, but the sharp screen never reads back at it.
+    var modeNeverShows = false
+    private(set) var modeSets: [(modeID: Int, displayID: UInt32)] = []
     var monitorConnected = false { didSet { sync() } }
     /// The sharp screen is gone from the display list while this process
     /// still holds it.
@@ -72,6 +88,21 @@ final class FakeHeadlessHost: VirtualDisplayCreating {
 
     func metrics(for handle: VirtualDisplayHandle) throws -> VirtualDisplayMetrics {
         throw CoreGraphicsVirtualDisplayError.metricsUnavailable
+    }
+
+    func modes(for displayID: UInt32) -> [SharpScreenMode] {
+        displayID == sharpID ? offeredModes : []
+    }
+
+    func set(modeID: Int, on displayID: UInt32) -> Bool {
+        modeSets.append((modeID, displayID))
+        guard !refusesModeSet, displayID == sharpID, let mode = offeredModes.first(where: { $0.id == modeID }) else {
+            return false
+        }
+        if mode == Self.twoXMode, !modeNeverShows {
+            sharpScreenComesUpAtOneX = false
+        }
+        return true
     }
 
     func read() -> [DisplaySnapshot] {
@@ -123,6 +154,7 @@ func makeSharpScreenManager(
         displays: { host.read() },
         isRuntimeAvailable: { runtimeAvailable },
         isCaptureResolvable: captureResolvable,
+        modeSetter: host,
         shutdown: shutdown,
         log: { log.record($0) },
         readinessBoundSeconds: 0.05,
@@ -145,9 +177,12 @@ func runSharpScreenManagerTests() async {
         }
         expect(host.attemptedIdentities == [SharpScreen.identity], "it is created once, with the sharp screen's own identity")
         expect(
-            host.attemptedConfigurations == [VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2)],
-            "at 1920x1080 points and 2x, got \(host.attemptedConfigurations)"
+            host.attemptedConfigurations == [
+                VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2, maxPixelHeadroom: 2)
+            ],
+            "at 1920x1080 points and 2x, with room to be backed at 2x, got \(host.attemptedConfigurations)"
         )
+        expect(host.modeSets.isEmpty, "a sharp screen already at 2x has no mode set on it, got \(host.modeSets)")
         expect(lease.displayID == host.sharpID, "the lease names the sharp screen's own display")
         expect(manager.displayID == host.sharpID, "and the manager reports it as its one sharp screen")
         expect(shutdown.liveCanvasCount == 1, "it is recorded for release at quit, like a canvas")
@@ -166,17 +201,98 @@ func runSharpScreenManagerTests() async {
         let log = DiagnosticsRecorder()
         let manager = makeSharpScreenManager(host: host, log: log)
         let outcome = await manager.lease(forAdmittedDisplayID: host.placeholderID) { _ in }
-        guard case .leased = outcome else {
-            expect(false, "a sharp screen at 1x is still no softer than the placeholder, so it streams, got \(outcome)")
+        guard case let .leased(lease) = outcome else {
+            expect(false, "a sharp screen that comes up at 1x is set to 2x and streams, got \(outcome)")
             return
         }
+        expect(
+            host.modeSets.map(\.modeID) == [FakeHeadlessHost.twoXMode.id]
+                && host.modeSets.map(\.displayID) == [lease.displayID],
+            "exactly one mode is set on the sharp screen: 1920x1080 points backed by 3840x2160 pixels, got \(host.modeSets)"
+        )
+        expect(host.destroyedHandles.isEmpty, "and the sharp screen is kept, got \(host.destroyedHandles)")
+        expect(
+            log.messages.contains("sharp screen \(lease.displayID) set to 1920x1080 points at 2x"),
+            "the host log says the mode was set, got \(log.messages)"
+        )
         let ready = log.messages.first { $0.contains("sharp screen") && $0.contains("ready") }
         expect(
-            ready?.contains("ready: 1920x1080 points backed by 1920x1080 px, not the 3840x2160 px it asked for,") == true,
-            "the host log says the sharp screen came up below the pixel size it asked for, got \(ready ?? "no line")"
+            ready?.contains("ready: 1920x1080 points backed by 3840x2160 px,") == true,
+            "and that it is ready at that mode, got \(ready ?? "no line")"
         )
     }
-    print("PASS: a sharp screen that comes up below 2x says so in the host log, with the pixel size it got")
+    print("PASS: a sharp screen that comes up at 1x is set once to 1920x1080 points at 2x, from the modes macOS offers")
+
+    do {
+        let host = FakeHeadlessHost()
+        host.sharpScreenComesUpAtOneX = true
+        host.offeredModes = FakeHeadlessHost.otherModes
+        let shutdown = CanvasShutdown()
+        let log = DiagnosticsRecorder()
+        let manager = makeSharpScreenManager(host: host, log: log, shutdown: shutdown)
+        let originalPlaceholder = host.placeholderID
+        let outcome = await manager.lease(forAdmittedDisplayID: originalPlaceholder) { _ in }
+        guard case .failed = outcome else {
+            expect(false, "a sharp screen macOS offers no 2x mode for is not used, got \(outcome)")
+            return
+        }
+        expect(host.modeSets.isEmpty, "no mode is set on it, got \(host.modeSets)")
+        expect(host.destroyedHandles.count == 1, "it is released again, got \(host.destroyedHandles)")
+        expect(shutdown.liveCanvasCount == 0, "and no longer held for release at quit")
+        expect(manager.displayID == nil, "the manager holds no sharp screen afterwards")
+        let lines = log.messages.filter { $0.contains("sharp screen not used") }
+        expect(lines.count == 1, "the host log says once why it was not used, got \(log.messages)")
+        expect(
+            lines.first?.contains("macOS offers no mode of 1920x1080 points at 2x for it") == true,
+            "naming the mode macOS did not offer, got \(lines)"
+        )
+        expect(
+            host.read().contains { $0.id == host.placeholderID && $0.id != originalPlaceholder },
+            "the placeholder is back, under a new display ID"
+        )
+    }
+    print("PASS: a sharp screen macOS offers no 1920x1080 mode at 2x for is released, with one log line saying why")
+
+    do {
+        let host = FakeHeadlessHost()
+        host.sharpScreenComesUpAtOneX = true
+        host.refusesModeSet = true
+        let log = DiagnosticsRecorder()
+        let manager = makeSharpScreenManager(host: host, log: log)
+        let outcome = await manager.lease(forAdmittedDisplayID: host.placeholderID) { _ in }
+        guard case .failed = outcome else {
+            expect(false, "a sharp screen whose 2x mode macOS refuses to set is not used, got \(outcome)")
+            return
+        }
+        expect(host.modeSets.count == 1, "the mode is asked for once, got \(host.modeSets)")
+        expect(host.destroyedHandles.count == 1, "it is released again, got \(host.destroyedHandles)")
+        expect(manager.displayID == nil, "the manager holds no sharp screen afterwards")
+        expect(
+            log.messages.filter { $0.contains("sharp screen not used") && $0.contains("refused") }.count == 1,
+            "with one line saying macOS refused the mode, got \(log.messages)"
+        )
+
+        let stuckHost = FakeHeadlessHost()
+        stuckHost.sharpScreenComesUpAtOneX = true
+        stuckHost.modeNeverShows = true
+        let stuckLog = DiagnosticsRecorder()
+        let stuck = makeSharpScreenManager(host: stuckHost, log: stuckLog)
+        let stuckOutcome = await stuck.lease(forAdmittedDisplayID: stuckHost.placeholderID) { _ in }
+        guard case .failed = stuckOutcome else {
+            expect(false, "a sharp screen that never reads back at its 2x mode is not used, got \(stuckOutcome)")
+            return
+        }
+        expect(stuckHost.modeSets.count == 1, "the mode is asked for once, got \(stuckHost.modeSets)")
+        expect(stuckHost.destroyedHandles.count == 1, "it is released again, got \(stuckHost.destroyedHandles)")
+        expect(stuck.displayID == nil, "the manager holds no sharp screen afterwards")
+        expect(
+            stuckLog.messages.filter {
+                $0.contains("sharp screen not used") && $0.contains("did not read back at 1920x1080 points at 2x within")
+            }.count == 1,
+            "with one line saying it never read back at that mode, got \(stuckLog.messages)"
+        )
+    }
+    print("PASS: a sharp screen whose 2x mode macOS refuses, or that never reads back at it, is released")
 
     do {
         let host = FakeHeadlessHost()

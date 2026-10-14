@@ -17,10 +17,10 @@ int sensorium_virtual_display_runtime_available(void) {
 }
 
 void *sensorium_create_virtual_display(const char *name,
-                                        int32_t logical_width,
-                                        int32_t logical_height,
-                                        int32_t pixel_width,
-                                        int32_t pixel_height,
+                                        int32_t mode_width,
+                                        int32_t mode_height,
+                                        int32_t max_pixel_width,
+                                        int32_t max_pixel_height,
                                         uint32_t vendor_id,
                                         uint32_t product_id,
                                         uint32_t serial_number,
@@ -53,13 +53,13 @@ void *sensorium_create_virtual_display(const char *name,
             [descriptor setValue:@(vendor_id) forKey:@"vendorID"];
             [descriptor setValue:@(product_id) forKey:@"productID"];
             [descriptor setValue:@(serial_number) forKey:@"serialNumber"];
-            [descriptor setValue:@(pixel_width) forKey:@"maxPixelsWide"];
-            [descriptor setValue:@(pixel_height) forKey:@"maxPixelsHigh"];
+            [descriptor setValue:@(max_pixel_width) forKey:@"maxPixelsWide"];
+            [descriptor setValue:@(max_pixel_height) forKey:@"maxPixelsHigh"];
             [descriptor setValue:[NSValue valueWithSize:NSMakeSize(286, 179)]
                           forKey:@"sizeInMillimeters"];
 
-            id mode = [[modeClass alloc] initWithWidth:pixel_width
-                                                height:pixel_height
+            id mode = [[modeClass alloc] initWithWidth:mode_width
+                                                height:mode_height
                                            refreshRate:60.0];
             if (!mode) {
                 return NULL;

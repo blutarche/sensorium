@@ -61,10 +61,10 @@ public final class BridgeVirtualDisplayCreator: VirtualDisplayCreating {
         let handle = displayName.withCString { name in
             sensorium_create_virtual_display(
                 name,
-                Int32(configuration.logicalWidth),
-                Int32(configuration.logicalHeight),
-                Int32(configuration.logicalWidth * configuration.scale),
-                Int32(configuration.logicalHeight * configuration.scale),
+                Int32(configuration.modePixelWidth),
+                Int32(configuration.modePixelHeight),
+                Int32(configuration.maxPixelWidth),
+                Int32(configuration.maxPixelHeight),
                 identity.vendorID,
                 identity.productID,
                 identity.serialNumber,

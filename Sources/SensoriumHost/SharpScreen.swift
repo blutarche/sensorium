@@ -14,7 +14,9 @@ import Foundation
 /// the same wherever a list comes from.
 public enum SharpScreen {
     public static let identity = CanvasDisplayIdentity.sharpScreen
-    public static let configuration = VirtualCanvasConfiguration(logicalWidth: 1920, logicalHeight: 1080, scale: 2)
+    public static let configuration = VirtualCanvasConfiguration(
+        logicalWidth: 1920, logicalHeight: 1080, scale: 2, maxPixelHeadroom: 2
+    )
     /// What the display is called on the host while it exists. A viewer is
     /// never shown this; it is offered under the placeholder's own label.
     public static let displayName = "Sensorium Sharp Screen"

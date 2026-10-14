@@ -10,11 +10,16 @@ extern "C" {
 /// Creates one virtual display called `name` -- what a person at this machine
 /// sees it named in their display settings. Creates nothing and returns NULL
 /// if `name` is NULL or is not valid UTF-8.
+///
+/// The display is created with one mode of `mode_width` x `mode_height`
+/// pixels, and may be backed by at most `max_pixel_width` x
+/// `max_pixel_height` pixels. macOS offers a mode at 2x only when its pixel
+/// size is at most half that largest backing.
 void *sensorium_create_virtual_display(const char *name,
-                                        int32_t logical_width,
-                                        int32_t logical_height,
-                                        int32_t pixel_width,
-                                        int32_t pixel_height,
+                                        int32_t mode_width,
+                                        int32_t mode_height,
+                                        int32_t max_pixel_width,
+                                        int32_t max_pixel_height,
                                         uint32_t vendor_id,
                                         uint32_t product_id,
                                         uint32_t serial_number,

@@ -256,4 +256,32 @@ func runSharpScreenTests() async {
         )
     }
     print("PASS: a sharp screen an earlier host left behind is offered as External Display when it is the only online display")
+
+    do {
+        let canvas = VirtualCanvasConfiguration.remoteDefault
+        expect(canvas.maxPixelHeadroom == 1, "a session canvas asks for no headroom, got \(canvas.maxPixelHeadroom)")
+        expect(
+            canvas.modePixelWidth == 3840 && canvas.modePixelHeight == 2400,
+            "a session canvas declares its mode at its logical size times its scale, got \(canvas.modePixelWidth)x\(canvas.modePixelHeight)"
+        )
+        expect(
+            canvas.maxPixelWidth == canvas.modePixelWidth && canvas.maxPixelHeight == canvas.modePixelHeight,
+            "and its largest backing is that same size, got \(canvas.maxPixelWidth)x\(canvas.maxPixelHeight)"
+        )
+
+        let sharp = SharpScreen.configuration
+        expect(
+            sharp.logicalWidth == 1920 && sharp.logicalHeight == 1080 && sharp.scale == 2,
+            "the sharp screen is 1920x1080 points at 2x, got \(sharp)"
+        )
+        expect(
+            sharp.modePixelWidth == 3840 && sharp.modePixelHeight == 2160,
+            "it declares one mode of 3840x2160 pixels, got \(sharp.modePixelWidth)x\(sharp.modePixelHeight)"
+        )
+        expect(
+            sharp.maxPixelWidth == 7680 && sharp.maxPixelHeight == 4320,
+            "with a largest backing of 7680x4320, so macOS offers that mode at 2x, got \(sharp.maxPixelWidth)x\(sharp.maxPixelHeight)"
+        )
+    }
+    print("PASS: a session canvas is backed by its mode's own pixel size, and the sharp screen by twice that, so it can be set to 2x")
 }

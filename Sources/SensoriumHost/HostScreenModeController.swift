@@ -5,10 +5,11 @@ import SensoriumCore
 /// The display modes of one host screen, and the two operations a live
 /// session may perform on them.
 ///
-/// The only display configuration Sensorium performs: the mode of the
-/// host screen a session is streaming, on the viewer's request, from the
-/// modes macOS already reports, always put back. A seam rather than
-/// direct CoreGraphics calls so that rule is verified against a fake.
+/// The only display configuration Sensorium performs on a display it did not
+/// create: the mode of the host screen a session is streaming, on the
+/// viewer's request, from the modes macOS already reports, always put back.
+/// A seam rather than direct CoreGraphics calls so that rule is verified
+/// against a fake.
 @MainActor
 public protocol HostScreenModeControlling: AnyObject {
     /// Every mode this display can be set to, as macOS reports them.
@@ -143,7 +144,7 @@ public final class CoreGraphicsHostScreenModeController: HostScreenModeControlli
             return false
         }
         let previous = CGDisplayCopyDisplayMode(displayID)
-        guard set(mode: mode, on: displayID) else {
+        guard Self.set(mode: mode, on: displayID) else {
             return false
         }
         if originalModes[displayID] == nil, let previous {
@@ -159,7 +160,7 @@ public final class CoreGraphicsHostScreenModeController: HostScreenModeControlli
         guard let original = originalModes[displayID] else {
             return false
         }
-        guard set(mode: original, on: displayID) else {
+        guard Self.set(mode: original, on: displayID) else {
             return false
         }
         originalModes[displayID] = nil
@@ -178,7 +179,7 @@ public final class CoreGraphicsHostScreenModeController: HostScreenModeControlli
     /// the mode itself is refused: a half-built configuration left open
     /// would be this process holding a claim on the machine's displays
     /// with nothing to show for it.
-    private func set(mode: CGDisplayMode, on displayID: UInt32) -> Bool {
+    static func set(mode: CGDisplayMode, on displayID: UInt32) -> Bool {
         var configuration: CGDisplayConfigRef?
         guard CGBeginDisplayConfiguration(&configuration) == .success, let configuration else {
             return false
