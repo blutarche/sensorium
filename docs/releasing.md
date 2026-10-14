@@ -14,7 +14,9 @@ A disk image opens to a fixed window with no toolbar or sidebar. The app sits on
 | `.DS_Store` | `Scripts/make-dmg-layout.swift` | Window size, icon size, icon positions, a link to the picture |
 | `.VolumeIcon.icns` | Copied from the app | The volume icon |
 
-The picture and the icon file are hidden in Finder.
+The picture and the icon file are hidden in Finder. When Finder is set to show hidden files, they sit outside the window.
+
+The volume name carries the version, for example `Sensorium 1.2.3`. Finder finds the picture by volume name. With the version in the name, another Sensorium disk image still mounted cannot lend its picture.
 
 Do not arrange the window in Finder. Finder's `.DS_Store` records details of the build machine:
 

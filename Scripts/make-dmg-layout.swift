@@ -23,7 +23,8 @@
 //
 // `dump` prints one line per record, `<file name> <record> <value>`: item
 // positions as `x,y`, property lists as their keys in order as `key=value`,
-// and an alias as the path it holds from the volume root. Tests use it.
+// and an alias as the volume path it names followed by the path inside the
+// volume. Tests use it.
 //
 // The format is the one Finder reads: a buddy-allocated file ("Bud1") holding
 // one B-tree ("DSDB") of records sorted by file name, ignoring case, then by
@@ -173,20 +174,25 @@ func backgroundAlias(mountPoint: String, volumeName: String, folder: String, fil
     return alias
 }
 
-// The path from the volume root that an alias record holds, if it is one.
+// The full path an alias record names, if it is one: its volume's path
+// (tag 19) followed by the path from the volume root (tag 18).
 func aliasPath(_ alias: [UInt8]) -> String? {
     guard alias.count >= 150, Int(alias[4]) << 8 | Int(alias[5]) == alias.count, alias[6] == 0, alias[7] == 2 else {
         return nil
     }
+    var tags: [Int: String] = [:]
     var at = 150
     while at + 4 <= alias.count {
         let tag = Int(alias[at]) << 8 | Int(alias[at + 1])
         let length = Int(alias[at + 2]) << 8 | Int(alias[at + 3])
-        guard tag != 0xFFFF, at + 4 + length <= alias.count else { return nil }
-        if tag == 18 { return String(decoding: alias[(at + 4)..<(at + 4 + length)], as: UTF8.self) }
+        if tag == 0xFFFF { break }
+        guard at + 4 + length <= alias.count else { return nil }
+        tags[tag] = String(decoding: alias[(at + 4)..<(at + 4 + length)], as: UTF8.self)
         at += 4 + length + length % 2
     }
-    return nil
+    guard let path = tags[18] else { return nil }
+    let volume = tags[19] ?? ""
+    return (volume.hasSuffix("/") ? String(volume.dropLast()) : volume) + path
 }
 
 // MARK: - Records
@@ -214,7 +220,18 @@ func iconLocation(_ x: UInt32, _ y: UInt32) -> [UInt8] {
     be32(x) + be32(y) + [UInt8](repeating: 0xFF, count: 6) + zeros(2)
 }
 
-func layoutRecords(layout: Layout, appName: String, alias: [UInt8]) -> [Record] {
+// Every dot entry at the volume root but .DS_Store. Finder shows them when it
+// is set to show hidden files, and places any that has no position inside
+// the window.
+func hiddenEntries(_ mountPoint: String) -> [String] {
+    guard let names = try? FileManager.default.contentsOfDirectory(atPath: mountPoint) else {
+        fail("cannot list \(mountPoint)")
+    }
+    return names.filter { $0.hasPrefix(".") && $0 != ".DS_Store" }
+        .sorted { Array($0.lowercased().utf16).lexicographicallyPrecedes(Array($1.lowercased().utf16)) }
+}
+
+func layoutRecords(layout: Layout, appName: String, hidden: [String], alias: [UInt8]) -> [Record] {
     // The bounds are the whole window, title bar included, so the content
     // keeps the layout's height. Finder moves a window that would fall off
     // the screen back onto it.
@@ -244,7 +261,12 @@ func layoutRecords(layout: Layout, appName: String, alias: [UInt8]) -> [Record] 
         "showItemInfo": false,
         "viewOptionsVersion": 1,
     ]
-    let records = [
+    // Hidden entries go beyond the window's right edge, one below another.
+    let hiddenRecords = hidden.enumerated().map { index, name in
+        Record(name: name, kind: "Iloc", type: "blob",
+               value: iconLocation(layout.windowWidth + 200, 100 + 150 * UInt32(index)))
+    }
+    let records = hiddenRecords + [
         Record(name: ".", kind: "bwsp", type: "blob", value: binaryPlist(window)),
         Record(name: ".", kind: "icvp", type: "blob", value: binaryPlist(iconView)),
         Record(name: ".", kind: "vSrn", type: "long", value: be32(1)),
@@ -425,7 +447,8 @@ case ("write", 5):
         guard lstat("\(mountPoint)/\(item)", &info) == 0 else { fail("\(mountPoint) holds no \(item)") }
     }
     let alias = backgroundAlias(mountPoint: mountPoint, volumeName: volumeName, folder: ".background", file: "background.tiff")
-    let file = storeFile(layoutRecords(layout: layout, appName: appName, alias: alias))
+    let records = layoutRecords(layout: layout, appName: appName, hidden: hiddenEntries(mountPoint), alias: alias)
+    let file = storeFile(records)
     do { try Data(file).write(to: URL(fileURLWithPath: "\(mountPoint)/.DS_Store")) } catch {
         fail("cannot write \(mountPoint)/.DS_Store")
     }

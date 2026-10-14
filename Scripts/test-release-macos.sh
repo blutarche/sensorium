@@ -200,7 +200,10 @@ done
 # Each disk image shows the app and a link to /Applications, nothing else,
 # in the window the background script lays out: the picture drawn for its
 # app's role, its icon positions and the app's icon on the volume. Its
-# .DS_Store names nothing of the machine that built it.
+# .DS_Store names nothing of the machine that built it. The volume name
+# carries the version, and the background alias names that volume, because
+# Finder resolves the alias by volume name and would otherwise take the
+# picture from another Sensorium disk image still mounted.
 for role in viewer host; do
   swift "$ROOT/Scripts/make-dmg-background.swift" "$role" "$WORK/art-$role" >/dev/null
   (cd "$WORK/art-$role" && tiffutil -cathidpicheck background.png background@2x.png -out background.tiff >/dev/null 2>&1) ||
@@ -208,11 +211,13 @@ for role in viewer host; do
 done
 layout_value() { plutil -extract "$1" raw -o - "$WORK/art-viewer/layout.json"; }
 check_image() {
-  DMG="$1"; APP_NAME="$2"; ICON="$3"; ROLE="$4"
+  DMG="$1"; APP_NAME="$2"; ICON="$3"; ROLE="$4"; VOLUME="$5"
   MNT="$WORK/mnt-$DMG"
   mkdir "$MNT"
   MOUNTS="$MOUNTS $MNT"
   hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$MNT" "$REL/$DMG" >/dev/null || fail "$DMG should attach"
+  NAME="$(diskutil info -plist "$MNT" | plutil -extract VolumeName raw -o - -)"
+  [ "$NAME" = "$VOLUME" ] || fail "$DMG volume should be named '$VOLUME', not '$NAME'"
   [ "$(ls "$MNT" | wc -l | tr -d ' ')" = "2" ] || fail "$DMG should show exactly two items"
   [ -d "$MNT/$APP_NAME" ] && [ ! -L "$MNT/$APP_NAME" ] || fail "$DMG should hold $APP_NAME as a directory"
   [ -L "$MNT/Applications" ] || fail "$DMG should hold an Applications link"
@@ -234,8 +239,8 @@ check_image() {
     fail "$DMG should place $APP_NAME where the layout puts it"
   grep -qxF "Applications Iloc $(layout_value applicationsX),$(layout_value applicationsY)" "$WORK/dump" ||
     fail "$DMG should place Applications where the layout puts it"
-  grep '^\. icvp ' "$WORK/dump" | grep -qF ' backgroundImageAlias=/.background/background.tiff' ||
-    fail "$DMG background should point at .background/background.tiff"
+  grep '^\. icvp ' "$WORK/dump" | grep -qF " backgroundImageAlias=/Volumes/$VOLUME/.background/background.tiff" ||
+    fail "$DMG background should point at .background/background.tiff on the volume '$VOLUME'"
   grep '^\. icvp ' "$WORK/dump" | grep -qF " iconSize=$(layout_value iconSize).0" || fail "$DMG icon size should come from the layout"
   grep '^\. bwsp ' "$WORK/dump" | grep -qF "WindowBounds={{160, 160}, {$(layout_value windowWidth), $(( $(layout_value windowHeight) + 28 ))}}" ||
     fail "$DMG window should be the layout size"
@@ -249,8 +254,8 @@ sys.exit(1 if found else 0)
 PY
   detach_volume "$MNT" || fail "$DMG should detach"
 }
-check_image Sensorium-9.8.7.dmg "Sensorium.app" Sensorium.icns viewer
-check_image Sensorium-Host-9.8.7.dmg "Sensorium Host.app" SensoriumHost.icns host
+check_image Sensorium-9.8.7.dmg "Sensorium.app" Sensorium.icns viewer "Sensorium 9.8.7"
+check_image Sensorium-Host-9.8.7.dmg "Sensorium Host.app" SensoriumHost.icns host "Sensorium Host 9.8.7"
 cmp -s "$WORK/shown-viewer.tiff" "$WORK/shown-host.tiff" && fail "the viewer and host disk images should show different pictures"
 [ "$(wc -l < "$REL/SHA256SUMS" | tr -d ' ')" = "4" ] || fail "SHA256SUMS should list four files"
 (cd "$REL" && shasum -a 256 -c SHA256SUMS >/dev/null) || fail "SHA256SUMS should verify from inside the release folder"

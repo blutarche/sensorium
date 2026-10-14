@@ -33,6 +33,9 @@ fail() { echo "FAIL: $1" >&2; [ -f "$WORK/out" ] && sed 's/^/  | /' "$WORK/out" 
 STAGE="$WORK/stage"
 mkdir -p "$STAGE/Example.app/Contents" "$STAGE/.background" "$MNT"
 ln -s /Applications "$STAGE/Applications"
+# Dot entries a release image holds, and one it may hold later.
+printf 'icon\n' > "$STAGE/.VolumeIcon.icns"
+printf 'later\n' > "$STAGE/.future"
 # The writer only needs the picture to exist; a one-pixel TIFF stands in.
 python3 -I - "$STAGE/.background/background.tiff" <<'PY'
 import struct, sys
@@ -83,7 +86,7 @@ has() { printf '%s\n' "$1" | grep -qF " $2" || fail "$3"; }
 
 ICVP="$(line . icvp)"
 has "$ICVP" "backgroundType=2" "the background should be a picture"
-has "$ICVP" "backgroundImageAlias=/.background/background.tiff" "the background alias should point inside the volume"
+has "$ICVP" "backgroundImageAlias=/Volumes/Layout Test/.background/background.tiff" "the background alias should name this volume and a path inside it"
 has "$ICVP" "iconSize=128.0" "icons should be 128 points"
 has "$ICVP" "textSize=13.0" "labels should be 13 points"
 has "$ICVP" "arrangeBy=none" "icons should keep their positions"
@@ -95,8 +98,24 @@ for key in ShowToolbar ShowSidebar ContainerShowSidebar ShowStatusBar ShowTabVie
   has "$BWSP" "$key=false" "$key should be off"
 done
 
+# Finder shows dot entries when it is set to show hidden files. Each one on
+# the volume, other than .DS_Store, sits wholly beyond the window's right
+# edge, apart from the others.
+DOTS="$(ls -A "$MNT" | grep '^\.' | grep -vx '\.DS_Store')"
+[ "$(printf '%s\n' "$DOTS" | wc -l | tr -d ' ')" = 3 ] || fail "the scratch volume should hold three dot entries besides .DS_Store"
+YS=""
+while IFS= read -r item; do
+  LOC="$(awk -v name="$item" '$1 == name && $2 == "Iloc" { print $3 }' "$WORK/out")"
+  [ -n "$LOC" ] || fail "$item should have a position"
+  [ "$(( ${LOC%,*} - 128 / 2 ))" -ge 760 ] || fail "$item should sit beyond the window's right edge, not at $LOC"
+  YS="$YS ${LOC#*,}"
+done <<EOF
+$DOTS
+EOF
+[ -z "$(printf '%s\n' $YS | sort | uniq -d)" ] || fail "dot entries should not share a position"
+
 # Records are sorted by name, ignoring case, so Finder can search them.
-[ "$(cut -d' ' -f1-2 "$WORK/out" | tr '\n' ' ')" = ". bwsp . icvp . vSrn Applications Iloc Example.app Iloc " ] ||
+[ "$(cut -d' ' -f1-2 "$WORK/out" | tr '\n' ' ')" = ". bwsp . icvp . vSrn .background Iloc .future Iloc .VolumeIcon.icns Iloc Applications Iloc Example.app Iloc " ] ||
   fail "records should be sorted by name, then by kind"
 
 # Nothing in the file may name the machine that built it, in any encoding a

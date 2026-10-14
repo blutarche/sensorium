@@ -292,8 +292,11 @@ for role in viewer host; do
   (cd "$SCRATCH/dmg-art-$role" && tiffutil -cathidpicheck background.png background@2x.png -out background.tiff >/dev/null) ||
     die "the 1x and 2x $role disk image backgrounds could not be joined"
 done
-make_dmg "$VIEWER_DMG" "Sensorium.app" "Sensorium" "$SCRATCH/dmg-art-viewer"
-make_dmg "$HOST_DMG" "Sensorium Host.app" "Sensorium Host" "$SCRATCH/dmg-art-host"
+# Finder finds a disk image's background picture by volume name, so another
+# Sensorium disk image still mounted under the same name would lend its own.
+# The version in the name keeps the names apart.
+make_dmg "$VIEWER_DMG" "Sensorium.app" "Sensorium $VERSION" "$SCRATCH/dmg-art-viewer"
+make_dmg "$HOST_DMG" "Sensorium Host.app" "Sensorium Host $VERSION" "$SCRATCH/dmg-art-host"
 verify_dmg "$VIEWER_DMG" "Sensorium.app" Viewer "arm64 x86_64" "$VIEWER_ZIP"
 verify_dmg "$HOST_DMG" "Sensorium Host.app" Host "arm64" "$HOST_ZIP"
 
