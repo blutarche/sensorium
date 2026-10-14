@@ -137,6 +137,10 @@ public enum ClipboardPolicy {
     /// same process is already doing.
     public static let pollIntervalSeconds: Double = 0.2
 
+    /// How long content identical to what last crossed the link is not sent
+    /// again. See `ClipboardSyncEngine`.
+    public static let echoSuppressionSeconds: Double = 30
+
     /// The shortest interval between two writes of a received clipboard onto
     /// this machine's pasteboard.
     ///

@@ -144,13 +144,22 @@ public final class ClipboardSyncEngine {
     /// which also means a refused local copy is refused once rather than on
     /// every poll for as long as it sits on the pasteboard.
     private var lastAccountedChangeCount: Int
+    private let nowNanoseconds: () -> Int64
+    /// The last content that crossed the link, in either direction, and when.
+    /// Another program can write the same content back onto the pasteboard,
+    /// for example the system syncing the clipboard between the two machines.
+    /// Each such write is a new `changeCount`, and without this check the two
+    /// machines would hand the same content back and forth.
+    private var lastCrossed: (content: ClipboardContent, nanoseconds: Int64)?
 
     public init(
         pasteboard: any ClipboardPasteboard,
         isEnabled: Bool,
-        maximumContentBytes: Int = ClipboardPolicy.maximumContentBytes
+        maximumContentBytes: Int = ClipboardPolicy.maximumContentBytes,
+        nowNanoseconds: @escaping () -> Int64 = MonotonicClock.nowNanoseconds
     ) {
         self.pasteboard = pasteboard
+        self.nowNanoseconds = nowNanoseconds
         self.isEnabled = isEnabled
         self.maximumContentBytes = maximumContentBytes
         // A pasteboard that already held something when the session started is
@@ -185,9 +194,11 @@ public final class ClipboardSyncEngine {
         lastAccountedChangeCount = changeCount
         let readout = pasteboard.read()
         guard readout.hasItems else {
+            lastCrossed = nil
             return .nothingToSend
         }
         guard !readout.isExcludedByType else {
+            lastCrossed = nil
             return .refused(.excludedType)
         }
         let text: () -> ClipboardContent? = { readout.text.map(ClipboardContent.text) }
@@ -203,10 +214,17 @@ public final class ClipboardSyncEngine {
                 continue
             }
             if content.byteCount <= maximumContentBytes {
+                let now = nowNanoseconds()
+                if let lastCrossed, lastCrossed.content == content,
+                   now - lastCrossed.nanoseconds < Int64(ClipboardPolicy.echoSuppressionSeconds * 1_000_000_000) {
+                    return .nothingToSend
+                }
+                lastCrossed = (content, now)
                 return .send(content)
             }
             preferred = preferred ?? content
         }
+        lastCrossed = nil
         guard let preferred else {
             return .refused(.unsupportedContent)
         }
@@ -236,6 +254,7 @@ public final class ClipboardSyncEngine {
             return .refused(.tooLarge(byteCount: content.byteCount, limit: maximumContentBytes))
         }
         lastAccountedChangeCount = pasteboard.write(content)
+        lastCrossed = (content, nowNanoseconds())
         return .applied(description: content.logDescription, byteCount: content.byteCount)
     }
 }

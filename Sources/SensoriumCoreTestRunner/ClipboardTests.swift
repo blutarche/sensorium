@@ -592,3 +592,66 @@ func testTheImageFormIsProducedOnlyWhenItIsChosen() {
     expect(fallback.0 == .send(.image(format: .png, data: png.data)), "text over the limit falls back to the image")
     expect(fallback.loads == 1, "which is produced only then -- produced \(fallback.loads) times")
 }
+
+func testAnEchoOfAnAppliedClipboardIsNotSentBack() {
+    let pasteboard = FakeClipboardPasteboard()
+    let engine = ClipboardSyncEngine(pasteboard: pasteboard, isEnabled: true)
+    _ = engine.apply(.text("Y"))
+    pasteboard.stageLocalCopy(ClipboardReadout(content: .text("Y"), isExcludedByType: false))
+    expect(engine.poll() == .nothingToSend, "another program re-writing an applied clipboard is not handed back")
+}
+
+private final class EchoClock {
+    var seconds: Double = 1000
+    func now() -> Int64 { Int64(seconds * 1_000_000_000) }
+}
+
+private func makeEchoEngine() -> (FakeClipboardPasteboard, ClipboardSyncEngine, EchoClock) {
+    let pasteboard = FakeClipboardPasteboard()
+    let clock = EchoClock()
+    let engine = ClipboardSyncEngine(pasteboard: pasteboard, isEnabled: true, nowNanoseconds: { clock.now() })
+    return (pasteboard, engine, clock)
+}
+
+private func outsideWrite(_ pasteboard: FakeClipboardPasteboard, _ text: String) {
+    pasteboard.stageLocalCopy(ClipboardReadout(content: .text(text), isExcludedByType: false))
+}
+
+func testAnEchoOfASentClipboardIsNotSentAgain() {
+    let (pasteboard, engine, clock) = makeEchoEngine()
+    outsideWrite(pasteboard, "Y")
+    expect(engine.poll() == .send(.text("Y")), "a local copy is sent")
+    clock.seconds += 5
+    outsideWrite(pasteboard, "Y")
+    expect(engine.poll() == .nothingToSend, "an outside re-write of what was sent is not sent again")
+    clock.seconds += 20
+    outsideWrite(pasteboard, "Y")
+    expect(engine.poll() == .nothingToSend, "a suppressed poll does not refresh the window")
+}
+
+func testAnEchoAfterTheSuppressionWindowIsSent() {
+    let (pasteboard, engine, clock) = makeEchoEngine()
+    _ = engine.apply(.text("Y"))
+    clock.seconds += ClipboardPolicy.echoSuppressionSeconds
+    outsideWrite(pasteboard, "Y")
+    expect(engine.poll() == .send(.text("Y")), "the same content after the window is sent")
+}
+
+func testDifferentContentInsideTheSuppressionWindowIsSent() {
+    let (pasteboard, engine, clock) = makeEchoEngine()
+    _ = engine.apply(.text("Y"))
+    clock.seconds += 1
+    outsideWrite(pasteboard, "Z")
+    expect(engine.poll() == .send(.text("Z")), "different content inside the window is sent")
+}
+
+func testARefusedLocalChangeClearsTheEchoMemory() {
+    let (pasteboard, engine, clock) = makeEchoEngine()
+    _ = engine.apply(.text("Y"))
+    clock.seconds += 1
+    pasteboard.stageLocalCopy(ClipboardReadout(content: .text("secret"), isExcludedByType: true))
+    expect(engine.poll() == .refused(.excludedType), "an excluded copy is refused")
+    clock.seconds += 1
+    outsideWrite(pasteboard, "Y")
+    expect(engine.poll() == .send(.text("Y")), "copying the same text again after an unshareable copy is sent")
+}
