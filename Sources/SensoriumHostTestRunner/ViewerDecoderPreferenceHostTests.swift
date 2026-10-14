@@ -112,6 +112,11 @@ func runViewerDecoderPreferenceHostTests() async {
             defaultConfiguration?.profileLevel == VideoEncoderConfiguration.remoteDefault.profileLevel,
             "and at the default profile for a viewer that did not"
         )
+        expect(
+            asked.controller.viewerRequestedProfileLevel == .constrainedBaselineAutoLevel
+                && silent.controller.viewerRequestedProfileLevel == nil,
+            "only the viewer that asked has its preference recorded"
+        )
     }
 
     do {
@@ -136,7 +141,7 @@ func runViewerDecoderPreferenceHostTests() async {
         )
     }
 
-    print("PASS: a viewer's Constrained Baseline preference lowers only its own session's profile, and only before the target is requested")
+    print("PASS: a viewer's Constrained Baseline preference applies only to its own connection, and only before the target is requested")
 }
 
 @MainActor

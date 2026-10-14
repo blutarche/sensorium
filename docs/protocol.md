@@ -236,6 +236,8 @@ Nothing in this message names an address, a window, a file, or anything the pers
 
 A viewer sends it when its decoder releases a picture of any other profile only once the next access unit arrives. OpenH264 does this, and a host sends nothing while its screen is still, so the last change would wait on screen until something else moved. The Linux viewer sends it when libavcodec's H.264 decoder is `libopenh264`. The macOS viewer never sends it.
 
+This host already encodes every connection in Constrained Baseline, so the message changes nothing here. The viewer still sends it for hosts that encode Main.
+
 | Rule | Behaviour |
 |---|---|
 | Authentication | Required, like `clipboardSharing`. Unauthenticated, it is refused and the connection ends |

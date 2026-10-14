@@ -378,7 +378,9 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
         dataRateLimitBytes: Self.dataRateLimitBytes(averageBitRate: Self.averageBitRate(encodeWidth: 1920, encodeHeight: 1200)),
         dataRateLimitSeconds: 1.0,
         maxFrameDelayCount: 0,
-        profileLevel: .mainAutoLevel,
+        // The hardware encoder's Constrained Baseline (CAVLC) encodes large frames, key frames above
+        // all, about twice as fast as Main (CABAC), for a few tenths of a dB at the same bit rate.
+        profileLevel: .constrainedBaselineAutoLevel,
         requiresHardwareAcceleration: true
     )
 
@@ -402,7 +404,7 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
             dataRateLimitBytes: Self.dataRateLimitBytes(averageBitRate: bitRate),
             dataRateLimitSeconds: 1.0,
             maxFrameDelayCount: 0,
-            profileLevel: .mainAutoLevel,
+            profileLevel: .constrainedBaselineAutoLevel,
             requiresHardwareAcceleration: true
         )
     }()

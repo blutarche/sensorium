@@ -500,7 +500,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         expect(VideoEncoderConfiguration.remoteDefault.dataRateLimitBytes == 15_000_000, "encoder caps burst output with an explicit data-rate limit")
         expect(VideoEncoderConfiguration.remoteDefault.dataRateLimitSeconds == 1.0, "encoder's data-rate limit window is explicit")
         expect(VideoEncoderConfiguration.remoteDefault.maxFrameDelayCount == 0, "encoder disables frame buffering for interactive latency")
-        expect(VideoEncoderConfiguration.remoteDefault.profileLevel == .mainAutoLevel, "encoder selects an explicit profile/level")
+        expect(VideoEncoderConfiguration.remoteDefault.profileLevel == .constrainedBaselineAutoLevel, "encoder defaults to Constrained Baseline")
         expect(VideoEncoderConfiguration.remoteDefault.requiresHardwareAcceleration == true, "encoder requires hardware acceleration instead of silently falling back to software")
         let controller = HostSessionController(sessions: surfaceZeroOnly(session), keyConfinement: .unconfined, privateDesktopOffered: { true })
         let ready = try! controller.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
