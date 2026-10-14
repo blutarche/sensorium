@@ -8,6 +8,11 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- The disk images open to a designed window: drag the app onto
+  Applications.
+
 ## [0.5.0] - 2026-10-11
 
 ### Added

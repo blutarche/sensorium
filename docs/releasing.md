@@ -4,6 +4,26 @@ Releases are built on the maintainer's own machine, which runs macOS, not in CI.
 
 Each disk image holds one app and a link to Applications. The disk image itself is not signed. The app inside it is the signed app, and it is the same app as the one in the matching zip.
 
+## The disk image window
+
+A disk image opens to a fixed window with no toolbar or sidebar. The app sits on the left, Applications on the right, and a background picture shows the drag from one to the other. Each app has its own picture. Both draw the same two machines: a laptop for the viewer and a desk display for the host. Only their order differs. The app's own machine stands in front. The volume uses the app's icon.
+
+| File on the volume | Made by | Holds |
+| --- | --- | --- |
+| `.background/background.tiff` | `Scripts/make-dmg-background.swift viewer` or `host`, then `tiffutil` | The app's picture, at 1x and 2x |
+| `.DS_Store` | `Scripts/make-dmg-layout.swift` | Window size, icon size, icon positions, a link to the picture |
+| `.VolumeIcon.icns` | Copied from the app | The volume icon |
+
+The picture and the icon file are hidden in Finder.
+
+Do not arrange the window in Finder. Finder's `.DS_Store` records details of the build machine:
+
+- the path of the disk image file
+- the name of the startup disk
+- temporary folder paths and volume identifiers
+
+Every download would carry them. The script writes the file itself instead. Its link to the picture names only the volume and a path inside it. The release script refuses a `.DS_Store` that names a path of the build machine.
+
 ## What you need
 
 | Item | Where | Back it up |
@@ -41,6 +61,8 @@ The script refuses to continue when:
 - a zip does not unpack to one app, or holds a link that points outside it
 - an app fails `--update-self-test`
 - a disk image does not attach, or shows anything but the app and a link named `Applications` that points to `/Applications`
+- an app has no icon for its disk image
+- a disk image lacks its window file, its picture or its volume icon, or its window file names a path of the build machine
 - an app in a disk image fails the same checks as its zip
 - an app in a disk image is not the same build as the app in its zip, by code directory hash
 

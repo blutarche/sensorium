@@ -33,6 +33,8 @@ STUBS="$WORK/stubs"
 mkdir -p "$REPO/Scripts" "$STUBS"
 cp "$RELEASE" "$REPO/Scripts/release-macos.sh"
 cp "$ROOT/Scripts/sign-update.swift" "$REPO/Scripts/sign-update.swift"
+cp "$ROOT/Scripts/make-dmg-background.swift" "$REPO/Scripts/make-dmg-background.swift"
+cp "$ROOT/Scripts/make-dmg-layout.swift" "$REPO/Scripts/make-dmg-layout.swift"
 printf '9.8.7\n' > "$REPO/VERSION"
 printf '// swift-tools-version: 6.0\nlet package = Package(\n    name: "x",\n    platforms: [.macOS(.v13)],\n)\n' > "$REPO/Package.swift"
 
@@ -74,6 +76,8 @@ cc -arch arm64 -o "$WORK/arm64" "$WORK/main.c"
 
 # Stand-in for package-apps.sh. STUB_KIT_VERSION overrides the version written
 # into the plists; STUB_PACKAGER_LOG records the ad hoc setting it was given.
+# The viewer names its icon without the extension, as the real packager does,
+# and the host with it; STUB_NO_ICON=1 leaves the viewer without one.
 cat > "$REPO/Scripts/package-apps.sh" <<STUB
 #!/bin/sh
 set -eu
@@ -83,9 +87,10 @@ V="\${STUB_KIT_VERSION:-\$(tr -d '[:space:]' < "\$ROOT/VERSION")}"
 KIT="\$ROOT/Artifacts/Sensorium"
 rm -rf "\$KIT"
 make_app() {
-  APP="\$KIT/\$1.app"; EXE="\$2"; ID="\$3"; BIN="\$4"; MIN="\$5"
-  mkdir -p "\$APP/Contents/MacOS"
+  APP="\$KIT/\$1.app"; EXE="\$2"; ID="\$3"; BIN="\$4"; MIN="\$5"; ICON="\$6"
+  mkdir -p "\$APP/Contents/MacOS" "\$APP/Contents/Resources"
   cp "\$BIN" "\$APP/Contents/MacOS/\$EXE"
+  [ -z "\$ICON" ] || printf 'stub icon of %s\n' "\$1" > "\$APP/Contents/Resources/\${ICON%.icns}.icns"
   cat > "\$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -94,12 +99,15 @@ make_app() {
 <key>CFBundleIdentifier</key><string>\$ID</string>
 <key>CFBundleShortVersionString</key><string>\$V</string>
 \${MIN:+<key>LSMinimumSystemVersion</key><string>\$MIN</string>}
+\${ICON:+<key>CFBundleIconFile</key><string>\$ICON</string>}
 </dict></plist>
 PLIST
   codesign --force --sign - "\$APP" >/dev/null 2>&1
 }
-make_app Sensorium Sensorium com.sensorium.viewer "$WORK/universal" "\${STUB_MIN_OS:-}"
-make_app "Sensorium Host" SensoriumHost com.sensorium.host "$WORK/arm64" "\${STUB_HOST_MIN_OS:-\${STUB_MIN_OS:-}}"
+VIEWER_ICON=Sensorium
+[ "\${STUB_NO_ICON:-0}" = 1 ] && VIEWER_ICON=
+make_app Sensorium Sensorium com.sensorium.viewer "$WORK/universal" "\${STUB_MIN_OS:-}" "\$VIEWER_ICON"
+make_app "Sensorium Host" SensoriumHost com.sensorium.host "$WORK/arm64" "\${STUB_HOST_MIN_OS:-\${STUB_MIN_OS:-}}" SensoriumHost.icns
 if [ -n "\${STUB_OUTSIDE_LINK:-}" ]; then
   mkdir -p "\$KIT/Sensorium.app/Contents/Resources"
   ln -s /etc "\$KIT/Sensorium.app/Contents/Resources/escape"
@@ -185,9 +193,18 @@ for zip in Sensorium-9.8.7.zip Sensorium-Host-9.8.7.zip; do
 done
 [ -d "$WORK/unz-Sensorium-9.8.7.zip/Sensorium.app" ] || fail "viewer zip should hold Sensorium.app"
 [ -d "$WORK/unz-Sensorium-Host-9.8.7.zip/Sensorium Host.app" ] || fail "host zip should hold Sensorium Host.app"
-# Each disk image holds the app and a link to /Applications, nothing else.
+# Each disk image shows the app and a link to /Applications, nothing else,
+# in the window the background script lays out: the picture drawn for its
+# app's role, its icon positions and the app's icon on the volume. Its
+# .DS_Store names nothing of the machine that built it.
+for role in viewer host; do
+  swift "$ROOT/Scripts/make-dmg-background.swift" "$role" "$WORK/art-$role" >/dev/null
+  (cd "$WORK/art-$role" && tiffutil -cathidpicheck background.png background@2x.png -out background.tiff >/dev/null 2>&1) ||
+    fail "the $role pictures should join"
+done
+layout_value() { plutil -extract "$1" raw -o - "$WORK/art-viewer/layout.json"; }
 check_image() {
-  DMG="$1"; APP_NAME="$2"
+  DMG="$1"; APP_NAME="$2"; ICON="$3"; ROLE="$4"
   MNT="$WORK/mnt-$DMG"
   mkdir "$MNT"
   MOUNTS="$MOUNTS $MNT"
@@ -197,10 +214,40 @@ check_image() {
   [ -L "$MNT/Applications" ] || fail "$DMG should hold an Applications link"
   [ "$(readlink "$MNT/Applications")" = "/Applications" ] || fail "$DMG Applications link should point to /Applications"
   [ "$(plutil -extract CFBundleShortVersionString raw -o - "$MNT/$APP_NAME/Contents/Info.plist")" = "9.8.7" ] || fail "$DMG app version should be 9.8.7"
+  for item in .DS_Store .background/background.tiff .VolumeIcon.icns; do
+    [ -f "$MNT/$item" ] && [ ! -L "$MNT/$item" ] || fail "$DMG should hold $item as a regular file"
+  done
+  for item in .background .VolumeIcon.icns; do
+    [ "$(( $(stat -f %f "$MNT/$item") & 0x8000 ))" != 0 ] || fail "$DMG should hide $item from Finder"
+  done
+  cmp -s "$MNT/.background/background.tiff" "$WORK/art-$ROLE/background.tiff" || fail "$DMG should show the $ROLE picture"
+  cp "$MNT/.background/background.tiff" "$WORK/shown-$ROLE.tiff"
+  cmp -s "$MNT/.VolumeIcon.icns" "$MNT/$APP_NAME/Contents/Resources/$ICON" || fail "$DMG volume icon should be the app's icon"
+  FLAGS="$(xattr -px com.apple.FinderInfo "$MNT" 2>/dev/null | tr -d ' \n' | cut -c17-18)"
+  [ -n "$FLAGS" ] && [ "$(( 0x$FLAGS & 0x04 ))" != 0 ] || fail "$DMG volume should use its custom icon"
+  swift "$ROOT/Scripts/make-dmg-layout.swift" dump "$MNT/.DS_Store" > "$WORK/dump" 2>&1 || fail "$DMG .DS_Store should parse"
+  grep -qxF "$APP_NAME Iloc $(layout_value appX),$(layout_value appY)" "$WORK/dump" ||
+    fail "$DMG should place $APP_NAME where the layout puts it"
+  grep -qxF "Applications Iloc $(layout_value applicationsX),$(layout_value applicationsY)" "$WORK/dump" ||
+    fail "$DMG should place Applications where the layout puts it"
+  grep '^\. icvp ' "$WORK/dump" | grep -qF ' backgroundImageAlias=/.background/background.tiff' ||
+    fail "$DMG background should point at .background/background.tiff"
+  grep '^\. icvp ' "$WORK/dump" | grep -qF " iconSize=$(layout_value iconSize).0" || fail "$DMG icon size should come from the layout"
+  grep '^\. bwsp ' "$WORK/dump" | grep -qF "WindowBounds={{160, 160}, {$(layout_value windowWidth), $(( $(layout_value windowHeight) + 28 ))}}" ||
+    fail "$DMG window should be the layout size"
+  python3 -I - "$MNT/.DS_Store" "$WORK" "${TMPDIR:-/tmp}" "sensorium-release" "$HOME" "/Users/" "/private/" ".dmg" <<'PY' || fail "$DMG .DS_Store names a path of the machine that built it"
+import sys
+data = open(sys.argv[1], 'rb').read()
+found = [s for s in sys.argv[2:] if any(s.encode(e) in data for e in ('utf-8', 'utf-16-be', 'utf-16-le'))]
+if found:
+    print('found: ' + ', '.join(found), file=sys.stderr)
+sys.exit(1 if found else 0)
+PY
   detach_volume "$MNT" || fail "$DMG should detach"
 }
-check_image Sensorium-9.8.7.dmg "Sensorium.app"
-check_image Sensorium-Host-9.8.7.dmg "Sensorium Host.app"
+check_image Sensorium-9.8.7.dmg "Sensorium.app" Sensorium.icns viewer
+check_image Sensorium-Host-9.8.7.dmg "Sensorium Host.app" SensoriumHost.icns host
+cmp -s "$WORK/shown-viewer.tiff" "$WORK/shown-host.tiff" && fail "the viewer and host disk images should show different pictures"
 [ "$(wc -l < "$REL/SHA256SUMS" | tr -d ' ')" = "4" ] || fail "SHA256SUMS should list four files"
 (cd "$REL" && shasum -a 256 -c SHA256SUMS >/dev/null) || fail "SHA256SUMS should verify from inside the release folder"
 grep -q '/' "$REL/SHA256SUMS" && fail "SHA256SUMS should list file names only"
@@ -238,6 +285,10 @@ swift "$SIGN" verify "$PUB" "$WORK/tampered.json" "$MANIFEST.sig" 2>/dev/null &&
 grep -q '"minimumMacOS": "14.2"' "$MANIFEST" || fail "minimumMacOS should come from the apps' Info.plist"
 (STUB_MIN_OS=14.2 STUB_HOST_MIN_OS=13.0 run_release) && fail "apps that disagree on the minimum macOS must be refused"
 grep -qF "minimum" "$WORK/out" || fail "minimum macOS disagreement should be named"
+
+# An app without an icon is refused, because its disk image would show none.
+(STUB_NO_ICON=1 run_release) && fail "an app without an icon must be refused"
+grep -qF "icon" "$WORK/out" || fail "missing icon refusal should name the icon"
 
 # A symbolic link that points outside an app is refused.
 (STUB_OUTSIDE_LINK=1 run_release) && fail "a symlink pointing outside the app must be refused"
@@ -296,4 +347,4 @@ grep '^release upload' "$WORK/gh.log" | sed -n 2p | grep -q '\.zip\|\.dmg' && fa
 
 run_release --bogus && fail "unknown arguments must be refused"
 
-printf 'PASS: release zips, disk images, manifest, signature, checks and upload gate\n'
+printf 'PASS: release zips, disk images and their window, manifest, signature, checks and upload gate\n'
