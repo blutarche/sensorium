@@ -28,6 +28,12 @@ once it reaches 1.0.
   "External Display", with no resolution choices. Connecting a monitor
   ends the session, and macOS brings the placeholder back once the host
   lets that screen go.
+- The host now encodes large pictures faster while the screen moves. It
+  uses the H.264 Constrained Baseline profile for every stream instead of
+  Main. In a test with fast-scrolling text at 3584x2016 pixels, the
+  slowest frames took 50 milliseconds instead of 84, and the key frame
+  sent once a second during motion took under half as long. Detail at the
+  same bit rate is very slightly lower.
 - When the host cannot keep up with the full picture, it now keeps the
   picture sharp and lowers the frame rate first, from 60 to 45 to 30
   frames a second, so text stays easy to read. The picture gets smaller
