@@ -4,7 +4,7 @@ import Foundation
 public enum ViewerRelease {
     /// Kept equal to the repository's `VERSION` file by a runner test; the
     /// Linux binary has no bundle to read a version from at run time.
-    public static let version = "0.5.0"
+    public static let version = "0.5.1"
 
     public static let repositoryURL = "https://github.com/blutarche/sensorium"
 

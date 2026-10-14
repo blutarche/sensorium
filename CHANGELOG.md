@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-15
+
 ### Added
 
 - The disk images open to a designed window: drag the app onto
@@ -396,6 +398,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.1]: https://github.com/blutarche/sensorium/releases/tag/v0.5.1
 [0.5.0]: https://github.com/blutarche/sensorium/releases/tag/v0.5.0
 [0.4.3]: https://github.com/blutarche/sensorium/releases/tag/v0.4.3
 [0.4.2]: https://github.com/blutarche/sensorium/releases/tag/v0.4.2
