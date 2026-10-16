@@ -59,6 +59,7 @@ The script refuses to continue when:
 
 - the key file is missing or readable by others
 - the key does not match the public key compiled into the apps
+- the unit tests fail. The script runs `Scripts/run-unit-tests.sh` before it builds anything, with or without `--upload`. Continuous integration skips the tests that open windows, so this run is the one that covers them.
 - either app is signed with a certificate other than the pinned release certificate
 - a zip does not unpack to one app, or holds a link that points outside it
 - a file in an app names a folder of the machine that built it

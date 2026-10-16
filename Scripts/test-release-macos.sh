@@ -83,6 +83,7 @@ cat > "$REPO/Scripts/package-apps.sh" <<STUB
 set -eu
 ROOT="\$(CDPATH= cd -- "\$(dirname -- "\$0")/.." && pwd)"
 printf '%s\n' "\${SENSORIUM_ALLOW_ADHOC-unset}" > "$WORK/packager-adhoc"
+printf 'package\n' >> "$WORK/steps.log"
 V="\${STUB_KIT_VERSION:-\$(tr -d '[:space:]' < "\$ROOT/VERSION")}"
 KIT="\$ROOT/Artifacts/Sensorium"
 rm -rf "\$KIT"
@@ -119,6 +120,15 @@ if [ -n "\${STUB_BUILD_PATH:-}" ]; then
 fi
 STUB
 chmod +x "$REPO/Scripts/package-apps.sh" "$REPO/Scripts/release-macos.sh"
+# Stand-in for run-unit-tests.sh, which would build and run the whole suite.
+# STUB_TESTS_RC is its exit code. Both stubs append to one log, so the order
+# they ran in shows.
+cat > "$REPO/Scripts/run-unit-tests.sh" <<STUB
+#!/bin/sh
+printf 'tests\n' >> "$WORK/steps.log"
+exit "\${STUB_TESTS_RC:-0}"
+STUB
+chmod +x "$REPO/Scripts/run-unit-tests.sh"
 
 cat > "$STUBS/gh" <<STUB
 #!/bin/sh
@@ -179,6 +189,21 @@ SH
   fail "apps whose x86_64 slices differ must be refused"
 grep -qF "x86_64 slice" "$WORK/out" || fail "slice refusal should name the architecture"
 grep -qF "first.zip" "$WORK/out" && grep -qF "second.dmg" "$WORK/out" || fail "slice refusal should name both files"
+
+# The full unit suite runs first. A failing suite stops the release before
+# anything is built, with or without --upload.
+rm -f "$WORK/steps.log" "$WORK/gh.log"
+(STUB_TESTS_RC=1 run_release) && fail "a failing unit suite must stop the release"
+grep -qF "unit tests" "$WORK/out" || fail "unit suite refusal should be named"
+[ ! -e "$WORK/steps.log" ] || [ "$(cat "$WORK/steps.log")" = "tests" ] || fail "nothing may be built when the unit suite fails"
+rm -f "$WORK/steps.log"
+(STUB_TESTS_RC=1 run_release --upload) && fail "a failing unit suite must stop an upload release"
+[ "$(cat "$WORK/steps.log")" = "tests" ] || fail "nothing may be built when the unit suite fails with --upload"
+[ ! -e "$WORK/gh.log" ] || ! grep -q 'release upload' "$WORK/gh.log" || fail "nothing may be uploaded when the unit suite fails"
+rm -f "$WORK/steps.log" "$WORK/gh.log"
+run_release || fail "release should succeed when the unit suite passes"
+[ "$(tr '\n' ' ' < "$WORK/steps.log")" = "tests package " ] || fail "the unit suite must run once, before the build"
+rm -f "$WORK/gh.log" "$WORK/selftest.log"
 
 # Per-call variables are set inside a subshell so they cannot leak into later
 # runs; some shells keep a prefix assignment on a function call.

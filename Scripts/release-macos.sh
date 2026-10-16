@@ -1,6 +1,7 @@
 #!/bin/sh
-# Builds a signed release of both macOS apps and checks each zip and disk image
-# the way a downloader sees it. Produces, in Artifacts/release:
+# Runs the full unit suite, then builds a signed release of both macOS apps and
+# checks each zip and disk image the way a downloader sees it. Produces, in
+# Artifacts/release:
 #   Sensorium-<version>.zip, Sensorium-Host-<version>.zip,
 #   Sensorium-<version>.dmg, Sensorium-Host-<version>.dmg, SHA256SUMS,
 #   sensorium-update.json and sensorium-update.json.sig
@@ -61,6 +62,10 @@ if [ "$UPLOAD" = 1 ]; then
   gh release view "$TAG" >/dev/null 2>&1 ||
     die "GitHub release $TAG does not exist. Create it first, then rerun with --upload."
 fi
+
+# Continuous integration skips the runners that open windows, so the full suite
+# is run here, where there is a GUI session, before anything is signed or built.
+"$ROOT/Scripts/run-unit-tests.sh" || die "the unit tests failed, so no release was built. Fix them, then rerun."
 
 # A release must carry a real certificate, so the packager may not fall back
 # to ad hoc signing whatever the caller's environment says.
