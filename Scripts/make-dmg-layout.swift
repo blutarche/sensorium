@@ -21,6 +21,10 @@
 // date, and the picture's and its folder's catalog IDs, which survive
 // conversion to a compressed image. It writes no bookmark record.
 //
+// Given the same layout, names and volume contents, two builds write the same
+// bytes except for two fields of the alias: the creation dates of the volume
+// and of the picture, which are the times each build made them.
+//
 // `dump` prints one line per record, `<file name> <record> <value>`: item
 // positions as `x,y`, property lists as their keys in order as `key=value`,
 // and an alias as the volume path it names followed by the path inside the
