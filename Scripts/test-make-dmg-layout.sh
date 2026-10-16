@@ -76,6 +76,14 @@ swift "$LAYOUT" write "$MNT" "Layout Test" Example.app "$WORK/layout.json" > "$W
   fail "write should succeed"
 [ -f "$MNT/.DS_Store" ] || fail "write should create .DS_Store at the volume root"
 
+# The same inputs on the same volume give the same bytes in every process.
+cp "$MNT/.DS_Store" "$WORK/first.DS_Store"
+for run in 2 3 4 5 6; do
+  env -u SWIFT_DETERMINISTIC_HASHING swift "$LAYOUT" write "$MNT" "Layout Test" Example.app "$WORK/layout.json" > "$WORK/out" 2>&1 ||
+    fail "write should succeed again"
+  cmp -s "$WORK/first.DS_Store" "$MNT/.DS_Store" || fail "write run $run should give the same bytes as the first run"
+done
+
 swift "$LAYOUT" dump "$MNT/.DS_Store" > "$WORK/out" 2>&1 || fail "dump should read the written file"
 line() { grep "^$1 $2 " "$WORK/out" || fail "dump should list a $2 record for $1"; }
 has() { printf '%s\n' "$1" | grep -qF " $2" || fail "$3"; }

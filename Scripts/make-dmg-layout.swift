@@ -209,8 +209,14 @@ struct Record {
     }
 }
 
+// A Swift dictionary's order changes from one process to the next, and the
+// encoder writes keys in that order. An NSDictionary filled in sorted order
+// has the same order in every process, so the same inputs give the same
+// bytes.
 func binaryPlist(_ object: [String: Any]) -> [UInt8] {
-    guard let data = try? PropertyListSerialization.data(fromPropertyList: object, format: .binary, options: 0) else {
+    let keys = object.keys.sorted()
+    let ordered = NSDictionary(objects: keys.map { object[$0]! }, forKeys: keys as [NSString])
+    guard let data = try? PropertyListSerialization.data(fromPropertyList: ordered, format: .binary, options: 0) else {
         fail("cannot encode a property list")
     }
     return Array(data)
