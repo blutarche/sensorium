@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -54,10 +55,20 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     private let sessionKind: InputSessionKind
     private let source: CGEventSource
     private let postEvent: (CGEvent, CGEventTapLocation) -> Void
+    /// How far, in points, a press may land from the previous one and still
+    /// count as part of the same click run. macOS does not publish its own value.
+    private static let doubleClickTolerance: CGFloat = 4
+
     private let lockStateReader: any ScreenLockStateReading
     private let hostInjectedHIDActivity: any HostInjectedHIDActivity
+    private let doubleClickInterval: TimeInterval
+    private let now: () -> TimeInterval
     private var modifiers: CGEventFlags = []
     private var heldButton: CanvasPointerButton?
+    private var lastPress: (button: CanvasPointerButton, point: CGPoint, time: TimeInterval, count: Int64)?
+    /// The click count of the press that began the button hold in progress,
+    /// carried on its release and on every drag until then.
+    private var heldClickCount: Int64 = 1
     /// Where every relative-motion event is posted while captured. The
     /// system cursor never actually needs to move for the injected motion to
     /// be seen: `CGAssociateMouseAndMouseCursorPosition(false)` stops a
@@ -74,6 +85,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         sessionKind: InputSessionKind,
         lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
         hostInjectedHIDActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared,
+        doubleClickInterval: TimeInterval = NSEvent.doubleClickInterval,
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         postEvent: @escaping (CGEvent, CGEventTapLocation) -> Void = { event, tap in event.post(tap: tap) }
     ) throws {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
@@ -85,6 +98,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         self.lockStateReader = lockStateReader
         self.hostInjectedHIDActivity = hostInjectedHIDActivity
         self.postEvent = postEvent
+        self.doubleClickInterval = doubleClickInterval
+        self.now = now
     }
 
     public func inject(_ event: SensoriumInputEvent) throws {
@@ -98,6 +113,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
                 button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
                 at: point,
+                clickState: heldButton == nil ? nil : heldClickCount,
                 tap: tapLocation()
             )
         case let .pointerMovedRelative(deltaX, deltaY):
@@ -113,15 +129,20 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 at: anchor,
                 relativeDeltaX: deltaX,
                 relativeDeltaY: deltaY,
+                clickState: heldButton == nil ? nil : heldClickCount,
                 tap: tapLocation()
             )
         case let .pointerButton(button, isDown, x, y):
-            heldButton = isDown ? button : nil
             let point = try globalPoint(x: x, y: y)
+            if isDown {
+                heldClickCount = clickCount(forPressOf: button, at: point)
+            }
+            heldButton = isDown ? button : nil
             try post(
                 mouse: CoreGraphicsInputTranslation.buttonType(button, isDown: isDown),
                 button: CoreGraphicsInputTranslation.mouseButton(button),
                 at: point,
+                clickState: heldClickCount,
                 tap: tapLocation()
             )
         case let .scrolled(deltaX, deltaY, _, _, phase, momentumPhase):
@@ -231,6 +252,22 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         return CGPoint(x: bounds.origin.x + x, y: bounds.origin.y + y)
     }
 
+    /// A press continues the previous one's run of clicks when it is the same
+    /// button, inside the host's double-click interval, and close to where the
+    /// previous press landed.
+    private func clickCount(forPressOf button: CanvasPointerButton, at point: CGPoint) -> Int64 {
+        let time = now()
+        var count: Int64 = 1
+        if let last = lastPress,
+           last.button == button,
+           time - last.time <= doubleClickInterval,
+           hypot(point.x - last.point.x, point.y - last.point.y) <= Self.doubleClickTolerance {
+            count = last.count + 1
+        }
+        lastPress = (button, point, time, count)
+        return count
+    }
+
     /// `relativeDeltaX`/`relativeDeltaY` carry captured-mode motion on top of
     /// an otherwise ordinary move event: `point` never changes across a
     /// capture (see `capturedAnchor`), so it is the raw delta fields, not the
@@ -242,6 +279,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         at point: CGPoint,
         relativeDeltaX: Double? = nil,
         relativeDeltaY: Double? = nil,
+        clickState: Int64? = nil,
         tap: CGEventTapLocation
     ) throws {
         guard let event = CGEvent(
@@ -257,6 +295,9 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         }
         if let relativeDeltaY {
             event.setIntegerValueField(.mouseEventDeltaY, value: Int64(relativeDeltaY.rounded()))
+        }
+        if let clickState {
+            event.setIntegerValueField(.mouseEventClickState, value: clickState)
         }
         event.flags = modifiers
         send(event, tap: tap)
