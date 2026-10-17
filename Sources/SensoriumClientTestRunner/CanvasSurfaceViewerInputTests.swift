@@ -174,5 +174,17 @@ func testCanvasSurfaceViewerInputTests() async {
     let plainKeys = await keys(code: 0)
     expect(plainKeys == [true, false], "a plain key went down once and up once, got \(plainKeys)")
     print("PASS: a key-up AppKit withholds while Command is held still reaches the host exactly once")
+
+    // The viewer's own chords are Control-Option-Command plus the key, so the
+    // same keys with other modifiers belong to the host.
+    let all: NSEvent.ModifierFlags = [.control, .option, .command]
+    expect(ViewerChord.matches(flags: all, key: "L", expected: "l"), "Control-Option-Command-L is the viewer's chord")
+    expect(ViewerChord.matches(flags: all.union(.capsLock), key: "g", expected: "g"), "caps lock does not change the chord")
+    expect(!ViewerChord.matches(flags: [.command, .shift], key: "l", expected: "l"), "Command-Shift-L is the host's")
+    expect(!ViewerChord.matches(flags: all.union(.shift), key: "l", expected: "l"), "an extra Shift makes it another chord")
+    expect(!ViewerChord.matches(flags: [.control, .command], key: "l", expected: "l"), "Control-Command-L is the host's")
+    expect(!ViewerChord.matches(flags: all, key: "g", expected: "l"), "another key is not this chord")
+    expect(!ViewerChord.matches(flags: all, key: nil, expected: "l"), "no key is not this chord")
+    print("PASS: the viewer's own chords are exactly Control-Option-Command plus their key")
 }
 #endif

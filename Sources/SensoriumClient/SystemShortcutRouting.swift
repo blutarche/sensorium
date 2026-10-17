@@ -247,7 +247,7 @@ public struct SystemShortcutRouter: Sendable {
     /// Cmd-Z/X/C/V/A/Shift-Z would otherwise swallow the same keystrokes a
     /// session canvas already forwards as ordinary typing. Everything else
     /// keeps its existing `keyDown` path, so the viewer's own chords that
-    /// neither claims -- Cmd-Ctrl-F, the way out of fullscreen -- still
+    /// neither claims -- Control-Option-Command-F, the way out of fullscreen -- still
     /// reach the menu.
     public func claimsKeyEquivalent(
         chord: KeyChord,

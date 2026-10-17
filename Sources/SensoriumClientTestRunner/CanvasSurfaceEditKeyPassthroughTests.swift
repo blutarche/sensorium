@@ -68,12 +68,13 @@ func testCanvasSurfaceEditKeyPassthroughTests() async {
         "and forwards it to the host, got \(sent)"
     )
 
-    // Cmd-Shift-C (Share Clipboard) is a different chord and must not be
-    // claimed by this same path -- the menu item, not the canvas, owns it.
+    // Cmd-Shift-C is a different chord, and no menu item owns it: it is not
+    // an edit chord, so this path leaves it to the ordinary key path, which
+    // sends it to the host.
     let clipboardClaimed = surface.performKeyEquivalent(
         with: keyEquivalentEvent(keyCode: 8, command: true, shift: true)
     )
-    expect(!clipboardClaimed, "Cmd-Shift-C is left for its own menu item, not swept up as an edit chord")
+    expect(!clipboardClaimed, "Cmd-Shift-C is not swept up as an edit chord")
 
     print("PASS: the canvas claims the standard editing chords as key equivalents and forwards them to the host")
 }

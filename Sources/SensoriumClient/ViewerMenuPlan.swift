@@ -83,6 +83,12 @@ public struct ViewerMenuModifiers: OptionSet, Equatable, Sendable {
     public static let shift = ViewerMenuModifiers(rawValue: 1 << 1)
     public static let option = ViewerMenuModifiers(rawValue: 1 << 2)
     public static let control = ViewerMenuModifiers(rawValue: 1 << 3)
+
+    /// What every chord of the viewer's own carries, apart from Command-Q,
+    /// Command-H and the Edit menu. Plain Command, Command-Shift and
+    /// Command-Control chords belong to the host, so the viewer takes a
+    /// combination of its own that the host's shortcuts do not use.
+    public static let viewerChord: ViewerMenuModifiers = [.control, .option, .command]
 }
 
 public struct ViewerMenuItem: Equatable, Sendable {
@@ -361,7 +367,7 @@ public enum ViewerMenuPlan {
                     title: "Your Machines\u{2026}",
                     command: .showYourMachines,
                     keyEquivalent: "1",
-                    modifiers: [.command]
+                    modifiers: .viewerChord
                 ),
                 .separator,
                 ViewerMenuItem(title: "Hide \(appName)", command: .hide, keyEquivalent: "h", modifiers: [.command]),
@@ -388,7 +394,7 @@ public enum ViewerMenuPlan {
                     title: fullScreen.title,
                     command: .toggleFullScreen,
                     keyEquivalent: "f",
-                    modifiers: [.command, .control],
+                    modifiers: .viewerChord,
                     isEnabled: fullScreen.isEnabled
                 ),
                 .separator,
@@ -399,20 +405,20 @@ public enum ViewerMenuPlan {
                     title: "Session Diagnostics",
                     command: .toggleTelemetryOverlay,
                     keyEquivalent: "l",
-                    modifiers: [.command, .shift]
+                    modifiers: .viewerChord
                 ),
                 ViewerMenuItem(
                     title: pointerCaptureTitle(isCaptured: state.isPointerCaptured),
                     command: .togglePointerCapture,
                     keyEquivalent: "g",
-                    modifiers: [.command, .shift],
+                    modifiers: .viewerChord,
                     isSelected: state.isPointerCaptured
                 ),
                 ViewerMenuItem(
                     title: "Share Clipboard",
                     command: .toggleClipboardSharing,
                     keyEquivalent: "c",
-                    modifiers: [.command, .shift],
+                    modifiers: .viewerChord,
                     isSelected: state.isClipboardSharingEnabled
                 )
             ]),

@@ -62,7 +62,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     // NotificationCenter's own add/remove are thread-safe, and the tokens are
     // only ever removed, never inspected, so a nonisolated deinit is safe.
     nonisolated(unsafe) private var focusObservers: [NSObjectProtocol] = []
-    /// Unobtrusive by default: hidden until summoned with Cmd-Shift-L, and
+    /// Unobtrusive by default: hidden until summoned with Control-Option-Command-L, and
     /// never part of the remote-canvas input path -- this is thin AppKit
     /// glue over `SessionHUDPanel`, which owns every actual decision about
     /// what it shows and is verified without a window.
@@ -346,23 +346,23 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         // is untouched by it.
         telemetryToggleMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift],
-                  event.charactersIgnoringModifiers?.lowercased() == "l" else {
+                  event.window === self.window,
+                  ViewerChord.matches(flags: event.modifierFlags, key: event.charactersIgnoringModifiers, expected: "l") else {
                 return event
             }
             self.toggleTelemetryOverlay()
             return nil
         }
 
-        // Cmd-Shift-G ("grab"): explicit toggle for captured-pointer mode.
+        // Control-Option-Command-G ("grab"): explicit toggle for captured-pointer mode.
         // The escape gesture and losing focus (below) are the two
         // unconditional ways out. This chord and the View menu are the ways
         // in, and both go through `togglePointerCapture()` below so those two
         // exits cover either.
         pointerCaptureToggleMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
-                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift],
-                  event.charactersIgnoringModifiers?.lowercased() == "g" else {
+                  event.window === self.window,
+                  ViewerChord.matches(flags: event.modifierFlags, key: event.charactersIgnoringModifiers, expected: "g") else {
                 return event
             }
             self.togglePointerCapture()
@@ -752,7 +752,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         surfaceID == 0 ? session : SurfaceScopedInputSink(session: session, surfaceID: surfaceID)
     }
 
-    /// The one place the panel's visibility changes, so the Cmd-Shift-L
+    /// The one place the panel's visibility changes, so the Control-Option-Command-L
     /// monitor and the View menu are the same act rather than two.
     public func toggleTelemetryOverlay() {
         sessionHUD.isHidden.toggle()
@@ -770,7 +770,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// Renders whatever `SessionHUDPanel` decided; this method owns no
     /// staleness, threshold or wording logic of its own. Costs a few string
     /// writes while the panel is hidden — visibility is toggled only by the
-    /// user's own Cmd-Shift-L chord and the View menu item above, never by
+    /// user's own Control-Option-Command-L chord and the View menu item above, never by
     /// this call.
     public func updateSessionHUD(_ snapshot: SessionHUDSnapshot) {
         cachedRequestedStreamScale = snapshot.requestedStreamScale

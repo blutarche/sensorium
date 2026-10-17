@@ -22,4 +22,14 @@ extension CanvasModifierFlags {
         self = flags
     }
 }
+
+/// Whether a key event is one of the viewer's own chords: Control-Option-Command
+/// plus its key, see `ViewerMenuModifiers.viewerChord`. Anything else, such as
+/// Command-Shift-L, is ordinary input for the host.
+public enum ViewerChord {
+    public static func matches(flags: NSEvent.ModifierFlags, key: String?, expected: String) -> Bool {
+        CanvasModifierFlags(appKitFlags: flags) == [.control, .option, .command]
+            && key?.lowercased() == expected
+    }
+}
 #endif

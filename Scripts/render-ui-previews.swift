@@ -1755,7 +1755,7 @@ MainActor.assumeIsolated {
         ),
         (
             "viewer-hud-8-pointer-captured",
-            "captured-pointer mode (Cmd-Shift-G) — the panel names the exit gesture, which was otherwise invisible",
+            "captured-pointer mode (Control-Option-Command-G) — the panel names the exit gesture, which was otherwise invisible",
             SessionHUDSnapshot(
                 surfaceID: 0,
                 availability: .fresh(hostSample(appliedStreamScale: 2.0, sustainableScaleCeiling: nil)),

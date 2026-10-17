@@ -32,23 +32,23 @@ func testEditKeyPassthroughRoutingTests() {
         )
     }
 
-    // Cmd-Shift-C is Share Clipboard's own chord, a different combination
-    // from Cmd-C -- it must never be swept up by the edit-chord exemption.
+    // Cmd-Shift-C is a different combination from Cmd-C -- it must never be
+    // swept up by the edit-chord exemption.
     let shareClipboard = KeyChord(keyCode: 8, modifiers: [.command, .shift])
     expect(
         !router.claimsKeyEquivalent(chord: shareClipboard, viewer: focused, accessibilityGranted: false),
-        "Cmd-Shift-C (Share Clipboard) is not one of the edit chords the canvas pre-empts"
+        "Cmd-Shift-C is not one of the edit chords the canvas pre-empts"
     )
-    // Cmd-1 (Your Machines), Ctrl-Cmd-F (full screen), the strip toggle and
-    // the session-controls toggle are all reserved to their own menu items
-    // or chords, and none of them may be swallowed by this change either.
+    // Cmd-1, the strip toggle and the session-controls toggle are all
+    // reserved to their own chords, and none of them may be swallowed by this
+    // change either.
     expect(
         !router.claimsKeyEquivalent(
             chord: KeyChord(keyCode: 18, modifiers: [.command]),
             viewer: focused,
             accessibilityGranted: false
         ),
-        "Cmd-1 (Your Machines) is unaffected"
+        "Cmd-1 is unaffected"
     )
     expect(
         !router.claimsKeyEquivalent(

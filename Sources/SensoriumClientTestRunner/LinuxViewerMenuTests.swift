@@ -49,7 +49,8 @@ func testLinuxViewerMenuAcceleratorTests() {
         ("z", [.command, .shift], "<Shift><Control>z"),
         ("l", [.command, .shift], "<Shift><Control>l"),
         ("h", [.command, .option], "<Alt><Control>h"),
-        ("f", [.command, .control], "<Control><Super>f")
+        ("f", [.command, .control], "<Control><Super>f"),
+        ("f", [.control, .option, .command], "<Alt><Control><Super>f")
     ]
     for (key, modifiers, accel) in cases {
         expect(
@@ -74,11 +75,16 @@ func testLinuxSessionMenuChordsTests() {
     // Carbon key codes, which is what the Linux key path hands on.
     let one: UInt16 = 18, q: UInt16 = 12, h: UInt16 = 4, c: UInt16 = 8, f: UInt16 = 3, l: UInt16 = 37, g: UInt16 = 5
     let cases: [(SystemShortcutMode, UInt16, String, CanvasModifierFlags, ViewerMenuCommand?, String)] = [
-        (.remoteWhenFocused, one, "1", [.command], .showYourMachines, "Super-1 shows Your Machines"),
-        (.remoteWhenFocused, f, "f", [.control, .command], .toggleFullScreen, "Ctrl-Super-F toggles full screen"),
-        (.remoteWhenFocused, l, "l", [.command, .shift], .toggleTelemetryOverlay, "Super-Shift-L shows Session Diagnostics"),
-        (.remoteWhenFocused, g, "g", [.command, .shift], .togglePointerCapture, "Super-Shift-G captures the pointer"),
-        (.remoteWhenFocused, c, "c", [.command, .shift], .toggleClipboardSharing, "Super-Shift-C toggles clipboard sharing"),
+        (.remoteWhenFocused, one, "1", [.control, .option, .command], .showYourMachines, "Ctrl-Alt-Super-1 shows Your Machines"),
+        (.remoteWhenFocused, f, "f", [.control, .option, .command], .toggleFullScreen, "Ctrl-Alt-Super-F toggles full screen"),
+        (.remoteWhenFocused, l, "l", [.control, .option, .command], .toggleTelemetryOverlay, "Ctrl-Alt-Super-L shows Session Diagnostics"),
+        (.remoteWhenFocused, g, "g", [.control, .option, .command], .togglePointerCapture, "Ctrl-Alt-Super-G captures the pointer"),
+        (.remoteWhenFocused, c, "c", [.control, .option, .command], .toggleClipboardSharing, "Ctrl-Alt-Super-C toggles clipboard sharing"),
+        (.remoteWhenFocused, one, "1", [.command], nil, "Super-1 reaches the host"),
+        (.remoteWhenFocused, f, "f", [.control, .command], nil, "Ctrl-Super-F reaches the host"),
+        (.remoteWhenFocused, l, "l", [.command, .shift], nil, "Super-Shift-L reaches the host"),
+        (.remoteWhenFocused, g, "g", [.command, .shift], nil, "Super-Shift-G reaches the host"),
+        (.remoteWhenFocused, c, "c", [.command, .shift], nil, "Super-Shift-C reaches the host"),
         (.remoteWhenFocused, q, "q", [.command], nil, "Super-Q reaches the host, as a forwarded Cmd-Q does"),
         (.remoteWhenFocused, h, "h", [.command], nil, "Super-H reaches the host, as a forwarded Cmd-H does"),
         (.remoteWhenFocused, c, "c", [.command], nil, "Super-C reaches the host"),
@@ -141,10 +147,13 @@ func testWaylandKeyPathMenuChordsTests() {
     )
     let superKey = FakeKeyTranslator(modifiers: [.command])
     let control = FakeKeyTranslator(modifiers: [.control])
-    let down = WaylandKeyPath.destination(evdev: 2, isDown: true, keyboard: superKey, menu: menu)
-    expect(down == .menuCommand(.showYourMachines, isDown: true), "Super-1 goes to the menu, got \(down)")
-    let up = WaylandKeyPath.destination(evdev: 2, isDown: false, keyboard: superKey, menu: menu)
+    let viewerChord = FakeKeyTranslator(modifiers: [.control, .option, .command])
+    let down = WaylandKeyPath.destination(evdev: 2, isDown: true, keyboard: viewerChord, menu: menu)
+    expect(down == .menuCommand(.showYourMachines, isDown: true), "Ctrl-Alt-Super-1 goes to the menu, got \(down)")
+    let up = WaylandKeyPath.destination(evdev: 2, isDown: false, keyboard: viewerChord, menu: menu)
     expect(up == .menuCommand(.showYourMachines, isDown: false), "and so does its release, got \(up)")
+    let superOne = WaylandKeyPath.destination(evdev: 2, isDown: true, keyboard: superKey, menu: menu)
+    expect(superOne == .canvas(.key(keyCode: 18, isDown: true, modifiers: [.command])), "Super-1 goes to the host, got \(superOne)")
     let controlOne = WaylandKeyPath.destination(evdev: 2, isDown: true, keyboard: control, menu: menu)
     expect(controlOne == .canvas(.key(keyCode: 18, isDown: true, modifiers: [.control])), "Ctrl-1 goes to the host, got \(controlOne)")
     let quit = WaylandKeyPath.destination(evdev: 16, isDown: true, keyboard: superKey, menu: menu)
@@ -208,7 +217,9 @@ func testLinuxViewerMenuChordLabelsTests() {
         ("1", [.command], .session, "Super+1"),
         ("q", [.command], .session, "Super+Q"),
         ("l", [.command, .shift], .session, "Shift+Super+L"),
-        ("f", [.command, .control], .session, "Ctrl+Super+F")
+        ("f", [.command, .control], .session, "Ctrl+Super+F"),
+        ("f", [.control, .option, .command], .session, "Ctrl+Alt+Super+F"),
+        ("1", [.control, .option, .command], .yourMachines, "Ctrl+Alt+Super+1")
     ]
     for (key, modifiers, style, label) in cases {
         let spelled = LinuxViewerMenu.chordLabel(keyEquivalent: key, modifiers: modifiers, style: style)

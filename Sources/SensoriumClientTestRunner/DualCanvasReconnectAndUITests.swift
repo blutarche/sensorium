@@ -796,16 +796,16 @@ func testDualCanvasReconnectAndUITests() async {
         }
 
         // The menu's own chords that no catalog entry reserves keep working:
-        // Cmd-Ctrl-F is how a user leaves fullscreen, which is itself one of
-        // the ways back to a local Cmd-Q.
+        // Control-Option-Command-F is how a user leaves fullscreen, which is
+        // itself one of the ways back to a local Cmd-Q.
         for mode in SystemShortcutMode.allCases {
             expect(
                 !SystemShortcutRouter(mode: mode).claimsKeyEquivalent(
-                    chord: KeyChord(keyCode: 3, modifiers: [.command, .control]),
+                    chord: KeyChord(keyCode: 3, modifiers: [.control, .option, .command]),
                     viewer: focusedFullscreen,
                     accessibilityGranted: true
                 ),
-                "Cmd-Ctrl-F stays the local fullscreen toggle in mode \(mode.flagValue)"
+                "Control-Option-Command-F stays the local fullscreen toggle in mode \(mode.flagValue)"
             )
         }
 
@@ -1853,8 +1853,8 @@ func testDualCanvasReconnectAndUITests() async {
         )
         expect(
             plannedItem(.showYourMachines)?.keyEquivalent == "1"
-                && plannedItem(.showYourMachines)?.modifiers == [.command],
-            "and puts it on Command-1, reachable at any time"
+                && plannedItem(.showYourMachines)?.modifiers == [.control, .option, .command],
+            "and puts it on Control-Option-Command-1, reachable at any time, leaving plain Command-1 to the host"
         )
         expect(
             !menuItems.contains { $0.title.contains("Settings") || $0.title.contains("Preferences") },
@@ -1862,13 +1862,13 @@ func testDualCanvasReconnectAndUITests() async {
         )
         expect(
             plannedItem(.toggleFullScreen)?.keyEquivalent == "f"
-                && plannedItem(.toggleFullScreen)?.modifiers == [.command, .control],
-            "fullscreen is offered on the standard Cmd-Ctrl-F"
+                && plannedItem(.toggleFullScreen)?.modifiers == [.control, .option, .command],
+            "fullscreen is offered on Control-Option-Command-F"
         )
         expect(
             plannedItem(.toggleTelemetryOverlay)?.keyEquivalent == "l"
-                && plannedItem(.toggleTelemetryOverlay)?.modifiers == [.command, .shift],
-            "the menu states the telemetry overlay's real chord, Cmd-Shift-L, which is how anyone discovers it exists"
+                && plannedItem(.toggleTelemetryOverlay)?.modifiers == [.control, .option, .command],
+            "the menu states the telemetry overlay's real chord, Control-Option-Command-L, which is how anyone discovers it exists"
         )
         expect(
             plannedItem(.toggleTelemetryOverlay)?.title.contains("Diagnostics") == true,
@@ -1878,8 +1878,13 @@ func testDualCanvasReconnectAndUITests() async {
         )
         expect(
             plannedItem(.togglePointerCapture)?.keyEquivalent == "g"
-                && plannedItem(.togglePointerCapture)?.modifiers == [.command, .shift],
-            "the menu states captured-pointer mode's real chord, Cmd-Shift-G"
+                && plannedItem(.togglePointerCapture)?.modifiers == [.control, .option, .command],
+            "the menu states captured-pointer mode's real chord, Control-Option-Command-G"
+        )
+        expect(
+            plannedItem(.toggleClipboardSharing)?.keyEquivalent == "c"
+                && plannedItem(.toggleClipboardSharing)?.modifiers == [.control, .option, .command],
+            "Share Clipboard is on Control-Option-Command-C, leaving Command-Shift-C to the host"
         )
         let escapeHint = plannedItem(.escapeGestureHint)
         expect(

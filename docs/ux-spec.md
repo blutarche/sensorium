@@ -71,7 +71,7 @@ Nothing is dialled until a row is clicked. One click connects. Return connects t
 
 Each row also offers **Pair again**, **Rename…** and **Forget**, from a right-click or its **…** button. **Rename…** replaces the window's list with a short step: a field holding the current name, **Rename** and **Cancel**. Return renames and Escape cancels. The name is trimmed, loses any invisible or text-reversing characters, becomes one line, and is kept to 64 characters. An empty name puts back the one pairing gave the machine, which is its address when it was paired by address. The name is kept on this machine only and is never sent to the other one, and it shows everywhere the viewer names the machine. Pairing the machine again keeps it. Forgetting removes the entry and changes nothing on the machine it named. A row whose last host-screen attempt, tried through this machine's own **Start with** preference, failed to connect adds **Connect with a virtual display**, the one explicit retry on a virtual display.
 
-There is no Quit button here. Command-Q quits, and closing the window is the same choice. **Your machines…** (Command-1) opens it at any time.
+There is no Quit button here. Command-Q quits, and closing the window is the same choice. **Your machines…** (Control-Option-Command-1) opens it at any time.
 
 When a newer Sensorium has downloaded, the window shows one line beneath the list: *Sensorium `<version>` is ready.*, with **Restart Now** while no session window is open. Otherwise the update installs the next time Sensorium quits. The Sensorium menu offers **Check for Updates…** and **Check for Updates Automatically**, which is on by default. With it off, Sensorium asks for nothing until **Check for Updates…** is chosen.
 

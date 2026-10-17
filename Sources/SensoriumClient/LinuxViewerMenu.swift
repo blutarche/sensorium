@@ -18,9 +18,9 @@ public enum LinuxViewerMenu {
     }
 
     /// Where macOS types Command, Linux types Ctrl; Shift and Option stay as
-    /// they are, Option as Alt. The one macOS chord that also holds Control,
-    /// Enter Full Screen's, takes Super for it so it stays apart from the
-    /// Ctrl-for-Command chords.
+    /// they are, Option as Alt. A macOS chord that also holds Control, such as
+    /// the viewer's own Control-Option-Command chords, takes Super for it so
+    /// it stays apart from the Ctrl-for-Command chords.
     private static let modifierNames: [(ViewerMenuModifiers, String)] = [
         (.shift, "<Shift>"),
         (.option, "<Alt>"),
