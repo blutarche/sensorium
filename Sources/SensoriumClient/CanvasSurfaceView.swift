@@ -10,7 +10,10 @@ import SensoriumCore
 /// server connection.
 @MainActor
 public final class CanvasSurfaceView: NSView {
-    private let router: CanvasSurfaceEventRouter
+    /// Carries every event to the router one at a time, in the order AppKit
+    /// delivered it. The window controller sends its own events through the
+    /// same instance via `submit(_:)`.
+    private let inputPipeline: OrderedCanvasInputPipeline
     private let shortcutRouter: SystemShortcutRouter
     private let accessibilityGranted: Bool
     private let surfaceID: UInt32
@@ -98,7 +101,9 @@ public final class CanvasSurfaceView: NSView {
         accessibilityGranted: Bool,
         surfaceID: UInt32
     ) {
-        self.router = router
+        inputPipeline = OrderedCanvasInputPipeline { event in
+            await router.route(event)
+        }
         self.shortcutRouter = shortcutRouter
         self.accessibilityGranted = accessibilityGranted
         self.surfaceID = surfaceID
@@ -505,8 +510,14 @@ public final class CanvasSurfaceView: NSView {
     }
 
     private func forward(_ event: CanvasSurfaceEvent) {
-        let router = router
-        Task { await router.route(event) }
+        inputPipeline.submit(event)
+    }
+
+    /// Queues an event behind everything this view has already sent, for the
+    /// window controller's own events: a focus loss or forwarded shortcut must
+    /// not overtake the key-down it follows.
+    nonisolated func submit(_ event: CanvasSurfaceEvent) {
+        inputPipeline.submit(event)
     }
 }
 #endif

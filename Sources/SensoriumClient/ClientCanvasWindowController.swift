@@ -412,14 +412,14 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         // Cmd-Tab away with Cmd still down must not leave it stuck on the
         // host. The router decides what "released" means; this only reports
         // the two ways the viewer stops being the keyboard's target.
-        let router = router
+        let surfaceView = surfaceView
         focusObservers = [
             NotificationCenter.default.addObserver(
                 forName: NSWindow.didResignKeyNotification,
                 object: window,
                 queue: .main
             ) { _ in
-                Task { await router.route(.focusLost) }
+                surfaceView.submit(.focusLost)
                 Task { @MainActor [weak self] in
                     self?.surfaceView.endPointerCaptureIfNeeded()
                     // A window that is no longer key reports no more motion,
@@ -432,7 +432,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
                 object: nil,
                 queue: .main
             ) { _ in
-                Task { await router.route(.focusLost) }
+                surfaceView.submit(.focusLost)
                 Task { @MainActor [weak self] in
                     self?.surfaceView.endPointerCaptureIfNeeded()
                     self?.report(self?.focusReporter?.viewerDidResignActive())
@@ -668,8 +668,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// takes before this window's own key path could see them. Everything else
     /// still arrives through `CanvasSurfaceView`.
     public func forwardShortcut(keyCode: UInt16, isDown: Bool, modifiers: CanvasModifierFlags) {
-        let router = router
-        Task { await router.route(.key(keyCode: keyCode, isDown: isDown, modifiers: modifiers)) }
+        surfaceView.submit(.key(keyCode: keyCode, isDown: isDown, modifiers: modifiers))
     }
 
     /// One shortcut strip press: the whole chord, handed to the session's input
@@ -697,8 +696,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         } else {
             NSApplication.shared.hide(nil)
         }
-        let router = router
-        Task { await router.route(.focusLost) }
+        surfaceView.submit(.focusLost)
     }
 
     /// Exposes the hosted `NSWindow` for callers that need to drive AppKit's
