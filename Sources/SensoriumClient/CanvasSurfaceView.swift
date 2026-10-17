@@ -245,9 +245,12 @@ public final class CanvasSurfaceView: NSView {
         if isOverViewerChrome(location) {
             return
         }
+        // A line-based wheel reports lines, and the host applies the value as
+        // points. Trackpad and Magic Mouse deltas are already in points.
+        let unit = event.hasPreciseScrollingDeltas ? 1 : ScrollWheelUnits.pointsPerNotch
         forward(.scrolled(
-            deltaX: Double(event.scrollingDeltaX),
-            deltaY: Double(event.scrollingDeltaY),
+            deltaX: Double(event.scrollingDeltaX) * unit,
+            deltaY: Double(event.scrollingDeltaY) * unit,
             x: Double(location.x),
             y: Double(location.y),
             phase: CanvasScrollPhase(event.phase),

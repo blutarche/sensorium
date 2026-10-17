@@ -45,13 +45,6 @@ public enum WaylandScrollAxisSource: Equatable, Sendable {
 /// event instead would put two half-scrolls on the wire for one diagonal
 /// swipe.
 public struct WaylandScrollFrameAccumulator: Equatable, Sendable {
-    /// How far one wheel notch scrolls, in the points the host scrolls by.
-    /// libinput's wheel click is a notional 10 to 15 units rather than a
-    /// measured distance, and the host applies the value as pixels, so a
-    /// figure has to be chosen here: 10 is the low end of that range, which
-    /// keeps a notch close to one line of text rather than a jump.
-    public static let pointsPerWheelNotch: Double = 10
-
     private var source: WaylandScrollAxisSource?
     private var vertical: Double?
     private var horizontal: Double?
@@ -119,7 +112,7 @@ public struct WaylandScrollFrameAccumulator: Equatable, Sendable {
 
     private func delta(axisValue: Double?, value120: Int32?, source: WaylandScrollAxisSource?) -> Double {
         if source == .wheel, let value120 {
-            return Double(value120) / 120 * Self.pointsPerWheelNotch
+            return Double(value120) / 120 * ScrollWheelUnits.pointsPerNotch
         }
         return axisValue ?? 0
     }
