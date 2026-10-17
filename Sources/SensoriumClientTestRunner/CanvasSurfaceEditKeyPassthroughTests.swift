@@ -62,7 +62,7 @@ func testCanvasSurfaceEditKeyPassthroughTests() async {
     let sent = await sink.events
     expect(
         sent.contains { event in
-            guard case let .key(keyCode, isDown, modifiers) = event else { return false }
+            guard case let .key(keyCode, isDown, modifiers, _) = event else { return false }
             return keyCode == 8 && isDown && modifiers == [.command]
         },
         "and forwards it to the host, got \(sent)"

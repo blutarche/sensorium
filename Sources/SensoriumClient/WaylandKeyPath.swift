@@ -114,7 +114,7 @@ public enum WaylandKeyPath {
             return .dropped
         }
         let destination = destination(for: event)
-        guard case let .key(keyCode, _, modifiers) = event,
+        guard case let .key(keyCode, _, modifiers, _) = event,
               destination != .shortcutStrip(isDown: isDown),
               let menu, let key = keyboard.character(evdev: evdev),
               let command = LinuxViewerMenu.sessionCommand(
@@ -147,7 +147,7 @@ public enum WaylandKeyPath {
     /// The same decision for an event the window already has in hand: a key
     /// repeat the viewer itself generated, or a modifier change.
     public static func destination(for event: CanvasSurfaceEvent) -> WaylandKeyDestination {
-        guard case let .key(keyCode, isDown, modifiers) = event else {
+        guard case let .key(keyCode, isDown, modifiers, _) = event else {
             return .canvas(event)
         }
         let chord = KeyChord(keyCode: keyCode, modifiers: modifiers)

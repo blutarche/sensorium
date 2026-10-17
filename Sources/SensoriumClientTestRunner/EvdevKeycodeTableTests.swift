@@ -208,7 +208,7 @@ func testEvdevKeycodeTableTests() {
     let stripCarbonCodes = Set(
         ShortcutStripAction.allCases.flatMap { action in
             action.events().compactMap { event -> UInt16? in
-                guard case let .key(keyCode, _, _) = event else { return nil }
+                guard case let .key(keyCode, _, _, _) = event else { return nil }
                 return keyCode
             }
         }

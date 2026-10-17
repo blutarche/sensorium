@@ -62,10 +62,11 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
         100  // KEY_RIGHTALT
     ]
 
-    /// The keys whose state belongs to the machine the person is sitting at
-    /// and never travels: the two locks, and the Fn key, which has no evdev
-    /// code an ordinary keyboard even reports. Forwarding a lock would fight
-    /// the host's own lock state, since each machine keeps one of its own.
+    /// The keys that are never forwarded as keys: the two locks, and the Fn
+    /// key, which has no evdev code an ordinary keyboard even reports.
+    /// Forwarding a lock would toggle the host's own lock state, which each
+    /// machine keeps for itself. Caps Lock's state travels instead, as
+    /// `capsLock` on every key.
     private static let neverForwarded: Set<UInt32> = [
         58,  // KEY_CAPSLOCK
         69,  // KEY_NUMLOCK
@@ -130,8 +131,8 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
     }
 
     /// The four modifiers the wire carries, as this keyboard's state has
-    /// them now. Caps Lock, Num Lock and Fn are not among them: the protocol
-    /// has no flag for any of the three, and the far machine keeps its own.
+    /// them now. Caps Lock, Num Lock and Fn are not among them; Caps Lock
+    /// travels as `capsLock` instead.
     ///
     /// Option follows the two physical Alt keys as well as xkb's Alt
     /// modifier: on German, French, British and Nordic layouts Right Alt is
@@ -177,7 +178,7 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
             return nil
         }
         guard EvdevKeycodeTable.isModifierKey(evdev: code) else {
-            return .key(keyCode: keyCode, isDown: isDown, modifiers: modifiers)
+            return .key(keyCode: keyCode, isDown: isDown, modifiers: modifiers, capsLock: isCapsLockOn)
         }
         guard isDown != heldModifierCodes.contains(code) else { return nil }
         if isDown {
@@ -185,7 +186,16 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
         } else {
             heldModifierCodes.remove(code)
         }
-        return .modifiersChanged(keyCode: keyCode, modifiers: modifiers)
+        return .modifiersChanged(keyCode: keyCode, modifiers: modifiers, capsLock: isCapsLockOn)
+    }
+
+    /// Whether Caps Lock is on: xkb's Lock modifier locked, as the last key
+    /// or `wl_keyboard.modifiers` event left it. Lock only held down is not
+    /// Caps Lock on.
+    private var isCapsLockOn: Bool {
+        XKB_MOD_NAME_CAPS.withCString { modifier in
+            xkb_state_mod_name_is_active(handles.state, modifier, XKB_STATE_MODS_LOCKED) > 0
+        }
     }
 
     /// The keyboard left this surface. Nothing is held any more as far as

@@ -373,7 +373,8 @@ public final class CanvasSurfaceView: NSView {
     public override func flagsChanged(with event: NSEvent) {
         forward(.modifiersChanged(
             keyCode: event.keyCode,
-            modifiers: CanvasModifierFlags(appKitFlags: event.modifierFlags)
+            modifiers: CanvasModifierFlags(appKitFlags: event.modifierFlags),
+            capsLock: event.modifierFlags.contains(.capsLock)
         ))
     }
 
@@ -546,7 +547,8 @@ public final class CanvasSurfaceView: NSView {
         forward(.key(
             keyCode: event.keyCode,
             isDown: isDown,
-            modifiers: CanvasModifierFlags(appKitFlags: event.modifierFlags)
+            modifiers: CanvasModifierFlags(appKitFlags: event.modifierFlags),
+            capsLock: event.modifierFlags.contains(.capsLock)
         ))
     }
 

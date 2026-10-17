@@ -377,6 +377,10 @@ public final class HostSessionController {
     /// distinction nothing can act on would be state a later change has to
     /// keep correct for nothing.
     public private(set) var focusedSurface: CanvasSurfaceID?
+    /// The Caps Lock state this session's viewer last sent on a key, given
+    /// to every later key that does not carry one. `nil` while the viewer
+    /// has never sent it, so its keys stay exactly as sent.
+    private var viewerCapsLock: Bool?
     /// The profile this connection's viewer asked every encoder to use, or
     /// `nil` for the host's own default. Kept for the connection's whole
     /// life: it describes the viewer's decoder, which a `goodbye` does not
@@ -1621,7 +1625,7 @@ public final class HostSessionController {
             guard !requireAuthentication || isAuthenticated else {
                 throw HostSessionControllerError.authenticationRequired
             }
-            let event = Self.maskingUnknownModifiers(wireEvent)
+            let event = withViewerCapsLock(Self.maskingUnknownModifiers(wireEvent))
             // A host-screen surface is not part of CanvasSurfaceID's world
             // and carries no surfaceID of its own: one display per
             // session. So it is checked before -- and instead of --
@@ -1649,7 +1653,7 @@ public final class HostSessionController {
                 // turn it into the actual key-ups and mouse-up it names.
                 releaseHeldInput(on: surface)
             } else {
-                if case let .key(keyCode, isDown, _) = event,
+                if case let .key(keyCode, isDown, _, _) = event,
                    !mayPost(key: keyCode, isDown: isDown, on: surface) {
                     return nil
                 }
@@ -2038,6 +2042,7 @@ public final class HostSessionController {
             throw HostSessionControllerError.unexpectedMessage
         case let .goodbye(reason):
             focusedSurface = nil
+            viewerCapsLock = false
             for surface in CanvasSurfaceID.allCases {
                 releaseHeldInput(on: surface)
                 sessions[surface].stop(owner: canvasOwner)
@@ -2225,10 +2230,23 @@ public final class HostSessionController {
     /// reason to refuse the key: refusing a key-up would leave its key held
     /// down here.
     private static func maskingUnknownModifiers(_ event: SensoriumInputEvent) -> SensoriumInputEvent {
-        guard case let .key(keyCode, isDown, modifiers) = event else {
+        guard case let .key(keyCode, isDown, modifiers, capsLock) = event else {
             return event
         }
-        return .key(keyCode: keyCode, isDown: isDown, modifiers: modifiers.intersection(.all))
+        return .key(keyCode: keyCode, isDown: isDown, modifiers: modifiers.intersection(.all), capsLock: capsLock)
+    }
+
+    /// Records a key's Caps Lock state, or fills in the last one recorded
+    /// for a key that carries none.
+    private func withViewerCapsLock(_ event: SensoriumInputEvent) -> SensoriumInputEvent {
+        guard case let .key(keyCode, isDown, modifiers, capsLock) = event else {
+            return event
+        }
+        if let capsLock {
+            viewerCapsLock = capsLock
+            return event
+        }
+        return .key(keyCode: keyCode, isDown: isDown, modifiers: modifiers, capsLock: viewerCapsLock)
     }
 
     /// Starts `surface` at `configuration` and answers exactly as a
@@ -2349,7 +2367,7 @@ public final class HostSessionController {
             } else {
                 surfaces[surface].heldButtons[button] = nil
             }
-        case let .key(keyCode, isDown, _):
+        case let .key(keyCode, isDown, _, _):
             if isDown {
                 surfaces[surface].heldKeys.insert(keyCode)
             } else {
@@ -2444,7 +2462,7 @@ public final class HostSessionController {
             releaseHostScreenHeldInput()
             return false
         }
-        if case let .key(keyCode, isDown, _) = event, !mayPostHostScreen(key: keyCode, isDown: isDown) {
+        if case let .key(keyCode, isDown, _, _) = event, !mayPostHostScreen(key: keyCode, isDown: isDown) {
             return false
         }
         do {
@@ -2473,7 +2491,7 @@ public final class HostSessionController {
             } else {
                 hostScreenSurface?.heldButtons[button] = nil
             }
-        case let .key(keyCode, isDown, _):
+        case let .key(keyCode, isDown, _, _):
             if isDown {
                 hostScreenSurface?.heldKeys.insert(keyCode)
             } else {

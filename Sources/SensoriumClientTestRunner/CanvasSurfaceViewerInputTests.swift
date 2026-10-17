@@ -143,7 +143,7 @@ func testCanvasSurfaceViewerInputTests() async {
     func keys(code: UInt16) async -> [Bool] {
         await settle()
         return await sink.keys.compactMap { event in
-            guard case let .key(keyCode, isDown, _) = event, keyCode == code else { return nil }
+            guard case let .key(keyCode, isDown, _, _) = event, keyCode == code else { return nil }
             return isDown
         }
     }

@@ -726,7 +726,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
 
     private func sendShortcut(_ action: ShortcutStripAction) {
         for event in action.events() {
-            guard case let .key(keyCode, isDown, modifiers) = event else { continue }
+            guard case let .key(keyCode, isDown, modifiers, _) = event else { continue }
             forwardShortcut(keyCode: keyCode, isDown: isDown, modifiers: modifiers)
         }
     }

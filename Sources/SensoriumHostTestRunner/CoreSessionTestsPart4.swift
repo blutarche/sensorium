@@ -1066,7 +1066,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             let confinementTimeline = DiagnosticsRecorder()
             let confinementInjector = FakeInputInjector()
             confinementInjector.onInject = { event in
-                guard case let .key(keyCode, isDown, _) = event else {
+                guard case let .key(keyCode, isDown, _, _) = event else {
                     confinementTimeline.record("pointer")
                     return
                 }

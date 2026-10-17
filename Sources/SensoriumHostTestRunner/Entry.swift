@@ -16,13 +16,14 @@ import SensoriumHost
 ///
 /// - `runLifecycleAndGateTests` must run first, `expectRunLoopPumpCanDispatchQueuedWork`
 ///   explains why.
-/// - `runHostScreenPresenceWaitingTests` and `runHostScreenPresencePromptTests`
-///   must run last, after every group that ever suspends on a genuine
-///   wall-clock `Task.sleep`. Both put a real window on the window server, after
-///   which this runner's own async `main()` task is never seen finishing by the
-///   Swift concurrency runtime, so the next real `Task.sleep` anywhere in the
-///   process never resumes -- the process exits (code 0, no crash, no `FAIL`
-///   line) mid-sleep instead, silently discarding every group still to come.
+/// - `runHostCapsLockRealTextFieldTests`, `runHostScreenPresenceWaitingTests`
+///   and `runHostScreenPresencePromptTests` must run last, after every group
+///   that ever suspends on a genuine wall-clock `Task.sleep`. All three put a
+///   real window on the window server, after which this runner's own async
+///   `main()` task is never seen finishing by the Swift concurrency runtime,
+///   so the next real `Task.sleep` anywhere in the process never resumes --
+///   the process exits (code 0, no crash, no `FAIL` line) mid-sleep instead,
+///   silently discarding every group still to come.
 ///
 /// `HostRunnerCompletionGuard` below exists because that failure mode is
 /// exactly the shape a naive "did it exit non-zero" check cannot see.
@@ -146,6 +147,7 @@ struct SensoriumHostTestRunner {
             { await runHostStopIsFinalTests() },
             { await runHostViewerSilenceWatchdogTests() },
             { await runHostUndecodableControlMessageTests() },
+            { await runHostCapsLockTests() },
             { await runHostPingDisplayTests() },
             { await runHostOperatorStatusPingTests() },
             { runHostListenerRecoveryPolicyTests() },
@@ -169,6 +171,7 @@ struct SensoriumHostTestRunner {
             { runHostUpdateWindowTests() },
             { runHostUpdateMenuItemTests() },
             // Kept last -- see the file-level comment above.
+            { runHostCapsLockRealTextFieldTests() },
             { await runHostScreenPresenceWaitingTests() },
             { await runHostScreenPresencePromptTests() },
         ]

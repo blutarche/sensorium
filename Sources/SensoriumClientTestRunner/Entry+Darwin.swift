@@ -56,6 +56,7 @@ func runDarwinClientTests() async {
     testCanvasChromeClickPolicyTests()
     await testCanvasSurfaceChromeClickTests()
     await testCanvasSurfaceOtherButtonTests()
+    await testCanvasSurfaceCapsLockTests()
     await testCanvasSurfaceEditKeyPassthroughTests()
     await testCanvasSurfaceViewerInputTests()
     await testCanvasSurfaceInputOrderTests()

@@ -23,7 +23,9 @@ public enum CanvasSurfaceEvent: Equatable, Sendable {
         phase: CanvasScrollPhase?,
         momentumPhase: CanvasScrollMomentumPhase?
     )
-    case key(keyCode: UInt16, isDown: Bool, modifiers: CanvasModifierFlags)
+    /// `capsLock` is whether Caps Lock is on at this machine, as
+    /// `SensoriumInputEvent.key` carries it.
+    case key(keyCode: UInt16, isDown: Bool, modifiers: CanvasModifierFlags, capsLock: Bool? = nil)
     /// The view has hidden its cursor and switched to relative motion, or
     /// just given it back. Carries no coordinate of its own.
     case pointerCaptureChanged(isCaptured: Bool)
@@ -31,7 +33,7 @@ public enum CanvasSurfaceEvent: Equatable, Sendable {
     /// with no accompanying `keyDown`/`keyUp`. `modifiers` is the full flag
     /// state after the change; whether `keyCode` went down or up is derived
     /// by comparing it against the router's last known state.
-    case modifiersChanged(keyCode: UInt16, modifiers: CanvasModifierFlags)
+    case modifiersChanged(keyCode: UInt16, modifiers: CanvasModifierFlags, capsLock: Bool? = nil)
     /// The viewer window lost key status or the app deactivated.
     case focusLost
 }
@@ -122,16 +124,16 @@ public actor CanvasSurfaceEventRouter {
             )
         case let .pointerCaptureChanged(isCaptured):
             return await viewport.sendPointerCaptureChanged(isCaptured: isCaptured)
-        case let .key(keyCode, isDown, modifiers):
-            return await viewport.sendKey(keyCode: keyCode, isDown: isDown, modifiers: modifiers)
-        case let .modifiersChanged(keyCode, modifiers):
+        case let .key(keyCode, isDown, modifiers, capsLock):
+            return await viewport.sendKey(keyCode: keyCode, isDown: isDown, modifiers: modifiers, capsLock: capsLock)
+        case let .modifiersChanged(keyCode, modifiers, capsLock):
             let isDown = !heldModifierKeyCodes.contains(keyCode)
             if isDown {
                 heldModifierKeyCodes.insert(keyCode)
             } else {
                 heldModifierKeyCodes.remove(keyCode)
             }
-            return await viewport.sendKey(keyCode: keyCode, isDown: isDown, modifiers: modifiers)
+            return await viewport.sendKey(keyCode: keyCode, isDown: isDown, modifiers: modifiers, capsLock: capsLock)
         case .focusLost:
             // Otherwise a modifier still held at focus loss would be derived
             // as an up on the next transition for that keyCode, and the one

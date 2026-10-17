@@ -521,7 +521,11 @@ public enum SensoriumInputEvent: Equatable, Sendable {
         phase: CanvasScrollPhase?,
         momentumPhase: CanvasScrollMomentumPhase?
     )
-    case key(keyCode: UInt16, isDown: Bool, modifiers: CanvasModifierFlags)
+    /// `capsLock` is whether Caps Lock is on at the viewer as this key goes
+    /// down or up: its state, not a press of the Caps Lock key. `nil` from a
+    /// viewer that does not say, and on keys the viewer makes up itself, such
+    /// as the shortcut strip's; the host then keeps the last state it was told.
+    case key(keyCode: UInt16, isDown: Bool, modifiers: CanvasModifierFlags, capsLock: Bool? = nil)
     /// Releases every button and modifier the host still believes is held.
     case releaseAllInput
     /// The client has entered or left captured-pointer mode for this canvas.
@@ -790,6 +794,7 @@ public enum SensoriumFrameCodec {
         let scrollPhase: UInt8?
         let scrollMomentumPhase: UInt8?
         let isCaptured: Bool?
+        let capsLock: Bool?
 
         init(
             kind: String,
@@ -803,7 +808,8 @@ public enum SensoriumFrameCodec {
             modifiers: UInt8? = nil,
             scrollPhase: UInt8? = nil,
             scrollMomentumPhase: UInt8? = nil,
-            isCaptured: Bool? = nil
+            isCaptured: Bool? = nil,
+            capsLock: Bool? = nil
         ) {
             self.kind = kind
             self.x = x
@@ -817,6 +823,7 @@ public enum SensoriumFrameCodec {
             self.scrollPhase = scrollPhase
             self.scrollMomentumPhase = scrollMomentumPhase
             self.isCaptured = isCaptured
+            self.capsLock = capsLock
         }
     }
 
@@ -838,8 +845,8 @@ public enum SensoriumFrameCodec {
                 scrollPhase: phase?.rawValue,
                 scrollMomentumPhase: momentumPhase?.rawValue
             )
-        case let .key(keyCode, isDown, modifiers):
-            WireInput(kind: "key", isDown: isDown, keyCode: keyCode, modifiers: modifiers.rawValue)
+        case let .key(keyCode, isDown, modifiers, capsLock):
+            WireInput(kind: "key", isDown: isDown, keyCode: keyCode, modifiers: modifiers.rawValue, capsLock: capsLock)
         case .releaseAllInput:
             WireInput(kind: "releaseAllInput")
         case let .pointerCaptureChanged(isCaptured):
@@ -907,7 +914,8 @@ public enum SensoriumFrameCodec {
             return .key(
                 keyCode: keyCode,
                 isDown: isDown,
-                modifiers: CanvasModifierFlags(rawValue: modifiers).intersection(.all)
+                modifiers: CanvasModifierFlags(rawValue: modifiers).intersection(.all),
+                capsLock: wire.capsLock
             )
         case "releaseAllInput":
             return .releaseAllInput

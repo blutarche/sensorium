@@ -26,7 +26,7 @@ func testShortcutStripTests() {
         var upCounts: [UInt16: Int] = [:]
         var lastModifiers: CanvasModifierFlags = []
         for event in events {
-            guard case let .key(keyCode, isDown, modifiers) = event else {
+            guard case let .key(keyCode, isDown, modifiers, _) = event else {
                 expect(false, "\(action) sends only key events")
                 return
             }
@@ -56,7 +56,7 @@ func testShortcutStripTests() {
         // pressed while every modifier of the chord is already down and
         // released before any of them comes back up.
         let mainKeyIndices = events.indices.filter { index in
-            guard case let .key(keyCode, _, _) = events[index] else { return false }
+            guard case let .key(keyCode, _, _, _) = events[index] else { return false }
             return !modifierKeyCodes.contains(keyCode)
         }
         expect(mainKeyIndices.count == 2, "\(action) presses and releases exactly one main key")
@@ -501,7 +501,7 @@ func testShortcutStripSendsWholeChordsTests() async {
     )
     expect(
         !attempted.dropFirst(2).contains { event in
-            guard case let .key(_, isDown, _) = event else { return false }
+            guard case let .key(_, isDown, _, _) = event else { return false }
             return isDown
         },
         "no key goes down after the send that failed"

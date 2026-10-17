@@ -408,12 +408,13 @@ public actor ClientViewportController: CanvasLifecycleObserving {
     public func sendKey(
         keyCode: UInt16,
         isDown: Bool,
-        modifiers: CanvasModifierFlags
+        modifiers: CanvasModifierFlags,
+        capsLock: Bool? = nil
     ) async -> PointerDelivery {
         guard isCanvasReady else {
             return .droppedNotConnected
         }
-        return await deliver(.key(keyCode: keyCode, isDown: isDown, modifiers: modifiers), at: nil)
+        return await deliver(.key(keyCode: keyCode, isDown: isDown, modifiers: modifiers, capsLock: capsLock), at: nil)
     }
 
     /// A whole chord in one call. Used by the shortcut strip.
@@ -442,7 +443,7 @@ public actor ClientViewportController: CanvasLifecycleObserving {
             default:
                 break
             }
-            guard case let .key(keyCode, isDown, _) = event else { continue }
+            guard case let .key(keyCode, isDown, _, _) = event else { continue }
             if isDown {
                 held.insert(keyCode)
             } else {
@@ -458,7 +459,7 @@ public actor ClientViewportController: CanvasLifecycleObserving {
     /// modifier flags -- the main key first, the modifiers last.
     private func release(held: Set<UInt16>, from remainder: ArraySlice<SensoriumInputEvent>) async {
         for event in remainder {
-            guard case let .key(keyCode, isDown, _) = event, !isDown, held.contains(keyCode) else {
+            guard case let .key(keyCode, isDown, _, _) = event, !isDown, held.contains(keyCode) else {
                 continue
             }
             _ = await deliver(event, at: nil)

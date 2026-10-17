@@ -84,8 +84,8 @@ func testCanvasSurfaceInputOrderTests() async {
     let sent = await sink.events
     expect(
         sent == [
-            .key(keyCode: 0, isDown: true, modifiers: []),
-            .key(keyCode: 0, isDown: false, modifiers: [])
+            .key(keyCode: 0, isDown: true, modifiers: [], capsLock: false),
+            .key(keyCode: 0, isDown: false, modifiers: [], capsLock: false)
         ],
         "the key-down reaches the host before its key-up, got \(sent)"
     )

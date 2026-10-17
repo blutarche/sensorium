@@ -87,14 +87,14 @@ func testHostScreenUnlockClientTests() async {
 
     let keys = await sink.keys
     let expected: [SensoriumInputEvent] = [
-        .key(keyCode: 0, isDown: true, modifiers: []),
-        .key(keyCode: 0, isDown: false, modifiers: []),
-        .key(keyCode: 36, isDown: true, modifiers: []),
-        .key(keyCode: 36, isDown: false, modifiers: []),
-        .key(keyCode: 56, isDown: true, modifiers: [.shift]),
-        .key(keyCode: 0, isDown: true, modifiers: [.shift]),
-        .key(keyCode: 0, isDown: false, modifiers: [.shift]),
-        .key(keyCode: 56, isDown: false, modifiers: []),
+        .key(keyCode: 0, isDown: true, modifiers: [], capsLock: false),
+        .key(keyCode: 0, isDown: false, modifiers: [], capsLock: false),
+        .key(keyCode: 36, isDown: true, modifiers: [], capsLock: false),
+        .key(keyCode: 36, isDown: false, modifiers: [], capsLock: false),
+        .key(keyCode: 56, isDown: true, modifiers: [.shift], capsLock: false),
+        .key(keyCode: 0, isDown: true, modifiers: [.shift], capsLock: false),
+        .key(keyCode: 0, isDown: false, modifiers: [.shift], capsLock: false),
+        .key(keyCode: 56, isDown: false, modifiers: [], capsLock: false),
     ]
     expect(
         keys == expected,

@@ -831,7 +831,7 @@ public actor ClientSessionController {
             return onCanvas(x, y)
         case let .scrolled(deltaX, deltaY, x, y, _, _):
             return onCanvas(x, y) && deltaX.isFinite && deltaY.isFinite
-        case let .key(_, _, modifiers):
+        case let .key(_, _, modifiers, _):
             return modifiers.isSubset(of: .all)
         case .releaseAllInput, .pointerCaptureChanged:
             return true

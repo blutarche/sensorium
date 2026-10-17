@@ -224,7 +224,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 capturedAnchor = nil
                 capturedRemainder = .zero
             }
-        case let .key(keyCode, isDown, eventModifiers):
+        case let .key(keyCode, isDown, eventModifiers, capsLock):
             modifiers = CoreGraphicsInputTranslation.flags(eventModifiers)
             guard let key = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: isDown) else {
                 throw CoreGraphicsInputInjectorError.eventCreationFailed
@@ -235,6 +235,11 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // .maskSecondaryFn just because the last key injected was an
             // arrow key.
             key.flags = modifiers.union(CoreGraphicsInputTranslation.nativeAuxiliaryFlags(forKeyCode: keyCode))
+            // Alpha Shift on the event is what makes an app type a capital.
+            // This machine's own Caps Lock state is never touched.
+            if capsLock == true {
+                key.flags.insert(.maskAlphaShift)
+            }
             if isDown {
                 let time = now()
                 let previous = heldKeyDownTimes.updateValue(time, forKey: keyCode)

@@ -19,48 +19,59 @@ func testWaylandKeyboardStateTests() {
     }
 
     expect(
-        keyboard.key(evdev: 42, isDown: true) == .modifiersChanged(keyCode: 56, modifiers: [.shift]),
+        keyboard.key(evdev: 42, isDown: true) == .modifiersChanged(keyCode: 56, modifiers: [.shift], capsLock: false),
         "Left Shift going down reports the Shift modifier as held"
     )
     expect(
-        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.shift]),
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.shift], capsLock: false),
         "A going down while Shift is held is the A key with Shift"
     )
     expect(
-        keyboard.key(evdev: 30, isDown: false) == .key(keyCode: 0, isDown: false, modifiers: [.shift]),
+        keyboard.key(evdev: 30, isDown: false) == .key(keyCode: 0, isDown: false, modifiers: [.shift], capsLock: false),
         "A coming up while Shift is held is the A key with Shift"
     )
     expect(
-        keyboard.key(evdev: 42, isDown: false) == .modifiersChanged(keyCode: 56, modifiers: []),
+        keyboard.key(evdev: 42, isDown: false) == .modifiersChanged(keyCode: 56, modifiers: [], capsLock: false),
         "Left Shift coming up reports nothing held"
     )
 
     expect(
-        keyboard.key(evdev: 125, isDown: true) == .modifiersChanged(keyCode: 55, modifiers: [.command]),
+        keyboard.key(evdev: 125, isDown: true) == .modifiersChanged(keyCode: 55, modifiers: [.command], capsLock: false),
         "the Super key is Command, by the position it sits in"
     )
     expect(
-        keyboard.key(evdev: 56, isDown: true) == .modifiersChanged(keyCode: 58, modifiers: [.command, .option]),
+        keyboard.key(evdev: 56, isDown: true) == .modifiersChanged(keyCode: 58, modifiers: [.command, .option], capsLock: false),
         "the Alt key is Option, and joins the modifiers already held"
     )
     expect(
-        keyboard.key(evdev: 56, isDown: false) == .modifiersChanged(keyCode: 58, modifiers: [.command]),
+        keyboard.key(evdev: 56, isDown: false) == .modifiersChanged(keyCode: 58, modifiers: [.command], capsLock: false),
         "Alt coming up leaves Command held"
     )
     expect(
-        keyboard.key(evdev: 125, isDown: false) == .modifiersChanged(keyCode: 55, modifiers: []),
+        keyboard.key(evdev: 125, isDown: false) == .modifiersChanged(keyCode: 55, modifiers: [], capsLock: false),
         "Super coming up leaves nothing held"
     )
 
     expect(keyboard.key(evdev: 58, isDown: true) == nil, "Caps Lock going down is never forwarded")
     expect(keyboard.key(evdev: 58, isDown: false) == nil, "Caps Lock coming up is never forwarded")
     expect(
-        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: []),
-        "a key typed with Caps Lock on carries no modifier the wire knows about"
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [], capsLock: true),
+        "a key typed with Caps Lock on says so, and carries no modifier bit for it"
     )
-    expect(keyboard.key(evdev: 30, isDown: false) == .key(keyCode: 0, isDown: false, modifiers: []), "and comes up the same way")
+    expect(
+        keyboard.key(evdev: 30, isDown: false) == .key(keyCode: 0, isDown: false, modifiers: [], capsLock: true),
+        "and comes up the same way"
+    )
     expect(keyboard.key(evdev: 58, isDown: true) == nil, "Caps Lock going down again is still never forwarded")
     expect(keyboard.key(evdev: 58, isDown: false) == nil, "Caps Lock coming up again is still never forwarded")
+    expect(
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [], capsLock: false),
+        "a key typed once Caps Lock is off again says it is off"
+    )
+    expect(
+        keyboard.key(evdev: 30, isDown: false) == .key(keyCode: 0, isDown: false, modifiers: [], capsLock: false),
+        "and comes up the same way"
+    )
     expect(keyboard.key(evdev: 69, isDown: true) == nil, "Num Lock is never forwarded either")
     expect(keyboard.key(evdev: 69, isDown: false) == nil, "Num Lock coming up is never forwarded either")
 
@@ -70,10 +81,10 @@ func testWaylandKeyboardStateTests() {
     // The way out of a fullscreen viewer, typed on a PC keyboard: Ctrl, Alt,
     // Super and Escape. It has to arrive as exactly the chord the shortcut
     // catalog reserves, or nothing would release the person's own machine.
-    expect(keyboard.key(evdev: 29, isDown: true) == .modifiersChanged(keyCode: 59, modifiers: [.control]), "Ctrl is Control")
+    expect(keyboard.key(evdev: 29, isDown: true) == .modifiersChanged(keyCode: 59, modifiers: [.control], capsLock: false), "Ctrl is Control")
     expect(keyboard.key(evdev: 56, isDown: true) != nil, "Alt joins the chord")
     expect(keyboard.key(evdev: 125, isDown: true) != nil, "Super joins the chord")
-    guard case let .key(escapeCode, _, escapeModifiers)? = keyboard.key(evdev: 1, isDown: true) else {
+    guard case let .key(escapeCode, _, escapeModifiers, _)? = keyboard.key(evdev: 1, isDown: true) else {
         expect(false, "Escape typed with Ctrl, Alt and Super is a key event")
         return
     }
@@ -84,7 +95,7 @@ func testWaylandKeyboardStateTests() {
 
     keyboard.focusLeft()
     expect(
-        keyboard.key(evdev: 29, isDown: true) == .modifiersChanged(keyCode: 59, modifiers: [.control]),
+        keyboard.key(evdev: 29, isDown: true) == .modifiersChanged(keyCode: 59, modifiers: [.control], capsLock: false),
         "a keyboard that left and came back reports the next modifier press as a press"
     )
 
@@ -110,7 +121,7 @@ func testWaylandKeyboardStateModifiersEventTests() {
     expect(keyboard.modifiers == [.control], "reconcileModifiers applied a depressed Control bit to this keyboard's state")
 
     expect(
-        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.control]),
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.control], capsLock: false),
         "a key pressed while Control arrived only through a modifiers event still carries it"
     )
 
@@ -120,8 +131,21 @@ func testWaylandKeyboardStateModifiersEventTests() {
     )
 
     expect(
-        keyboard.key(evdev: 29, isDown: true) == .modifiersChanged(keyCode: 59, modifiers: [.control]),
+        keyboard.key(evdev: 29, isDown: true) == .modifiersChanged(keyCode: 59, modifiers: [.control], capsLock: false),
         "Control's next physical press is forwarded normally, now that a real key event started holding it"
+    )
+
+    // Bit 1 is Lock. Caps Lock turned on at another window arrives only
+    // this way, and the next key here says it is on.
+    keyboard.reconcileModifiers(depressed: 0, latched: 0, locked: 1 << 1, group: 0)
+    expect(
+        keyboard.key(evdev: 30, isDown: false) == .key(keyCode: 0, isDown: false, modifiers: [], capsLock: true),
+        "a key after a modifiers event that locked Caps Lock says Caps Lock is on"
+    )
+    keyboard.reconcileModifiers(depressed: 1 << 1, latched: 0, locked: 0, group: 0)
+    expect(
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [], capsLock: false),
+        "Lock only held down, not locked, is not Caps Lock on"
     )
 
     print("PASS: every wl_keyboard.modifiers event updates this keyboard's xkb state, and a modifier held only through one is still not forwarded until a real key event holds it")
@@ -148,31 +172,31 @@ func testWaylandKeyboardStateAltGrOptionTests() {
     }
 
     expect(
-        keyboard.key(evdev: 100, isDown: true) == .modifiersChanged(keyCode: 61, modifiers: [.option]),
+        keyboard.key(evdev: 100, isDown: true) == .modifiersChanged(keyCode: 61, modifiers: [.option], capsLock: false),
         "Right Alt carries Option on a layout where it is the level-3 shift"
     )
     expect(
-        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.option]),
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.option], capsLock: false),
         "a key typed while Right Alt is held carries Option"
     )
     expect(
-        keyboard.key(evdev: 100, isDown: false) == .modifiersChanged(keyCode: 61, modifiers: []),
+        keyboard.key(evdev: 100, isDown: false) == .modifiersChanged(keyCode: 61, modifiers: [], capsLock: false),
         "Right Alt coming up releases Option"
     )
     expect(
-        keyboard.key(evdev: 56, isDown: true) == .modifiersChanged(keyCode: 58, modifiers: [.option]),
+        keyboard.key(evdev: 56, isDown: true) == .modifiersChanged(keyCode: 58, modifiers: [.option], capsLock: false),
         "Left Alt is Option as before"
     )
     expect(
-        keyboard.key(evdev: 100, isDown: true) == .modifiersChanged(keyCode: 61, modifiers: [.option]),
+        keyboard.key(evdev: 100, isDown: true) == .modifiersChanged(keyCode: 61, modifiers: [.option], capsLock: false),
         "Right Alt with Left Alt held still reports Option"
     )
     expect(
-        keyboard.key(evdev: 56, isDown: false) == .modifiersChanged(keyCode: 58, modifiers: [.option]),
+        keyboard.key(evdev: 56, isDown: false) == .modifiersChanged(keyCode: 58, modifiers: [.option], capsLock: false),
         "letting go of Left Alt keeps Option while Right Alt is held"
     )
     expect(
-        keyboard.key(evdev: 100, isDown: false) == .modifiersChanged(keyCode: 61, modifiers: []),
+        keyboard.key(evdev: 100, isDown: false) == .modifiersChanged(keyCode: 61, modifiers: [], capsLock: false),
         "and letting go of Right Alt releases it"
     )
 
