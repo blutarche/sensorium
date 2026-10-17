@@ -996,4 +996,34 @@ func runHostScreenViewerGeometryTests() async {
         )
     }
     print("PASS: a host-screen session echoes the scale it derived and logs it once per change")
+
+    do {
+        // A viewer sizes its window as soon as it is told the screen is
+        // ready, which can be before capture has started. Its request must
+        // still be applied once the stream is running, not lost to a settle
+        // timer that fired too early.
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
+              let entry = displays.first else {
+            expect(false, "the fixture's offer names at least one display")
+            return
+        }
+        let coordinator = fixture.coordinator
+        _ = try! await coordinator.handle(.hostScreenRequest(token: entry.opaqueToken, resumeTicket: nil)) { message in
+            guard case .hostScreenReady = message else { return }
+            _ = try await coordinator.handle(
+                .viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2160, surfaceID: nil, maximumScale: nil)
+            ) { _ in }
+            try await Task.sleep(for: .milliseconds(300))
+        }
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenMedia.reconfiguredScales == [1.5] },
+            "a scale asked for before capture started is applied once it runs, got \(hostScreenMedia.reconfiguredScales)"
+        )
+    }
+    print("PASS: a stream scale asked for before a host-screen capture starts is applied once it runs")
 }

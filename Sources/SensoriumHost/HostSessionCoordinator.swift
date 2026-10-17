@@ -939,6 +939,16 @@ public final class HostSessionCoordinator {
                 didWriteResponse = true
                 stage = .captureStart
                 try await startHostScreenStreaming(geometry: geometry)
+                // A viewer sizes its window as soon as it is told the screen
+                // is ready; a request whose settle timer fired before capture
+                // existed had nothing to apply to, so it is applied now.
+                let surface = Self.hostScreenTelemetrySurface
+                if let requested = lastRequestedScale[surface] {
+                    let target = Swift.min(requested, controller.hostScreenMaximumStreamScale ?? .infinity)
+                    if StreamScalePolicy.isWorthReconfiguring(from: streamScale[surface].appliedScale, to: target) {
+                        await applyStreamScale(target, on: surface)
+                    }
+                }
                 // Only now has capture actually come up -- admission and the
                 // reply above both happen first and can each still be
                 // followed by a throw into the catch below, which must be
