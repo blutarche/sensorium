@@ -72,15 +72,21 @@ func testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit() {
     )
     expect(StreamScalePolicy.defaultScale == 1.0, "the protocol default scale is today's 1x behaviour")
 
-    // A pipeline rebuild is a real, visible gap, so a change of exactly one
-    // quantum step is not worth it; two steps is.
+    // A pipeline rebuild is a real, visible gap. A request one quantum above
+    // what is applied is still worth it, because a window that grew would
+    // otherwise stay soft for the whole session; one quantum below is not, so
+    // a viewer whose chrome band shows and hides does not rebuild every time.
     expect(
-        !StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 1.75),
-        "one quantum step up is not worth a rebuild"
+        StreamScalePolicy.isWorthReconfiguring(from: 1.25, to: 1.5),
+        "one quantum step up is worth a rebuild, despite floating point"
+    )
+    expect(
+        StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 1.75),
+        "one quantum step up is worth a rebuild at any scale"
     )
     expect(
         !StreamScalePolicy.isWorthReconfiguring(from: 1.75, to: 1.5),
-        "one quantum step down is not worth a rebuild either -- the check is symmetric"
+        "one quantum step down is not worth a rebuild"
     )
     expect(
         !StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 1.5),
@@ -88,7 +94,11 @@ func testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit() {
     )
     expect(
         StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 2.0),
-        "two quantum steps is worth a rebuild"
+        "two quantum steps up is worth a rebuild"
+    )
+    expect(
+        StreamScalePolicy.isWorthReconfiguring(from: 2.0, to: 1.5),
+        "two quantum steps down is worth a rebuild"
     )
     expect(
         StreamScalePolicy.isWorthReconfiguring(from: 2.0, to: 1.0),

@@ -90,12 +90,19 @@ public enum StreamScalePolicy {
     /// Whether moving from `currentlyApplied` to `requested` is worth
     /// rebuilding the capture/encode pipeline for. A rebuild is a real,
     /// visible gap -- a system-wide window enumeration, a torn-down and
-    /// recreated `VTCompressionSession` -- and a change of exactly one
-    /// quantum step, the kind a window-edge settling one pixel differently
-    /// produces, is not worth paying it for. `false` exactly at the
-    /// boundary is deliberate: two steps (`2 * quantum`) is the first
-    /// difference actually worth the cost.
+    /// recreated `VTCompressionSession` -- so the two directions differ.
+    /// A request at least one quantum above the applied scale is worth it:
+    /// a window that grew would otherwise stay soft for the whole session.
+    /// A request exactly one quantum below is not, so a viewer whose chrome
+    /// band shows and hides does not rebuild on every toggle; two or more
+    /// quanta below is. The comparison allows for floating-point error, so
+    /// 1.5 against 1.25 counts as exactly one quantum.
     public static func isWorthReconfiguring(from currentlyApplied: Double, to requested: Double) -> Bool {
-        abs(requested - currentlyApplied) > quantum
+        let epsilon = 1e-9
+        let change = requested - currentlyApplied
+        if change > 0 {
+            return change >= quantum - epsilon
+        }
+        return -change > quantum + epsilon
     }
 }

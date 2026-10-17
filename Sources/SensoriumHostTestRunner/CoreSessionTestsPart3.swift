@@ -1484,8 +1484,9 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
 
         // A pipeline rebuild is a real, visible gap -- a window enumeration,
         // a torn-down and recreated VTCompressionSession -- so a
-        // viewer-geometry request within one quantum of what is already
-        // streaming is not worth it. The very first request is exempt: there
+        // viewer-geometry request one quantum below what is already
+        // streaming is not worth it; one quantum above is, so a window that
+        // grew is not left soft. The very first request is exempt: there
         // is no real applied scale yet to measure a small delta against,
         // only the arbitrary startup default, so it always goes through.
         do {
@@ -1504,25 +1505,29 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
                 await waitUntil(timeoutSeconds: 2) { smallDeltaMedia.reconfiguredScales == [1.25] },
                 "the first-ever geometry-derived request is never suppressed, however small its distance from the arbitrary startup default"
             )
-            // A later request one quantum away from what is now actually
-            // applied (1.25 -> 1.5) is not worth a rebuild.
+            // A later request one quantum above what is now applied
+            // (1.25 -> 1.5) is worth a rebuild: the window grew.
             _ = try! await smallDeltaCoordinator.handleWritingResponse(.viewerDrawableSize(pixelWidth: 2880, pixelHeight: 1800, surfaceID: nil, maximumScale: nil))
+            expect(
+                await waitUntil(timeoutSeconds: 2) { smallDeltaMedia.reconfiguredScales == [1.25, 1.5] },
+                "a request one quantum above what is applied reconfigures"
+            )
+            // One quantum back down (1.5 -> 1.25) is not.
+            _ = try! await smallDeltaCoordinator.handleWritingResponse(.viewerDrawableSize(pixelWidth: 2400, pixelHeight: 1500, surfaceID: nil, maximumScale: nil))
             try! await Task.sleep(for: .milliseconds(300))
             expect(
-                smallDeltaMedia.reconfiguredScales == [1.25],
-                "a later request only one quantum away from what is already applied never reaches reconfigure"
+                smallDeltaMedia.reconfiguredScales == [1.25, 1.5],
+                "a request only one quantum below what is already applied never reaches reconfigure"
             )
-            // The next request lands two quanta away from what is still
-            // actually applied (1.25 -> 2.0, since the nudge above never
-            // took effect) -- worth the rebuild, and it catches up to the
-            // latest request, not to the skipped intermediate one.
+            // Two quanta away from what is still applied (1.5 -> 2.0, since
+            // the step down never took effect) is worth the rebuild.
             _ = try! await smallDeltaCoordinator.handleWritingResponse(.viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2400, surfaceID: nil, maximumScale: nil))
             expect(
-                await waitUntil(timeoutSeconds: 2) { smallDeltaMedia.reconfiguredScales == [1.25, 2.0] },
+                await waitUntil(timeoutSeconds: 2) { smallDeltaMedia.reconfiguredScales == [1.25, 1.5, 2.0] },
                 "a request two or more quanta away from what is actually applied still reconfigures, landing on the latest request"
             )
         }
-        print("PASS: a viewer-geometry request within one quantum of what is already applied is never worth a rebuild, except the first")
+        print("PASS: a viewer-geometry request one quantum above is applied, one quantum below is not, and the first is never suppressed")
 
         // Two session-owned canvases
         //
