@@ -90,9 +90,10 @@ public enum EvdevKeycodeTable {
         case 108: 125  // KEY_DOWN -> kVK_DownArrow
         case 105: 123  // KEY_LEFT -> kVK_LeftArrow
         case 106: 124  // KEY_RIGHT -> kVK_RightArrow
-        // KEY_INSERT: no Mac keyboard has an Insert key, and no Carbon
-        // constant names one; there is no sane physical target.
-        case 110: nil  // KEY_INSERT -> (none)
+        // KEY_INSERT: no Mac keyboard has an Insert key, but an Apple
+        // extended keyboard has Help in the same place, which is what
+        // applications that act on Insert on a PC expect from it.
+        case 110: 114  // KEY_INSERT -> kVK_Help
 
         // Function keys.
         case 59: 122   // KEY_F1 -> kVK_F1
@@ -169,6 +170,19 @@ public enum EvdevKeycodeTable {
         // a dedicated key that opens the same context menu a right-click
         // would.
         case 127: 110  // KEY_COMPOSE (Menu) -> kVK_ContextualMenu
+
+        // The Japanese keys. A Mac JIS keyboard has the same keys in the same
+        // places, so the position is what is forwarded and the host's own
+        // input source decides what they type. KEY_HENKAN and
+        // KEY_KATAKANAHIRAGANA both land on Kana, the one key a Mac JIS
+        // keyboard has for conversion and kana input. The Korean keys
+        // (KEY_HANGEUL, KEY_HANJA) are not mapped.
+        case 124: 0x5D  // KEY_YEN -> kVK_JIS_Yen
+        case 89: 0x5E   // KEY_RO -> kVK_JIS_Underscore
+        case 95: 0x5F   // KEY_KPJPCOMMA -> kVK_JIS_KeypadComma
+        case 94: 0x66   // KEY_MUHENKAN -> kVK_JIS_Eisu
+        case 92: 0x68   // KEY_HENKAN -> kVK_JIS_Kana
+        case 93: 0x68   // KEY_KATAKANAHIRAGANA -> kVK_JIS_Kana
 
         default: nil
         }

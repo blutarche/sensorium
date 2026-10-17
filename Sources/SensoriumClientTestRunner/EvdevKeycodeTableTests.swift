@@ -84,9 +84,8 @@ private let evdevCases: [EvdevCase] = [
     EvdevCase(evdev: 108, carbon: 125, label: "KEY_DOWN"),
     EvdevCase(evdev: 105, carbon: 123, label: "KEY_LEFT"),
     EvdevCase(evdev: 106, carbon: 124, label: "KEY_RIGHT"),
-    // No Mac keyboard has an Insert key, and Carbon has no constant for
-    // one: nil is the honest answer, not a guess at a target.
-    EvdevCase(evdev: 110, carbon: nil, label: "KEY_INSERT"),
+    // Insert sits where Help sits on an Apple extended keyboard.
+    EvdevCase(evdev: 110, carbon: 114, label: "KEY_INSERT -> kVK_Help"),
 
     // Function keys, including Print Screen/Scroll Lock/Pause mapped onto
     // F13-F15, exactly where Apple's own keyboard-layout handling for a PC
@@ -149,7 +148,15 @@ private let evdevCases: [EvdevCase] = [
     EvdevCase(evdev: 69, carbon: 71, label: "KEY_NUMLOCK"),
 
     // The physical Menu key: a PC keyboard reports it as KEY_COMPOSE.
-    EvdevCase(evdev: 127, carbon: 110, label: "KEY_COMPOSE (Menu)")
+    EvdevCase(evdev: 127, carbon: 110, label: "KEY_COMPOSE (Menu)"),
+
+    // The Japanese keys, by the position they share with a Mac JIS keyboard.
+    EvdevCase(evdev: 124, carbon: 0x5D, label: "KEY_YEN -> kVK_JIS_Yen"),
+    EvdevCase(evdev: 89, carbon: 0x5E, label: "KEY_RO -> kVK_JIS_Underscore"),
+    EvdevCase(evdev: 95, carbon: 0x5F, label: "KEY_KPJPCOMMA -> kVK_JIS_KeypadComma"),
+    EvdevCase(evdev: 94, carbon: 0x66, label: "KEY_MUHENKAN -> kVK_JIS_Eisu"),
+    EvdevCase(evdev: 92, carbon: 0x68, label: "KEY_HENKAN -> kVK_JIS_Kana"),
+    EvdevCase(evdev: 93, carbon: 0x68, label: "KEY_KATAKANAHIRAGANA -> kVK_JIS_Kana")
 ]
 
 /// Every evdev code `EvdevCase` names must translate to the Carbon code it
