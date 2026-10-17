@@ -1617,10 +1617,11 @@ public final class HostSessionController {
             // viewer -- `inputApplied` is this controller's own answer to
             // `.input`, never something a viewer sends it.
             throw HostSessionControllerError.unexpectedMessage
-        case let .input(event, surfaceID, sequence):
+        case let .input(wireEvent, surfaceID, sequence):
             guard !requireAuthentication || isAuthenticated else {
                 throw HostSessionControllerError.authenticationRequired
             }
+            let event = Self.maskingUnknownModifiers(wireEvent)
             // A host-screen surface is not part of CanvasSurfaceID's world
             // and carries no surfaceID of its own: one display per
             // session. So it is checked before -- and instead of --
@@ -2215,11 +2216,19 @@ public final class HostSessionController {
                 && deltaY.isFinite
                 && abs(deltaX) <= Self.maximumScrollDelta
                 && abs(deltaY) <= Self.maximumScrollDelta
-        case let .key(_, _, modifiers):
-            modifiers.isSubset(of: .all)
-        case .releaseAllInput, .pointerCaptureChanged:
+        case .key, .releaseAllInput, .pointerCaptureChanged:
             true
         }
+    }
+
+    /// A modifier bit this host does not know is masked off rather than a
+    /// reason to refuse the key: refusing a key-up would leave its key held
+    /// down here.
+    private static func maskingUnknownModifiers(_ event: SensoriumInputEvent) -> SensoriumInputEvent {
+        guard case let .key(keyCode, isDown, modifiers) = event else {
+            return event
+        }
+        return .key(keyCode: keyCode, isDown: isDown, modifiers: modifiers.intersection(.all))
     }
 
     /// Starts `surface` at `configuration` and answers exactly as a

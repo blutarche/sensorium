@@ -145,6 +145,7 @@ struct SensoriumHostTestRunner {
             { await runCaptureUnavailableTests() },
             { await runHostStopIsFinalTests() },
             { await runHostViewerSilenceWatchdogTests() },
+            { await runHostUndecodableControlMessageTests() },
             { await runHostPingDisplayTests() },
             { await runHostOperatorStatusPingTests() },
             { runHostListenerRecoveryPolicyTests() },

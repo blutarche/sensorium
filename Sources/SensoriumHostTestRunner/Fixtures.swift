@@ -1358,6 +1358,16 @@ final class FakeHostByteChannel: HostByteChannel, @unchecked Sendable {
         }
     }
 
+    /// Appends bytes exactly as given, so a test can deliver a frame no
+    /// encoder in this build would write: a newer viewer's message, say.
+    func feedRawFrames(_ frames: [Data]) {
+        withLock {
+            for frame in frames {
+                incoming.append(frame)
+            }
+        }
+    }
+
     /// `NSLock.lock`/`unlock` are unavailable from `async` function bodies, so
     /// every critical section runs inside this synchronous helper instead.
     private func withLock<T>(_ body: () throws -> T) rethrows -> T {

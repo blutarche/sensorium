@@ -133,7 +133,7 @@ Both the hello and the pairing-request transcripts are at `v2`: their field list
 
 ## Input events
 
-`pointerMoved`, `pointerMovedRelative` (raw unaccelerated deltas, sent only while the client has captured the pointer), `pointerButton`, `scrolled`, `key`, `releaseAllInput`, `pointerCaptureChanged(isCaptured)`. Coordinates are canvas logical points with the origin at the **top left**. AppKit's opposite convention is flipped once, on the client. `key.keyCode` is the macOS virtual keycode of the physical key, and a viewer on another platform translates its own scancodes into that space before sending. Validated on both sides: coordinates must be finite and inside 1920×1200, scroll deltas finite and within ±10000, and modifier bits outside the four forwarded modifiers are rejected.
+`pointerMoved`, `pointerMovedRelative` (raw unaccelerated deltas, sent only while the client has captured the pointer), `pointerButton`, `scrolled`, `key`, `releaseAllInput`, `pointerCaptureChanged(isCaptured)`. Coordinates are canvas logical points with the origin at the **top left**. AppKit's opposite convention is flipped once, on the client. `key.keyCode` is the macOS virtual keycode of the physical key, and a viewer on another platform translates its own scancodes into that space before sending. Validated on both sides: coordinates must be finite and inside 1920×1200, and scroll deltas finite and within ±10000. Modifier bits outside the four forwarded modifiers are masked off, not refused. The key is applied with the modifiers this build knows, so a key-up is never lost over a bit a newer peer added.
 
 ## Streamed resolution
 
@@ -314,5 +314,17 @@ No shipping viewer sends `hostScreenUnlockRequest`. A locked host is unlocked by
 ## Version policy
 
 `protocolVersion` is checked for an exact match, never bumped for a compatible addition. Once a session's control loop is running, an unrecognized `type` string is tolerated, not fatal: `SensoriumFrameCodec.decode` returns `.unrecognized(type:)` instead of throwing, and both host (`HostSessionController.handle`) and client (`ClientSessionRunner.receiveLoop`) skip it and keep going. A new message type never ends an older peer's session. The same tolerance exists at the transport tag, `.unrecognized(tag:payload:)`. `.unrecognized` is decode-only: `SensoriumFrameCodec.encode` throws if asked to encode one.
+
+A known message type can still carry something this build cannot read, such as a button name or input kind a newer peer added. Inside a transport packet, that fails as `undecodableControlMessage`, a different error from a broken frame. What happens next depends on where the session is:
+
+| Where | What happens |
+| --- | --- |
+| Host, after admission | The host skips the message and keeps the session. Admission means a session canvas or host screen is live: `canvasReady` or `hostScreenReady` has gone out (`HostSessionController.isSessionAuthenticatedAndStreaming`) |
+| Host, before admission | The connection closes, as for any malformed frame. A peer that has not authenticated gets no further |
+| Viewer, live loop | The viewer skips the message and keeps the session. The loop starts only after admission |
+| Viewer, handshake | The handshake fails |
+| Either side, broken frame | A frame whose length prefix disagrees with its bytes, or a closed or failed connection, still ends the session |
+
+Each side writes at most one log line every 10 seconds about skipped messages. The line counts every message skipped since the last one.
 
 **Pairing stays strict.** `ClientSessionController.pair`'s response switch rejects anything but `pairApproved`/`pairRejected`, including `.unrecognized`, with `ClientSessionError.unexpectedMessage`.

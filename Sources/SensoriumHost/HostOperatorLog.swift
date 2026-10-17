@@ -90,6 +90,16 @@ public enum HostOperatorLog {
         return seconds == 1 ? "1 second" : "\(seconds) seconds"
     }
 
+    /// Written at most once every ten seconds while a live session drops
+    /// messages it could not read; `count` is every drop since the last such
+    /// line. The likeliest cause is a viewer running a newer version that
+    /// sends something this host does not know yet.
+    public static func undecodableMessagesDropped(count: Int) -> String {
+        let what = count == 1 ? "a message" : "\(count) messages"
+        return "The viewer sent \(what) this host could not read, so \(count == 1 ? "it was" : "they were") skipped "
+            + "and the session carried on. The viewer may be running a newer version of Sensorium."
+    }
+
     public static func sourceRefused(address: String) -> String {
         // Without this line a machine dialling from the wrong network is
         // silence, and silence looks exactly like a network that is down.

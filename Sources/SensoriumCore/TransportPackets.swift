@@ -76,7 +76,7 @@ public enum SensoriumTransportPacketCodec {
         let tag = data[data.startIndex]
         switch tag {
         case 0:
-            return .control(try SensoriumFrameCodec.decode(payload))
+            return .control(try SensoriumFrameCodec.decodeTransportControlFrame(payload))
         case 1:
             return .video(try EncodedVideoFrameCodec.decode(payload))
         case 2:

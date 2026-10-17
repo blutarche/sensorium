@@ -427,14 +427,26 @@ actor DelayedClientTransport: SensoriumControlTransport {
 /// `ClientControlConnection` (rather than a bare `SensoriumControlTransport`)
 /// for.
 actor ScriptedControlConnection: ClientControlConnection {
+    /// One scripted read: a packet handed over as it is, or bytes decoded
+    /// through the real transport codec the way a socket's are, so a script
+    /// can carry a frame no encoder in this build would write.
+    private enum ScriptedRead {
+        case packet(SensoriumTransportPacket)
+        case wireFrame(Data)
+    }
+
     let deferredPackets = DeferredPacketQueue()
-    private var responses: [SensoriumTransportPacket]
+    private var responses: [ScriptedRead]
     private(set) var sentMessages: [SensoriumMessage] = []
     private(set) var sentPackets: [SensoriumTransportPacket] = []
     private let enqueued = LockedPacketList()
 
     init(responses: [SensoriumTransportPacket]) {
-        self.responses = responses
+        self.responses = responses.map(ScriptedRead.packet)
+    }
+
+    init(wireFrames: [Data]) {
+        self.responses = wireFrames.map(ScriptedRead.wireFrame)
     }
 
     /// Everything handed to `enqueue`, in order. Read without awaiting, since
@@ -462,7 +474,12 @@ actor ScriptedControlConnection: ClientControlConnection {
         guard !responses.isEmpty else {
             throw ControlChannelError.closed
         }
-        return responses.removeFirst()
+        switch responses.removeFirst() {
+        case let .packet(packet):
+            return packet
+        case let .wireFrame(frame):
+            return try SensoriumTransportPacketCodec.decode(frame)
+        }
     }
 
     func close() async {}

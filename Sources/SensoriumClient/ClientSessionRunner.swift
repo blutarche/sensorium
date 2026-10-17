@@ -37,6 +37,9 @@ public enum HostScreenModeOutcome: Equatable, Sendable {
 @MainActor
 public final class ClientSessionRunner {
     private let connection: any ClientControlConnection
+    /// Where this session's own diagnostics go. Injectable so a test can read
+    /// what a line says and how often one is written.
+    private nonisolated let log: @Sendable (String) -> Void
     /// Verifies a live "Displays" reply's signature -- see
     /// `ClientSessionController.verifyLiveCanvasReady(...)`. This runner
     /// does not hold the identity or pinned host key that check needs; the
@@ -117,8 +120,10 @@ public final class ClientSessionRunner {
         secondaryWindow: (any SessionCanvasWindow)? = nil,
         clipboard: ClipboardSyncSession? = nil,
         hostName: String? = nil,
-        hostAddress: String? = nil
+        hostAddress: String? = nil,
+        log: @escaping @Sendable (String) -> Void = { print("Sensorium: \($0)") }
     ) {
+        self.log = log
         self.connection = connection
         self.session = session
         self.primaryWindow = window
@@ -680,6 +685,7 @@ public final class ClientSessionRunner {
     /// frame.
     private nonisolated func receiveLoop() async {
         let video = ReceivedVideoDispatch(statistics: streamStatistics, router: router)
+        var undecodableLog = UndecodableMessageLogPacer()
         while !Task.isCancelled {
             do {
                 let packet = try await connection.receivePacket()
@@ -700,6 +706,17 @@ public final class ClientSessionRunner {
                     // rather than ending the session over it.
                     continue
                 }
+            } catch SensoriumProtocolError.undecodableControlMessage {
+                // This loop starts only once the session is admitted. A
+                // newer host can send a message, or a value inside one,
+                // this build cannot read; it arrived whole, so the stream
+                // is still in step and only that one message is lost.
+                if let count = undecodableLog.noteDrop(atNanoseconds: MonotonicClock.nowNanoseconds()) {
+                    let what = count == 1 ? "a message" : "\(count) messages"
+                    log("the host sent \(what) this viewer could not read, so \(count == 1 ? "it was" : "they were") "
+                        + "skipped and the session carried on. The host may be running a newer version of Sensorium.")
+                }
+                continue
             } catch {
                 await reportEnded("\(error)")
                 return

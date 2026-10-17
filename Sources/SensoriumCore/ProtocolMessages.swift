@@ -6,6 +6,12 @@ public enum SensoriumProtocolError: Error, Equatable {
     case frameTooLarge
     case unsupportedMessage
     case malformedMessage
+    /// A control packet that arrived whole, inside a well-formed transport
+    /// frame, whose message this build could not read: a value or kind a
+    /// newer peer sends that this build has no case for. Distinct from the
+    /// framing errors above, so a live session can drop the one message and
+    /// keep going while a broken stream still ends it.
+    case undecodableControlMessage
 }
 
 public enum SensoriumMessage: Equatable, Sendable {
@@ -869,11 +875,17 @@ public enum SensoriumFrameCodec {
         case "key":
             guard let keyCode = wire.keyCode,
                   let isDown = wire.isDown,
-                  let modifiers = wire.modifiers,
-                  modifiers & ~CanvasModifierFlags.all.rawValue == 0 else {
+                  let modifiers = wire.modifiers else {
                 throw SensoriumProtocolError.malformedMessage
             }
-            return .key(keyCode: keyCode, isDown: isDown, modifiers: CanvasModifierFlags(rawValue: modifiers))
+            // A modifier bit a newer peer added is masked off, not refused:
+            // refusing the event would refuse its key-up too, and leave the
+            // key held down on the host.
+            return .key(
+                keyCode: keyCode,
+                isDown: isDown,
+                modifiers: CanvasModifierFlags(rawValue: modifiers).intersection(.all)
+            )
         case "releaseAllInput":
             return .releaseAllInput
         default:
@@ -994,6 +1006,23 @@ public enum SensoriumFrameCodec {
     }
 
     public static func decode(_ frame: Data) throws -> SensoriumMessage {
+        try decodeMessage(fromPayload: payload(ofFrame: frame))
+    }
+
+    /// `decode` for the control frame inside a transport packet. The frame's
+    /// own length checks throw exactly as they do there; any failure to read
+    /// the message inside a frame that passed them throws
+    /// `undecodableControlMessage` instead.
+    static func decodeTransportControlFrame(_ frame: Data) throws -> SensoriumMessage {
+        let payload = try payload(ofFrame: frame)
+        do {
+            return try decodeMessage(fromPayload: payload)
+        } catch {
+            throw SensoriumProtocolError.undecodableControlMessage
+        }
+    }
+
+    private static func payload(ofFrame frame: Data) throws -> Data {
         guard frame.count >= 4 else {
             throw SensoriumProtocolError.frameTooShort
         }
@@ -1006,8 +1035,10 @@ public enum SensoriumFrameCodec {
         guard Int(payloadLength) == frame.count - 4 else {
             throw SensoriumProtocolError.frameLengthMismatch
         }
+        return frame.dropFirst(4)
+    }
 
-        let payload = frame.dropFirst(4)
+    private static func decodeMessage(fromPayload payload: Data) throws -> SensoriumMessage {
         let wire = try JSONDecoder().decode(WireMessage.self, from: payload)
         switch wire.type {
         case "hello":

@@ -918,6 +918,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     private static let farewellWriteDeadlineSeconds = 1.0
 
     private func run() async {
+        var undecodableLog = UndecodableMessageLogPacer()
         do {
             while true {
                 let header = try await receiveBytes(count: 5)
@@ -930,7 +931,23 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 let payload = try await receiveBytes(count: Int(payloadLength))
                 var packet = header
                 packet.append(payload)
-                let decoded = try SensoriumTransportPacketCodec.decode(packet)
+                let decoded: SensoriumTransportPacket
+                do {
+                    decoded = try SensoriumTransportPacketCodec.decode(packet)
+                } catch SensoriumProtocolError.undecodableControlMessage {
+                    // Dropped only once a surface of either kind is live, the
+                    // point `canvasReady` or `hostScreenReady` went out. Before
+                    // that, closing loses nothing a redial cannot restore, and
+                    // a peer that has not authenticated gets no further than
+                    // its first unreadable frame.
+                    guard await MainActor.run(body: { [controller] in controller.isSessionAuthenticatedAndStreaming }) else {
+                        throw SensoriumProtocolError.undecodableControlMessage
+                    }
+                    if let count = undecodableLog.noteDrop(atNanoseconds: MonotonicClock.nowNanoseconds()) {
+                        onEvent?(HostOperatorLog.undecodableMessagesDropped(count: count))
+                    }
+                    continue
+                }
                 if case let .clipboard(content) = decoded {
                     // Applying it is gated inside the session on a granted
                     // session; a host built without clipboard sync has no
