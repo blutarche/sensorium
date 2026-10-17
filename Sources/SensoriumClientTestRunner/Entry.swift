@@ -34,6 +34,7 @@ struct SensoriumClientTestRunner {
         testWaylandPasteboardTests()
         testClipboardSyncSessionTests()
         testWaylandKeyboardStateModifiersEventTests()
+        testWaylandKeyboardStateAltGrOptionTests()
         testWaylandKeyboardStateTruncatedKeymapSizeTests()
         await testInputRoutingTests()
         await testOrderedCanvasInputTests()

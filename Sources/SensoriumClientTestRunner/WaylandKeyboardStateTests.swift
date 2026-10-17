@@ -127,6 +127,58 @@ func testWaylandKeyboardStateModifiersEventTests() {
     print("PASS: every wl_keyboard.modifiers event updates this keyboard's xkb state, and a modifier held only through one is still not forwarded until a real key event holds it")
 }
 
+/// Right Alt is Option on every layout. On German, French, British and Nordic
+/// layouts it is the level-3 shift (AltGr), which xkb does not report as Mod1,
+/// so Option has to follow the physical Alt keys and not the layout's modifier
+/// assignment: the far machine applies its own layout to the key position.
+@MainActor
+func testWaylandKeyboardStateAltGrOptionTests() {
+    let variable = "XKB_DEFAULT_LAYOUT"
+    let previous = getenv(variable).map { String(cString: $0) }
+    setenv(variable, "de", 1)
+    let keyboard = WaylandKeyboardState()
+    if let previous {
+        setenv(variable, previous, 1)
+    } else {
+        unsetenv(variable)
+    }
+    guard let keyboard else {
+        expect(false, "a keyboard state could be built from the German keymap")
+        return
+    }
+
+    expect(
+        keyboard.key(evdev: 100, isDown: true) == .modifiersChanged(keyCode: 61, modifiers: [.option]),
+        "Right Alt carries Option on a layout where it is the level-3 shift"
+    )
+    expect(
+        keyboard.key(evdev: 30, isDown: true) == .key(keyCode: 0, isDown: true, modifiers: [.option]),
+        "a key typed while Right Alt is held carries Option"
+    )
+    expect(
+        keyboard.key(evdev: 100, isDown: false) == .modifiersChanged(keyCode: 61, modifiers: []),
+        "Right Alt coming up releases Option"
+    )
+    expect(
+        keyboard.key(evdev: 56, isDown: true) == .modifiersChanged(keyCode: 58, modifiers: [.option]),
+        "Left Alt is Option as before"
+    )
+    expect(
+        keyboard.key(evdev: 100, isDown: true) == .modifiersChanged(keyCode: 61, modifiers: [.option]),
+        "Right Alt with Left Alt held still reports Option"
+    )
+    expect(
+        keyboard.key(evdev: 56, isDown: false) == .modifiersChanged(keyCode: 58, modifiers: [.option]),
+        "letting go of Left Alt keeps Option while Right Alt is held"
+    )
+    expect(
+        keyboard.key(evdev: 100, isDown: false) == .modifiersChanged(keyCode: 61, modifiers: []),
+        "and letting go of Right Alt releases it"
+    )
+
+    print("PASS: Right Alt is Option on a layout where it is the level-3 shift")
+}
+
 /// Regression test: a compositor's claimed keymap size must never be trusted
 /// past what the file it sent actually holds. A descriptor whose real
 /// content is shorter than the claimed size is refused rather than mapped,
@@ -158,4 +210,7 @@ func testWaylandKeyboardStateTests() {}
 func testWaylandKeyboardStateModifiersEventTests() {}
 @MainActor
 func testWaylandKeyboardStateTruncatedKeymapSizeTests() {}
+
+@MainActor
+func testWaylandKeyboardStateAltGrOptionTests() {}
 #endif

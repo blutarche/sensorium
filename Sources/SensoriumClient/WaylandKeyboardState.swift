@@ -57,6 +57,11 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
     /// press and every release.
     private static var reportedUnmappedCodes: Set<UInt32> = []
 
+    private static let altCodes: Set<UInt32> = [
+        56,  // KEY_LEFTALT
+        100  // KEY_RIGHTALT
+    ]
+
     /// The keys whose state belongs to the machine the person is sitting at
     /// and never travels: the two locks, and the Fn key, which has no evdev
     /// code an ordinary keyboard even reports. Forwarding a lock would fight
@@ -127,11 +132,18 @@ public final class WaylandKeyboardState: WaylandKeyTranslating {
     /// The four modifiers the wire carries, as this keyboard's state has
     /// them now. Caps Lock, Num Lock and Fn are not among them: the protocol
     /// has no flag for any of the three, and the far machine keeps its own.
+    ///
+    /// Option follows the two physical Alt keys as well as xkb's Alt
+    /// modifier: on German, French, British and Nordic layouts Right Alt is
+    /// the level-3 shift, which xkb does not count as Alt, yet the far
+    /// machine applies its own layout to the key's position and means Option.
     public var modifiers: CanvasModifierFlags {
         var flags: CanvasModifierFlags = []
         if isActive(XKB_MOD_NAME_SHIFT) { flags.insert(.shift) }
         if isActive(XKB_MOD_NAME_CTRL) { flags.insert(.control) }
-        if isActive(XKB_MOD_NAME_ALT) { flags.insert(.option) }
+        if isActive(XKB_MOD_NAME_ALT) || !heldModifierCodes.isDisjoint(with: Self.altCodes) {
+            flags.insert(.option)
+        }
         if isActive(XKB_MOD_NAME_LOGO) { flags.insert(.command) }
         return flags
     }
