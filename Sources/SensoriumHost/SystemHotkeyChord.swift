@@ -37,6 +37,9 @@ public enum SystemHotkeyChord {
         if modifiers == [.command], keyCode == spaceKeyCode || keyCode == tabKeyCode {
             return true
         }
+        if modifiers == [.command, .shift], keyCode == tabKeyCode {
+            return true
+        }
         if modifiers == [.control, .command], keyCode == letterQKeyCode {
             return true
         }

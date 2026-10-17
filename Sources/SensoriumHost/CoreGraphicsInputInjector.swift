@@ -64,11 +64,19 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     private let doubleClickInterval: TimeInterval
     private let now: () -> TimeInterval
     private var modifiers: CGEventFlags = []
-    private var heldButton: CanvasPointerButton?
+    /// Key codes pressed and not yet released. A key-down for one of these is
+    /// the viewer resending a held key, which a physical keyboard reports as an
+    /// auto-repeat.
+    private var heldKeyCodes: Set<UInt16> = []
+    /// The click count of each held button's press, carried on its release and
+    /// on every drag of it until then. A button is held while it has an entry.
+    private var heldClickCounts: [CanvasPointerButton: Int64] = [:]
     private var lastPress: (button: CanvasPointerButton, point: CGPoint, time: TimeInterval, count: Int64)?
-    /// The click count of the press that began the button hold in progress,
-    /// carried on its release and on every drag until then.
-    private var heldClickCount: Int64 = 1
+    /// The button macOS reports motion for while several are held: the
+    /// lowest-numbered one.
+    private var heldButton: CanvasPointerButton? {
+        [CanvasPointerButton.left, .right, .middle].first { heldClickCounts[$0] != nil }
+    }
     /// Where every relative-motion event is posted while captured. The
     /// system cursor never actually needs to move for the injected motion to
     /// be seen: `CGAssociateMouseAndMouseCursorPosition(false)` stops a
@@ -76,6 +84,10 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     /// stay fixed at the canvas centre for the whole capture and only the
     /// event's raw delta fields carry the motion.
     private var capturedAnchor: CGPoint?
+    /// Sub-point motion not yet posted, per axis. The event delta fields are
+    /// integers, so the fraction left over by rounding is added to the next
+    /// event's delta instead of being lost.
+    private var capturedRemainder = CGVector.zero
 
     /// `postEvent` is the seam a test uses to record which tap location an
     /// event was given, instead of calling the real `CGEvent.post`, which
@@ -113,7 +125,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
                 button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
                 at: point,
-                clickState: heldButton == nil ? nil : heldClickCount,
+                clickState: heldButton.flatMap { heldClickCounts[$0] },
                 tap: tapLocation()
             )
         case let .pointerMovedRelative(deltaX, deltaY):
@@ -129,20 +141,23 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 at: anchor,
                 relativeDeltaX: deltaX,
                 relativeDeltaY: deltaY,
-                clickState: heldButton == nil ? nil : heldClickCount,
+                clickState: heldButton.flatMap { heldClickCounts[$0] },
                 tap: tapLocation()
             )
         case let .pointerButton(button, isDown, x, y):
             let point = try globalPoint(x: x, y: y)
             if isDown {
-                heldClickCount = clickCount(forPressOf: button, at: point)
+                heldClickCounts[button] = clickCount(forPressOf: button, at: point)
             }
-            heldButton = isDown ? button : nil
+            let pressCount = heldClickCounts[button] ?? 1
+            if !isDown {
+                heldClickCounts[button] = nil
+            }
             try post(
                 mouse: CoreGraphicsInputTranslation.buttonType(button, isDown: isDown),
                 button: CoreGraphicsInputTranslation.mouseButton(button),
                 at: point,
-                clickState: heldClickCount,
+                clickState: pressCount,
                 tap: tapLocation()
             )
         case let .scrolled(deltaX, deltaY, _, _, phase, momentumPhase):
@@ -184,6 +199,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                     throw CoreGraphicsInputInjectorError.canvasDisplayUnavailable
                 }
                 capturedAnchor = CGPoint(x: bounds.midX, y: bounds.midY)
+                capturedRemainder = .zero
                 CGAssociateMouseAndMouseCursorPosition(0)
             } else {
                 CGAssociateMouseAndMouseCursorPosition(1)
@@ -191,6 +207,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                     CGWarpMouseCursorPosition(capturedAnchor)
                 }
                 capturedAnchor = nil
+                capturedRemainder = .zero
             }
         case let .key(keyCode, isDown, eventModifiers):
             modifiers = CoreGraphicsInputTranslation.flags(eventModifiers)
@@ -203,6 +220,13 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // .maskSecondaryFn just because the last key injected was an
             // arrow key.
             key.flags = modifiers.union(CoreGraphicsInputTranslation.nativeAuxiliaryFlags(forKeyCode: keyCode))
+            if isDown {
+                let isRepeat = !heldKeyCodes.insert(keyCode).inserted
+                    && !CoreGraphicsInputTranslation.modifierKeyCodes.contains(keyCode)
+                key.setIntegerValueField(.keyboardEventAutorepeat, value: isRepeat ? 1 : 0)
+            } else {
+                heldKeyCodes.remove(keyCode)
+            }
             let isSystemHotkey = SystemHotkeyChord.isSystemHotkey(keyCode: keyCode, modifiers: eventModifiers)
             send(key, tap: isSystemHotkey ? .cghidEventTap : tapLocation())
         case .releaseAllInput:
@@ -213,7 +237,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // .releaseAllInput into real .pointerButton/.key release calls
             // through the cases above before it ever reaches here.
             modifiers = []
-            heldButton = nil
+            heldClickCounts = [:]
+            heldKeyCodes = []
         }
     }
 
@@ -242,6 +267,10 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         }
     }
 
+    /// `CGDisplayBounds` is half-open, so a point on maxX belongs to the next display;
+    /// 1/64 is exact in binary and survives the window server's single-precision coordinates.
+    private static let edgeInset: CGFloat = 1.0 / 64
+
     /// Canvas logical points are relative to the canvas; CGEvent wants global
     /// coordinates, which for the session canvas means its own display origin.
     private func globalPoint(x: Double, y: Double) throws -> CGPoint {
@@ -249,7 +278,10 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         guard bounds.width > 0, bounds.height > 0 else {
             throw CoreGraphicsInputInjectorError.canvasDisplayUnavailable
         }
-        return CGPoint(x: bounds.origin.x + x, y: bounds.origin.y + y)
+        return CGPoint(
+            x: min(max(bounds.origin.x + x, bounds.minX), bounds.maxX - Self.edgeInset),
+            y: min(max(bounds.origin.y + y, bounds.minY), bounds.maxY - Self.edgeInset)
+        )
     }
 
     /// A press continues the previous one's run of clicks when it is the same
@@ -291,10 +323,16 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             throw CoreGraphicsInputInjectorError.eventCreationFailed
         }
         if let relativeDeltaX {
-            event.setIntegerValueField(.mouseEventDeltaX, value: Int64(relativeDeltaX.rounded()))
+            let total = relativeDeltaX + capturedRemainder.dx
+            let posted = total.rounded()
+            capturedRemainder.dx = total - posted
+            event.setIntegerValueField(.mouseEventDeltaX, value: Int64(posted))
         }
         if let relativeDeltaY {
-            event.setIntegerValueField(.mouseEventDeltaY, value: Int64(relativeDeltaY.rounded()))
+            let total = relativeDeltaY + capturedRemainder.dy
+            let posted = total.rounded()
+            capturedRemainder.dy = total - posted
+            event.setIntegerValueField(.mouseEventDeltaY, value: Int64(posted))
         }
         if let clickState {
             event.setIntegerValueField(.mouseEventClickState, value: clickState)
@@ -465,17 +503,30 @@ public enum CoreGraphicsInputTranslation {
     /// canvas (Show Desktop) and back. Every key on the navigation cluster
     /// (arrows, Home, End, Page Up/Down, forward delete) carries
     /// `.maskSecondaryFn` and `.maskNumericPad` on real hardware, fn held or
-    /// not; every F-row key carries `.maskSecondaryFn` alone. Every other key
-    /// carries neither.
+    /// not; every F-row key carries `.maskSecondaryFn` alone; every keypad key
+    /// carries `.maskNumericPad` alone. Every other key carries none of them.
     public static func nativeAuxiliaryFlags(forKeyCode keyCode: UInt16) -> CGEventFlags {
         if navigationClusterKeyCodes.contains(keyCode) || SystemHotkeyChord.arrowKeyCodes.contains(keyCode) {
             return [.maskSecondaryFn, .maskNumericPad]
+        }
+        if keypadKeyCodes.contains(keyCode) {
+            return [.maskNumericPad]
         }
         if SystemHotkeyChord.functionKeyCodes.contains(keyCode) {
             return [.maskSecondaryFn]
         }
         return []
     }
+
+    /// Command, Shift, Caps Lock, Option, Control (both sides) and fn: keys a
+    /// keyboard reports through flag changes, which never auto-repeat.
+    static let modifierKeyCodes: Set<UInt16> = [54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+
+    /// The keypad keys, `kVK_ANSI_KeypadDecimal` through `kVK_ANSI_Keypad9`:
+    /// real hardware sets `.maskNumericPad` on these, fn or not.
+    private static let keypadKeyCodes: Set<UInt16> = [
+        65, 67, 69, 71, 75, 76, 78, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92
+    ]
 
     /// Home, End, Page Up, Page Down, forward delete: the rest of the
     /// navigation cluster the arrow keys belong to.

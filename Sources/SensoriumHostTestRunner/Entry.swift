@@ -137,6 +137,7 @@ struct SensoriumHostTestRunner {
             { await runSystemHotkeyChordTests() },
             { await runLockScreenInputTapTests() },
             { await runClickCountTests() },
+            { await runInjectedInputFidelityTests() },
             { await runViewerTelemetryReceiptTests() },
             { await runOnlineDisplayLeakDetectionTests() },
             { await runDisplayWakeTests() },
