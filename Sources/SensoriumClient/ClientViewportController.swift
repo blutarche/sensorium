@@ -101,6 +101,7 @@ public actor ClientViewportController: CanvasLifecycleObserving {
     /// The preference the host has actually been told, so a choice that has
     /// not changed is not resent.
     private var reportedStreamScalePreference: StreamScalePreference?
+    private var geometryObserver: (@Sendable (_ logicalWidth: Double, _ logicalHeight: Double) -> Void)?
 
     public init(
         mapper: VirtualCanvasInputMapper,
@@ -114,6 +115,14 @@ public actor ClientViewportController: CanvasLifecycleObserving {
         sourceWidth = mapper.logicalWidth
         sourceHeight = mapper.logicalHeight
         streamScalePreference = initialStreamScalePreference
+    }
+
+    /// Tells the window which logical size its menus should label. Called at
+    /// once with the size now in force, then again each time
+    /// `updateMapper(geometry:)` names the surface being streamed.
+    public func setGeometryObserver(_ observer: (@Sendable (_ logicalWidth: Double, _ logicalHeight: Double) -> Void)?) {
+        geometryObserver = observer
+        observer?(mapper.logicalWidth, mapper.logicalHeight)
     }
 
     public func canvasDidBecomeReady() async {
@@ -171,6 +180,7 @@ public actor ClientViewportController: CanvasLifecycleObserving {
         )
         sourceWidth = Double(geometry.logicalWidth)
         sourceHeight = Double(geometry.logicalHeight)
+        geometryObserver?(mapper.logicalWidth, mapper.logicalHeight)
         // Before a connect has opened the gate this is a no-op --
         // `setDrawableSize` refuses to send while `isCanvasReady` is false --
         // and `canvasDidBecomeReady()`'s own resend, right after this call

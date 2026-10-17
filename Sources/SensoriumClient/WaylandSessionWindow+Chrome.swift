@@ -134,6 +134,11 @@ extension WaylandSessionWindow: SessionWindowChrome {
         refreshSessionControls()
     }
 
+    func updateStreamGeometry(logicalWidth: Double, logicalHeight: Double) {
+        chrome.state.controls.updateStreamGeometry(logicalWidth: logicalWidth, logicalHeight: logicalHeight)
+        refreshSessionControls()
+    }
+
     public func updateIsHostScreenSession(_ isHostScreenSession: Bool) {
         chrome.state.controls.isHostScreenSession = isHostScreenSession
         refreshSessionControls()

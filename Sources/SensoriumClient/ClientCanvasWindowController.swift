@@ -98,6 +98,10 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// can read them synchronously instead of awaiting the viewport actor.
     private var cachedRequestedStreamScale: Double?
     private var cachedStreamScalePreference: StreamScalePreference = .automatic
+    /// The logical size the session streams, as the host named it; the Display
+    /// menu's rows are labelled with it.
+    private var cachedStreamLogicalWidth = Double(SavedHost.remoteCanvasPreset.logicalWidth)
+    private var cachedStreamLogicalHeight = Double(SavedHost.remoteCanvasPreset.logicalHeight)
     private var cachedAppliedStreamScale: Double?
     private var cachedSustainableScaleCeiling: Double?
     private var cachedClampedFromUserChoice: Double?
@@ -338,6 +342,15 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
 
         surfaceView.onReleaseToLocalMac = { [weak self] in
             self?.releaseToLocalMachine()
+        }
+        let viewport = viewport
+        Task { [weak self] in
+            await viewport.setGeometryObserver { width, height in
+                Task { @MainActor in
+                    self?.cachedStreamLogicalWidth = width
+                    self?.cachedStreamLogicalHeight = height
+                }
+            }
         }
 
         // A deliberately separate chord from everything `SystemShortcutRouter`
@@ -790,12 +803,11 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// last telemetry tick. Read synchronously by `menuNeedsUpdate`, not the
     /// viewport actor itself: see `cachedStreamScalePreference`.
     public var streamScaleMenuState: DisplayScaleMenuState {
-        let preset = SavedHost.remoteCanvasPreset
-        return DisplayScaleMenuState(
+        DisplayScaleMenuState(
             items: DisplayScaleMenuPlan.items(
                 selectedPreference: cachedStreamScalePreference,
-                canvasLogicalWidth: Double(preset.logicalWidth),
-                canvasLogicalHeight: Double(preset.logicalHeight)
+                canvasLogicalWidth: cachedStreamLogicalWidth,
+                canvasLogicalHeight: cachedStreamLogicalHeight
             ),
             clampNotice: DisplayScaleMenuPlan.clampNotice(
                 appliedStreamScale: cachedAppliedStreamScale,

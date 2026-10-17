@@ -356,7 +356,7 @@ public final class WaylandSessionWindow:
             draws: draws
         )
         self.presenter = presenter
-        viewport = ClientViewportController(
+        let geometryViewport = ClientViewportController(
             mapper: VirtualCanvasInputMapper(
                 logicalWidth: Double(SavedHost.remoteCanvasPreset.logicalWidth),
                 logicalHeight: Double(SavedHost.remoteCanvasPreset.logicalHeight)
@@ -365,6 +365,14 @@ public final class WaylandSessionWindow:
             framePresenter: presenter,
             initialStreamScalePreference: initialStreamScalePreference
         )
+        viewport = geometryViewport
+        Task { [weak self] in
+            await geometryViewport.setGeometryObserver { width, height in
+                Task { @MainActor in
+                    self?.updateStreamGeometry(logicalWidth: width, logicalHeight: height)
+                }
+            }
+        }
         // A Wayland surface counts from its top-left corner, which is the
         // corner the canvas counts from too, so nothing here is flipped.
         let router = CanvasSurfaceEventRouter(viewport: viewport, sourceOrigin: .topLeft)

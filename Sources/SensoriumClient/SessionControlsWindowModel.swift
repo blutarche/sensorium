@@ -41,6 +41,13 @@ public struct SessionControlsWindowModel: Equatable, Sendable {
 
     public init() {}
 
+    /// The geometry the live session streams, which the scale rows are
+    /// labelled with.
+    public mutating func updateStreamGeometry(logicalWidth: Double, logicalHeight: Double) {
+        canvasLogicalWidth = logicalWidth
+        canvasLogicalHeight = logicalHeight
+    }
+
     /// The menus' state, built the way `ClientCanvasWindowController` builds
     /// the state it hands the macOS menu bar.
     public func menuBarState(isPointerCaptured: Bool, isFullscreen: Bool) -> ViewerMenuBarState {
