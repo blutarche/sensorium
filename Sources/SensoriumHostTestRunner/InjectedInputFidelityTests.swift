@@ -9,13 +9,20 @@ import SensoriumHost
 /// keypad flag, and a pointer that stays on its own display.
 @MainActor
 func runInjectedInputFidelityTests() async {
-    func makeInjector(posts: FidelityPosts) -> CoreGraphicsInputInjector {
+    func makeInjector(
+        posts: FidelityPosts,
+        cursor: FidelityCursor = FidelityCursor(),
+        now: @escaping () -> TimeInterval = { 0 }
+    ) -> CoreGraphicsInputInjector {
         try! CoreGraphicsInputInjector(
             canvasDisplayID: CGMainDisplayID(),
             sessionKind: .hostScreen,
             lockStateReader: FakeScreenLockState(locked: false),
             hostInjectedHIDActivity: FidelityHIDActivity(),
-            postEvent: { event, _ in posts.record(event) }
+            now: now,
+            postEvent: { event, _ in posts.record(event) },
+            associateMouseAndCursor: { cursor.associations.append($0) },
+            warpCursor: { cursor.warps.append($0) }
         )
     }
 
@@ -45,6 +52,19 @@ func runInjectedInputFidelityTests() async {
         try! resetInjector.inject(.key(keyCode: 14, isDown: true, modifiers: []))
         expect(resetPosts.autorepeats == [0, 0], "post-release repeat flags were \(resetPosts.autorepeats)")
         print("PASS: a key-down for an already-held key is posted as an auto-repeat")
+
+        // A key-down long after the previous one is a fresh press, not a repeat
+        // (the viewer lost the key-up in between)
+        var clock: TimeInterval = 100
+        let stalePosts = FidelityPosts()
+        let staleInjector = makeInjector(posts: stalePosts, now: { clock })
+        try! staleInjector.inject(.key(keyCode: 14, isDown: true, modifiers: []))
+        clock += 3
+        try! staleInjector.inject(.key(keyCode: 14, isDown: true, modifiers: []))
+        clock += 0.05
+        try! staleInjector.inject(.key(keyCode: 14, isDown: true, modifiers: []))
+        expect(stalePosts.autorepeats == [0, 0, 1], "stale repeat flags were \(stalePosts.autorepeats)")
+        print("PASS: a key-down long after an unreleased one is a fresh press")
     }
 
     do {
@@ -96,7 +116,8 @@ func runInjectedInputFidelityTests() async {
     do {
         // Sub-point captured motion accumulates instead of being dropped
         let posts = FidelityPosts()
-        let injector = makeInjector(posts: posts)
+        let cursor = FidelityCursor()
+        let injector = makeInjector(posts: posts, cursor: cursor)
         try! injector.inject(.pointerCaptureChanged(isCaptured: true))
         for _ in 0..<10 {
             try! injector.inject(.pointerMovedRelative(deltaX: 0.3, deltaY: -0.3))
@@ -105,10 +126,14 @@ func runInjectedInputFidelityTests() async {
         let sumX = posts.deltaXs.reduce(0, +)
         let sumY = posts.deltaYs.reduce(0, +)
         expect(sumX == 3 && sumY == -3, "summed deltas were \(sumX), \(sumY)")
+        let bounds = CGDisplayBounds(CGMainDisplayID())
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
+        expect(cursor.associations == [false, true], "association calls were \(cursor.associations)")
+        expect(cursor.warps == [center], "warp calls were \(cursor.warps)")
 
         // The remainder does not survive the end of a capture
         let again = FidelityPosts()
-        let second = makeInjector(posts: again)
+        let second = makeInjector(posts: again, cursor: FidelityCursor())
         try! second.inject(.pointerCaptureChanged(isCaptured: true))
         try! second.inject(.pointerMovedRelative(deltaX: 0.4, deltaY: 0.4))
         try! second.inject(.pointerCaptureChanged(isCaptured: false))
@@ -182,6 +207,11 @@ private final class FidelityPosts: @unchecked Sendable {
             locations.append(event.location)
         }
     }
+}
+
+private final class FidelityCursor: @unchecked Sendable {
+    var associations: [Bool] = []
+    var warps: [CGPoint] = []
 }
 
 private final class FidelityHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {

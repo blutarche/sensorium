@@ -55,6 +55,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     private let sessionKind: InputSessionKind
     private let source: CGEventSource
     private let postEvent: (CGEvent, CGEventTapLocation) -> Void
+    private let associateMouseAndCursor: (Bool) -> Void
+    private let warpCursor: (CGPoint) -> Void
     /// How far, in points, a press may land from the previous one and still
     /// count as part of the same click run. macOS does not publish its own value.
     private static let doubleClickTolerance: CGFloat = 4
@@ -64,10 +66,14 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     private let doubleClickInterval: TimeInterval
     private let now: () -> TimeInterval
     private var modifiers: CGEventFlags = []
-    /// Key codes pressed and not yet released. A key-down for one of these is
-    /// the viewer resending a held key, which a physical keyboard reports as an
-    /// auto-repeat.
-    private var heldKeyCodes: Set<UInt16> = []
+    /// When each pressed-and-not-yet-released key last went down. A key-down
+    /// for one of these, soon after the last, is the viewer resending a held
+    /// key, which a physical keyboard reports as an auto-repeat.
+    private var heldKeyDownTimes: [UInt16: TimeInterval] = [:]
+    /// Longer than the delay-until-repeat viewers use by default, so only a
+    /// viewer resending a held key qualifies; a key whose release was lost
+    /// stops looking held.
+    private static let autoRepeatWindow: TimeInterval = 2
     /// The click count of each held button's press, carried on its release and
     /// on every drag of it until then. A button is held while it has an entry.
     private var heldClickCounts: [CanvasPointerButton: Int64] = [:]
@@ -91,7 +97,9 @@ public final class CoreGraphicsInputInjector: InputInjecting {
 
     /// `postEvent` is the seam a test uses to record which tap location an
     /// event was given, instead of calling the real `CGEvent.post`, which
-    /// would inject a real synthetic event system-wide.
+    /// would inject a real synthetic event system-wide. `associateMouseAndCursor`
+    /// and `warpCursor` are the same kind of seam for the two calls that move
+    /// the machine's real cursor when a capture starts and ends.
     public init(
         canvasDisplayID: CGDirectDisplayID,
         sessionKind: InputSessionKind,
@@ -99,7 +107,9 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         hostInjectedHIDActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared,
         doubleClickInterval: TimeInterval = NSEvent.doubleClickInterval,
         now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        postEvent: @escaping (CGEvent, CGEventTapLocation) -> Void = { event, tap in event.post(tap: tap) }
+        postEvent: @escaping (CGEvent, CGEventTapLocation) -> Void = { event, tap in event.post(tap: tap) },
+        associateMouseAndCursor: @escaping (Bool) -> Void = { _ = CGAssociateMouseAndMouseCursorPosition($0 ? 1 : 0) },
+        warpCursor: @escaping (CGPoint) -> Void = { _ = CGWarpMouseCursorPosition($0) }
     ) throws {
         guard let source = CGEventSource(stateID: .hidSystemState) else {
             throw CoreGraphicsInputInjectorError.eventSourceUnavailable
@@ -110,6 +120,8 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         self.lockStateReader = lockStateReader
         self.hostInjectedHIDActivity = hostInjectedHIDActivity
         self.postEvent = postEvent
+        self.associateMouseAndCursor = associateMouseAndCursor
+        self.warpCursor = warpCursor
         self.doubleClickInterval = doubleClickInterval
         self.now = now
     }
@@ -200,11 +212,11 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 }
                 capturedAnchor = CGPoint(x: bounds.midX, y: bounds.midY)
                 capturedRemainder = .zero
-                CGAssociateMouseAndMouseCursorPosition(0)
+                associateMouseAndCursor(false)
             } else {
-                CGAssociateMouseAndMouseCursorPosition(1)
+                associateMouseAndCursor(true)
                 if let capturedAnchor {
-                    CGWarpMouseCursorPosition(capturedAnchor)
+                    warpCursor(capturedAnchor)
                 }
                 capturedAnchor = nil
                 capturedRemainder = .zero
@@ -221,11 +233,13 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // arrow key.
             key.flags = modifiers.union(CoreGraphicsInputTranslation.nativeAuxiliaryFlags(forKeyCode: keyCode))
             if isDown {
-                let isRepeat = !heldKeyCodes.insert(keyCode).inserted
+                let time = now()
+                let previous = heldKeyDownTimes.updateValue(time, forKey: keyCode)
+                let isRepeat = previous.map { time - $0 <= Self.autoRepeatWindow } ?? false
                     && !CoreGraphicsInputTranslation.modifierKeyCodes.contains(keyCode)
                 key.setIntegerValueField(.keyboardEventAutorepeat, value: isRepeat ? 1 : 0)
             } else {
-                heldKeyCodes.remove(keyCode)
+                heldKeyDownTimes[keyCode] = nil
             }
             let isSystemHotkey = SystemHotkeyChord.isSystemHotkey(keyCode: keyCode, modifiers: eventModifiers)
             send(key, tap: isSystemHotkey ? .cghidEventTap : tapLocation())
@@ -238,7 +252,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             // through the cases above before it ever reaches here.
             modifiers = []
             heldClickCounts = [:]
-            heldKeyCodes = []
+            heldKeyDownTimes = [:]
         }
     }
 
