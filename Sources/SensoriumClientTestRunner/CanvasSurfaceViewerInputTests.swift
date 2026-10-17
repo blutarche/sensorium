@@ -94,5 +94,31 @@ func testCanvasSurfaceViewerInputTests() async {
     }.first
     expect(pixelDelta == 3, "a precise scroll of 3 stays 3, got \(String(describing: pixelDelta))")
     print("PASS: a line-based wheel scrolls by points per notch and a precise scroll is unchanged")
+
+    // The click that activates the window is the host's click too
+    expect(surface.acceptsFirstMouse(for: nil), "the click that activates the viewer window reaches the canvas")
+    print("PASS: the click that activates the viewer window is forwarded")
+
+    // Dragging with the middle button moves the host's pointer
+    let before = await sink.points.count
+    guard let drag = NSEvent.mouseEvent(
+        with: .otherMouseDragged,
+        location: NSPoint(x: 100, y: 100),
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        eventNumber: 0,
+        clickCount: 1,
+        pressure: 1
+    ) else {
+        expect(false, "AppKit refused a synthetic drag event")
+        return
+    }
+    surface.otherMouseDragged(with: drag)
+    await settle()
+    let after = await sink.points
+    expect(after.count == before + 1, "a middle-button drag forwarded motion, got \(after)")
+    print("PASS: a middle-button drag forwards pointer motion")
 }
 #endif

@@ -112,6 +112,11 @@ public final class CanvasSurfaceView: NSView {
 
     public override var acceptsFirstResponder: Bool { true }
 
+    /// The click that activates the window is an ordinary click on the far
+    /// machine too. A press on the viewer's own chrome is still held back by
+    /// `chromeClicks` in `press(_:_:)`.
+    public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     /// A click is delivered by position; a key only ever reaches the window's
     /// first responder, and AppKit does not move first-responder status into a
     /// plain view when one is clicked. Without this, a window whose keyboard
@@ -193,6 +198,10 @@ public final class CanvasSurfaceView: NSView {
     }
 
     public override func rightMouseDragged(with event: NSEvent) {
+        forwardMotion(event)
+    }
+
+    public override func otherMouseDragged(with event: NSEvent) {
         forwardMotion(event)
     }
 
