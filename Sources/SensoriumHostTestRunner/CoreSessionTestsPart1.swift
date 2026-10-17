@@ -511,7 +511,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 logicalHeight: 1200,
                 hostSignature: nil,
                 surfaceID: nil,
-                hostName: Host.current().localizedName
+                hostName: Host.current().localizedName,
+                inputFeatures: [HostInputFeature.backForwardButtons]
             ),
             "canvas request returns the owned canvas, naming this machine"
         )
@@ -537,7 +538,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 logicalHeight: 1200,
                 hostSignature: nil,
                 surfaceID: 1,
-                hostName: Host.current().localizedName
+                hostName: Host.current().localizedName,
+                inputFeatures: [HostInputFeature.backForwardButtons]
             ),
             "a canvasRequest's in-range surfaceID echoes back identical in canvasReady"
         )
@@ -555,7 +557,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 logicalHeight: 1200,
                 hostSignature: nil,
                 surfaceID: nil,
-                hostName: Host.current().localizedName
+                hostName: Host.current().localizedName,
+                inputFeatures: [HostInputFeature.backForwardButtons]
             ),
             "a canvasRequest that omits surfaceID gets back a canvasReady that omits it too, not an invented value"
         )
@@ -666,7 +669,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 logicalHeight: 1200,
                 hostSignature: nil,
                 surfaceID: nil,
-                hostName: Host.current().localizedName
+                hostName: Host.current().localizedName,
+                inputFeatures: [HostInputFeature.backForwardButtons]
             ),
             "valid signed hello unlocks canvas creation"
         )
@@ -1419,7 +1423,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             signature: try! signedClient.sign(signedTranscript)
         ))
         let signedReady = try! signingController.handle(.canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil))
-        guard case let .canvasReady(displayID, width, height, hostSignature, _, _) = signedReady else {
+        guard case let .canvasReady(displayID, width, height, hostSignature, _, _, _) = signedReady else {
             expect(false, "canvas readiness carries a host signature")
             return
         }

@@ -40,7 +40,7 @@ func runDisplayCountTests() async {
         expect(mediaZero.startedDisplayIDs.count == 1, "the first display starts as an ordinary canvasRequest already would")
 
         let response = try! await coordinator.handleWritingResponse(.displayCount(2))
-        guard case let .canvasReady(_, _, _, _, surfaceID, _) = response else {
+        guard case let .canvasReady(_, _, _, _, surfaceID, _, _) = response else {
             expect(false, "displayCount(2) brings the second display up and answers exactly as an explicit canvasRequest for it would")
             return
         }

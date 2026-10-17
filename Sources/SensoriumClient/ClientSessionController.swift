@@ -159,6 +159,16 @@ public actor ClientSessionController {
     /// from a host that predates the field or has none configured; the
     /// window title falls back to the address either way.
     public private(set) var hostMachineName: String?
+    /// The `HostInputFeature` tokens this connection's host listed in the
+    /// reply that admitted the session. Learned on every connect and never
+    /// kept past this connection: the host at the same address may be a
+    /// different build next time.
+    private var hostInputFeatures: Set<String> = []
+    /// The back and forward presses this connection sent and has not yet
+    /// released. A release is sent only for one of these, so a host never
+    /// sees a release for a press that was dropped or went to an earlier
+    /// connection.
+    private var forwardedSideButtons: Set<CanvasPointerButton> = []
     /// Whether the host's latest offer said it will open a session canvas.
     /// `false` until proven otherwise: a `hostScreenList` naming
     /// `canvasAvailable` (`true` for a host that predates the field), or a
@@ -402,9 +412,10 @@ public actor ClientSessionController {
         if case let .hostScreenRefused(reason) = reply {
             throw ClientSessionError.hostScreenRefused(reason)
         }
-        guard case let .hostScreenReady(geometry, resumeTicket) = reply else {
+        guard case let .hostScreenReady(geometry, resumeTicket, inputFeatures) = reply else {
             throw ClientSessionError.unexpectedMessage
         }
+        hostInputFeatures = Set(inputFeatures)
         // Mirrors `performCanvasConnect`'s own `canvasDidBecomeReady()` call:
         // without it the window's `isCanvasReady` gate never opens, so a
         // decoded frame arriving over this connection would never be shown.
@@ -454,7 +465,7 @@ public actor ClientSessionController {
             // so it is not inspected here.
             throw ClientSessionError.canvasRefused(reason)
         }
-        guard case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, echoedSurfaceID, hostName) = response,
+        guard case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, echoedSurfaceID, hostName, inputFeatures) = response,
               logicalWidth == 1920,
               logicalHeight == 1200 else {
             throw ClientSessionError.unexpectedMessage
@@ -476,6 +487,7 @@ public actor ClientSessionController {
         )
         canvasDisplayID = displayID
         hostMachineName = hostName
+        hostInputFeatures = Set(inputFeatures)
         // Proof by its own success: a session canvas that just opened is a
         // canvas the host offers, whatever the offer read earlier on this
         // same connect said (an unauthenticated connect reads no offer at
@@ -523,7 +535,7 @@ public actor ClientSessionController {
             // grants nothing.
             return
         }
-        guard case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, echoedSurfaceID, _) = response,
+        guard case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, echoedSurfaceID, _, _) = response,
               logicalWidth == 1920,
               logicalHeight == 1200 else {
             throw ClientSessionError.unexpectedMessage
@@ -739,12 +751,30 @@ public actor ClientSessionController {
         guard isWithinTarget(event) else {
             throw ClientSessionError.invalidInput
         }
+        guard hostAccepts(event) else { return }
         let sequence = nextInputSequence
         nextInputSequence += 1
         let sentAt = MonotonicClock.nowNanoseconds()
         inputActivity.recordInput(atNanoseconds: sentAt)
         recordPendingInputSend(sequence: sequence, atNanoseconds: sentAt)
         try await transport.send(.input(event, surfaceID: surfaceID, sequence: sequence))
+    }
+
+    /// Whether `event` may go to this connection's host, noting a back or
+    /// forward press that will. A host that did not list
+    /// `backForwardButtons` cannot read either button, and a stand-in such
+    /// as middle would act on the host as something the person did not do.
+    private func hostAccepts(_ event: SensoriumInputEvent) -> Bool {
+        guard case let .pointerButton(button, isDown, _, _) = event,
+              button == .back || button == .forward else {
+            return true
+        }
+        guard hostInputFeatures.contains(HostInputFeature.backForwardButtons) else { return false }
+        if isDown {
+            forwardedSideButtons.insert(button)
+            return true
+        }
+        return forwardedSideButtons.remove(button) != nil
     }
 
     private func recordPendingInputSend(sequence: UInt64, atNanoseconds: Int64) {

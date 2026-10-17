@@ -65,7 +65,7 @@ Tag 3 carries text or an image between the two machines' pasteboards, in both di
 | `hello(protocolVersion, deviceName)` | client → host | Unauthenticated. Refused when authentication is required |
 | `authenticatedHello(protocolVersion, deviceName, publicKey, hostCertificateHash, signature)` | client → host | Proves the client device key, bound to the host it is sent to. `hostCertificateHash` is the SHA-256 of that host's TLS certificate, the one the viewer pinned; the host refuses a hello naming any other, so a host cannot replay a hello it received to another host |
 | `canvasRequest(logicalWidth, logicalHeight, scale, surfaceID)` | client → host | Only the 1920×1200 scale-2 preset is accepted |
-| `canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, hostName)` | host → client | Canvas exists. Signature proves the host. `hostName` is the host's own machine name, or absent when unconfigured |
+| `canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, hostName, inputFeatures)` | host → client | Canvas exists. Signature proves the host. `hostName` is the host's own machine name, or absent when unconfigured. `inputFeatures` lists the input this host accepts beyond the basics; see Input features below |
 | `canvasRefused(reason, surfaceID)` | host → client | The other answer to a `canvasRequest`: `canvas-creation-in-progress`, `canvas-unavailable` |
 | `input(event, surfaceID, sequence)` | client → host | Pointer, button, scroll, key, release-all, or capture-mode change. `sequence` is the client's own monotonic tag for round-trip measurement. Absent means untagged |
 | `inputApplied(sequence)` | host → client | Echoes `sequence` once the named event was actually injected. Never sent for a refused or suppressed event |
@@ -134,6 +134,16 @@ Both the hello and the pairing-request transcripts are at `v2`: their field list
 ## Input events
 
 `pointerMoved`, `pointerMovedRelative` (raw unaccelerated deltas, sent only while the client has captured the pointer), `pointerButton`, `scrolled`, `key`, `releaseAllInput`, `pointerCaptureChanged(isCaptured)`. Coordinates are canvas logical points with the origin at the **top left**. AppKit's opposite convention is flipped once, on the client. `key.keyCode` is the macOS virtual keycode of the physical key, and a viewer on another platform translates its own scancodes into that space before sending. Validated on both sides: coordinates must be finite and inside 1920×1200, and scroll deltas finite and within ±10000. Modifier bits outside the four forwarded modifiers are masked off, not refused. The key is applied with the modifiers this build knows, so a key-up is never lost over a bit a newer peer added.
+
+`pointerButton.button` is `left`, `right`, `middle`, `back` or `forward`. `back` and `forward` are the two side buttons most mice carry. The host posts them as other-mouse events with button numbers 3 and 4, the numbers macOS gives them, and middle stays button 2. The macOS viewer reads AppKit's button numbers 2, 3 and 4. The Linux viewer reads `BTN_SIDE` or `BTN_BACK` as back, and `BTN_EXTRA` or `BTN_FORWARD` as forward. Any other button is not forwarded.
+
+### Input features
+
+`canvasReady` and `hostScreenReady` carry `inputFeatures`, a list of plain strings naming input the host accepts beyond what every host does. It is absent when the list is empty, which is also what a host that predates the field sends. A viewer ignores a string it does not know. The viewer reads the list on every connection, a silent resume included, and never stores it, because the host at the same address may be a different build next time. The list is not part of any signed transcript.
+
+| String | Meaning |
+|---|---|
+| `backForwardButtons` | The host posts `back` and `forward`. A viewer sends neither, press or release, to a host that does not list this, and never sends another button in their place. It also never sends a release whose press it did not send on this connection |
 
 ## Streamed resolution
 
@@ -275,7 +285,7 @@ The host-screen path offers one of the host's own displays instead of a session 
 |---|---|---|
 | `hostScreenList(displays)` | host → client | Sent instead of `canvasReady` on this path. Each entry is an opaque per-connection token, a label, logical size, backing scale, and a stable `displayIdentity` |
 | `hostScreenRequest(token, resumeTicket)` | client → host | Names one offered display by its token. `resumeTicket`, when present, asks the host to resume a session already granted without a fresh host-presence check (see `docs/host-screen-design.md` §6.4) |
-| `hostScreenReady(geometry, resumeTicket)` | host → client | The display's logical size and backing scale. `resumeTicket` is minted fresh for this session and presented back on a silent reconnect |
+| `hostScreenReady(geometry, resumeTicket, inputFeatures)` | host → client | The display's logical size and backing scale. `resumeTicket` is minted fresh for this session and presented back on a silent reconnect. `inputFeatures` is the same list `canvasReady` carries |
 | `hostScreenRefused(reason)` | host → client | `host-screen-not-allowed`, `canvas-session-active`, `host-screen-session-active`, `host-screen-presence-declined`, `host-screen-presence-unanswered`, `host-screen-presence-check-required`, `host-screen-resume-expired`, `host-screen-resume-refused`, `host-screen-display-unavailable`. `host-screen-display-unavailable` answers a request for a display the host offered but no longer has. `host-screen-resume-expired` answers a resume ticket that matched but outlived its grace window or ceiling, and is the only refusal after which the viewer starts a fresh session by itself. `host-screen-resume-refused` answers every other unusable ticket (ended by a Stop at the host, lost to a host restart, or bound to another device, display or arming record) and ends the run |
 | `hostScreenModeList(modes, currentModeID)` | host → client | Every mode macOS already offers for this display, and which one it is on now. Sent right after `hostScreenReady` and again after every applied change |
 | `hostScreenModeRequest(modeID)` | client → host | One `modeID` from that list. Never a width, height, or scale of the viewer's own composing |

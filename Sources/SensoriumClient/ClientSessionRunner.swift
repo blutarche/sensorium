@@ -589,7 +589,7 @@ public final class ClientSessionRunner {
     /// `secondarySurfaceID` here is what keeps one from being misread as
     /// the other if either somehow arrived twice.
     public nonisolated static func secondDisplayOutcome(for message: SensoriumMessage) -> SecondDisplayOutcome? {
-        if case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, _) = message,
+        if case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, _, _) = message,
            surfaceID == secondarySurfaceID {
             return .ready(displayID: displayID, logicalWidth: logicalWidth, logicalHeight: logicalHeight, hostSignature: hostSignature)
         }

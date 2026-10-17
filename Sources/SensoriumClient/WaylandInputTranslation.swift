@@ -2,20 +2,28 @@ import Foundation
 import SensoriumCore
 
 /// The pointer buttons a Wayland compositor reports, which are the Linux
-/// `BTN_*` codes from `input-event-codes.h`, and the three the protocol
-/// carries. Anything else -- side, extra, forward, back, task -- has no place
-/// on the wire, so it is dropped here rather than translated to a button the
-/// far machine would act on.
+/// `BTN_*` codes from `input-event-codes.h`, and the ones the protocol
+/// carries. Mice report their two side buttons as either BTN_SIDE and
+/// BTN_EXTRA or BTN_BACK and BTN_FORWARD, so both pairs are back and
+/// forward. Anything else, such as BTN_TASK, has no place on the wire, so it
+/// is dropped here rather than translated to a button the far machine would
+/// act on.
 public enum WaylandPointerButtonMap {
     private static let left: UInt32 = 0x110
     private static let right: UInt32 = 0x111
     private static let middle: UInt32 = 0x112
+    private static let side: UInt32 = 0x113
+    private static let extra: UInt32 = 0x114
+    private static let forward: UInt32 = 0x115
+    private static let back: UInt32 = 0x116
 
     public static func button(forEvdev code: UInt32) -> CanvasPointerButton? {
         switch code {
         case left: .left
         case right: .right
         case middle: .middle
+        case side, back: .back
+        case extra, forward: .forward
         default: nil
         }
     }

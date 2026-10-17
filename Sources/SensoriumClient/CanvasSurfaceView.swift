@@ -227,11 +227,24 @@ public final class CanvasSurfaceView: NSView {
     }
 
     public override func otherMouseDown(with event: NSEvent) {
-        press(.middle, event)
+        guard let button = Self.otherButton(numbered: event.buttonNumber) else { return }
+        press(button, event)
     }
 
     public override func otherMouseUp(with event: NSEvent) {
-        release(.middle, event)
+        guard let button = Self.otherButton(numbered: event.buttonNumber) else { return }
+        release(button, event)
+    }
+
+    /// AppKit's numbering for the buttons past left and right. A mouse's
+    /// further buttons have no agreed meaning, so they are not forwarded.
+    private static func otherButton(numbered buttonNumber: Int) -> CanvasPointerButton? {
+        switch buttonNumber {
+        case 2: .middle
+        case 3: .back
+        case 4: .forward
+        default: nil
+        }
     }
 
     /// A press aimed at the viewer's own chrome is not one the far machine

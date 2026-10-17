@@ -1762,7 +1762,7 @@ func runDisplayWakeTests() async {
         let firstReply = try! await first.coordinator.handleFirstResponse(.hostScreenRequest(
             token: firstEntry.opaqueToken, resumeTicket: nil
         ))
-        guard case let .hostScreenReady(_, mintedTicket) = firstReply else {
+        guard case let .hostScreenReady(_, mintedTicket, _) = firstReply else {
             expect(false, "the fixture's own first request is admitted once the wake brings its display back, got \(String(describing: firstReply))")
             return
         }

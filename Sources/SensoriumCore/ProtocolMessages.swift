@@ -29,8 +29,11 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// canvases. `hostName` is the host's own machine name, so the viewer's
     /// window title can say who it is talking to instead of only the
     /// address dialled; `nil` when the host has no name configured, and the
-    /// viewer falls back to the address.
-    case canvasReady(displayID: UInt32, logicalWidth: Int, logicalHeight: Int, hostSignature: Data?, surfaceID: UInt32?, hostName: String? = nil)
+    /// viewer falls back to the address. `inputFeatures` names the input
+    /// this host accepts beyond what every host does, as
+    /// `HostInputFeature` tokens; a viewer ignores a token it does not know,
+    /// and an empty list is a host that predates them.
+    case canvasReady(displayID: UInt32, logicalWidth: Int, logicalHeight: Int, hostSignature: Data?, surfaceID: UInt32?, hostName: String? = nil, inputFeatures: [String] = [])
     /// `surfaceID` routes the event to one of the (currently at most two)
     /// session-owned canvases; `nil` means canvas 0.
     /// The other answer to a `canvasRequest`: this canvas was not created,
@@ -159,7 +162,8 @@ public enum SensoriumMessage: Equatable, Sendable {
     /// `geometry` is the target display's own logical size and backing
     /// scale (docs/host-screen-design.md §5.1); `resumeTicket` is minted fresh for this session
     /// and presented back on a silent reconnect (docs/host-screen-design.md §6.5).
-    case hostScreenReady(geometry: SessionSurfaceGeometry, resumeTicket: Data)
+    /// `inputFeatures` is `canvasReady`'s own list, for this session.
+    case hostScreenReady(geometry: SessionSurfaceGeometry, resumeTicket: Data, inputFeatures: [String] = [])
     /// The other answer to a `hostScreenRequest`: refused, and why. A
     /// separate message rather than a flag, the same reasoning
     /// `canvasRefused` already follows -- a mode field on `canvasRequest`
@@ -449,10 +453,26 @@ public struct HostScreenModeEntry: Equatable, Sendable {
     }
 }
 
+/// The tokens a host lists in `canvasReady` and `hostScreenReady`'s
+/// `inputFeatures`. Plain strings on the wire, never a decoded enum, so a
+/// token this build does not know is skipped rather than failing the reply.
+public enum HostInputFeature {
+    /// The host posts the back and forward mouse buttons
+    /// (`CanvasPointerButton.back` and `.forward`). A viewer sends neither
+    /// to a host that does not list this.
+    public static let backForwardButtons = "backForwardButtons"
+}
+
 public enum CanvasPointerButton: String, Equatable, Sendable, Codable {
     case left
     case right
     case middle
+    /// The side buttons most mice carry, which browsers and file managers
+    /// read as Back and Forward. Sent only to a host that lists
+    /// `HostInputFeature.backForwardButtons`: one that predates them cannot
+    /// read either name.
+    case back
+    case forward
 }
 
 public struct CanvasModifierFlags: OptionSet, Equatable, Sendable, Codable {
@@ -592,6 +612,9 @@ public enum SensoriumFrameCodec {
         var canvasAvailable: Bool? = nil
         /// `viewerDecoderPreference`'s own profile token.
         var h264Profile: String? = nil
+        /// `canvasReady` and `hostScreenReady`'s own list of
+        /// `HostInputFeature` tokens. Absent means none.
+        var inputFeatures: [String]? = nil
     }
 
     private struct WireHostScreenModeEntry: Codable {
@@ -902,8 +925,8 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "authenticatedHello", protocolVersion: protocolVersion, deviceName: deviceName, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: publicKey, signature: signature, tlsCertificateHash: hostCertificateHash, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .canvasRequest(logicalWidth, logicalHeight, scale, surfaceID):
             wire = WireMessage(type: "canvasRequest", protocolVersion: nil, deviceName: nil, logicalWidth: logicalWidth, logicalHeight: logicalHeight, scale: scale, surfaceID: surfaceID, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
-        case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, hostName):
-            wire = WireMessage(type: "canvasReady", protocolVersion: nil, deviceName: nil, logicalWidth: logicalWidth, logicalHeight: logicalHeight, scale: nil, surfaceID: surfaceID, displayID: displayID, reason: nil, publicKey: nil, signature: hostSignature, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostName: hostName)
+        case let .canvasReady(displayID, logicalWidth, logicalHeight, hostSignature, surfaceID, hostName, inputFeatures):
+            wire = WireMessage(type: "canvasReady", protocolVersion: nil, deviceName: nil, logicalWidth: logicalWidth, logicalHeight: logicalHeight, scale: nil, surfaceID: surfaceID, displayID: displayID, reason: nil, publicKey: nil, signature: hostSignature, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostName: hostName, inputFeatures: inputFeatures.isEmpty ? nil : inputFeatures)
         case let .canvasRefused(reason, surfaceID):
             wire = WireMessage(type: "canvasRefused", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: surfaceID, displayID: nil, reason: reason, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .input(event, surfaceID, sequence):
@@ -948,8 +971,8 @@ public enum SensoriumFrameCodec {
             wire = WireMessage(type: "hostScreenList", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenDisplays: displays.map(WireHostScreenDisplayEntry.init), canvasAvailable: canvasAvailable)
         case let .hostScreenRequest(token, resumeTicket):
             wire = WireMessage(type: "hostScreenRequest", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, hostScreenToken: token, resumeTicket: resumeTicket)
-        case let .hostScreenReady(geometry, resumeTicket):
-            wire = WireMessage(type: "hostScreenReady", protocolVersion: nil, deviceName: nil, logicalWidth: geometry.logicalWidth, logicalHeight: geometry.logicalHeight, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, backingScale: geometry.backingScale, resumeTicket: resumeTicket)
+        case let .hostScreenReady(geometry, resumeTicket, inputFeatures):
+            wire = WireMessage(type: "hostScreenReady", protocolVersion: nil, deviceName: nil, logicalWidth: geometry.logicalWidth, logicalHeight: geometry.logicalHeight, scale: nil, surfaceID: nil, displayID: nil, reason: nil, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil, backingScale: geometry.backingScale, resumeTicket: resumeTicket, inputFeatures: inputFeatures.isEmpty ? nil : inputFeatures)
         case let .hostScreenRefused(reason):
             wire = WireMessage(type: "hostScreenRefused", protocolVersion: nil, deviceName: nil, logicalWidth: nil, logicalHeight: nil, scale: nil, surfaceID: nil, displayID: nil, reason: reason, publicKey: nil, signature: nil, tlsCertificateHash: nil, code: nil, input: nil, clientTimeNanoseconds: nil, hostTimeNanoseconds: nil, drawablePixelWidth: nil, drawablePixelHeight: nil, hasViewerFocus: nil, telemetry: nil)
         case let .hostScreenModeList(modes, currentModeID):
@@ -1069,7 +1092,7 @@ public enum SensoriumFrameCodec {
             guard let displayID = wire.displayID, let logicalWidth = wire.logicalWidth, let logicalHeight = wire.logicalHeight else {
                 throw SensoriumProtocolError.malformedMessage
             }
-            return .canvasReady(displayID: displayID, logicalWidth: logicalWidth, logicalHeight: logicalHeight, hostSignature: wire.signature, surfaceID: wire.surfaceID, hostName: wire.hostName)
+            return .canvasReady(displayID: displayID, logicalWidth: logicalWidth, logicalHeight: logicalHeight, hostSignature: wire.signature, surfaceID: wire.surfaceID, hostName: wire.hostName, inputFeatures: wire.inputFeatures ?? [])
         case "canvasRefused":
             // `surfaceID` is deliberately not required: a refusal of the
             // request that omitted it is a refusal of canvas 0, the same rule
@@ -1233,7 +1256,8 @@ public enum SensoriumFrameCodec {
                 geometry: SessionSurfaceGeometry(
                     logicalWidth: logicalWidth, logicalHeight: logicalHeight, backingScale: backingScale
                 ),
-                resumeTicket: resumeTicket
+                resumeTicket: resumeTicket,
+                inputFeatures: wire.inputFeatures ?? []
             )
         case "hostScreenRefused":
             guard let reason = wire.reason else {

@@ -3,16 +3,22 @@ import SensoriumClient
 import SensoriumCore
 
 /// The pointer button codes a Wayland compositor delivers are the Linux
-/// `BTN_*` values, and only the three the protocol carries are forwarded.
+/// `BTN_*` values, and only the ones the protocol carries are forwarded.
 @MainActor
 func testWaylandPointerButtonMapTests() {
     expect(WaylandPointerButtonMap.button(forEvdev: 0x110) == .left, "BTN_LEFT maps to the left button")
     expect(WaylandPointerButtonMap.button(forEvdev: 0x111) == .right, "BTN_RIGHT maps to the right button")
     expect(WaylandPointerButtonMap.button(forEvdev: 0x112) == .middle, "BTN_MIDDLE maps to the middle button")
-    expect(WaylandPointerButtonMap.button(forEvdev: 0x113) == nil, "BTN_SIDE is dropped")
-    expect(WaylandPointerButtonMap.button(forEvdev: 0x116) == nil, "BTN_TASK is dropped")
+    // Codes from /usr/include/linux/input-event-codes.h: BTN_SIDE 0x113,
+    // BTN_EXTRA 0x114, BTN_FORWARD 0x115, BTN_BACK 0x116, BTN_TASK 0x117.
+    // Mice report their side buttons as either pair.
+    expect(WaylandPointerButtonMap.button(forEvdev: 0x113) == .back, "BTN_SIDE maps to the back button")
+    expect(WaylandPointerButtonMap.button(forEvdev: 0x116) == .back, "BTN_BACK maps to the back button")
+    expect(WaylandPointerButtonMap.button(forEvdev: 0x114) == .forward, "BTN_EXTRA maps to the forward button")
+    expect(WaylandPointerButtonMap.button(forEvdev: 0x115) == .forward, "BTN_FORWARD maps to the forward button")
+    expect(WaylandPointerButtonMap.button(forEvdev: 0x117) == nil, "BTN_TASK is dropped")
 
-    print("PASS: the Wayland pointer button map carries the three protocol buttons and drops the rest")
+    print("PASS: the Wayland pointer button map carries the protocol's buttons, side buttons as back and forward, and drops the rest")
 }
 
 /// One `wl_pointer.frame` is one scroll event: the axis reports inside it are

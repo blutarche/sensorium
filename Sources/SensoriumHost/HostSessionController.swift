@@ -2022,7 +2022,7 @@ public final class HostSessionController {
                         armingFingerprint: admittedFingerprint
                     )
                 }
-                return .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket)
+                return .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket, inputFeatures: Self.inputFeatures)
             }
         case let .hostScreenModeRequest(modeID):
             guard !requireAuthentication || isAuthenticated else {
@@ -2276,9 +2276,14 @@ public final class HostSessionController {
             // per canvas, not cached: a machine name changed in System
             // Settings during a long-lived host process should still
             // reach the next connection.
-            hostName: Host.current().localizedName
+            hostName: Host.current().localizedName,
+            inputFeatures: Self.inputFeatures
         )
     }
+
+    /// The input this host posts beyond what every host does, listed in
+    /// both replies that admit a session.
+    private static let inputFeatures = [HostInputFeature.backForwardButtons]
 
     /// Tears down exactly `surface`, live, mid-session -- unlike `goodbye`'s
     /// own teardown loop, which always tears down every surface because a

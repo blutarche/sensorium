@@ -201,10 +201,14 @@ func runHostScreenSessionControllerAdmissionTests() async {
         let response = try! fixture.controller.handle(.hostScreenRequest(
             token: token, resumeTicket: nil
         ))
-        guard case let .hostScreenReady(geometry, resumeTicket) = response else {
+        guard case let .hostScreenReady(geometry, resumeTicket, inputFeatures) = response else {
             expect(false, "every obligation held, so the request is admitted")
             return
         }
+        expect(
+            inputFeatures == [HostInputFeature.backForwardButtons],
+            "the ready reply tells the viewer this host posts the back and forward buttons, got \(inputFeatures)"
+        )
         expect(
             geometry == SessionSurfaceGeometry(logicalWidth: 2560, logicalHeight: 1440, backingScale: 2.0),
             "the ready reply carries the real display's own geometry, backing scale included"

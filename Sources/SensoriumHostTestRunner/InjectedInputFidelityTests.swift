@@ -100,6 +100,42 @@ func runInjectedInputFidelityTests() async {
     }
 
     do {
+        // Back and forward are the other-mouse buttons macOS numbers 3 and 4,
+        // on the press, every drag while held, and the release
+        let posts = FidelityPosts()
+        let injector = makeInjector(posts: posts)
+        for button in [CanvasPointerButton.back, .forward, .middle] {
+            try! injector.inject(.pointerButton(button: button, isDown: true, x: 10, y: 10))
+            try! injector.inject(.pointerMoved(x: 20, y: 10))
+            try! injector.inject(.pointerButton(button: button, isDown: false, x: 20, y: 10))
+        }
+        let otherButtonEvents: [CGEventType] = [.otherMouseDown, .otherMouseDragged, .otherMouseUp]
+        expect(
+            posts.types == otherButtonEvents + otherButtonEvents + otherButtonEvents,
+            "back, forward and middle each post as other-mouse events, got \(posts.types)"
+        )
+        expect(
+            posts.buttonNumbers == [3, 3, 3, 4, 4, 4, 2, 2, 2],
+            "back posts as button 3, forward as 4, and middle stays 2, got \(posts.buttonNumbers)"
+        )
+
+        // Held together, the lowest-numbered button is the one that drags
+        let held = FidelityPosts()
+        let heldInjector = makeInjector(posts: held)
+        try! heldInjector.inject(.pointerButton(button: .forward, isDown: true, x: 10, y: 10))
+        try! heldInjector.inject(.pointerButton(button: .back, isDown: true, x: 10, y: 10))
+        try! heldInjector.inject(.pointerMoved(x: 20, y: 10))
+        try! heldInjector.inject(.pointerButton(button: .middle, isDown: true, x: 20, y: 10))
+        try! heldInjector.inject(.pointerMoved(x: 30, y: 10))
+        try! heldInjector.inject(.pointerButton(button: .middle, isDown: false, x: 30, y: 10))
+        try! heldInjector.inject(.pointerButton(button: .back, isDown: false, x: 30, y: 10))
+        try! heldInjector.inject(.pointerMoved(x: 40, y: 10))
+        let dragNumbers = [2, 4, 7].map { held.buttonNumbers[$0] }
+        expect(dragNumbers == [3, 2, 4], "drags with several buttons held named buttons \(dragNumbers)")
+        print("PASS: back and forward post as mouse buttons 3 and 4, and drag in button order")
+    }
+
+    do {
         // Click counts stay per button while another is held
         let posts = FidelityPosts()
         let injector = makeInjector(posts: posts)
@@ -194,6 +230,7 @@ private final class FidelityPosts: @unchecked Sendable {
     private(set) var deltaXs: [Int64] = []
     private(set) var deltaYs: [Int64] = []
     private(set) var locations: [CGPoint] = []
+    private(set) var buttonNumbers: [Int64] = []
 
     func record(_ event: CGEvent) {
         types.append(event.type)
@@ -205,6 +242,7 @@ private final class FidelityPosts: @unchecked Sendable {
             deltaXs.append(event.getIntegerValueField(.mouseEventDeltaX))
             deltaYs.append(event.getIntegerValueField(.mouseEventDeltaY))
             locations.append(event.location)
+            buttonNumbers.append(event.getIntegerValueField(.mouseEventButtonNumber))
         }
     }
 }

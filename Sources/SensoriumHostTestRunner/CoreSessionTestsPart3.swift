@@ -1572,8 +1572,8 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
             let readyB = try! await dualCoordinator.handleWritingResponse(
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 1)
             )
-            guard case let .canvasReady(displayA, _, _, _, surfaceA, _) = readyA,
-                  case let .canvasReady(displayB, _, _, _, surfaceB, _) = readyB else {
+            guard case let .canvasReady(displayA, _, _, _, surfaceA, _, _) = readyA,
+                  case let .canvasReady(displayB, _, _, _, surfaceB, _, _) = readyB else {
                 expect(false, "both canvas requests are answered with a canvasReady")
                 return
             }

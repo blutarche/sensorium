@@ -1103,7 +1103,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         // viewer that omits surfaceID, a pairing-only session, a refused canvas
         // request, a dropped transport — keeps tag 1 for its whole life, and a
         // reconnect starts over with a new session and a fresh flag.
-        if case let .control(.canvasReady(_, _, _, _, surfaceID, _)) = packet, surfaceID != nil {
+        if case let .control(.canvasReady(_, _, _, _, surfaceID, _, _)) = packet, surfaceID != nil {
             isPeerSurfaceAware.set()
         }
     }

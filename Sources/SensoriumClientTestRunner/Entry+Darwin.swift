@@ -55,6 +55,7 @@ func runDarwinClientTests() async {
     testShortcutStripGlyphCentroidTests()
     testCanvasChromeClickPolicyTests()
     await testCanvasSurfaceChromeClickTests()
+    await testCanvasSurfaceOtherButtonTests()
     await testCanvasSurfaceEditKeyPassthroughTests()
     await testCanvasSurfaceViewerInputTests()
     await testCanvasSurfaceInputOrderTests()

@@ -6,6 +6,8 @@ struct SensoriumCoreTestRunner {
             ("canvas control messages round-trip through versioned frame", testCanvasControlMessagesRoundTripThroughVersionedFrame),
             ("canvas request and ready surfaceID round-trips when present or absent", testCanvasRequestAndReadySurfaceIDRoundTripWhenPresentOrAbsent),
             ("canvas ready hostName round-trips when present or absent", testCanvasReadyHostNameRoundTripsWhenPresentOrAbsent),
+            ("the host's input features ride on both replies that admit a session", testHostInputFeaturesRideOnBothRepliesThatAdmitASession),
+            ("the back and forward buttons round-trip by name", testBackAndForwardButtonsRoundTripByName),
             ("canvas control messages stay wire-compatible across surfaceID", testCanvasControlMessagesStayWireCompatibleAcrossSurfaceID),
             ("authenticated hello round-trips and verifies", testAuthenticatedHelloRoundTripsAndVerifies),
             ("encoded video frame packet round-trips and bounds payload", testEncodedVideoFramePacketRoundTripsAndBoundsPayload),

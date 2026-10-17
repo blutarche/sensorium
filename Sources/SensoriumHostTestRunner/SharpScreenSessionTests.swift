@@ -35,7 +35,7 @@ private let sharpOtherModeEntry = HostScreenModeEntry(
 private func admitFirstOffered(_ controller: HostSessionController) -> SessionSurfaceGeometry? {
     guard case let .hostScreenList(entries, _) = try! controller.offerHostScreenList(),
           let entry = entries.first,
-          case let .hostScreenReady(geometry, _) = try! controller.handle(
+          case let .hostScreenReady(geometry, _, _) = try! controller.handle(
               .hostScreenRequest(token: entry.opaqueToken, resumeTicket: nil)
           ) else {
         return nil
@@ -274,10 +274,14 @@ func runSharpScreenSessionTests() async {
         let fixture = SharpScreenSessionFixture()
         let placeholderID = fixture.host.placeholderID
         let written = await fixture.start()
-        guard case let .hostScreenReady(geometry, _) = written.first else {
+        guard case let .hostScreenReady(geometry, _, inputFeatures) = written.first else {
             expect(false, "the session is admitted, got \(written)")
             return
         }
+        expect(
+            inputFeatures == [HostInputFeature.backForwardButtons],
+            "the reply rewritten for the sharp screen keeps the host's input features, got \(inputFeatures)"
+        )
         let sharpID = fixture.host.sharpID
         expect(sharpID != nil, "a session on macOS's placeholder screen creates the sharp screen")
         expect(
@@ -319,7 +323,7 @@ func runSharpScreenSessionTests() async {
         let fixture = SharpScreenSessionFixture(host: host)
         let original = host.placeholderID
         let written = await fixture.start()
-        guard case let .hostScreenReady(geometry, _) = written.first else {
+        guard case let .hostScreenReady(geometry, _, _) = written.first else {
             expect(false, "the session is still admitted when the sharp screen is not usable, got \(written)")
             return
         }
@@ -439,7 +443,7 @@ func runSharpScreenSessionTests() async {
             "the sharp screen is offered as the placeholder was, got \(entries)"
         )
         let written = await second.start()
-        guard case let .hostScreenReady(geometry, _) = written.first else {
+        guard case let .hostScreenReady(geometry, _, _) = written.first else {
             expect(false, "the reconnect is admitted, got \(written)")
             return
         }

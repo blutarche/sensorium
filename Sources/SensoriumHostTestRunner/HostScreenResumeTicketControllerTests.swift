@@ -130,7 +130,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
             resumeTicket: nil
         )) else {
@@ -158,10 +158,14 @@ func runHostScreenResumeTicketControllerTests() async {
         let resumed = try! secondConnection.handle(.hostScreenRequest(
             token: secondToken, resumeTicket: mintedTicket
         ))
-        guard case let .hostScreenReady(geometry, _) = resumed else {
+        guard case let .hostScreenReady(geometry, _, inputFeatures) = resumed else {
             expect(false, "a valid resume ticket admits the reconnected session with no signed proof and no verifier configured")
             return
         }
+        expect(
+            inputFeatures == [HostInputFeature.backForwardButtons],
+            "a resumed session is told the host's input features afresh, got \(inputFeatures)"
+        )
         expect(
             geometry == SessionSurfaceGeometry(logicalWidth: 2560, logicalHeight: 1440, backingScale: 2.0),
             "the resumed session still carries the real display's own geometry"
@@ -248,7 +252,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
             resumeTicket: nil
         )) else {
@@ -339,7 +343,7 @@ func runHostScreenResumeTicketControllerTests() async {
             expect(false, "the fixture offers the minted display among its entries")
             return
         }
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection.handle(.hostScreenRequest(
             token: mintedEntry.opaqueToken,
             resumeTicket: nil
         )) else {
@@ -412,7 +416,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let stoppedToken = offerAndExtractToken(stoppedConnection)
-        guard case let .hostScreenReady(_, mintedTicket) = try! stoppedConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! stoppedConnection.handle(.hostScreenRequest(
             token: stoppedToken,
             resumeTicket: nil
         )) else {
@@ -455,7 +459,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let liveToken = offerAndExtractToken(liveController)
-        guard case let .hostScreenReady(_, liveTicket) = try! liveController.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, liveTicket, _) = try! liveController.handle(.hostScreenRequest(
             token: liveToken,
             resumeTicket: nil
         )) else {
@@ -514,7 +518,7 @@ func runHostScreenResumeTicketControllerTests() async {
             liveSessionRegistry: registry
         )
         let firstToken = offerAndExtractToken(firstConnection!)
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection!.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection!.handle(.hostScreenRequest(
             token: firstToken,
             resumeTicket: nil
         )) else {
@@ -593,7 +597,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
             resumeTicket: nil
         )) else {
@@ -663,7 +667,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
             resumeTicket: nil
         )) else {
@@ -722,7 +726,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let firstToken = offerAndExtractToken(firstConnection)
-        guard case let .hostScreenReady(_, mintedTicket) = try! firstConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, mintedTicket, _) = try! firstConnection.handle(.hostScreenRequest(
             token: firstToken,
             resumeTicket: nil
         )) else {
@@ -787,7 +791,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let originalToken = offerAndExtractToken(originalConnection)
-        guard case let .hostScreenReady(_, firstTicket) = try! originalConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, firstTicket, _) = try! originalConnection.handle(.hostScreenRequest(
             token: originalToken,
             resumeTicket: nil
         )) else {
@@ -814,7 +818,7 @@ func runHostScreenResumeTicketControllerTests() async {
             let token = offerAndExtractToken(connection)
             let response = try! connection.handle(.hostScreenRequest(token: token, resumeTicket: currentTicket))
             if clock.seconds - 1_000 <= HostScreenResumeTicketStore.ceilingSeconds {
-                guard case let .hostScreenReady(_, nextTicket) = response else {
+                guard case let .hostScreenReady(_, nextTicket, _) = response else {
                     expect(false, "a chained resume still within the original twelve-hour ceiling is admitted -- got \(String(describing: response)) at \(clock.seconds - 1_000)s since the original grant")
                     return
                 }
@@ -838,7 +842,7 @@ func runHostScreenResumeTicketControllerTests() async {
             identity: identity, display: display, arming: arming, resumeTicketStore: store
         )
         let freshToken = offerAndExtractToken(freshConnection)
-        guard case let .hostScreenReady(_, freshTicket) = try! freshConnection.handle(.hostScreenRequest(
+        guard case let .hostScreenReady(_, freshTicket, _) = try! freshConnection.handle(.hostScreenRequest(
             token: freshToken,
             resumeTicket: nil
         )) else {
@@ -860,7 +864,7 @@ func runHostScreenResumeTicketControllerTests() async {
             )
             let token = offerAndExtractToken(connection)
             let response = try! connection.handle(.hostScreenRequest(token: token, resumeTicket: currentFreshTicket))
-            guard case let .hostScreenReady(_, nextTicket) = response else {
+            guard case let .hostScreenReady(_, nextTicket, _) = response else {
                 expect(false, "a chained resume of the fresh grant, still within its own twelve-hour ceiling, is admitted -- got \(String(describing: response)) at \(clock.seconds - freshOrigin)s since the fresh grant")
                 return
             }

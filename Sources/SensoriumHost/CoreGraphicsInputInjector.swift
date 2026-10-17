@@ -81,7 +81,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     /// The button macOS reports motion for while several are held: the
     /// lowest-numbered one.
     private var heldButton: CanvasPointerButton? {
-        [CanvasPointerButton.left, .right, .middle].first { heldClickCounts[$0] != nil }
+        [CanvasPointerButton.left, .right, .middle, .back, .forward].first { heldClickCounts[$0] != nil }
     }
     /// Where every relative-motion event is posted while captured. The
     /// system cursor never actually needs to move for the injected motion to
@@ -136,6 +136,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             try post(
                 mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
                 button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
+                buttonNumber: heldButton.flatMap(CoreGraphicsInputTranslation.otherButtonNumber),
                 at: point,
                 clickState: heldButton.flatMap { heldClickCounts[$0] },
                 tap: tapLocation()
@@ -150,6 +151,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             try post(
                 mouse: CoreGraphicsInputTranslation.motionType(heldButton: heldButton),
                 button: CoreGraphicsInputTranslation.mouseButton(heldButton ?? .left),
+                buttonNumber: heldButton.flatMap(CoreGraphicsInputTranslation.otherButtonNumber),
                 at: anchor,
                 relativeDeltaX: deltaX,
                 relativeDeltaY: deltaY,
@@ -168,6 +170,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
             try post(
                 mouse: CoreGraphicsInputTranslation.buttonType(button, isDown: isDown),
                 button: CoreGraphicsInputTranslation.mouseButton(button),
+                buttonNumber: CoreGraphicsInputTranslation.otherButtonNumber(button),
                 at: point,
                 clickState: pressCount,
                 tap: tapLocation()
@@ -322,6 +325,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
     private func post(
         mouse type: CGEventType,
         button: CGMouseButton,
+        buttonNumber: Int64? = nil,
         at point: CGPoint,
         relativeDeltaX: Double? = nil,
         relativeDeltaY: Double? = nil,
@@ -350,6 +354,9 @@ public final class CoreGraphicsInputInjector: InputInjecting {
         }
         if let clickState {
             event.setIntegerValueField(.mouseEventClickState, value: clickState)
+        }
+        if let buttonNumber {
+            event.setIntegerValueField(.mouseEventButtonNumber, value: buttonNumber)
         }
         event.flags = modifiers
         send(event, tap: tap)
@@ -387,7 +394,7 @@ public enum CoreGraphicsInputTranslation {
         case .none: .mouseMoved
         case .left: .leftMouseDragged
         case .right: .rightMouseDragged
-        case .middle: .otherMouseDragged
+        case .middle, .back, .forward: .otherMouseDragged
         }
     }
 
@@ -397,7 +404,7 @@ public enum CoreGraphicsInputTranslation {
             isDown ? .leftMouseDown : .leftMouseUp
         case .right:
             isDown ? .rightMouseDown : .rightMouseUp
-        case .middle:
+        case .middle, .back, .forward:
             isDown ? .otherMouseDown : .otherMouseUp
         }
     }
@@ -406,7 +413,20 @@ public enum CoreGraphicsInputTranslation {
         switch button {
         case .left: .left
         case .right: .right
-        case .middle: .center
+        case .middle, .back, .forward: .center
+        }
+    }
+
+    /// The button number an other-mouse event carries, which is how macOS
+    /// tells the middle button from the side buttons: `CGMouseButton` names
+    /// only the first three. `nil` for left and right, whose event types
+    /// already say which button they are.
+    public static func otherButtonNumber(_ button: CanvasPointerButton) -> Int64? {
+        switch button {
+        case .left, .right: nil
+        case .middle: 2
+        case .back: 3
+        case .forward: 4
         }
     }
 

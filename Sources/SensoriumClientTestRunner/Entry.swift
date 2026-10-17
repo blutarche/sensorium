@@ -85,6 +85,7 @@ struct SensoriumClientTestRunner {
         await testHostScreenResumeTicketRetentionTests()
         await runViewerHostStopTests()
         await testViewerLiveLoopSurvivesAnUndecodableControlMessage()
+        await testViewerSideButtonGateTests()
         testShortcutStripLayoutPolicyTests()
         testViewerChromeRectContainsTests()
         testWaylandOverlayLayoutTests()

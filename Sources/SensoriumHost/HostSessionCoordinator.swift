@@ -854,7 +854,7 @@ public final class HostSessionCoordinator {
         }
 
         var didWriteResponse = false
-        if let response, case let .canvasReady(displayID, _, _, _, surfaceID, _) = response {
+        if let response, case let .canvasReady(displayID, _, _, _, surfaceID, _, _) = response {
             // The controller has already refused every surfaceID outside the
             // cap, so this cannot fail; treating it as a canvas request
             // failure rather than force-unwrapping keeps that a refusal
@@ -910,7 +910,7 @@ public final class HostSessionCoordinator {
         }
 
         if let admittedResponse = response,
-           case let .hostScreenReady(admittedGeometry, resumeTicket) = admittedResponse {
+           case let .hostScreenReady(admittedGeometry, resumeTicket, inputFeatures) = admittedResponse {
             // Decided before the viewer is told anything, so the geometry
             // it is told is the one it gets.
             var geometry = admittedGeometry
@@ -918,7 +918,7 @@ public final class HostSessionCoordinator {
             let hadEnded = hasEnded
             if let moved = await moveOntoSharpScreenIfPlaceholder() {
                 geometry = moved
-                readyResponse = .hostScreenReady(geometry: moved, resumeTicket: resumeTicket)
+                readyResponse = .hostScreenReady(geometry: moved, resumeTicket: resumeTicket, inputFeatures: inputFeatures)
             }
             if hasEnded, !hadEnded {
                 // The transport died while the sharp screen was being set

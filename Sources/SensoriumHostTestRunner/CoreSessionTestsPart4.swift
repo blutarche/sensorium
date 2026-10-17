@@ -59,7 +59,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 let ready = try! dualSignController.handle(
                     .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: surfaceID)
                 )
-                guard case let .canvasReady(displayID, _, _, hostSignature?, echoedSurfaceID, _) = ready else {
+                guard case let .canvasReady(displayID, _, _, hostSignature?, echoedSurfaceID, _, _) = ready else {
                     expect(false, "each canvas request is answered with a signed canvasReady")
                     return
                 }
@@ -116,7 +116,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             dualWireSession.start()
             try! await Task.sleep(for: .milliseconds(300))
             let readied: [(UInt32, UInt32?)] = dualWireChannel.sentPackets.compactMap {
-                guard case let .control(.canvasReady(displayID, _, _, _, surfaceID, _)) = $0 else { return nil }
+                guard case let .control(.canvasReady(displayID, _, _, _, surfaceID, _, _)) = $0 else { return nil }
                 return (displayID, surfaceID)
             }
             expect(readied.count == 2, "both canvas requests are answered over the wire")
