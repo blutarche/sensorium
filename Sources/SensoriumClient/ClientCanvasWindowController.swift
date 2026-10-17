@@ -149,6 +149,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// Deliberately separate from `SystemShortcutRouter`, like the two monitors
     /// above: both are local to this machine and never reach the wire.
     nonisolated(unsafe) private var shortcutStripKeyMonitor: Any?
+    nonisolated(unsafe) private var commandKeyUpMonitor: Any?
     /// A transient "something was refused" banner, distinct from
     /// `statusOverlay`: that overlay means the session itself is down, this
     /// means one request or one clipboard was refused and the session is
@@ -403,6 +404,19 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
             return event
         }
 
+        // AppKit drops the key-up of a key pressed with Command held before it
+        // reaches the window, so the host would never see the letter released.
+        // Only a key-up this window's canvas still owes the host is taken.
+        commandKeyUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyUp) { [weak self] event in
+            guard let self,
+                  event.window === self.window,
+                  event.modifierFlags.contains(.command),
+                  self.surfaceView.forwardKeyUpIfOutstanding(event) else {
+                return event
+            }
+            return nil
+        }
+
         // A raw SwiftPM binary has no Info.plist to imply this. Without it,
         // AppKit has no reason to hand this process keyboard focus, and a
         // real person's keystrokes would never reach `surfaceView`.
@@ -422,6 +436,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
                 surfaceView.submit(.focusLost)
                 Task { @MainActor [weak self] in
                     self?.surfaceView.endPointerCaptureIfNeeded()
+                    self?.surfaceView.forgetForwardedKeyDowns()
                     // A window that is no longer key reports no more motion,
                     // so the strip would sit open until one arrived.
                     self?.shortcutStrip.pointerLeftWindow()
@@ -435,6 +450,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
                 surfaceView.submit(.focusLost)
                 Task { @MainActor [weak self] in
                     self?.surfaceView.endPointerCaptureIfNeeded()
+                    self?.surfaceView.forgetForwardedKeyDowns()
                     self?.report(self?.focusReporter?.viewerDidResignActive())
                 }
             },
@@ -495,6 +511,9 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         }
         if let shortcutStripKeyMonitor {
             NSEvent.removeMonitor(shortcutStripKeyMonitor)
+        }
+        if let commandKeyUpMonitor {
+            NSEvent.removeMonitor(commandKeyUpMonitor)
         }
     }
 
@@ -697,6 +716,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
             NSApplication.shared.hide(nil)
         }
         surfaceView.submit(.focusLost)
+        surfaceView.forgetForwardedKeyDowns()
     }
 
     /// Exposes the hosted `NSWindow` for callers that need to drive AppKit's

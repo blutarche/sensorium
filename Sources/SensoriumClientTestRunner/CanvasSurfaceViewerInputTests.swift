@@ -28,9 +28,7 @@ func testCanvasSurfaceViewerInputTests() async {
     }
 
     func settle() async {
-        for _ in 0..<64 {
-            await Task.yield()
-        }
+        try? await Task.sleep(for: .milliseconds(50))
     }
 
     func scrollEvent(units: CGScrollEventUnit, amount: Int32) -> NSEvent {
@@ -120,5 +118,61 @@ func testCanvasSurfaceViewerInputTests() async {
     let after = await sink.points
     expect(after.count == before + 1, "a middle-button drag forwarded motion, got \(after)")
     print("PASS: a middle-button drag forwards pointer motion")
+
+    // AppKit never hands a key-up to the view while Command is held, so the
+    // window controller offers it here instead; it reaches the host once, and
+    // only when the view forwarded the matching key-down.
+    func keyEvent(_ type: NSEvent.EventType, keyCode: UInt16, command: Bool) -> NSEvent {
+        guard let event = NSEvent.keyEvent(
+            with: type,
+            location: .zero,
+            modifierFlags: command ? [.command] : [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: keyCode
+        ) else {
+            expect(false, "AppKit refused a synthetic key event")
+            fatalError("unreachable")
+        }
+        return event
+    }
+    func keys(code: UInt16) async -> [Bool] {
+        await settle()
+        return await sink.keys.compactMap { event in
+            guard case let .key(keyCode, isDown, _) = event, keyCode == code else { return nil }
+            return isDown
+        }
+    }
+
+    // Cmd-C: the key-down is a forwarded key equivalent
+    expect(surface.performKeyEquivalent(with: keyEvent(.keyDown, keyCode: 8, command: true)), "Cmd-C is claimed")
+    let commandUp = keyEvent(.keyUp, keyCode: 8, command: true)
+    expect(surface.forwardKeyUpIfOutstanding(commandUp), "the key-up of a forwarded Cmd-C is taken")
+    expect(!surface.forwardKeyUpIfOutstanding(commandUp), "and taken only once")
+    let copyKeys = await keys(code: 8)
+    expect(copyKeys == [true, false], "Cmd-C went down once and up once, got \(copyKeys)")
+
+    // A chord the view never forwarded leaves no key-up behind
+    expect(
+        !surface.forwardKeyUpIfOutstanding(keyEvent(.keyUp, keyCode: 18, command: true)),
+        "the key-up of a chord that was not forwarded is not sent"
+    )
+    let strayKeys = await keys(code: 18)
+    expect(strayKeys.isEmpty, "nothing was sent for the unforwarded chord, got \(strayKeys)")
+
+    // A key-up AppKit does deliver is not sent a second time
+    surface.keyDown(with: keyEvent(.keyDown, keyCode: 0, command: false))
+    surface.keyUp(with: keyEvent(.keyUp, keyCode: 0, command: false))
+    expect(
+        !surface.forwardKeyUpIfOutstanding(keyEvent(.keyUp, keyCode: 0, command: true)),
+        "a key already released through the ordinary path is not released again"
+    )
+    let plainKeys = await keys(code: 0)
+    expect(plainKeys == [true, false], "a plain key went down once and up once, got \(plainKeys)")
+    print("PASS: a key-up AppKit withholds while Command is held still reaches the host exactly once")
 }
 #endif

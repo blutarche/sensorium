@@ -501,7 +501,35 @@ public final class CanvasSurfaceView: NSView {
         ))
     }
 
+    /// Key codes whose key-down this view forwarded and whose key-up has not
+    /// been forwarded yet.
+    private var forwardedKeyDowns: Set<UInt16> = []
+
+    /// AppKit does not hand the window a key-up while Command is held, because
+    /// the key-down was a key equivalent, so the host would never see the
+    /// letter released. The window controller offers such key-ups here. Only
+    /// one whose key-down this view forwarded is sent, and only once: a key
+    /// whose down went to a menu has nothing to release on the host.
+    @discardableResult
+    public func forwardKeyUpIfOutstanding(_ event: NSEvent) -> Bool {
+        guard forwardedKeyDowns.contains(event.keyCode) else { return false }
+        forwardKey(event, isDown: false)
+        return true
+    }
+
+    /// Forgets the key-downs still awaiting a key-up. The router releases what
+    /// the host holds when focus is lost, so a later key-up has nothing to
+    /// release.
+    public func forgetForwardedKeyDowns() {
+        forwardedKeyDowns.removeAll()
+    }
+
     private func forwardKey(_ event: NSEvent, isDown: Bool) {
+        if isDown {
+            forwardedKeyDowns.insert(event.keyCode)
+        } else {
+            forwardedKeyDowns.remove(event.keyCode)
+        }
         forward(.key(
             keyCode: event.keyCode,
             isDown: isDown,
