@@ -175,7 +175,7 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 clickState: pressCount,
                 tap: tapLocation()
             )
-        case let .scrolled(deltaX, deltaY, _, _, phase, momentumPhase):
+        case let .scrolled(deltaX, deltaY, _, _, phase, momentumPhase, lineDeltaX, lineDeltaY):
             // A CGEvent scroll carries no location: macOS routes it to
             // whatever is under the one system cursor, which both session
             // canvases share. Standing the cursor on this canvas first is
@@ -192,7 +192,9 @@ public final class CoreGraphicsInputInjector: InputInjecting {
                 deltaX: deltaX,
                 deltaY: deltaY,
                 phase: phase,
-                momentumPhase: momentumPhase
+                momentumPhase: momentumPhase,
+                lineDeltaX: lineDeltaX,
+                lineDeltaY: lineDeltaY
             ) else {
                 throw CoreGraphicsInputInjectorError.eventCreationFailed
             }
@@ -445,7 +447,7 @@ public enum CoreGraphicsInputTranslation {
     /// so there is nothing this can return that would fix it.
     public static func cursorPositioning(for event: SensoriumInputEvent) -> CGPoint? {
         switch event {
-        case let .scrolled(_, _, x, y, _, _):
+        case let .scrolled(_, _, x, y, _, _, _, _):
             CGPoint(x: x, y: y)
         case .pointerMoved, .pointerMovedRelative, .pointerButton, .key, .releaseAllInput, .pointerCaptureChanged:
             nil
@@ -460,25 +462,47 @@ public enum CoreGraphicsInputTranslation {
     /// `kCGScrollWheelEventFixedPtDeltaAxis1/2`, the fixed-point fields any
     /// app doing pixel rather than line-based scrolling reads, so no
     /// fractional remainder has to be carried per axis and per surface.
+    /// A scroll in pixels from `deltaX`/`deltaY`, or, when both line deltas
+    /// are given, in lines, as macOS posts a line-based mouse wheel's own
+    /// scroll: the whole lines in the wheel fields and the exact lines in
+    /// the fixed-point fields, which are what AppKit reads.
     public static func scrollEvent(
         source: CGEventSource,
         deltaX: Double,
         deltaY: Double,
         phase: CanvasScrollPhase?,
-        momentumPhase: CanvasScrollMomentumPhase?
+        momentumPhase: CanvasScrollMomentumPhase?,
+        lineDeltaX: Double? = nil,
+        lineDeltaY: Double? = nil
     ) -> CGEvent? {
+        let units: CGScrollEventUnit
+        let wheel1: Int32
+        let wheel2: Int32
+        let exactY: Double
+        let exactX: Double
+        if let lineDeltaX, let lineDeltaY {
+            units = .line
+            wheel1 = Int32(clamping: Int(lineDeltaY.rounded(.towardZero)))
+            wheel2 = Int32(clamping: Int(lineDeltaX.rounded(.towardZero)))
+            (exactY, exactX) = (lineDeltaY, lineDeltaX)
+        } else {
+            units = .pixel
+            wheel1 = Int32(clamping: Int(deltaY.rounded()))
+            wheel2 = Int32(clamping: Int(deltaX.rounded()))
+            (exactY, exactX) = (deltaY, deltaX)
+        }
         guard let event = CGEvent(
             scrollWheelEvent2Source: source,
-            units: .pixel,
+            units: units,
             wheelCount: 2,
-            wheel1: Int32(clamping: Int(deltaY.rounded())),
-            wheel2: Int32(clamping: Int(deltaX.rounded())),
+            wheel1: wheel1,
+            wheel2: wheel2,
             wheel3: 0
         ) else {
             return nil
         }
-        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: deltaY)
-        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: deltaX)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: exactY)
+        event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: exactX)
         if let phase {
             event.setIntegerValueField(.scrollWheelEventScrollPhase, value: Int64(cgScrollPhase(phase).rawValue))
         }

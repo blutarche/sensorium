@@ -364,9 +364,12 @@ public actor ClientViewportController: CanvasLifecycleObserving {
         x: Double,
         y: Double,
         phase: CanvasScrollPhase?,
-        momentumPhase: CanvasScrollMomentumPhase?
+        momentumPhase: CanvasScrollMomentumPhase?,
+        lineDeltaX: Double? = nil,
+        lineDeltaY: Double? = nil
     ) async -> PointerDelivery {
-        guard deltaX.isFinite, deltaY.isFinite else {
+        guard deltaX.isFinite, deltaY.isFinite,
+              lineDeltaX?.isFinite ?? true, lineDeltaY?.isFinite ?? true else {
             return .droppedInvalidLocation
         }
         return await sendLocated(x: x, y: y) { point in
@@ -376,7 +379,9 @@ public actor ClientViewportController: CanvasLifecycleObserving {
                 x: point.x,
                 y: point.y,
                 phase: phase,
-                momentumPhase: momentumPhase
+                momentumPhase: momentumPhase,
+                lineDeltaX: lineDeltaX,
+                lineDeltaY: lineDeltaY
             )
         }
     }

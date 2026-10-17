@@ -15,13 +15,17 @@ public enum CanvasSurfaceEvent: Equatable, Sendable {
     /// viewport.
     case pointerMovedRelative(deltaX: Double, deltaY: Double)
     case pointerButton(button: CanvasPointerButton, isDown: Bool, x: Double, y: Double)
+    /// `lineDeltaX`/`lineDeltaY` are a line-based wheel's own lines, as
+    /// `SensoriumInputEvent.scrolled` carries them.
     case scrolled(
         deltaX: Double,
         deltaY: Double,
         x: Double,
         y: Double,
         phase: CanvasScrollPhase?,
-        momentumPhase: CanvasScrollMomentumPhase?
+        momentumPhase: CanvasScrollMomentumPhase?,
+        lineDeltaX: Double? = nil,
+        lineDeltaY: Double? = nil
     )
     /// `capsLock` is whether Caps Lock is on at this machine, as
     /// `SensoriumInputEvent.key` carries it.
@@ -110,7 +114,7 @@ public actor CanvasSurfaceEventRouter {
                 x: flipped.x,
                 y: flipped.y
             )
-        case let .scrolled(deltaX, deltaY, x, y, phase, momentumPhase):
+        case let .scrolled(deltaX, deltaY, x, y, phase, momentumPhase, lineDeltaX, lineDeltaY):
             guard let flipped = flip(x: x, y: y) else {
                 return surfaceHeight > 0 ? .droppedInvalidLocation : .droppedNoViewport
             }
@@ -120,7 +124,9 @@ public actor CanvasSurfaceEventRouter {
                 x: flipped.x,
                 y: flipped.y,
                 phase: phase,
-                momentumPhase: momentumPhase
+                momentumPhase: momentumPhase,
+                lineDeltaX: lineDeltaX,
+                lineDeltaY: lineDeltaY
             )
         case let .pointerCaptureChanged(isCaptured):
             return await viewport.sendPointerCaptureChanged(isCaptured: isCaptured)

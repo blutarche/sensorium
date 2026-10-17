@@ -829,7 +829,7 @@ public actor ClientSessionController {
             return deltaX.isFinite && deltaY.isFinite
         case let .pointerButton(_, _, x, y):
             return onCanvas(x, y)
-        case let .scrolled(deltaX, deltaY, x, y, _, _):
+        case let .scrolled(deltaX, deltaY, x, y, _, _, _, _):
             return onCanvas(x, y) && deltaX.isFinite && deltaY.isFinite
         case let .key(_, _, modifiers, _):
             return modifiers.isSubset(of: .all)

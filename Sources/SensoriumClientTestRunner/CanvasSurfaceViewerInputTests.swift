@@ -31,7 +31,7 @@ func testCanvasSurfaceViewerInputTests() async {
         try? await Task.sleep(for: .milliseconds(50))
     }
 
-    func scrollEvent(units: CGScrollEventUnit, amount: Int32) -> NSEvent {
+    func scrollEvent(units: CGScrollEventUnit, amount: Int32, exactAmount: Double? = nil) -> NSEvent {
         guard let cgEvent = CGEvent(
             scrollWheelEvent2Source: nil,
             units: units,
@@ -39,7 +39,15 @@ func testCanvasSurfaceViewerInputTests() async {
             wheel1: amount,
             wheel2: 0,
             wheel3: 0
-        ), let event = NSEvent(cgEvent: cgEvent) else {
+        ) else {
+            expect(false, "CoreGraphics refused a synthetic scroll event")
+            fatalError("unreachable")
+        }
+        // Where an accelerated wheel's fractional lines arrive
+        if let exactAmount {
+            cgEvent.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: exactAmount)
+        }
+        guard let event = NSEvent(cgEvent: cgEvent) else {
             expect(false, "AppKit refused a synthetic scroll event")
             fatalError("unreachable")
         }
@@ -49,7 +57,7 @@ func testCanvasSurfaceViewerInputTests() async {
     func scrolledDeltaY() async -> Double? {
         await settle()
         for event in await sink.events {
-            if case let .scrolled(_, deltaY, _, _, _, _) = event { return deltaY }
+            if case let .scrolled(_, deltaY, _, _, _, _, _, _) = event { return deltaY }
         }
         return nil
     }
@@ -65,6 +73,18 @@ func testCanvasSurfaceViewerInputTests() async {
     expect(
         wheelDelta == 3 * ScrollWheelUnits.pointsPerNotch,
         "three notches scroll \(3 * ScrollWheelUnits.pointsPerNotch) points, got \(String(describing: wheelDelta))"
+    )
+
+    // and sends its lines as well, exactly as AppKit reported them
+    surface.scrollWheel(with: scrollEvent(units: .line, amount: 1, exactAmount: 1.5))
+    await settle()
+    let wheelScrolls = await sink.events.compactMap { event -> String? in
+        guard case let .scrolled(deltaX, deltaY, _, _, _, _, lineDeltaX, lineDeltaY) = event else { return nil }
+        return "\(deltaX) \(deltaY) lines \(lineDeltaX.map { "\($0)" } ?? "none") \(lineDeltaY.map { "\($0)" } ?? "none")"
+    }
+    expect(
+        wheelScrolls == ["0.0 30.0 lines 0.0 3.0", "0.0 15.0 lines 0.0 1.5"],
+        "a line-based wheel sends its lines next to its points, fractions and all, got \(wheelScrolls)"
     )
 
     // A trackpad's pixel deltas pass through unchanged
@@ -87,11 +107,16 @@ func testCanvasSurfaceViewerInputTests() async {
     pixelSurface.scrollWheel(with: trackpad)
     await settle()
     let pixelDelta = await sinkForPixels.events.compactMap { event -> Double? in
-        if case let .scrolled(_, deltaY, _, _, _, _) = event { return deltaY }
+        if case let .scrolled(_, deltaY, _, _, _, _, _, _) = event { return deltaY }
         return nil
     }.first
     expect(pixelDelta == 3, "a precise scroll of 3 stays 3, got \(String(describing: pixelDelta))")
-    print("PASS: a line-based wheel scrolls by points per notch and a precise scroll is unchanged")
+    let pixelLines = await sinkForPixels.events.compactMap { event -> String? in
+        guard case let .scrolled(_, _, _, _, _, _, lineDeltaX, lineDeltaY) = event else { return nil }
+        return "\(String(describing: lineDeltaX)) \(String(describing: lineDeltaY))"
+    }
+    expect(pixelLines == ["nil nil"], "a precise scroll carries no lines, got \(pixelLines)")
+    print("PASS: a line-based wheel scrolls by points per notch and sends its lines too, and a precise scroll is unchanged and carries no lines")
 
     // The click that activates the window is the host's click too
     expect(surface.acceptsFirstMouse(for: nil), "the click that activates the viewer window reaches the canvas")

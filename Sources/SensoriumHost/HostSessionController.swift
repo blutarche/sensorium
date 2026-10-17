@@ -417,6 +417,9 @@ public final class HostSessionController {
     private static let hostScreenReportingSurface = CanvasSurfaceID.allCases[0]
 
     private static let maximumScrollDelta: Double = 10_000
+    /// `maximumScrollDelta` in lines, at the 10 points a viewer counts for
+    /// one wheel notch.
+    private static let maximumScrollLineDelta: Double = 1_000
     /// Same bound and same rationale as `maximumScrollDelta`, kept as its own
     /// constant because relative pointer motion is a different event with no
     /// reason to move in lockstep if one bound ever needs to change alone.
@@ -2215,12 +2218,15 @@ public final class HostSessionController {
                 && abs(deltaY) <= Self.maximumPointerDelta
         case let .pointerButton(_, _, x, y):
             isOnCanvas(x: x, y: y, logicalWidth: logicalWidth, logicalHeight: logicalHeight)
-        case let .scrolled(deltaX, deltaY, x, y, _, _):
+        case let .scrolled(deltaX, deltaY, x, y, _, _, lineDeltaX, lineDeltaY):
             isOnCanvas(x: x, y: y, logicalWidth: logicalWidth, logicalHeight: logicalHeight)
                 && deltaX.isFinite
                 && deltaY.isFinite
                 && abs(deltaX) <= Self.maximumScrollDelta
                 && abs(deltaY) <= Self.maximumScrollDelta
+                && [lineDeltaX, lineDeltaY].allSatisfy { line in
+                    line.map { $0.isFinite && abs($0) <= Self.maximumScrollLineDelta } ?? true
+                }
         case .key, .releaseAllInput, .pointerCaptureChanged:
             true
         }

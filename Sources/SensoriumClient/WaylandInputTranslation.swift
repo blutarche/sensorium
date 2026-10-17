@@ -110,6 +110,7 @@ public struct WaylandScrollFrameAccumulator: Equatable, Sendable {
         // Wayland's positive axis value means the content moves up, and the
         // wire's positive delta means the content moves down, which is the
         // convention the host already applies.
+        let lines = wheelLines(source: source)
         return .scrolled(
             deltaX: -delta(axisValue: horizontal, value120: horizontalValue120, source: source),
             deltaY: -delta(axisValue: vertical, value120: verticalValue120, source: source),
@@ -119,7 +120,24 @@ public struct WaylandScrollFrameAccumulator: Equatable, Sendable {
             // A compositor delivers what the device reported and synthesises
             // no kinetic scrolling of its own, so there is never a momentum
             // phase to carry.
-            momentumPhase: nil
+            momentumPhase: nil,
+            lineDeltaX: lines.map { -$0.horizontal },
+            lineDeltaY: lines.map { -$0.vertical }
+        )
+    }
+
+    /// A wheel frame's notches as lines, fractional for a high-resolution
+    /// wheel, or nil unless every axis that moved in it reported value120.
+    private func wheelLines(source: WaylandScrollAxisSource?) -> (horizontal: Double, vertical: Double)? {
+        guard source == .wheel,
+              verticalValue120 != nil || horizontalValue120 != nil,
+              vertical == nil || verticalValue120 != nil,
+              horizontal == nil || horizontalValue120 != nil else {
+            return nil
+        }
+        return (
+            horizontal: Double(horizontalValue120 ?? 0) / 120,
+            vertical: Double(verticalValue120 ?? 0) / 120
         )
     }
 

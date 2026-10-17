@@ -9,6 +9,7 @@ struct SensoriumCoreTestRunner {
             ("the host's input features ride on both replies that admit a session", testHostInputFeaturesRideOnBothRepliesThatAdmitASession),
             ("the back and forward buttons round-trip by name", testBackAndForwardButtonsRoundTripByName),
             ("key events carry the viewer's Caps Lock state", testKeyEventsCarryTheViewersCapsLockState),
+            ("scroll events carry a wheel's lines next to its points", testScrollEventsCarryAWheelsLinesNextToItsPoints),
             ("canvas control messages stay wire-compatible across surfaceID", testCanvasControlMessagesStayWireCompatibleAcrossSurfaceID),
             ("authenticated hello round-trips and verifies", testAuthenticatedHelloRoundTripsAndVerifies),
             ("encoded video frame packet round-trips and bounds payload", testEncodedVideoFramePacketRoundTripsAndBoundsPayload),

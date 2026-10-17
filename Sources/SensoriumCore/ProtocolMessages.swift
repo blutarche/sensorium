@@ -513,13 +513,20 @@ public enum SensoriumInputEvent: Equatable, Sendable {
     /// -- see `pointerCaptureChanged`.
     case pointerMovedRelative(deltaX: Double, deltaY: Double)
     case pointerButton(button: CanvasPointerButton, isDown: Bool, x: Double, y: Double)
+    /// `deltaX`/`deltaY` are always points. `lineDeltaX`/`lineDeltaY` are
+    /// set only for a mouse wheel that scrolls by lines rather than by
+    /// points, in the lines the viewer's own system reported. A host that
+    /// reads them scrolls by those lines, and one that does not uses the
+    /// points. A trackpad scroll never sets them.
     case scrolled(
         deltaX: Double,
         deltaY: Double,
         x: Double,
         y: Double,
         phase: CanvasScrollPhase?,
-        momentumPhase: CanvasScrollMomentumPhase?
+        momentumPhase: CanvasScrollMomentumPhase?,
+        lineDeltaX: Double? = nil,
+        lineDeltaY: Double? = nil
     )
     /// `capsLock` is whether Caps Lock is on at the viewer as this key goes
     /// down or up: its state, not a press of the Caps Lock key. `nil` from a
@@ -795,6 +802,8 @@ public enum SensoriumFrameCodec {
         let scrollMomentumPhase: UInt8?
         let isCaptured: Bool?
         let capsLock: Bool?
+        let lineDeltaX: Double?
+        let lineDeltaY: Double?
 
         init(
             kind: String,
@@ -809,7 +818,9 @@ public enum SensoriumFrameCodec {
             scrollPhase: UInt8? = nil,
             scrollMomentumPhase: UInt8? = nil,
             isCaptured: Bool? = nil,
-            capsLock: Bool? = nil
+            capsLock: Bool? = nil,
+            lineDeltaX: Double? = nil,
+            lineDeltaY: Double? = nil
         ) {
             self.kind = kind
             self.x = x
@@ -824,6 +835,8 @@ public enum SensoriumFrameCodec {
             self.scrollMomentumPhase = scrollMomentumPhase
             self.isCaptured = isCaptured
             self.capsLock = capsLock
+            self.lineDeltaX = lineDeltaX
+            self.lineDeltaY = lineDeltaY
         }
     }
 
@@ -835,7 +848,7 @@ public enum SensoriumFrameCodec {
             WireInput(kind: "pointerMovedRelative", deltaX: deltaX, deltaY: deltaY)
         case let .pointerButton(button, isDown, x, y):
             WireInput(kind: "pointerButton", x: x, y: y, button: button, isDown: isDown)
-        case let .scrolled(deltaX, deltaY, x, y, phase, momentumPhase):
+        case let .scrolled(deltaX, deltaY, x, y, phase, momentumPhase, lineDeltaX, lineDeltaY):
             WireInput(
                 kind: "scrolled",
                 x: x,
@@ -843,7 +856,9 @@ public enum SensoriumFrameCodec {
                 deltaX: deltaX,
                 deltaY: deltaY,
                 scrollPhase: phase?.rawValue,
-                scrollMomentumPhase: momentumPhase?.rawValue
+                scrollMomentumPhase: momentumPhase?.rawValue,
+                lineDeltaX: lineDeltaX,
+                lineDeltaY: lineDeltaY
             )
         case let .key(keyCode, isDown, modifiers, capsLock):
             WireInput(kind: "key", isDown: isDown, keyCode: keyCode, modifiers: modifiers.rawValue, capsLock: capsLock)
@@ -882,7 +897,9 @@ public enum SensoriumFrameCodec {
             guard let deltaX = wire.deltaX,
                   let deltaY = wire.deltaY,
                   deltaX.isFinite,
-                  deltaY.isFinite else {
+                  deltaY.isFinite,
+                  wire.lineDeltaX?.isFinite ?? true,
+                  wire.lineDeltaY?.isFinite ?? true else {
                 throw SensoriumProtocolError.malformedMessage
             }
             // An unrecognised phase value (from a newer peer) is dropped
@@ -895,7 +912,9 @@ public enum SensoriumFrameCodec {
                 x: x,
                 y: y,
                 phase: wire.scrollPhase.flatMap(CanvasScrollPhase.init(rawValue:)),
-                momentumPhase: wire.scrollMomentumPhase.flatMap(CanvasScrollMomentumPhase.init(rawValue:))
+                momentumPhase: wire.scrollMomentumPhase.flatMap(CanvasScrollMomentumPhase.init(rawValue:)),
+                lineDeltaX: wire.lineDeltaX,
+                lineDeltaY: wire.lineDeltaY
             )
         case "pointerCaptureChanged":
             guard let isCaptured = wire.isCaptured else {

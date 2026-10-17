@@ -50,7 +50,7 @@ final class RecordingInputInjector: InputInjecting {
             pointer.move(toX: x, y: y)
         case let .pointerButton(_, _, x, y):
             pointer.move(toX: x, y: y)
-        case let .scrolled(_, _, x, y, _, _):
+        case let .scrolled(_, _, x, y, _, _, _, _):
             pointer.move(toX: x, y: y)
         case let .pointerMovedRelative(deltaX, deltaY):
             pointer.move(byX: deltaX, y: deltaY)

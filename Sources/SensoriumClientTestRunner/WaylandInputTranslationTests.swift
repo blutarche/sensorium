@@ -63,22 +63,56 @@ func testWaylandScrollFrameTests() {
     wheel.axisValue120(.vertical, value120: 240)
     expect(
         wheel.frame(x: 10, y: 20)
-            == .scrolled(deltaX: 0, deltaY: -20, x: 10, y: 20, phase: nil, momentumPhase: nil),
-        "a wheel frame carrying value120 scrolls two notches and ignores the notional axis value"
+            == .scrolled(
+                deltaX: 0, deltaY: -20, x: 10, y: 20, phase: nil, momentumPhase: nil,
+                lineDeltaX: 0, lineDeltaY: -2
+            ),
+        "a wheel frame carrying value120 scrolls two notches, as points and as lines, and ignores the notional axis value"
     )
     wheel.axisSource(.wheel)
     wheel.axisValue120(.vertical, value120: -120)
     expect(
         wheel.frame(x: 10, y: 20)
-            == .scrolled(deltaX: 0, deltaY: 10, x: 10, y: 20, phase: nil, momentumPhase: nil),
+            == .scrolled(
+                deltaX: 0, deltaY: 10, x: 10, y: 20, phase: nil, momentumPhase: nil,
+                lineDeltaX: 0, lineDeltaY: 1
+            ),
         "a wheel notch the other way scrolls one notch the other way"
+    )
+    wheel.axisSource(.wheel)
+    wheel.axisValue120(.vertical, value120: 30)
+    expect(
+        wheel.frame(x: 10, y: 20)
+            == .scrolled(
+                deltaX: 0, deltaY: -2.5, x: 10, y: 20, phase: nil, momentumPhase: nil,
+                lineDeltaX: 0, lineDeltaY: -0.25
+            ),
+        "a high-resolution wheel's quarter notch is a quarter line"
+    )
+    wheel.axisSource(.wheel)
+    wheel.axisValue120(.horizontal, value120: 120)
+    expect(
+        wheel.frame(x: 10, y: 20)
+            == .scrolled(
+                deltaX: -10, deltaY: 0, x: 10, y: 20, phase: nil, momentumPhase: nil,
+                lineDeltaX: -1, lineDeltaY: 0
+            ),
+        "a tilt of the wheel sideways is a line sideways"
+    )
+    wheel.axisSource(.wheel)
+    wheel.axisValue120(.vertical, value120: 120)
+    wheel.axis(.horizontal, value: 6)
+    expect(
+        wheel.frame(x: 10, y: 20)
+            == .scrolled(deltaX: -6, deltaY: -10, x: 10, y: 20, phase: nil, momentumPhase: nil),
+        "a wheel frame with an axis that moved without value120 carries no lines, so neither axis is lost"
     )
     wheel.axisSource(.wheel)
     wheel.axis(.vertical, value: 15)
     expect(
         wheel.frame(x: 10, y: 20)
             == .scrolled(deltaX: 0, deltaY: -15, x: 10, y: 20, phase: nil, momentumPhase: nil),
-        "a wheel frame with no value120 scrolls by the axis value itself"
+        "a wheel frame with no value120 scrolls by the axis value itself, and carries no lines"
     )
 
     var idle = WaylandScrollFrameAccumulator()
