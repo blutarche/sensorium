@@ -86,7 +86,11 @@ public struct WaylandScrollFrameAccumulator: Equatable, Sendable {
     /// The scroll this frame means, at the pointer's last known surface-local
     /// position, or nil when the frame carried no scroll at all -- which is
     /// most frames, since every motion and button event ends in one too.
-    public mutating func frame(x: Double, y: Double) -> CanvasSurfaceEvent? {
+    ///
+    /// A frame whose pointer is over the viewer's own chrome is consumed and
+    /// answers nil: a scroll aimed at the strip or a menu is not one the far
+    /// machine asked for, the same way motion and clicks over it are not.
+    public mutating func frame(x: Double, y: Double, isOverChrome: Bool = false) -> CanvasSurfaceEvent? {
         defer { clearFrame() }
         let source = source
         guard vertical != nil || horizontal != nil || verticalValue120 != nil
@@ -94,6 +98,7 @@ public struct WaylandScrollFrameAccumulator: Equatable, Sendable {
             return nil
         }
         let phase = phaseForThisFrame(source: source)
+        guard !isOverChrome else { return nil }
         // Wayland's positive axis value means the content moves up, and the
         // wire's positive delta means the content moves down, which is the
         // convention the host already applies.

@@ -88,6 +88,24 @@ func testWaylandScrollFrameTests() {
         "a continuous source scrolls by the axis value with no phase"
     )
 
+    var overChrome = WaylandScrollFrameAccumulator()
+    overChrome.axisSource(.wheel)
+    overChrome.axisValue120(.vertical, value120: 120)
+    expect(
+        overChrome.frame(x: 5, y: 6, isOverChrome: true) == nil,
+        "a scroll whose pointer is over the viewer's own chrome is not forwarded"
+    )
+    expect(
+        overChrome.frame(x: 5, y: 6, isOverChrome: false) == nil,
+        "and the dropped scroll leaves nothing behind to be sent with the next frame"
+    )
+    overChrome.axisSource(.wheel)
+    overChrome.axisValue120(.vertical, value120: 120)
+    expect(
+        overChrome.frame(x: 5, y: 6, isOverChrome: false) != nil,
+        "a scroll over the picture is forwarded"
+    )
+
     print("PASS: a Wayland axis frame becomes one scroll event with the wire's sign, units and phase")
 }
 
