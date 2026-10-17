@@ -100,6 +100,12 @@ public enum HostOperatorLog {
             + "and the session carried on. The viewer may be running a newer version of Sensorium."
     }
 
+    /// `line` as written, plus how many refusals like it went unlogged since
+    /// the last line when a viewer sends them faster than they are logged.
+    public static func refusal(_ line: String, suppressedSinceLastLine suppressed: Int) -> String {
+        suppressed > 0 ? "\(line) \(suppressed) more refused since the last line." : line
+    }
+
     public static func sourceRefused(address: String) -> String {
         // Without this line a machine dialling from the wrong network is
         // silence, and silence looks exactly like a network that is down.

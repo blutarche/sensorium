@@ -63,7 +63,9 @@ private var squeezedPointer: Data {
 
 /// A session with a live canvas on surface 0, its injector, and what it logged.
 @MainActor
-private func startAdmittedCanvasSession() async -> (
+private func startAdmittedCanvasSession(
+    refusalLogClock: @escaping @Sendable () -> Int64 = { MonotonicClock.nowNanoseconds() }
+) async -> (
     HostNetworkSession, FakeHostByteChannel, FakeInputInjector, UndecodableEventLines
 ) {
     let injector = FakeInputInjector()
@@ -80,6 +82,7 @@ private func startAdmittedCanvasSession() async -> (
     let session = HostNetworkSession(
         connection: channel,
         controller: controller,
+        refusalLogClock: refusalLogClock,
         onEvent: { events.append($0) }
     )
     session.start()
@@ -93,8 +96,64 @@ private func startAdmittedCanvasSession() async -> (
     return (session, channel, injector, events)
 }
 
+private final class StepClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var nanoseconds: Int64 = 0
+
+    func advance(seconds: Int64) {
+        lock.lock()
+        defer { lock.unlock() }
+        nanoseconds += seconds * 1_000_000_000
+    }
+
+    var now: Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return nanoseconds
+    }
+}
+
 @MainActor
 func runHostUndecodableControlMessageTests() async {
+    do {
+        let clock = StepClock()
+        let (session, channel, injector, events) = await startAdmittedCanvasSession(refusalLogClock: { clock.now })
+        let refused = SensoriumMessage.input(
+            .scrolled(deltaX: 0, deltaY: 0, x: 10, y: 10, phase: nil, momentumPhase: nil, lineDeltaX: nil, lineDeltaY: 1001),
+            surfaceID: nil,
+            sequence: nil
+        )
+        let valid = { (x: Double) in
+            SensoriumMessage.input(.pointerButton(button: .left, isDown: true, x: x, y: 30), surfaceID: nil, sequence: nil)
+        }
+        channel.feed(Array(repeating: refused, count: 5) + [valid(20)])
+        let first = await waitUntil(timeoutSeconds: 1) {
+            injector.events.contains(.pointerButton(button: .left, isDown: true, x: 20, y: 30))
+        }
+        expect(first, "inputs that fail validation do not stop the session from applying the next valid input")
+        let refusalLines = { events.lines.filter { !$0.contains("could not read") } }
+        expect(refusalLines().count == 1, "five refused inputs inside one window write one line, got \(events.lines)")
+        expect(
+            refusalLines().first?.contains("more refused") == false,
+            "the first line reports no suppressed refusals, got \(events.lines)"
+        )
+
+        clock.advance(seconds: 11)
+        channel.feed(Array(repeating: refused, count: 3) + [valid(21)])
+        let second = await waitUntil(timeoutSeconds: 1) {
+            injector.events.contains(.pointerButton(button: .left, isDown: true, x: 21, y: 30))
+        }
+        expect(second, "the session still applies valid input after the window")
+        expect(refusalLines().count == 2, "the first refusal after the window writes a line, got \(events.lines)")
+        expect(
+            refusalLines().last?.contains("4 more refused since the last line") == true,
+            "the next line says how many refusals were not logged, got \(events.lines)"
+        )
+        expect(channel.cancelCount == 0, "refused inputs never close an admitted session")
+        session.stop()
+        print("PASS: an admitted session logs refused inputs once per window and then reports how many it skipped")
+    }
+
     for (label, unreadable) in [("a button", sidewaysButton), ("an input kind", squeezedPointer)] {
         let (session, channel, injector, events) = await startAdmittedCanvasSession()
         channel.feedRawFrames([unreadable, unreadable, unreadable])

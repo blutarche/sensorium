@@ -334,6 +334,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     /// can name the value this session actually ran with.
     private let viewerSilenceTimeout: Duration
     private let viewerSilenceTimeoutNanoseconds: Int64
+    private let refusalLogClock: @Sendable () -> Int64
 
     /// The viewer sends a clock-sync message roughly every ten seconds while
     /// a session is live, so this much true silence means the link is dead,
@@ -358,6 +359,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         viewerSilenceTimeout: Duration = HostNetworkSession.defaultViewerSilenceTimeout,
         sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         keyFrameRecoveryInterval: Duration = .seconds(1),
+        refusalLogClock: @escaping @Sendable () -> Int64 = { MonotonicClock.nowNanoseconds() },
         onEvent: (@Sendable (String) -> Void)? = nil,
         onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil,
         onViewerPing: (@Sendable (Int64?) -> Void)? = nil
@@ -373,6 +375,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         ))
         self.viewerSilenceTimeout = viewerSilenceTimeout
         self.viewerSilenceTimeoutNanoseconds = Self.nanoseconds(for: viewerSilenceTimeout)
+        self.refusalLogClock = refusalLogClock
         self.onEvent = onEvent
         self.onPeerPresence = onPeerPresence
         self.onViewerPing = onViewerPing
@@ -919,6 +922,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
 
     private func run() async {
         var undecodableLog = UndecodableMessageLogPacer()
+        var refusalLog = UndecodableMessageLogPacer()
         do {
             while true {
                 let header = try await receiveBytes(count: 5)
@@ -980,7 +984,9 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                     }
                 } catch let error as HostSessionControllerError {
                     guard error.isSessionFatal else {
-                        onEvent?(error.operatorLogLine)
+                        if let count = refusalLog.noteDrop(atNanoseconds: refusalLogClock()) {
+                            onEvent?(HostOperatorLog.refusal(error.operatorLogLine, suppressedSinceLastLine: count - 1))
+                        }
                         continue
                     }
                     throw error
