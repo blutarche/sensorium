@@ -146,6 +146,9 @@ public final class WaylandSessionWindow:
     /// needs `set_selection` to carry, since a stale one is ignored.
     private var latestInputSerial: UInt32?
     private var hasKeyboardFocus = false
+    /// The keys whose press the far machine has heard and whose release it
+    /// is owed, whatever the menus do with the key meanwhile.
+    private var forwardedKeys = WaylandForwardedKeys()
     private var isFullscreen = false
     private var isMaximized = false
     private let drops = ViewerFrameDropCounter()
@@ -920,6 +923,8 @@ public final class WaylandSessionWindow:
 
     fileprivate func handleKeyboardLeave() {
         hasKeyboardFocus = false
+        // `focusLost` below lets go of everything the far machine holds.
+        forwardedKeys.removeAll()
         closeMenus()
         latestInputSerial = nil
         cancelKeyRepeat()
@@ -954,7 +959,16 @@ public final class WaylandSessionWindow:
         if isMenuOpen {
             cancelKeyRepeat()
             keyRepeat.focusLost()
-            if isDown, let key = SessionMenuKey(evdev: evdev) { menuKey(key) }
+            // A key the far machine saw pressed before the menu opened is
+            // still its to hear released.
+            if !isDown,
+               let release = WaylandKeyPath.forwardedRelease(
+                   evdev: evdev, keyboard: keyboardState, forwarded: &forwardedKeys
+               ) {
+                apply(release)
+            } else if isDown, let key = SessionMenuKey(evdev: evdev) {
+                menuKey(key)
+            }
             return
         }
         if isDown {
@@ -964,35 +978,50 @@ public final class WaylandSessionWindow:
         } else if keyRepeat.keyUp(evdev: evdev) {
             cancelKeyRepeat()
         }
-        apply(WaylandKeyPath.destination(evdev: evdev, isDown: isDown, keyboard: keyboardState, menu: menuKeys))
+        let destination = WaylandKeyPath.destination(
+            evdev: evdev,
+            isDown: isDown,
+            keyboard: keyboardState,
+            menu: menuKeys,
+            forwarded: &forwardedKeys
+        )
+        if apply(destination), isDown {
+            forwardedKeys.noteForwarded(evdev: evdev)
+        }
     }
 
     /// One key, acted on where `WaylandKeyPath` said it goes. The window's
     /// own half of that decision and nothing more: the order the questions
     /// were asked in lives there, so it is answerable without a compositor.
-    private func apply(_ destination: WaylandKeyDestination) {
+    /// Answers whether the event went to the far machine through `route`.
+    @discardableResult
+    private func apply(_ destination: WaylandKeyDestination) -> Bool {
         switch destination {
         case let .shortcutStrip(isDown):
             if isDown { toggleShortcutStrip() }
+            return false
         case let .menuCommand(command, isDown):
             // A chord that means one thing is not a chord to hold down.
             cancelKeyRepeat()
             keyRepeat.focusLost()
             if isDown { performMenuCommand(command) }
+            return false
         case let .reservedChord(chord, event, isDown):
             // A chord that means one thing is not a chord to hold down.
             cancelKeyRepeat()
             keyRepeat.focusLost()
-            if shortcutInterceptor?.claim(chord: chord, isDown: isDown) == true { return }
+            if shortcutInterceptor?.claim(chord: chord, isDown: isDown) == true { return false }
             if chord == SystemShortcutCatalog.escapeGesture {
                 if isDown { releaseToLocalMachine() }
-                return
+                return false
             }
             route(event)
+            return true
         case let .canvas(event):
             route(event)
+            return true
         case .dropped:
-            break
+            return false
         }
     }
 

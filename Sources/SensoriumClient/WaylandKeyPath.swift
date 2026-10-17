@@ -46,6 +46,37 @@ public enum WaylandKeyDestination: Equatable, Sendable {
     case dropped
 }
 
+/// The keys whose press was sent to the far machine and whose release it has
+/// not yet been sent.
+///
+/// A release is the far machine's whenever its press was, however the menus
+/// or the viewer's own chords would read it by then: a key pressed alone and
+/// let go after the viewer's chord modifiers went down is no chord at all to
+/// the machine that saw it pressed, and swallowing the release would leave
+/// it held there.
+public struct WaylandForwardedKeys: Equatable, Sendable {
+    private var held: Set<UInt32> = []
+
+    public init() {}
+
+    /// The press of this key was sent to the far machine.
+    public mutating func noteForwarded(evdev code: UInt32) {
+        held.insert(code)
+    }
+
+    /// Answers whether this key's release is owed to the far machine, and
+    /// settles the debt: it is owed once.
+    public mutating func takeRelease(evdev code: UInt32) -> Bool {
+        held.remove(code) != nil
+    }
+
+    /// The far machine let go of everything, as it does when the keyboard
+    /// leaves the window.
+    public mutating func removeAll() {
+        held.removeAll()
+    }
+}
+
 /// The one place the Linux viewer decides where a key goes.
 ///
 /// Split out of `WaylandSessionWindow` because that window cannot be built
@@ -62,6 +93,23 @@ public enum WaylandKeyPath {
         keyboard: WaylandKeyTranslating?,
         menu: WaylandSessionMenuKeys? = nil
     ) -> WaylandKeyDestination {
+        var none = WaylandForwardedKeys()
+        return destination(evdev: evdev, isDown: isDown, keyboard: keyboard, menu: menu, forwarded: &none)
+    }
+
+    /// The same order, after the one rule that comes before it: the release
+    /// of a key the far machine saw pressed goes to the far machine.
+    @MainActor
+    public static func destination(
+        evdev: UInt32,
+        isDown: Bool,
+        keyboard: WaylandKeyTranslating?,
+        menu: WaylandSessionMenuKeys?,
+        forwarded: inout WaylandForwardedKeys
+    ) -> WaylandKeyDestination {
+        if !isDown, let release = forwardedRelease(evdev: evdev, keyboard: keyboard, forwarded: &forwarded) {
+            return release
+        }
         guard let keyboard, let event = keyboard.key(evdev: evdev, isDown: isDown) else {
             return .dropped
         }
@@ -78,6 +126,22 @@ public enum WaylandKeyPath {
               )
         else { return destination }
         return .menuCommand(command, isDown: isDown)
+    }
+
+    /// Where the release of this key goes if the far machine saw it pressed,
+    /// and nil if it did not. Asked on its own by a window whose open menu
+    /// takes every other key.
+    @MainActor
+    public static func forwardedRelease(
+        evdev: UInt32,
+        keyboard: WaylandKeyTranslating?,
+        forwarded: inout WaylandForwardedKeys
+    ) -> WaylandKeyDestination? {
+        guard forwarded.takeRelease(evdev: evdev) else { return nil }
+        // The keyboard is told even when the far machine is not, so its
+        // record of what is held stays true.
+        guard let event = keyboard?.key(evdev: evdev, isDown: false) else { return .dropped }
+        return .canvas(event)
     }
 
     /// The same decision for an event the window already has in hand: a key

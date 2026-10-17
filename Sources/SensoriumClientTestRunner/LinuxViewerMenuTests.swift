@@ -166,6 +166,57 @@ func testWaylandKeyPathMenuChordsTests() {
     print("PASS: the session window's key path hands the menu its chords, and the host every other key")
 }
 
+/// A key whose press reached the host always has its release reach the host,
+/// once, whatever the menus or the viewer's own chords would make of the
+/// release: otherwise the host keeps the key held.
+@MainActor
+func testWaylandKeyPathForwardedReleaseTests() {
+    /// KEY_1, with whatever modifiers are set.
+    struct FakeKeyTranslator: WaylandKeyTranslating {
+        var modifiers: CanvasModifierFlags = []
+
+        func key(evdev code: UInt32, isDown: Bool) -> CanvasSurfaceEvent? {
+            code == 2 ? .key(keyCode: 18, isDown: isDown, modifiers: modifiers) : nil
+        }
+
+        func character(evdev code: UInt32) -> String? { code == 2 ? "1" : nil }
+    }
+    let menu = WaylandSessionMenuKeys(
+        menus: LinuxViewerMenu.bar(.initial),
+        router: SystemShortcutRouter(mode: .remoteWhenFocused),
+        viewer: ViewerWindowState(surfaceID: 0, hasKeyFocus: true, isFullscreen: false)
+    )
+    let viewerChord = FakeKeyTranslator(modifiers: [.control, .option, .command])
+    let released = CanvasSurfaceEvent.key(keyCode: 18, isDown: false, modifiers: [.control, .option, .command])
+
+    var forwarded = WaylandForwardedKeys()
+    forwarded.noteForwarded(evdev: 2)
+    let chordUp = WaylandKeyPath.destination(
+        evdev: 2, isDown: false, keyboard: viewerChord, menu: menu, forwarded: &forwarded
+    )
+    expect(chordUp == .canvas(released), "the release of a forwarded key goes to the host even as a viewer chord, got \(chordUp)")
+    let again = WaylandKeyPath.destination(
+        evdev: 2, isDown: false, keyboard: viewerChord, menu: menu, forwarded: &forwarded
+    )
+    expect(again == .menuCommand(.showYourMachines, isDown: false), "and only once, got \(again)")
+
+    forwarded.noteForwarded(evdev: 2)
+    let whileMenuOpen = WaylandKeyPath.forwardedRelease(evdev: 2, keyboard: viewerChord, forwarded: &forwarded)
+    expect(whileMenuOpen == .canvas(released), "an open menu does not keep a forwarded key's release from the host, got \(String(describing: whileMenuOpen))")
+    expect(
+        WaylandKeyPath.forwardedRelease(evdev: 2, keyboard: viewerChord, forwarded: &forwarded) == nil,
+        "a key the host was never told about has no release to send"
+    )
+
+    forwarded.noteForwarded(evdev: 2)
+    forwarded.removeAll()
+    expect(
+        WaylandKeyPath.forwardedRelease(evdev: 2, keyboard: viewerChord, forwarded: &forwarded) == nil,
+        "keys the host already let go of when focus left are not released again"
+    )
+    print("PASS: the release of a key the host saw pressed always reaches the host, exactly once")
+}
+
 /// What each menu command does in a Linux session window: the app-wide ones
 /// go to the app, the session's own choices go to the calls the viewer's
 /// controller listens on, and the rest act on the window.

@@ -67,6 +67,7 @@ struct SensoriumClientTestRunner {
         testSessionMenuKeysTests()
         testSessionMenuGlyphSVGTests()
         testWaylandKeyPathMenuChordsTests()
+        testWaylandKeyPathForwardedReleaseTests()
         testGtkViewerMenuBarMatchesModelTests()
         testGtkViewerMenuBarKeyChordsTests()
         testGtkChordLabelsMatchGtkTests()
