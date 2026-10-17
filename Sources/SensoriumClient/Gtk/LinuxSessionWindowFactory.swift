@@ -59,13 +59,19 @@ public final class LinuxSessionWindowFactory: SessionWindowFactory {
 /// What else on this platform has to know which session windows exist: the
 /// clipboard a session asked for before any window was open, and the
 /// interceptor that asks the compositor to stop taking its own shortcuts.
-/// Both belong to the primary window, and both have to be given it the moment
-/// it exists and taken back the moment it is gone.
+/// The clipboard belongs to the primary window alone. The interceptor is the
+/// primary window's, and every other window gets one of its own that acts for
+/// the same session, since the compositor inhibits shortcuts per surface.
+/// Each has to be given its window the moment it exists and taken back the
+/// moment it is gone.
 @MainActor
 public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
     private let environment: LinuxViewerEnvironment
     private weak var primary: WaylandSessionWindow?
     private var windows: [WeakSessionWindow] = []
+    /// The interceptors of the windows after the primary. A window refers to
+    /// its interceptor weakly, so they are kept here until the window goes.
+    private var secondaryInterceptors: [ObjectIdentifier: WaylandShortcutInterceptor] = [:]
     /// The app menu's own items, chosen in any session window.
     public var onApplicationCommand: ((ViewerMenuCommand) -> Void)?
 
@@ -77,7 +83,12 @@ public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
         guard let window = window as? WaylandSessionWindow else { return }
         windows.append(WeakSessionWindow(window: window))
         window.onMenuCommand = { [weak self] in self?.onApplicationCommand?($0) }
-        guard window.surfaceID == 0 else { return }
+        guard window.surfaceID == 0 else {
+            let interceptor = WaylandShortcutInterceptor(inhibiting: window, leader: environment.shortcutInterceptor)
+            secondaryInterceptors[ObjectIdentifier(window)] = interceptor
+            window.shortcutInterceptor = interceptor
+            return
+        }
         primary = window
         window.shortcutInterceptor = environment.shortcutInterceptor
         environment.shortcutInhibit.window = window
@@ -86,6 +97,9 @@ public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
 
     public func unregister(_ window: any ViewerSessionWindow) {
         windows.removeAll { $0.window == nil || $0.window === window }
+        if let window = window as? WaylandSessionWindow {
+            secondaryInterceptors.removeValue(forKey: ObjectIdentifier(window))
+        }
         guard let window = window as? WaylandSessionWindow, window === primary else { return }
         primary = nil
         environment.shortcutInhibit.window = nil

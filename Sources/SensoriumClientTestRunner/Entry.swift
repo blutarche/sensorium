@@ -24,6 +24,7 @@ struct SensoriumClientTestRunner {
         testWaylandPointerCaptureTests()
         testWaylandShortcutInterceptorTests()
         testWaylandShortcutInterceptorRestartTests()
+        testWaylandShortcutInterceptorFollowerTests()
         await testWaylandPointerRoutingTests()
         await testWaylandLockedHostKeyRoutingTests()
         await testWaylandOverlayPointerRoutingTests()

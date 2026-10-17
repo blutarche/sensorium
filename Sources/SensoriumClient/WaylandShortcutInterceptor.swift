@@ -30,13 +30,29 @@ public final class WaylandShortcutInterceptor: SystemShortcutInterceptor {
         "the compositor is keeping its shortcuts; reserved chords stay local until the viewer window is focused again"
 
     private let inhibiting: any WaylandShortcutInhibiting
+    /// The interceptor the session started, when this one acts for another
+    /// window of the same session. A compositor inhibitor belongs to one
+    /// surface, so each window keeps its own inhibitor state, while the
+    /// handler and the degraded notice stay the session's.
+    private let leader: WaylandShortcutInterceptor?
     private var handler: ((KeyChord, Bool) -> Bool)?
     private var onDegraded: ((String) -> Void)?
     private var hasInhibitor = false
     private var isInhibitActive = false
 
-    public init(inhibiting: any WaylandShortcutInhibiting) {
+    public init(inhibiting: any WaylandShortcutInhibiting, leader: WaylandShortcutInterceptor? = nil) {
         self.inhibiting = inhibiting
+        self.leader = leader
+    }
+
+    private var sessionHandler: ((KeyChord, Bool) -> Bool)? {
+        if let leader { return leader.handler }
+        return handler
+    }
+
+    private var sessionOnDegraded: ((String) -> Void)? {
+        if let leader { return leader.onDegraded }
+        return onDegraded
     }
 
     /// Whether the compositor has confirmed that reserved chords now reach
@@ -77,7 +93,7 @@ public final class WaylandShortcutInterceptor: SystemShortcutInterceptor {
     public func inhibitorBecameInactive() {
         isInhibitActive = false
         destroyInhibitorIfHeld()
-        onDegraded?(Self.compositorKeepsShortcutsNotice)
+        sessionOnDegraded?(Self.compositorKeepsShortcutsNotice)
     }
 
     /// The keyboard entered this surface. An inhibitor the compositor never
@@ -85,7 +101,7 @@ public final class WaylandShortcutInterceptor: SystemShortcutInterceptor {
     /// answers focus, so the moment focus comes back is the moment worth
     /// asking again.
     public func keyboardDidEnter() {
-        guard handler != nil, !hasInhibitor else { return }
+        guard sessionHandler != nil, !hasInhibitor else { return }
         hasInhibitor = inhibiting.requestShortcutInhibitor()
     }
 
@@ -95,7 +111,7 @@ public final class WaylandShortcutInterceptor: SystemShortcutInterceptor {
     /// forwarder was promised, and the window's own key path is a better
     /// answer than claiming it here.
     public func claim(chord: KeyChord, isDown: Bool) -> Bool {
-        guard isInhibitActive, let handler else { return false }
+        guard isInhibitActive, let handler = sessionHandler else { return false }
         return handler(chord, isDown)
     }
 
