@@ -134,14 +134,26 @@ private func unknownTagFrame() -> SensoriumTransportPacket {
 @MainActor
 private func deadlineTestController(
     approvedPublicKeys: Set<Data> = [],
-    pairing: HostPairingService? = nil
+    pairing: HostPairingService? = nil,
+    onPairingRequested: ((String) -> Void)? = nil
 ) -> HostSessionController {
     HostSessionController(
         sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
         approvedPublicKeys: approvedPublicKeys,
         requireAuthentication: true,
         pairing: pairing,
+        onPairingRequested: onPairingRequested,
         keyConfinement: .unconfined
+    )
+}
+
+/// The receive loop notes a message's arrival before the controller handles
+/// it, so once the controller has seen the pairIntent the watchdog's first
+/// look counts it. Advancing the watchdog any earlier races that loop.
+private func waitForPairIntent(_ pairIntents: DeadlineLineRecorder) async {
+    expect(
+        await waitUntil(timeoutSeconds: 1) { !pairIntents.lines.isEmpty },
+        "the pairIntent reaches the controller"
     )
 }
 
@@ -190,14 +202,19 @@ func runHostConnectionDeadlineTests() async {
         let channel = FakeHostByteChannel(scriptedMessages: [.pairIntent(deviceName: "Probe")])
         channel.peerAddress = "100.64.1.6"
         let sleeper = SteppedSleeper()
+        let pairIntents = DeadlineLineRecorder()
         let events = DeadlineLineRecorder()
         let session = HostNetworkSession(
             connection: channel,
-            controller: deadlineTestController(pairing: HostPairingService(hostIdentity: try! DeviceIdentity.generate())),
+            controller: deadlineTestController(
+                pairing: HostPairingService(hostIdentity: try! DeviceIdentity.generate()),
+                onPairingRequested: { pairIntents.record($0) }
+            ),
             connectionDeadlineSleep: sleeper.sleep,
             onEvent: { events.record($0) }
         )
         session.start()
+        await waitForPairIntent(pairIntents)
         var elapsed: Duration = .zero
         while true {
             channel.feed([unknownControlFrame(), unknownTagFrame()])
@@ -296,7 +313,8 @@ func runHostConnectionDeadlineTests() async {
         let device = try! DeviceIdentity.generate()
         let pairing = HostPairingService(hostIdentity: try! DeviceIdentity.generate())
         pairing.issueCode(code: "424242")
-        let controller = deadlineTestController(pairing: pairing)
+        let pairIntents = DeadlineLineRecorder()
+        let controller = deadlineTestController(pairing: pairing, onPairingRequested: { pairIntents.record($0) })
         let channel = FakeHostByteChannel(scriptedMessages: [.pairIntent(deviceName: "Probe")])
         let sleeper = SteppedSleeper()
         let session = HostNetworkSession(
@@ -305,6 +323,7 @@ func runHostConnectionDeadlineTests() async {
             connectionDeadlineSleep: sleeper.sleep
         )
         session.start()
+        await waitForPairIntent(pairIntents)
         while channel.cancelCount == 0, sleeper.requestedDurations.reduce(.zero, +) < .seconds(330) {
             expect(await sleeper.advance(), "the watchdog keeps watching a connection that announced pairing")
         }
@@ -341,13 +360,15 @@ func runHostConnectionDeadlineTests() async {
         channel.peerAddress = "100.64.1.8"
         let sleeper = SteppedSleeper()
         let events = DeadlineLineRecorder()
+        let pairIntents = DeadlineLineRecorder()
         let session = HostNetworkSession(
             connection: channel,
-            controller: deadlineTestController(pairing: pairing),
+            controller: deadlineTestController(pairing: pairing, onPairingRequested: { pairIntents.record($0) }),
             connectionDeadlineSleep: sleeper.sleep,
             onEvent: { events.record($0) }
         )
         session.start()
+        await waitForPairIntent(pairIntents)
         expect(await sleeper.advance(), "the watchdog waits for the 15-second deadline")
         expect(await sleeper.advance(), "and then for the 60-second one")
         expect(
