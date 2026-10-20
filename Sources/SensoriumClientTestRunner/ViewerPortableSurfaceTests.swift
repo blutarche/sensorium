@@ -58,3 +58,37 @@ func testShortcutStripIconNameTests() {
     }
     print("PASS: every shortcut strip action names an SF Symbol")
 }
+
+/// A platform with no Accessibility permission is not told about one, and
+/// does not see another platform's shortcut names.
+func testShortcutReportWithoutAccessibilityTests() {
+    let lines = ClientShortcutPermissionReport.lines(
+        mode: .remoteWhenFocused, accessibilityGranted: true, usesAccessibility: false
+    )
+    expect(lines.count == 2, "only the mode line and the escape line, got \(lines)")
+    expect(lines.allSatisfy { !$0.contains("Accessibility") && !$0.contains("Cmd") }, "nothing names macOS")
+    expect(lines.contains(where: { $0.contains(ViewerKeyNames.escapeGesture) }), "the escape line stays")
+    expect(
+        ClientShortcutPermissionReport.lines(mode: .remoteWhenFocused, accessibilityGranted: true)
+            .contains(where: { $0.contains("Accessibility") }),
+        "a platform that uses Accessibility still reports it"
+    )
+    #if os(macOS)
+    expect(ClientShortcutPermissionReport.platformUsesAccessibility, "macOS uses Accessibility")
+    #else
+    expect(!ClientShortcutPermissionReport.platformUsesAccessibility, "this platform has no Accessibility")
+    #endif
+    print("PASS: the shortcut report names Accessibility only where it exists")
+}
+
+func testViewerFarewellTests() {
+    expect(
+        ViewerFarewell.line(sessionWasCanvas: true) == "Left; the virtual display has been released.",
+        "a session canvas is released on leaving"
+    )
+    expect(
+        ViewerFarewell.line(sessionWasCanvas: false) == "Left.",
+        "a host screen has no virtual display to release"
+    )
+    print("PASS: the farewell mentions a virtual display only for a session canvas")
+}

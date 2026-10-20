@@ -540,7 +540,7 @@ public final class ViewerApplication {
         }
         session.closeWindows()
         if quit.hasFired {
-            print("Left; the virtual display has been released.")
+            print(ViewerFarewell.line(sessionWasCanvas: !session.isTryingHostScreen))
             return .quit
         }
         return .backToList

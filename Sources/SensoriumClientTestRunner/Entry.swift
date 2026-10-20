@@ -136,6 +136,8 @@ struct SensoriumClientTestRunner {
         testShortcutStripGlyphPixelSnapTests()
         testShortcutStripGlyphInkMarginTests()
         testViewerKeyNamesTests()
+        testShortcutReportWithoutAccessibilityTests()
+        testViewerFarewellTests()
         testEditKeyPassthroughRoutingTests()
         testViewerWindowMenuStateTests()
         testShortcutStripPinMemoryTests()

@@ -9,10 +9,16 @@
 public enum ClientShortcutPermissionReport {
     public static func lines(
         mode: SystemShortcutMode,
-        accessibilityGranted: Bool
+        accessibilityGranted: Bool,
+        usesAccessibility: Bool = platformUsesAccessibility
     ) -> [String] {
         var lines = ["System shortcuts: \(describe(mode))"]
         lines.append("Escape back to this machine: \(escapeGestureDescription)")
+        guard usesAccessibility else {
+            // Only macOS gates reserved shortcuts behind a permission; naming
+            // it, or its shortcuts, elsewhere would describe another system.
+            return lines
+        }
         guard mode != .local else {
             // Nothing is forwarded, so the viewer needs no permission it did
             // not already have. Saying otherwise would ask for a TCC grant
@@ -42,6 +48,16 @@ public enum ClientShortcutPermissionReport {
             )
         }
         return lines
+    }
+
+    /// Whether this platform asks for Accessibility to forward the shortcuts
+    /// it reserves.
+    public static var platformUsesAccessibility: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
     }
 
     /// Used when a tap-required shortcut is observed but cannot be forwarded —
