@@ -50,6 +50,8 @@ once it reaches 1.0.
   - always tells the host when a key is released
 - The Resolution menu names the sizes the host actually offers.
 - Making the window larger now makes the picture sharper at once.
+- A resolution chosen before the picture started is now used as soon as
+  it starts.
 - A session no longer ends when one side sends a message the other does
   not know. Newer and older versions can now add features without
   breaking each other.
