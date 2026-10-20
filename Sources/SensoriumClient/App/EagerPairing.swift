@@ -78,11 +78,29 @@ final class EagerPairing {
         }
     }
 
+    /// A connection opened earlier sits silent while the code is read and
+    /// typed, and QUIC's idle timeout (30 seconds, set on both ends) can end
+    /// it first, since nothing here asks the transport for keepalives. The
+    /// host accepts a `pairRequest` on any connection, so a
+    /// reused connection that turns out unreachable gets one fresh dial
+    /// before the attempt is reported.
+    func pair(
+        submission: ViewerPairingSubmission,
+        fallback: () async -> ViewerPairingResult
+    ) async -> ViewerPairingResult {
+        let reusesOpenConnection = controller != nil
+        let result = await pairOnce(submission: submission, fallback: fallback)
+        guard reusesOpenConnection, case .failed(.unreachable) = result else {
+            return result
+        }
+        return await pairOnce(submission: submission, fallback: fallback)
+    }
+
     /// A wrong code (`.refused`) leaves the connection open for the next
     /// retyped digit; anything else ends it, so the next attempt -- if there
     /// is one -- redials fresh rather than reusing a connection already known
     /// to be bad.
-    func pair(
+    private func pairOnce(
         submission: ViewerPairingSubmission,
         fallback: () async -> ViewerPairingResult
     ) async -> ViewerPairingResult {

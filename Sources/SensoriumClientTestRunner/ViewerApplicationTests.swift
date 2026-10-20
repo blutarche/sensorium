@@ -438,6 +438,7 @@ func testViewerApplicationTests() async {
     await testRefusedFreshSessionAfterExpiredResumeSurfacesItsOwnReason()
     await testOtherRefusalOfAResumeStartsNoFreshSession()
     await testRefusedResumeStartsNoFreshSession()
+    await testPairingRedialsWhenTheCodeStepsConnectionWentIdle()
 }
 
 /// docs/ux-spec.md line 61: a failed attempt keeps a short reason on the row,
@@ -1076,4 +1077,120 @@ private func testRefusedResumeStartsNoFreshSession() async {
         "and its copy is shown, got \(played.rowReasons)"
     )
     print("PASS: a refused resume surfaces its copy and starts no fresh session")
+}
+
+/// A connection that QUIC's idle timeout ended while nothing was sent on it:
+/// the first message, the code step's `pairIntent`, went out, and everything
+/// after fails the way a send or receive on a closed connection does.
+actor IdleExpiredControlConnection: ClientControlConnection {
+    let deferredPackets = DeferredPacketQueue()
+    private var sends = 0
+
+    func start(timeout: TimeInterval) async throws {}
+    nonisolated func beginHostSilenceWatch() {}
+    nonisolated func endHostSilenceWatch() {}
+    nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
+
+    func send(_ message: SensoriumMessage) async throws {
+        sends += 1
+        if sends > 1 {
+            throw NetworkControlConnectionError.closed
+        }
+    }
+
+    func send(_ packet: SensoriumTransportPacket) async throws {
+        throw NetworkControlConnectionError.closed
+    }
+
+    func receiveWirePacket() async throws -> SensoriumTransportPacket {
+        throw NetworkControlConnectionError.closed
+    }
+
+    func close() async {}
+}
+
+/// Approves the first `pairRequest` it is sent, signed the way a host showing
+/// that code signs its approval.
+actor ApprovingPairConnection: ClientControlConnection {
+    let deferredPackets = DeferredPacketQueue()
+    private let hostIdentity: DeviceIdentity
+    private var request: (deviceName: String, publicKey: Data)?
+
+    init(hostIdentity: DeviceIdentity) {
+        self.hostIdentity = hostIdentity
+    }
+
+    func start(timeout: TimeInterval) async throws {}
+    nonisolated func beginHostSilenceWatch() {}
+    nonisolated func endHostSilenceWatch() {}
+    nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
+
+    func send(_ message: SensoriumMessage) async throws {
+        if case let .pairRequest(deviceName, publicKey, _, _) = message {
+            request = (deviceName, publicKey)
+        }
+    }
+
+    func send(_ packet: SensoriumTransportPacket) async throws {}
+
+    func receiveWirePacket() async throws -> SensoriumTransportPacket {
+        guard let request else {
+            throw NetworkControlConnectionError.closed
+        }
+        let certificateHash = Data([9, 9, 9])
+        let signature = try hostIdentity.sign(SensoriumFrameCodec.pairApprovalTranscript(
+            deviceName: request.deviceName,
+            clientPublicKey: request.publicKey,
+            tlsCertificateHash: certificateHash
+        ))
+        return .control(.pairApproved(
+            hostPublicKey: hostIdentity.publicKey,
+            tlsCertificateHash: certificateHash,
+            signature: signature
+        ))
+    }
+
+    func close() async {}
+}
+
+/// The connection the code step opens sits silent while the person reads the
+/// code off the other machine and types it, which can outlast QUIC's
+/// 30-second idle timeout. The typed code then goes out once more on a fresh
+/// connection, which the host accepts, instead of calling the machine
+/// unreachable.
+@MainActor
+private func testPairingRedialsWhenTheCodeStepsConnectionWentIdle() async {
+    let hostIdentity = try! DeviceIdentity.generate()
+    let dialledBefore = UncheckedFlag()
+    let harness = ViewerApplicationHarness {
+        if !dialledBefore.value {
+            dialledBefore.set(true)
+            return IdleExpiredControlConnection()
+        }
+        return ApprovingPairConnection(hostIdentity: hostIdentity)
+    }
+    defer { harness.cleanUp() }
+
+    await harness.viewer.run(arguments: [])
+    expect(await harness.settle(until: { harness.launch.pair != nil }), "the launch window is wired for pairing")
+    let device = ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio")
+    guard case .sent? = await harness.launch.sendPairIntent?(device) else {
+        expect(false, "the code step announces this machine on its own connection")
+        return
+    }
+    let result = await harness.launch.pair?(device, ViewerPairingSubmission(
+        host: "studio.tail1234.ts.net",
+        port: 7777,
+        code: "123456",
+        displayName: "Studio"
+    ))
+    guard case let .paired(saved)? = result else {
+        expect(false, "a code typed after the connection went idle still pairs, got \(String(describing: result))")
+        return
+    }
+    expect(saved.hostPublicKey == hostIdentity.publicKey, "with the host that approved it")
+    expect(harness.transports.dialCount == 2, "on exactly one fresh dial, got \(harness.transports.dialCount)")
+    harness.launch.onCloseRequested?()
+    expect(await harness.settle(until: { harness.eventLoop.stopCount == 1 }), "and quitting ends the loop")
+    print("PASS: a code typed after the code step's connection went idle is sent once more on a fresh dial")
 }
