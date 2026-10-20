@@ -8,6 +8,52 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- The back and forward buttons of a mouse now work on the host. The
+  viewer sends them only to a host that accepts them.
+- Caps Lock at the viewer now types capitals on the host.
+- A mouse wheel that turns in steps now scrolls the host by lines, as a
+  wheel plugged into the host would. A trackpad still scrolls smoothly.
+
+### Changed
+
+- The viewer's own shortcuts now use Control-Option-Command. Command,
+  Command-Shift and Command-Control shortcuts now reach the host.
+  Command-Q, Command-H and the Edit menu stay with the viewer.
+- The host now sends the picture at exactly the size the viewer's window
+  draws it, and the viewer draws it pixel for pixel. Before, the host
+  picked the nearest of a few fixed sizes and the viewer stretched the
+  picture to fit, which blurred text.
+
+### Fixed
+
+- The host's screen no longer goes to sleep and locks about 10 seconds
+  after a viewer connects to a host that has been idle.
+- Double-click works on the host.
+- Input reaches the host as a physical keyboard and mouse would send it.
+  A held key repeats like a real one. A drag survives another button's
+  release. Keypad keys and Command-Shift-Tab work.
+- The click that brings the viewer's window to the front now reaches the
+  host. So do drags with the middle button.
+- A key pressed with Command held is now released on the host.
+- Clicks and keys now reach the host in the order you made them.
+- A mouse wheel on the macOS viewer scrolled the host by a few pixels
+  per step. It now scrolls a normal distance.
+- The Linux viewer:
+  - treats Right Alt as Option on layouts that use it for special
+    characters
+  - forwards the Japanese input keys and sends Insert as Help
+  - keeps the desktop's shortcuts away in every session window, not only
+    the first
+  - no longer sends a scroll made over its own controls
+  - always tells the host when a key is released
+- The Resolution menu names the sizes the host actually offers.
+- Making the window larger now makes the picture sharper at once.
+- A session no longer ends when one side sends a message the other does
+  not know. Newer and older versions can now add features without
+  breaking each other.
+
 ## [0.5.1] - 2026-10-15
 
 ### Added
