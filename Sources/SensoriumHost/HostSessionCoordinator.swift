@@ -844,8 +844,8 @@ public final class HostSessionCoordinator {
             // on the short hold rather than either of the longer holds a
             // drawable change waits out. Harmless before this surface has ever
             // streamed -- `applyStreamScale` no-ops until `isStreaming` is
-            // true, and the next real bring-up resolves through the
-            // preference already stored above.
+            // true, and bring-up resolves the preference stored above through
+            // `applyStoredStreamScaleAtBringUp`.
             requestStreamScale(lastRequestedScale[surface] ?? streamScale[surface].appliedScale, on: surface)
         }
 
@@ -901,6 +901,7 @@ public final class HostSessionCoordinator {
                 didWriteResponse = true
                 stage = .captureStart
                 try await startStreaming(on: surface, canvasDisplayID: displayID)
+                await applyStoredStreamScaleAtBringUp(on: surface)
                 onEvent?("capture started on session canvas \(displayID)")
             } catch let gateError as CanvasCreationGateError {
                 // Production shares one gate, so the refusal above fires
@@ -955,15 +956,7 @@ public final class HostSessionCoordinator {
                 // A viewer sizes its window as soon as it is told the screen
                 // is ready; a request whose settle timer fired before capture
                 // existed had nothing to apply to, so it is applied now.
-                let surface = Self.hostScreenTelemetrySurface
-                if let requested = lastRequestedScale[surface] {
-                    let target = Swift.min(requested, controller.hostScreenMaximumStreamScale ?? .infinity)
-                    if encodesAtSameSize(streamScale[surface].appliedScale, target, on: surface) {
-                        recordAppliedWithoutRebuild(target, on: surface)
-                    } else {
-                        await applyStreamScale(target, on: surface)
-                    }
-                }
+                await applyStoredStreamScaleAtBringUp(on: Self.hostScreenTelemetrySurface)
                 // Only now has capture actually come up -- admission and the
                 // reply above both happen first and can each still be
                 // followed by a throw into the catch below, which must be
@@ -1552,6 +1545,45 @@ public final class HostSessionCoordinator {
     /// quantum. Every other request settles on this debouncer's own
     /// `settleSeconds`.
     private func requestStreamScale(_ scale: Double, on surface: CanvasSurfaceID, fromViewerDrawable: Bool = false) {
+        let clamped = resolveStreamScale(scale, on: surface)
+        var settleSeconds = streamScale[surface].settleSeconds
+        if fromViewerDrawable {
+            let applied = streamScale[surface].appliedScale
+            if hasAppliedStreamScale[surface], encodesAtSameSize(clamped, applied, on: surface) {
+                // Whatever was still pending is superseded by this report.
+                streamScaleSettleTask[surface]?.cancel()
+                streamScaleSettleTask[surface] = nil
+                recordAppliedWithoutRebuild(clamped, on: surface)
+                return
+            }
+            settleSeconds = !hasAppliedStreamScale[surface]
+                || StreamScalePolicy.isWorthReconfiguring(from: applied, to: clamped)
+                ? StreamScaleDebouncer.drawableSettleSeconds
+                : StreamScaleDebouncer.drawableSmallShrinkSettleSeconds
+        }
+        streamScale[surface].request(
+            scale: clamped,
+            atSeconds: streamScaleNowSecondsProvider(),
+            settleSeconds: settleSeconds
+        )
+        streamScaleSettleTask[surface]?.cancel()
+        streamScaleSettleTask[surface] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.streamScaleSettleWait(settleSeconds)
+            guard !Task.isCancelled else { return }
+            guard let settled = self.streamScale[surface].takeSettledScale(
+                atSeconds: self.streamScaleNowSecondsProvider()
+            ) else {
+                return
+            }
+            await self.applyStreamScale(settled, on: surface)
+        }
+    }
+
+    /// The scale this surface should stream at for an ask of `scale`: the
+    /// stored preference, the viewer's own maximum, the host-screen ceiling
+    /// and the measured ceiling, each reported as it holds the ask back.
+    private func resolveStreamScale(_ scale: Double, on surface: CanvasSurfaceID) -> Double {
         let userMaximum = controller.requestedMaximumStreamScale(for: surface)
         let preference = streamScalePreference[surface]
         // A host-screen surface has a ceiling the session canvas does not:
@@ -1630,37 +1662,30 @@ public final class HostSessionCoordinator {
             // that does is news again.
             lastStreamScaleHold[surface] = nil
         }
-        var settleSeconds = streamScale[surface].settleSeconds
-        if fromViewerDrawable {
-            let applied = streamScale[surface].appliedScale
-            if hasAppliedStreamScale[surface], encodesAtSameSize(clamped, applied, on: surface) {
-                // Whatever was still pending is superseded by this report.
-                streamScaleSettleTask[surface]?.cancel()
-                streamScaleSettleTask[surface] = nil
-                recordAppliedWithoutRebuild(clamped, on: surface)
-                return
-            }
-            settleSeconds = !hasAppliedStreamScale[surface]
-                || StreamScalePolicy.isWorthReconfiguring(from: applied, to: clamped)
-                ? StreamScaleDebouncer.drawableSettleSeconds
-                : StreamScaleDebouncer.drawableSmallShrinkSettleSeconds
+        return clamped
+    }
+
+    /// Resolves what is stored for a surface whose capture has just come up,
+    /// through the same rule every later change uses. A preference or a
+    /// drawable request that arrived before capture existed had nothing to
+    /// apply to, and the pipeline opens at its own default size.
+    private func applyStoredStreamScaleAtBringUp(on surface: CanvasSurfaceID) async {
+        guard lastRequestedScale[surface] != nil || streamScalePreference[surface] != .automatic else {
+            return
         }
-        streamScale[surface].request(
-            scale: clamped,
-            atSeconds: streamScaleNowSecondsProvider(),
-            settleSeconds: settleSeconds
-        )
+        let target = resolveStreamScale(lastRequestedScale[surface] ?? streamScale[surface].appliedScale, on: surface)
+        // A settle timer an earlier ask left running resolved against a
+        // surface that was not streaming yet, and must not override this.
         streamScaleSettleTask[surface]?.cancel()
-        streamScaleSettleTask[surface] = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.streamScaleSettleWait(settleSeconds)
-            guard !Task.isCancelled else { return }
-            guard let settled = self.streamScale[surface].takeSettledScale(
-                atSeconds: self.streamScaleNowSecondsProvider()
-            ) else {
-                return
-            }
-            await self.applyStreamScale(settled, on: surface)
+        streamScaleSettleTask[surface] = nil
+        streamScale[surface].request(
+            scale: streamScale[surface].appliedScale,
+            atSeconds: streamScaleNowSecondsProvider()
+        )
+        if encodesAtSameSize(streamScale[surface].appliedScale, target, on: surface) {
+            recordAppliedWithoutRebuild(target, on: surface)
+        } else {
+            await applyStreamScale(target, on: surface)
         }
     }
 

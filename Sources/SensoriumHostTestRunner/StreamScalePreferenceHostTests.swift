@@ -118,4 +118,29 @@ func runStreamScalePreferenceHostTests() async {
         )
     }
     print("PASS: a fixed stream scale choice is honoured exactly, applied immediately, and survives a resize until returned to automatic")
+
+    // A choice sent before the canvas exists is applied when its capture
+    // comes up, not left waiting for the next change.
+    do {
+        let media = FakeScalableCanvasMedia()
+        let coordinator = HostSessionCoordinator(
+            controller: HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                keyConfinement: .unconfined,
+                privateDesktopOffered: { true }
+            ),
+            media: onlyOnSurfaceZero(media),
+            videoSink: FakeVideoSink(),
+            streamScaleSettleSeconds: 0.05
+        )
+        _ = try! await coordinator.handleWritingResponse(.streamScalePreference(.fixed(1.5), surfaceID: nil))
+        _ = try! await coordinator.handleWritingResponse(
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil)
+        )
+        expect(
+            await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [1.5] },
+            "a fixed choice stored before the canvas existed is applied at bring-up, got \(media.reconfiguredScales)"
+        )
+    }
+    print("PASS: a fixed stream scale sent before a session canvas starts is applied at bring-up")
 }

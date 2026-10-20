@@ -169,7 +169,7 @@ private func startFidelitySession(_ fixture: (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
     canvasMedia: FakeScalableCanvasMedia
-)) async {
+), whileAdmitted messagesBeforeCapture: [SensoriumMessage] = []) async {
     guard case let .hostScreenList(displays, _) = try! fixture.controller.offerHostScreenList(),
           let entry = displays.first else {
         expect(false, "the fixture's offer names at least one display")
@@ -184,6 +184,13 @@ private func startFidelitySession(_ fixture: (
         resumeTicket: nil
     )) { message in
         written.append(message)
+        // The viewer is told the screen is ready before capture exists, and
+        // may answer at once; what it sends here lands before the picture.
+        if case .hostScreenReady = message {
+            for early in messagesBeforeCapture {
+                _ = try await fixture.coordinator.handleWritingResponse(early)
+            }
+        }
     }
     guard case .hostScreenReady = written.first else {
         expect(false, "the fixture's host-screen request is admitted, got \(written)")
@@ -735,6 +742,85 @@ func runHostScreenViewerGeometryTests() async {
         )
     }
     print("PASS: a chosen stream scale reaches a host-screen session and is held at its ceilings")
+
+    do {
+        // A fixed choice sent before the picture starts is applied when capture comes up
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        _ = try! await fixture.coordinator.handleWritingResponse(
+            .streamScalePreference(.fixed(1.5), surfaceID: nil)
+        )
+        await startFidelitySession(fixture)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenMedia.reconfiguredScales == [1.5] },
+            "a fixed choice stored before capture existed is applied at bring-up, got "
+                + "\(hostScreenMedia.reconfiguredScales)"
+        )
+    }
+    print("PASS: a fixed stream scale sent before a host-screen session starts is applied at bring-up")
+
+    do {
+        // Held at the host screen's ceiling, and said so
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        _ = try! await fixture.coordinator.handleWritingResponse(
+            .streamScalePreference(.fixed(2.0), surfaceID: nil)
+        )
+        await startFidelitySession(fixture)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenMedia.reconfiguredScales == [1.6] },
+            "a stored fixed choice above the host screen's ceiling is applied at the ceiling, got "
+                + "\(hostScreenMedia.reconfiguredScales)"
+        )
+        expect(
+            fixture.coordinator.clampedStreamScaleFromUserChoice(for: surfaceZero) == 2.0,
+            "and reported to the viewer as a clamp of what was chosen"
+        )
+    }
+    print("PASS: a stored fixed stream scale is held at the host screen's ceiling at bring-up")
+
+    do {
+        // A fixed choice made after a drawable report still wins at bring-up
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        await startFidelitySession(fixture, whileAdmitted: [
+            .viewerDrawableSize(pixelWidth: 3200, pixelHeight: 1800, surfaceID: nil, maximumScale: nil),
+            .streamScalePreference(.fixed(1.5), surfaceID: nil),
+        ])
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenMedia.reconfiguredScales == [1.5] },
+            "a fixed choice made after a drawable report is what bring-up applies, not the drawable's fit, got "
+                + "\(hostScreenMedia.reconfiguredScales)"
+        )
+    }
+    print("PASS: a fixed stream scale outranks an earlier drawable report at host-screen bring-up")
+
+    do {
+        // An automatic preference still applies the stored drawable request at bring-up
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        await startFidelitySession(fixture, whileAdmitted: [
+            .viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2160, surfaceID: nil, maximumScale: nil),
+        ])
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenMedia.reconfiguredScales == [1.5] },
+            "under .automatic a stored drawable request is applied at bring-up, got "
+                + "\(hostScreenMedia.reconfiguredScales)"
+        )
+    }
+    print("PASS: an automatic stream scale applies the stored drawable request at host-screen bring-up")
 
     do {
         // The viewer's focus report is accepted on a host-screen session
