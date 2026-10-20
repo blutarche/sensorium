@@ -1383,9 +1383,10 @@ public final class HostSessionController {
     public func handle(_ message: SensoriumMessage) throws -> SensoriumMessage? {
         switch message {
         case .canvasRequest, .hostScreenRequest, .goodbye:
-            // A request reaches here inside the coordinator's own request
-            // scope, which stays open until any hold the request leads to
-            // has been taken, so the declaration never lapses in between.
+            // With a coordinator, a request reaches here inside its own
+            // request scope, which stays open until any hold the request
+            // leads to has been taken, so the declaration never lapses in
+            // between. Without one, no hold is taken.
             endOfferWakeScope()
         default:
             break
