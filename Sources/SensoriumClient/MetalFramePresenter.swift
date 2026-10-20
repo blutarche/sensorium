@@ -241,11 +241,15 @@ public final class MetalFramePresenter: NSObject, MTKViewDelegate {
     ) throws -> Bool {
         let sourceWidth = Double(CVPixelBufferGetWidth(pixelBuffer))
         let sourceHeight = Double(CVPixelBufferGetHeight(pixelBuffer))
-        let videoRect = CanvasPresentationLayout.videoRect(
-            sourceWidth: sourceWidth,
-            sourceHeight: sourceHeight,
-            viewportWidth: Double(texture.width),
-            viewportHeight: Double(texture.height)
+        let videoRect = CanvasPresentationLayout.drawingRect(
+            fittedRect: CanvasPresentationLayout.videoRect(
+                sourceWidth: sourceWidth,
+                sourceHeight: sourceHeight,
+                viewportWidth: Double(texture.width),
+                viewportHeight: Double(texture.height)
+            ),
+            frameWidth: sourceWidth,
+            frameHeight: sourceHeight
         )
         guard videoRect.width > 0, videoRect.height > 0 else {
             return false

@@ -60,4 +60,36 @@ public enum CanvasPresentationLayout {
             height: height
         )
     }
+
+    /// The rect to draw a frame into, given the rect `videoRect` fitted it
+    /// to. A frame within two pixels of that rect on both axes is drawn at
+    /// its own size, centred on it and moved to whole pixels, so each texel
+    /// covers exactly one pixel and nothing is resampled. Any other frame is
+    /// drawn into the fitted rect.
+    ///
+    /// The frame never starts above `topInset`. A frame taller than the room
+    /// below the inset starts at its edge instead and loses its last rows,
+    /// at most two, to the viewport.
+    ///
+    /// Input mapping keeps using the fitted rect: the two differ by at most a
+    /// pixel, which is finer than a pointer position.
+    public static func drawingRect(
+        fittedRect fitted: CanvasVideoRect,
+        frameWidth: Double,
+        frameHeight: Double,
+        topInset: Double = 0
+    ) -> CanvasVideoRect {
+        let tolerance = 2.0
+        guard fitted.width > 0, fitted.height > 0,
+              abs(fitted.width - frameWidth) <= tolerance,
+              abs(fitted.height - frameHeight) <= tolerance else {
+            return fitted
+        }
+        let x = (fitted.x + (fitted.width - frameWidth) / 2).rounded()
+        var y = (fitted.y + (fitted.height - frameHeight) / 2).rounded()
+        if topInset > 0 {
+            y = max(y, topInset.rounded(.up))
+        }
+        return CanvasVideoRect(x: x, y: y, width: frameWidth, height: frameHeight)
+    }
 }

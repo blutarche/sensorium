@@ -24,6 +24,56 @@ func testMetalFramePresenterRenderTests() async {
     await testGivesUpAFrameTheGPUCannotRead()
     await testMagnifiedEdgeIsSharperThanBilinear()
     await testMinifiedFrameKeepsBilinearSampling()
+    await testNearExactFrameIsDrawnPixelForPixel()
+}
+
+/// A checkerboard one texel per square, drawn into a target one pixel wider
+/// and taller than the fitted rect needs: it lands on whole pixels at its own
+/// size, so every square comes through pure black or pure white.
+@MainActor
+private func testNearExactFrameIsDrawnPixelForPixel() async {
+    let device = MTLCreateSystemDefaultDevice()!
+    let view = MTKView(frame: NSRect(x: 0, y: 0, width: 64, height: 40))
+    guard let presenter = try? MetalFramePresenter(view: view) else {
+        print("FAIL: could not construct MetalFramePresenter against a real Metal device")
+        Foundation.exit(1)
+    }
+    let size = 16
+    let buffer = makeFilledBGRAPixelBuffer(width: size, height: size, blue: 0, green: 0, red: 0)
+    CVPixelBufferLockBaseAddress(buffer, [])
+    let rows = CVPixelBufferGetBaseAddress(buffer)!.assumingMemoryBound(to: UInt8.self)
+    let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+    for y in 0..<size {
+        for x in 0..<size where (x + y) % 2 == 1 {
+            for channel in 0..<3 {
+                rows[y * bytesPerRow + x * 4 + channel] = 255
+            }
+        }
+    }
+    CVPixelBufferUnlockBaseAddress(buffer, [])
+    // A 17x17 fitted rect at x 0.5 in an 18x17 target: the frame is drawn
+    // 16x16 from (1, 1).
+    let target = makeReadableTexture(device: device, width: 18, height: 17)
+    do {
+        try presenter.render(buffer, into: target)
+    } catch {
+        print("FAIL: rendering a near-exact checkerboard threw \(error)")
+        Foundation.exit(1)
+    }
+    let image = readBack(texture: target, device: device)
+    var worst = 0
+    for y in 0..<size {
+        for x in 0..<size {
+            let expected = (x + y) % 2 == 1 ? 255 : 0
+            worst = max(worst, abs(image.pixel(x: x + 1, y: y + 1).green - expected))
+        }
+    }
+    expect(
+        worst <= 1,
+        "a 16x16 checkerboard in a 17x17 fitted rect is drawn texel for pixel from (1, 1),"
+            + " got a square off by \(worst)"
+    )
+    print("PASS: MetalFramePresenter draws a frame within 2 px of its fitted rect pixel for pixel")
 }
 
 /// A hard vertical edge, black on the left and white on the right, drawn 1.5

@@ -570,11 +570,16 @@ public final class EGLFramePresenter {
     /// were bound still releases them, so a shader or program failure never
     /// leaks the exported surface behind the frame.
     private func draw(_ frame: AVFrameBox) throws -> (() -> Void)? {
-        let videoRect = CanvasPresentationLayout.videoRect(
-            sourceWidth: Double(frame.width),
-            sourceHeight: Double(frame.height),
-            viewportWidth: Double(drawablePixelWidth),
-            viewportHeight: Double(drawablePixelHeight),
+        let videoRect = CanvasPresentationLayout.drawingRect(
+            fittedRect: CanvasPresentationLayout.videoRect(
+                sourceWidth: Double(frame.width),
+                sourceHeight: Double(frame.height),
+                viewportWidth: Double(drawablePixelWidth),
+                viewportHeight: Double(drawablePixelHeight),
+                topInset: Double(videoTopInsetPixels)
+            ),
+            frameWidth: Double(frame.width),
+            frameHeight: Double(frame.height),
             topInset: Double(videoTopInsetPixels)
         )
         glViewport(0, 0, GLsizei(drawablePixelWidth), GLsizei(drawablePixelHeight))
@@ -600,9 +605,18 @@ public final class EGLFramePresenter {
                 GLfloat(2 * videoRect.x / Double(drawablePixelWidth) - 1),
                 GLfloat(1 - 2 * videoRect.y / Double(drawablePixelHeight))
             )
+            // A decoder surface is allocated in whole macroblocks, so it can be
+            // larger than the frame it holds; the frame is its top left corner.
+            let textureWidth = Double(max(1, source.textureWidth))
+            let textureHeight = Double(max(1, source.textureHeight))
+            glUniform2f(
+                program.textureExtent,
+                GLfloat(Double(frame.width) / textureWidth),
+                GLfloat(Double(frame.height) / textureHeight)
+            )
             // Bicubic luma only when the picture is drawn larger than the luma
             // plane; shrinking stays with the hardware's bilinear filter.
-            glUniform2f(program.lumaTexelSize, GLfloat(1 / Double(frame.width)), GLfloat(1 / Double(frame.height)))
+            glUniform2f(program.lumaTexelSize, GLfloat(1 / textureWidth), GLfloat(1 / textureHeight))
             glUniform1i(
                 program.magnify,
                 videoRect.width > Double(frame.width) || videoRect.height > Double(frame.height) ? 1 : 0
@@ -624,6 +638,10 @@ public final class EGLFramePresenter {
     private struct BoundPlanes {
         let layout: PlaneLayout
         let conversion: NV12ColorConversion
+        /// The size of the luma texture, which is the frame's own size except
+        /// for a hardware decoder's surface.
+        let textureWidth: Int
+        let textureHeight: Int
         let release: () -> Void
     }
 
@@ -680,7 +698,13 @@ public final class EGLFramePresenter {
                 height: (box.height + 1) / 2,
                 bytesPerPixel: 2
             )
-            return BoundPlanes(layout: .biplanar, conversion: conversion, release: {})
+            return BoundPlanes(
+                layout: .biplanar,
+                conversion: conversion,
+                textureWidth: box.width,
+                textureHeight: box.height,
+                release: {}
+            )
         case AV_PIX_FMT_YUV420P:
             uploadPlane(
                 index: 0,
@@ -706,7 +730,13 @@ public final class EGLFramePresenter {
                 height: (box.height + 1) / 2,
                 bytesPerPixel: 1
             )
-            return BoundPlanes(layout: .triplanar, conversion: conversion, release: {})
+            return BoundPlanes(
+                layout: .triplanar,
+                conversion: conversion,
+                textureWidth: box.width,
+                textureHeight: box.height,
+                release: {}
+            )
         default:
             throw EGLFramePresenterError.unsupportedPixelFormat(box.pixelFormat.rawValue)
         }
@@ -718,6 +748,8 @@ public final class EGLFramePresenter {
     private struct ImportedSurface {
         let images: [EGLImageKHR]
         let textures: [GLuint]
+        var lumaWidth = 0
+        var lumaHeight = 0
     }
 
     nonisolated private func release(_ surfaces: [ImportedSurface], deletingTextures: Bool) {
@@ -780,7 +812,13 @@ public final class EGLFramePresenter {
             glActiveTexture(GLenum(GL_TEXTURE0 + Int32(index)))
             glBindTexture(GLenum(GL_TEXTURE_2D), texture)
         }
-        return BoundPlanes(layout: .biplanar, conversion: conversion, release: {})
+        return BoundPlanes(
+            layout: .biplanar,
+            conversion: conversion,
+            textureWidth: imported.lumaWidth,
+            textureHeight: imported.lumaHeight,
+            release: {}
+        )
     }
 
     /// Exports one surface and wraps each plane in an image bound to a texture
@@ -826,7 +864,12 @@ public final class EGLFramePresenter {
             Self.configure(texture)
             sensorium_gl_bind_egl_image_to_texture(image)
         }
-        return ImportedSurface(images: images, textures: names)
+        return ImportedSurface(
+            images: images,
+            textures: names,
+            lumaWidth: layers.first.map { Int($0.width) } ?? 0,
+            lumaHeight: layers.first.map { Int($0.height) } ?? 0
+        )
     }
 
     private static func configure(_ texture: GLuint) {
@@ -909,6 +952,7 @@ public final class EGLFramePresenter {
         let identifier: GLuint
         let scale: GLint
         let offset: GLint
+        let textureExtent: GLint
         let lumaTexelSize: GLint
         let magnify: GLint
         let samplers: [GLint]
@@ -950,6 +994,7 @@ public final class EGLFramePresenter {
             identifier: program,
             scale: glGetUniformLocation(program, "placementScale"),
             offset: glGetUniformLocation(program, "placementOffset"),
+            textureExtent: glGetUniformLocation(program, "textureExtent"),
             lumaTexelSize: glGetUniformLocation(program, "lumaTexelSize"),
             magnify: glGetUniformLocation(program, "magnify"),
             samplers: samplerNames.map { glGetUniformLocation(program, $0) }
@@ -991,16 +1036,18 @@ public final class EGLFramePresenter {
 
     /// No vertex buffer is ever allocated: the quad's corner is derived from
     /// the vertex index and mapped into the destination by the placement the
-    /// letterbox geometry produced.
+    /// letterbox geometry produced. `textureExtent` is the part of the
+    /// textures the frame covers.
     private static let vertexShaderSource = """
     #version 300 es
     uniform vec2 placementScale;
     uniform vec2 placementOffset;
+    uniform vec2 textureExtent;
     out vec2 textureCoordinate;
     void main() {
         vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
         gl_Position = vec4(corner * placementScale + placementOffset, 0.0, 1.0);
-        textureCoordinate = corner;
+        textureCoordinate = corner * textureExtent;
     }
     """
 
