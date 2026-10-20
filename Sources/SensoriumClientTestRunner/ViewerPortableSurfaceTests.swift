@@ -69,8 +69,9 @@ func testShortcutReportWithoutAccessibilityTests() {
     expect(lines.allSatisfy { !$0.contains("Accessibility") && !$0.contains("Cmd") }, "nothing names macOS")
     expect(lines.contains(where: { $0.contains(ViewerKeyNames.escapeGesture) }), "the escape line stays")
     expect(
-        ClientShortcutPermissionReport.lines(mode: .remoteWhenFocused, accessibilityGranted: true)
-            .contains(where: { $0.contains("Accessibility") }),
+        ClientShortcutPermissionReport.lines(
+            mode: .remoteWhenFocused, accessibilityGranted: true, usesAccessibility: true
+        ).contains(where: { $0.contains("Accessibility") }),
         "a platform that uses Accessibility still reports it"
     )
     #if os(macOS)
