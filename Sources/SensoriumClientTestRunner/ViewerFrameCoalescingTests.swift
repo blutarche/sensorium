@@ -8,7 +8,8 @@ actor GatedFramePresenter {
     private(set) var presentedIDs: [Int64] = []
     private var isReleased = false
     private var held: CheckedContinuation<Void, Never>?
-    private var waiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var waiters: [(id: Int, count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var nextWaiterID = 0
 
     func present(_ id: Int64) async {
         presentedIDs.append(id)
@@ -28,20 +29,21 @@ actor GatedFramePresenter {
     /// assertion that follows instead of hanging the whole suite.
     func wait(untilPresented count: Int, timeoutSeconds: Double = 5) async {
         guard presentedIDs.count < count else { return }
+        let id = nextWaiterID
+        nextWaiterID += 1
         let deadline = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(timeoutSeconds))
-            await self?.stopWaiting()
+            // A cancelled timer means the wait already ended; it must not
+            // touch any later waiter.
+            guard (try? await Task.sleep(for: .seconds(timeoutSeconds))) != nil else { return }
+            await self?.stopWaiting(id)
         }
-        await withCheckedContinuation { waiters.append((count, $0)) }
+        await withCheckedContinuation { waiters.append((id, count, $0)) }
         deadline.cancel()
     }
 
-    private func stopWaiting() {
-        let waiting = waiters
-        waiters.removeAll()
-        for waiter in waiting {
-            waiter.continuation.resume()
-        }
+    private func stopWaiting(_ id: Int) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        waiters.remove(at: index).continuation.resume()
     }
 
     private func resumeWaiters() {
