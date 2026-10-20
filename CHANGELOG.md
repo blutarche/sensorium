@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-21
+
 ### Added
 
 - The back and forward buttons of a mouse now work on the host. The
@@ -543,6 +545,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.2]: https://github.com/blutarche/sensorium/releases/tag/v0.5.2
 [0.5.1]: https://github.com/blutarche/sensorium/releases/tag/v0.5.1
 [0.5.0]: https://github.com/blutarche/sensorium/releases/tag/v0.5.0
 [0.4.3]: https://github.com/blutarche/sensorium/releases/tag/v0.4.3
