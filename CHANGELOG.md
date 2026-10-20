@@ -25,11 +25,17 @@ once it reaches 1.0.
   draws it, and the viewer draws it pixel for pixel. Before, the host
   picked the nearest of a few fixed sizes and the viewer stretched the
   picture to fit, which blurred text.
+- The host now closes a connection that does not start pairing or a
+  session within 15 seconds of connecting. It also closes one that has
+  not paired or signed in after 330 seconds, and one that signed in but
+  asked for no screen within 60 seconds.
 
 ### Fixed
 
 - The host's screen no longer goes to sleep and locks about 10 seconds
   after a viewer connects to a host that has been idle.
+- A pairing code typed more than 30 seconds after it was shown now
+  pairs. Before, the viewer said it could not reach the host.
 - Double-click works on the host.
 - Input reaches the host as a physical keyboard and mouse would send it.
   A held key repeats like a real one. A drag survives another button's
