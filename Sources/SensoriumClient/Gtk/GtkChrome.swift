@@ -261,7 +261,9 @@ enum GtkWidgets {
             minimum?.pointee = height
             natural?.pointee = height
         } else {
-            gtk_widget_measure(label, orientation, forSize, minimum, natural, nil, nil)
+            // A width is asked for at no height: the line's height is fixed by
+            // its metrics, and the label may need more than that.
+            gtk_widget_measure(label, orientation, orientation == GTK_ORIENTATION_HORIZONTAL ? -1 : forSize, minimum, natural, nil, nil)
         }
     }
 
