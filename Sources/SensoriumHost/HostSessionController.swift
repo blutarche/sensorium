@@ -935,6 +935,10 @@ public final class HostSessionController {
     /// reaches this machine's power state on its own.
     public func offerHostScreenListWakingDisplays() async throws -> SensoriumMessage {
         if let displayWake, isAuthenticatedArmedDevice {
+            if !holdsOfferWakeScope {
+                holdsOfferWakeScope = true
+                displayWake.beginRequestScope()
+            }
             await displayWake.wakeAndSettleDisplays()
             let current = hostScreenCurrentDisplaysProvider()
             let sleeping = Set(
@@ -947,6 +951,24 @@ public final class HostSessionController {
             }
         }
         return try offerHostScreenList()
+    }
+
+    /// Whether the waking offer above still holds a request scope open on
+    /// `displayWake`, keeping the user-activity declaration it made up until
+    /// this connection's first canvas or host-screen request has been
+    /// handled, or the connection ends. macOS queues the display to turn off
+    /// the moment that declaration is released, and a fresh declaration and
+    /// a prevent-sleep hold taken moments later do not cancel it, so a
+    /// release between the offer and the session's own hold puts the screen
+    /// to sleep shortly after the session starts.
+    private var holdsOfferWakeScope = false
+
+    private func endOfferWakeScope() {
+        guard holdsOfferWakeScope else {
+            return
+        }
+        holdsOfferWakeScope = false
+        displayWake?.endRequestScope()
     }
 
     /// `isAuthenticated` as well as the key: a device the host stopped keeps
@@ -1359,6 +1381,15 @@ public final class HostSessionController {
     }
 
     public func handle(_ message: SensoriumMessage) throws -> SensoriumMessage? {
+        switch message {
+        case .canvasRequest, .hostScreenRequest, .goodbye:
+            // A request reaches here inside the coordinator's own request
+            // scope, which stays open until any hold the request leads to
+            // has been taken, so the declaration never lapses in between.
+            endOfferWakeScope()
+        default:
+            break
+        }
         if isStoppedByHost {
             guard case .goodbye = message else {
                 throw HostSessionControllerError.authenticationRequired

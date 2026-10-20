@@ -1359,7 +1359,9 @@ func runDisplayWakeTests() async {
     do {
         // The field bug, half one: an offer with no request behind it at all
         // never takes a hold, so under the old hold-tied release this
-        // declaration was never released either.
+        // declaration was never released either. It stays up while the
+        // connection may still ask for a screen, and comes down when the
+        // connection ends.
         let power = FakeDisplayPower()
         let list = FakeDisplayList([sleepingDisplaySnapshot(asleep: false)])
         let wake = DisplayWakeController(power: power, displays: { list.read() }, wait: { _ in })
@@ -1370,17 +1372,17 @@ func runDisplayWakeTests() async {
             "the offer wakes this machine, got \(power.userActivityDeclarations)"
         )
         expect(
-            !power.isUserActivityDeclared,
-            "and releases the declaration once the offer is built, even though the viewer never went on to request anything"
+            power.isUserActivityDeclared,
+            "and keeps the declaration up once the offer is built, while the viewer may still ask for a screen"
         )
         _ = try? controller.handle(.goodbye(reason: "viewer-left"))
         expect(
             !power.isUserActivityDeclared,
-            "disconnecting afterward leaves nothing declared either, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
+            "disconnecting without a request releases it, got isUserActivityDeclared=\(power.isUserActivityDeclared)"
         )
     }
 
-    print("PASS: an offer-only connection releases the declaration once the offer is built, with no session ever held")
+    print("PASS: an offer-only connection releases the declaration when it ends, with no session ever held")
 
     do {
         // The field bug, half two: a request the controller goes on to
@@ -1981,4 +1983,118 @@ func runDisplayWakeTests() async {
     }
 
     print("PASS: a throw inside handle still releases the declaration the wake before it made")
+
+    do {
+        // The offer a connection gets right after its hello wakes this
+        // machine, and the host-screen request that follows a moment later
+        // takes the session's hold. The declaration the offer made must not
+        // end in between: macOS queues the display to turn off the moment it
+        // ends, and the hold taken a moment later does not cancel that.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeWakeHostScreenFixture(
+            display: display,
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
+        )
+        guard case let .hostScreenList(displays, _) = try! await fixture.controller.offerHostScreenListWakingDisplays(),
+              let entry = displays.first else {
+            expect(false, "an armed device is offered the awake display")
+            return
+        }
+        guard case .hostScreenReady = try! await fixture.coordinator.handleFirstResponse(.hostScreenRequest(
+            token: entry.opaqueToken, resumeTicket: nil
+        )) else {
+            expect(false, "the request that follows the offer is admitted")
+            return
+        }
+        guard let holdIndex = power.callLog.firstIndex(of: "preventDisplaySleep") else {
+            expect(false, "the session's own hold was taken, got \(power.callLog)")
+            return
+        }
+        let releaseIndex = power.callLog.firstIndex(of: "endUserActivity")
+        expect(
+            releaseIndex == nil || releaseIndex! > holdIndex,
+            "the offer's declaration stays up until the request's hold is taken, got \(power.callLog)"
+        )
+    }
+
+    print("PASS: the hello offer's declaration stays up until the host-screen request's hold is taken")
+
+    do {
+        // The same, for a monitor still asleep once the settle wait has run
+        // out: the offer waits for it to read awake before it is built.
+        let power = FakeDisplayPower()
+        let list = FakeDisplayList([sleepingDisplaySnapshot(id: 7, asleep: true)])
+        let wake = DisplayWakeController(
+            power: power,
+            displays: { list.read() },
+            wait: { _ in list.displays = [sleepingDisplaySnapshot(id: 7, asleep: false)] },
+            timeoutSeconds: 5,
+            pollSeconds: 0.1,
+            settleSeconds: 0
+        )
+        let controller = armedHostScreenController(displays: list, displayWake: wake, log: { _ in })
+        let coordinator = HostSessionCoordinator(
+            controller: controller,
+            media: onlyOnSurfaceZero(FakeScalableCanvasMedia()),
+            videoSink: FakeVideoSink(),
+            workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
+            captureAvailability: HostCaptureAvailability()
+        )
+        guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays(),
+              let entry = displays.first else {
+            expect(false, "the sleeping display is offered once it reads awake")
+            return
+        }
+        guard case .hostScreenReady = try! await coordinator.handleFirstResponse(.hostScreenRequest(
+            token: entry.opaqueToken, resumeTicket: nil
+        )) else {
+            expect(false, "the request that follows the offer is admitted")
+            return
+        }
+        guard let holdIndex = power.callLog.firstIndex(of: "preventDisplaySleep") else {
+            expect(false, "the session's own hold was taken, got \(power.callLog)")
+            return
+        }
+        let releaseIndex = power.callLog.firstIndex(of: "endUserActivity")
+        expect(
+            releaseIndex == nil || releaseIndex! > holdIndex,
+            "the offer's declaration for a sleeping display stays up until the request's hold is taken, got \(power.callLog)"
+        )
+    }
+
+    print("PASS: the hello offer's declaration for a sleeping display stays up until the request's hold is taken")
+
+    do {
+        // A connection that is offered its screens and then drops, with no
+        // request and no goodbye, must not leave this machine declared in use.
+        let power = FakeDisplayPower()
+        let display = sleepingDisplaySnapshot(id: 7, asleep: false)
+        let wake = DisplayWakeController(power: power, displays: { [display] }, wait: { _ in })
+        let fixture = makeWakeHostScreenFixture(
+            display: display,
+            wake: wake,
+            availability: HostCaptureAvailability(),
+            onStreamUnrecoverable: { _ in },
+            hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() }
+        )
+        _ = try! await fixture.controller.offerHostScreenListWakingDisplays()
+        await fixture.coordinator.sessionDidEnd(reason: "transport-closed")
+        expect(
+            power.userActivityDeclarations == 1,
+            "the offer woke this machine, got \(power.userActivityDeclarations)"
+        )
+        expect(
+            !power.isUserActivityDeclared,
+            "and the connection dropping releases its declaration, got \(power.callLog)"
+        )
+        expect(power.preventedSleepNames.isEmpty, "with no hold ever taken, got \(power.preventedSleepNames)")
+    }
+
+    print("PASS: a connection that is offered its screens and drops without a request releases the declaration")
 }
