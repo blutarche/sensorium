@@ -842,10 +842,11 @@ func testHostScreenSessionFlowTests() async {
         // resent once the connect's own geometry is known -- against that
         // geometry, not the 1920x1200 the controller was constructed with.
         // 3220x2100 is chosen so the two bases actually disagree:
-        // `StreamScalePolicy.scale` quantizes it to 1.75x against a
-        // 1920x1200 canvas and to 1.50x against this 2048x1152 display, so a
-        // resend computed from the wrong mapper is not just stale, it is a
-        // different number the host would apply differently too.
+        // `StreamScalePolicy.scale` fits it at 3220/1920, about 1.68x,
+        // against a 1920x1200 canvas and at 3220/2048, about 1.57x, against
+        // this 2048x1152 display, so a resend computed from the wrong mapper
+        // is not just stale, it is a different number the host would apply
+        // differently too.
         let sink = RecordingInputSink()
         let viewport = ClientViewportController(
             mapper: VirtualCanvasInputMapper(logicalWidth: 1920, logicalHeight: 1200),
@@ -861,10 +862,10 @@ func testHostScreenSessionFlowTests() async {
             drawablePixelWidth: 3220, drawablePixelHeight: 2100,
             canvasLogicalWidth: 2048, canvasLogicalHeight: 1152
         )
-        expect(hostComputedScale == 1.5, "sanity check on the chosen numbers: the host's own math on a 2048x1152 display should read 1.5x, got \(String(describing: hostComputedScale))")
+        expect(hostComputedScale == 3220.0 / 2048, "sanity check on the chosen numbers: the host's own math on a 2048x1152 display should read 3220/2048, got \(String(describing: hostComputedScale))")
 
         let requested = await viewport.requestedStreamScale
-        expect(requested == 1.5, "the resend on connect must derive its scale from the connect's own geometry, not the 1920x1200 the controller started with -- got \(requested)")
+        expect(requested == 3220.0 / 2048, "the resend on connect must derive its scale from the connect's own geometry, not the 1920x1200 the controller started with -- got \(requested)")
 
         let sent = await sink.drawableSizes
         guard case let .viewerDrawableSize(sentWidth, sentHeight, _, _) = sent.last else {
@@ -894,7 +895,7 @@ func testHostScreenSessionFlowTests() async {
         )
         await viewport.canvasDidBecomeReady()
         let firstDelivery = await viewport.setDrawableSize(pixelWidth: 3220, pixelHeight: 2100)
-        expect(firstDelivery == .sent(1.5), "this window's drawable, reported against the display's real 2048x1152, should read 1.5x -- got \(firstDelivery)")
+        expect(firstDelivery == .sent(3220.0 / 2048), "this window's drawable, reported against the display's real 2048x1152, should read 3220/2048 -- got \(firstDelivery)")
 
         // The person picks a different resolution from the Display menu; the
         // host applies it and reports back new geometry, exactly what
@@ -903,14 +904,14 @@ func testHostScreenSessionFlowTests() async {
 
         let requestedAfterModeChange = await viewport.requestedStreamScale
         expect(
-            requestedAfterModeChange == 1.75,
-            "the same drawable pixels read as 1.75x against the new 1920x1200 mode, but the scale stayed stuck at the old mode's 1.5x -- got \(requestedAfterModeChange)"
+            requestedAfterModeChange == 3220.0 / 1920,
+            "the same drawable pixels read as 3220/1920 against the new 1920x1200 mode, but the scale stayed stuck at the old mode's 3220/2048 -- got \(requestedAfterModeChange)"
         )
 
         let sentAfterModeChange = await sink.drawableSizes
         expect(
             sentAfterModeChange.count == 2,
-            "a mode change that actually moves the quantized scale must resend the drawable size, not leave the host applying the old mode's scale -- got \(sentAfterModeChange.count) sends"
+            "a mode change that actually moves the scale must resend the drawable size, not leave the host applying the old mode's scale -- got \(sentAfterModeChange.count) sends"
         )
 
         print("PASS: a live display-mode change re-derives and resends the scale against the new geometry")

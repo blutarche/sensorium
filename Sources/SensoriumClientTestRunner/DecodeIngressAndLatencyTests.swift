@@ -341,11 +341,11 @@ func testDecodeIngressAndLatencyTests() async {
             print("FAIL: enlarging the viewer to the canvas's native pixels did not raise the stream scale")
             Foundation.exit(1)
         }
-        // A few pixels of drag quantize to the same 0.25 step, so the encoder
-        // is never rebuilt for them.
-        guard await scaleViewport.setDrawableSize(pixelWidth: 3830, pixelHeight: 2394) == .unchanged,
+        // Widening the drawable along the axis that does not limit the fit
+        // leaves the scale where it is, so nothing is sent.
+        guard await scaleViewport.setDrawableSize(pixelWidth: 3900, pixelHeight: 2400) == .unchanged,
               await scaleSink.drawableSizes == [.viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2400, surfaceID: nil, maximumScale: nil)] else {
-            print("FAIL: a sub-step viewer resize churned the host's encoder")
+            print("FAIL: a viewer resize that leaves the stream scale unchanged was sent to the host")
             Foundation.exit(1)
         }
         guard await scaleViewport.setDrawableSize(pixelWidth: 2880, pixelHeight: 1800) == .sent(1.5) else {

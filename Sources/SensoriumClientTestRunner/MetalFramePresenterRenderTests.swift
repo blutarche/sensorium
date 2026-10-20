@@ -170,9 +170,10 @@ private func testRendersVideoRangeBiplanarFrame() async {
 }
 
 /// Chroma planes of a frame with an odd width or height are wider and taller
-/// than half the frame, and the host is free to encode such a frame: a scale
-/// applied to a width is rounded, never aligned to an even number. Reading the
-/// plane's own size is what keeps the last column of colour from being dropped.
+/// than half the frame, and a host can still send such a frame: a host
+/// screen's stream opens at the display's own logical size, which may be odd.
+/// Reading the plane's own size is what keeps the last column of colour from
+/// being dropped.
 @MainActor
 private func testRendersOddSizedBiplanarFrame() async {
     let device = MTLCreateSystemDefaultDevice()!

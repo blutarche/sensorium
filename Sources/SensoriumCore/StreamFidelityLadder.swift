@@ -23,8 +23,11 @@ public struct StreamFidelityLevel: Equatable, Sendable {
     /// The absolute scale to stream at, never below
     /// `StreamScalePolicy.minimumScale`.
     public func streamScale(requestedScale: Double) -> Double {
+        guard scaleStepsBelowRequested > 0 else {
+            return requestedScale
+        }
         let stepped = requestedScale - Double(scaleStepsBelowRequested) * StreamScalePolicy.quantum
-        return Swift.max(StreamScalePolicy.minimumScale, StreamScalePolicy.quantize(stepped))
+        return Swift.max(StreamScalePolicy.minimumScale, stepped)
     }
 }
 

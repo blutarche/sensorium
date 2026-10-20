@@ -166,8 +166,8 @@ public final class CanvasSurfaceView: NSView {
     /// Backing pixels, not points: on a 2x display a 960x600-point view is a
     /// 1920x1200 drawable, and it is the pixels that decide what resolution is
     /// worth streaming. Reported from every hook that can change them; the
-    /// viewport forwards only what actually changes the quantized scale, so a
-    /// repeat costs nothing.
+    /// viewport forwards only what actually changes the scale, so a repeat
+    /// costs nothing.
     private func forwardDrawableSize() {
         let backing = convertToBacking(videoBounds).size
         forward(.drawableSizeChanged(

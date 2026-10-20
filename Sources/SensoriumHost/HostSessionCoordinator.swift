@@ -355,8 +355,8 @@ public final class HostSessionCoordinator {
     /// streaming at (`StreamScalePolicy.defaultScale`). The very first
     /// viewer-geometry report is exactly as legitimate a correction as any
     /// later one -- often a full step or more away from that arbitrary
-    /// default -- so `requireMinimumDelta` in `requestStreamScale` only
-    /// applies once there is a real value to measure a delta against.
+    /// default -- so `requestStreamScale` compares a drawable-driven request
+    /// against the applied scale only once there is a real value to compare.
     private var hasAppliedStreamScale = CanvasSurfaceSlots<Bool> { _ in false }
     /// Where each surface sits on the fidelity ladder, and everything that
     /// decides when it moves. One controller per surface: two canvases share
@@ -461,6 +461,12 @@ public final class HostSessionCoordinator {
     /// survives long enough to rebuild that surface's encoder. Resizing one
     /// viewer window must never rebuild the other surface's encoder.
     private var streamScaleSettleTask = CanvasSurfaceSlots<Task<Void, Never>?> { _ in nil }
+    /// How a stream-scale settle timer waits out its hold, injected so a test
+    /// can step through the holds without spending them.
+    private let streamScaleSettleWait: (Double) async -> Void
+    /// The clock a stream-scale request's hold is measured on, read together
+    /// with `streamScaleSettleWait`.
+    private let streamScaleNowSecondsProvider: () -> Double
     /// Guards the ordered teardown against running more than once:
     /// `HostNetworkSession.stop()`, its own `run()` loop's error-path
     /// teardown, and a viewer `.goodbye` can all reach it for the same
@@ -548,6 +554,12 @@ public final class HostSessionCoordinator {
         focus: CanvasFocusTracker = CanvasFocusTracker(),
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         streamScaleSettleSeconds: Double = StreamScaleDebouncer.defaultSettleSeconds,
+        streamScaleSettleWait: @escaping (Double) async -> Void = { seconds in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+        },
+        streamScaleNowSecondsProvider: @escaping () -> Double = {
+            Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
+        },
         flowReportSeconds: Double = MediaFlowMonitor.defaultReportInterval,
         onEvent: (@Sendable (String) -> Void)? = nil,
         onSessionEnded: (@Sendable () -> Void)? = nil,
@@ -569,6 +581,8 @@ public final class HostSessionCoordinator {
         },
         sharpScreens: SharpScreenManager? = nil
     ) {
+        self.streamScaleSettleWait = streamScaleSettleWait
+        self.streamScaleNowSecondsProvider = streamScaleNowSecondsProvider
         self.hostScreenCaptureRecoveryBoundSeconds = hostScreenCaptureRecoveryBoundSeconds
         self.hostScreenCaptureRecoveryPollSeconds = hostScreenCaptureRecoveryPollSeconds
         self.hostScreenCaptureRecoveryWait = hostScreenCaptureRecoveryWait
@@ -817,7 +831,7 @@ public final class HostSessionCoordinator {
                         + "\(displayID): " + String(format: "scale %.2fx", requested)
                 )
             }
-            requestStreamScale(requested, on: surface, requireMinimumDelta: true)
+            requestStreamScale(requested, on: surface, fromViewerDrawable: true)
         }
 
         if case let .streamScalePreference(_, surfaceID) = message,
@@ -826,10 +840,9 @@ public final class HostSessionCoordinator {
             // the same reasoning as the viewerDrawableSize block above.
             streamScalePreference[surface] = controller.streamScalePreference(for: surface)
             // Applied immediately, not left for the next resize: a person
-            // choosing a scale expects it to take effect now, and
-            // `requireMinimumDelta`'s default of `false` is exactly the "a
-            // deliberate choice is never idle churn" rule `isWorthReconfiguring`
-            // exists to distinguish. Harmless before this surface has ever
+            // choosing a scale expects it to take effect now, so it settles
+            // on the short hold rather than either of the longer holds a
+            // drawable change waits out. Harmless before this surface has ever
             // streamed -- `applyStreamScale` no-ops until `isStreaming` is
             // true, and the next real bring-up resolves through the
             // preference already stored above.
@@ -945,7 +958,9 @@ public final class HostSessionCoordinator {
                 let surface = Self.hostScreenTelemetrySurface
                 if let requested = lastRequestedScale[surface] {
                     let target = Swift.min(requested, controller.hostScreenMaximumStreamScale ?? .infinity)
-                    if StreamScalePolicy.isWorthReconfiguring(from: streamScale[surface].appliedScale, to: target) {
+                    if encodesAtSameSize(streamScale[surface].appliedScale, target, on: surface) {
+                        recordAppliedWithoutRebuild(target, on: surface)
+                    } else {
                         await applyStreamScale(target, on: surface)
                     }
                 }
@@ -1526,10 +1541,17 @@ public final class HostSessionCoordinator {
     /// drag emits a size per frame and each would rebuild capture and
     /// encode. The ask resolves against this surface's own
     /// `StreamScalePreference` and the measured ceiling, with the viewer's
-    /// own maximum folded into the geometry scale first. `requireMinimumDelta`,
-    /// viewer geometry only, drops a change too small to rebuild for,
-    /// checked after clamping so a clamp is still logged.
-    private func requestStreamScale(_ scale: Double, on surface: CanvasSurfaceID, requireMinimumDelta: Bool = false) {
+    /// own maximum folded into the geometry scale first.
+    ///
+    /// `fromViewerDrawable` marks a request derived from the viewer's
+    /// drawable. Checked after clamping, so a clamp is still logged: one
+    /// that encodes at the size already streaming rebuilds nothing, and the
+    /// rest wait for the drawable to hold still for
+    /// `StreamScaleDebouncer.drawableSettleSeconds`, or for
+    /// `drawableSmallShrinkSettleSeconds` when it shrank by at most one
+    /// quantum. Every other request settles on this debouncer's own
+    /// `settleSeconds`.
+    private func requestStreamScale(_ scale: Double, on surface: CanvasSurfaceID, fromViewerDrawable: Bool = false) {
         let userMaximum = controller.requestedMaximumStreamScale(for: surface)
         let preference = streamScalePreference[surface]
         // A host-screen surface has a ceiling the session canvas does not:
@@ -1608,21 +1630,55 @@ public final class HostSessionCoordinator {
             // that does is news again.
             lastStreamScaleHold[surface] = nil
         }
-        if requireMinimumDelta, hasAppliedStreamScale[surface],
-           !StreamScalePolicy.isWorthReconfiguring(from: streamScale[surface].appliedScale, to: clamped) {
-            return
+        var settleSeconds = streamScale[surface].settleSeconds
+        if fromViewerDrawable {
+            let applied = streamScale[surface].appliedScale
+            if hasAppliedStreamScale[surface], encodesAtSameSize(clamped, applied, on: surface) {
+                // Whatever was still pending is superseded by this report.
+                streamScaleSettleTask[surface]?.cancel()
+                streamScaleSettleTask[surface] = nil
+                recordAppliedWithoutRebuild(clamped, on: surface)
+                return
+            }
+            settleSeconds = !hasAppliedStreamScale[surface]
+                || StreamScalePolicy.isWorthReconfiguring(from: applied, to: clamped)
+                ? StreamScaleDebouncer.drawableSettleSeconds
+                : StreamScaleDebouncer.drawableSmallShrinkSettleSeconds
         }
-        streamScale[surface].request(scale: clamped, atSeconds: Self.nowSeconds())
+        streamScale[surface].request(
+            scale: clamped,
+            atSeconds: streamScaleNowSecondsProvider(),
+            settleSeconds: settleSeconds
+        )
         streamScaleSettleTask[surface]?.cancel()
         streamScaleSettleTask[surface] = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(for: .seconds(self.streamScale[surface].settleSeconds))
+            await self.streamScaleSettleWait(settleSeconds)
             guard !Task.isCancelled else { return }
-            guard let settled = self.streamScale[surface].takeSettledScale(atSeconds: Self.nowSeconds()) else {
+            guard let settled = self.streamScale[surface].takeSettledScale(
+                atSeconds: self.streamScaleNowSecondsProvider()
+            ) else {
                 return
             }
             await self.applyStreamScale(settled, on: surface)
         }
+    }
+
+    /// Whether two stream scales encode this surface at the same size, so
+    /// moving between them would rebuild capture and encode for an
+    /// identical picture.
+    private func encodesAtSameSize(_ first: Double, _ second: Double, on surface: CanvasSurfaceID) -> Bool {
+        encodeDimensions(at: first, on: surface) == encodeDimensions(at: second, on: surface)
+    }
+
+    /// Takes `scale` as applied when it encodes at the size already
+    /// streaming, so the viewer is told the scale it asked for rather than
+    /// one a fraction of a pixel away, which it would report as held back.
+    private func recordAppliedWithoutRebuild(_ scale: Double, on surface: CanvasSurfaceID) {
+        hasAppliedStreamScale[surface] = true
+        streamScale[surface].markApplied(scale)
+        // Clears anything still pending, now that it equals the applied scale.
+        streamScale[surface].request(scale: scale, atSeconds: streamScaleNowSecondsProvider())
     }
 
     /// A scale the fidelity controller is holding down, named as the decision
@@ -1745,6 +1801,16 @@ public final class HostSessionCoordinator {
         return (canvas.logicalWidth, canvas.logicalHeight)
     }
 
+    /// The size this surface encodes at for `scale`, rounded exactly as
+    /// `VideoEncoderConfiguration.scaled(toStreamScale:)` rounds it.
+    private func encodeDimensions(at scale: Double, on surface: CanvasSurfaceID) -> (width: Int, height: Int) {
+        let base = encodeBaseDimensions(on: surface)
+        return (
+            VideoEncoderConfiguration.encodeDimension(base.width, streamScale: scale),
+            VideoEncoderConfiguration.encodeDimension(base.height, streamScale: scale)
+        )
+    }
+
     private func applyStreamScale(_ scale: Double, on surface: CanvasSurfaceID) async {
         guard isStreaming[surface] else {
             return
@@ -1785,12 +1851,12 @@ public final class HostSessionCoordinator {
         do {
             try await streamingMedia(on: surface).reconfigure(streamScale: scale)
             streamScale[surface].markApplied(scale)
-            let base = encodeBaseDimensions(on: surface)
+            let encoded = encodeDimensions(at: scale, on: surface)
             onEvent?(String(
                 format: "stream scale now %.2fx: encoding %dx%d",
                 scale,
-                Int((Double(base.width) * scale).rounded()),
-                Int((Double(base.height) * scale).rounded())
+                encoded.width,
+                encoded.height
             ))
             // A rebuilt encoder's first frames are its opening IDR and its
             // warm-up, and the fidelity tick must not read them as the cost
@@ -2134,7 +2200,9 @@ public final class HostSessionCoordinator {
             lastRequestedScale[surface] ?? streamScale[surface].appliedScale,
             controller.hostScreenMaximumStreamScale ?? .infinity
         )
-        if StreamScalePolicy.isWorthReconfiguring(from: streamScale[surface].appliedScale, to: target) {
+        if encodesAtSameSize(streamScale[surface].appliedScale, target, on: surface) {
+            recordAppliedWithoutRebuild(target, on: surface)
+        } else {
             await applyStreamScale(target, on: surface)
         }
     }
@@ -2284,7 +2352,9 @@ public final class HostSessionCoordinator {
             controller.hostScreenMaximumStreamScale ?? .infinity
         )
         let openingScale = HostScreenEncoderSizing.resolve(for: geometry).configuration.streamScale
-        if StreamScalePolicy.isWorthReconfiguring(from: openingScale, to: target) {
+        if encodesAtSameSize(openingScale, target, on: surface) {
+            recordAppliedWithoutRebuild(target, on: surface)
+        } else {
             await reconfigureStreamScale(target, on: surface)
             guard !hasEnded else {
                 return

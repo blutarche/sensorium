@@ -102,6 +102,7 @@ private func makeFidelityFixture(
     // way to dead would otherwise refuse every canvas request in every group
     // that runs after it.
     captureAvailability: HostCaptureAvailability = HostCaptureAvailability(),
+    streamScaleClock: SteppedClock? = nil,
     hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
@@ -144,6 +145,16 @@ private func makeFidelityFixture(
         workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
         latencyRecorder: latencyRecorder,
         streamScaleSettleSeconds: 0.05,
+        streamScaleSettleWait: { seconds in
+            if let streamScaleClock {
+                await streamScaleClock.wait(seconds)
+            } else {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            }
+        },
+        streamScaleNowSecondsProvider: {
+            streamScaleClock?.now ?? Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000
+        },
         flowReportSeconds: flowReportSeconds,
         onEvent: onEvent,
         onSessionEnded: onSessionEnded,
@@ -610,6 +621,40 @@ func runHostScreenViewerGeometryTests() async {
     print("PASS: a host-screen session honours the viewer's drawable size")
 
     do {
+        // The encode is exactly the size the viewer draws, not a nearby step
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let events = DiagnosticsRecorder()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            onEvent: { events.record($0) },
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        await startFidelitySession(fixture)
+
+        _ = try! await fixture.coordinator.handleWritingResponse(
+            .viewerDrawableSize(pixelWidth: 3840, pixelHeight: 1926, surfaceID: nil, maximumScale: nil)
+        )
+        expect(
+            await waitUntil(timeoutSeconds: 2) { !hostScreenMedia.reconfiguredScales.isEmpty },
+            "a 3840x1926 drawable over a 2560x1440 screen rebuilds the stream"
+        )
+        let geometry = fixture.controller.hostScreenGeometry!
+        let applied = hostScreenMedia.reconfiguredScales.last!
+        let target = HostScreenEncoderSizing.resolve(for: geometry).configuration
+            .scaled(toStreamScale: applied)
+        expect(
+            target.encodeWidth == 3424 && target.encodeHeight == 1926,
+            "and encodes exactly the 3424x1926 the viewer draws, got "
+                + "\(target.encodeWidth)x\(target.encodeHeight) at \(applied)x"
+        )
+        expect(
+            events.messages.contains("stream scale now 1.34x: encoding 3424x1926"),
+            "and says so in the log, got \(events.messages.filter { $0.hasPrefix("stream scale now") })"
+        )
+    }
+    print("PASS: a host-screen session encodes exactly the size the viewer draws")
+
+    do {
         // The display's own pixels are a ceiling on the scale
         let hostScreenMedia = FakeScalableCanvasMedia()
         let fixture = makeFidelityFixture(
@@ -1026,4 +1071,247 @@ func runHostScreenViewerGeometryTests() async {
         )
     }
     print("PASS: a stream scale asked for before a host-screen capture starts is applied once it runs")
+}
+
+/// The coordinator's stream-scale holds, on a clock that moves only when a
+/// test advances it. A wait is a suspended sleeper that resumes once the
+/// clock passes its deadline, or at once if its task is cancelled, so a
+/// two-second hold costs no real time and a report that arrives during a
+/// hold arrives exactly where the test puts it.
+private final class SteppedClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var nowSeconds: Double = 0
+    private var nextID = 0
+    private var sleepers: [Int: (deadline: Double, continuation: CheckedContinuation<Void, Never>)] = [:]
+    private var cancelledBeforeSleeping: Set<Int> = []
+
+    var now: Double {
+        lock.lock()
+        defer { lock.unlock() }
+        return nowSeconds
+    }
+
+    var sleeperCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return sleepers.count
+    }
+
+    func wait(_ seconds: Double) async {
+        let id = allocateSleeperID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                lock.lock()
+                let wasCancelled = cancelledBeforeSleeping.remove(id) != nil
+                if !wasCancelled {
+                    sleepers[id] = (nowSeconds + seconds, continuation)
+                }
+                lock.unlock()
+                if wasCancelled {
+                    continuation.resume()
+                }
+            }
+        } onCancel: {
+            lock.lock()
+            let sleeper = sleepers.removeValue(forKey: id)
+            if sleeper == nil {
+                cancelledBeforeSleeping.insert(id)
+            }
+            lock.unlock()
+            sleeper?.continuation.resume()
+        }
+    }
+
+    private func allocateSleeperID() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        nextID += 1
+        return nextID
+    }
+
+    func advance(by seconds: Double) {
+        lock.lock()
+        nowSeconds += seconds
+        let due = sleepers.filter { $0.value.deadline <= nowSeconds }.map(\.key)
+        let continuations = due.compactMap { sleepers.removeValue(forKey: $0)?.continuation }
+        lock.unlock()
+        continuations.forEach { $0.resume() }
+    }
+}
+
+/// A window being dragged or a strip of controls appearing reports a new
+/// drawable size on every frame, and each rebuild of capture and encode is a
+/// visible gap. The host waits for the drawable to stop moving, then streams
+/// exactly the latest size. Every step below is a binary fraction of a
+/// second, so the clock's sums are exact.
+@MainActor
+func runHostScreenDrawableCoalescingTests() async {
+    func drawable(_ width: Double, _ height: Double) -> SensoriumMessage {
+        .viewerDrawableSize(pixelWidth: width, pixelHeight: height, surfaceID: nil, maximumScale: nil)
+    }
+
+    /// A host-screen session on a 2560x1440 display whose holds run on
+    /// `clock`, already streaming at 1.5x when `streamingAtOneAndAHalf`.
+    func coalescingSession(
+        clock: SteppedClock,
+        events: DiagnosticsRecorder,
+        streamingAtOneAndAHalf: Bool
+    ) async -> (coordinator: HostSessionCoordinator, media: FakeScalableCanvasMedia) {
+        let hostScreenMedia = FakeScalableCanvasMedia()
+        let fixture = makeFidelityFixture(
+            display: fidelityTestDisplay(),
+            onEvent: { events.record($0) },
+            streamScaleClock: clock,
+            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+        )
+        await startFidelitySession(fixture)
+        if streamingAtOneAndAHalf {
+            _ = try! await fixture.coordinator.handleWritingResponse(drawable(3840, 2160))
+            expect(
+                await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 },
+                "a drawable report starts a hold"
+            )
+            clock.advance(by: 0.25)
+            expect(
+                await waitUntil(timeoutSeconds: 2) { hostScreenMedia.reconfiguredScales == [1.5] },
+                "a 3840x2160 drawable streams at 1.5x a quarter second after it arrives, got "
+                    + "\(hostScreenMedia.reconfiguredScales)"
+            )
+        }
+        return (fixture.coordinator, hostScreenMedia)
+    }
+
+    do {
+        // Two reports within the hold: only the latest is applied
+        let clock = SteppedClock()
+        let events = DiagnosticsRecorder()
+        let session = await coalescingSession(clock: clock, events: events, streamingAtOneAndAHalf: false)
+
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3840, 2034))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "the first report starts a hold")
+        clock.advance(by: 0.125)
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3840, 1926))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "the second report restarts it")
+        clock.advance(by: 0.125)
+        try! await Task.sleep(for: .milliseconds(20))
+        expect(
+            session.media.reconfiguredScales.isEmpty,
+            "a quarter second after the first report but not the latest, nothing is rebuilt, got "
+                + "\(session.media.reconfiguredScales)"
+        )
+        clock.advance(by: 0.125)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { session.media.reconfiguredScales == [1.3375] },
+            "drawables of 3840x2034 then 3840x1926 within 250 ms rebuild once, at the latest size, got "
+                + "\(session.media.reconfiguredScales)"
+        )
+        expect(
+            events.messages.filter { $0.hasPrefix("stream scale now") }
+                == ["stream scale now 1.34x: encoding 3424x1926"],
+            "and the one rebuild encodes 3424x1926, got \(events.messages.filter { $0.hasPrefix("stream scale now") })"
+        )
+    }
+    print("PASS: drawable reports within the hold rebuild once, at the latest size")
+
+    do {
+        // Growth, or a drop of more than one quantum, follows a quarter second later
+        let clock = SteppedClock()
+        let session = await coalescingSession(clock: clock, events: DiagnosticsRecorder(), streamingAtOneAndAHalf: true)
+
+        // Less than one quantum of growth.
+        _ = try! await session.coordinator.handleWritingResponse(drawable(4096, 2304))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "a larger drawable starts a hold")
+        clock.advance(by: 0.25)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { session.media.reconfiguredScales == [1.5, 1.6] },
+            "a window that grew is streamed at its new size a quarter second later, got "
+                + "\(session.media.reconfiguredScales)"
+        )
+
+        _ = try! await session.coordinator.handleWritingResponse(drawable(2880, 1620))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "a much smaller drawable starts a hold")
+        clock.advance(by: 0.25)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { session.media.reconfiguredScales == [1.5, 1.6, 1.125] },
+            "and one that shrank by more than one quantum is too, got \(session.media.reconfiguredScales)"
+        )
+    }
+    print("PASS: growth and a large shrink are followed a quarter second after the drawable holds still")
+
+    do {
+        // A small shrink that reverts within two seconds rebuilds nothing
+        let clock = SteppedClock()
+        let session = await coalescingSession(clock: clock, events: DiagnosticsRecorder(), streamingAtOneAndAHalf: true)
+
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3840, 1926))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "a small shrink starts a hold")
+        clock.advance(by: 1.0)
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3840, 2160))
+        // Long enough for a settle timer this report started to reach its wait.
+        try! await Task.sleep(for: .milliseconds(50))
+        expect(
+            clock.sleeperCount == 0,
+            "a report back at the size already streaming ends the hold, with nothing left waiting"
+        )
+        clock.advance(by: 2.0)
+        try! await Task.sleep(for: .milliseconds(20))
+        expect(
+            session.media.reconfiguredScales == [1.5],
+            "a band that shows for a second and hides again rebuilds nothing, got "
+                + "\(session.media.reconfiguredScales)"
+        )
+    }
+    print("PASS: a small shrink that reverts within two seconds rebuilds nothing")
+
+    do {
+        // A small shrink that holds for two seconds rebuilds to the exact size
+        let clock = SteppedClock()
+        let session = await coalescingSession(clock: clock, events: DiagnosticsRecorder(), streamingAtOneAndAHalf: true)
+
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3840, 1926))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "a small shrink starts a hold")
+        clock.advance(by: 1.875)
+        try! await Task.sleep(for: .milliseconds(20))
+        expect(
+            session.media.reconfiguredScales == [1.5],
+            "short of two seconds a small shrink has rebuilt nothing, got \(session.media.reconfiguredScales)"
+        )
+        clock.advance(by: 0.125)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { session.media.reconfiguredScales == [1.5, 1.3375] },
+            "a window that stays slightly smaller for two seconds ends up streamed at its exact size, got "
+                + "\(session.media.reconfiguredScales)"
+        )
+    }
+    print("PASS: a small shrink that holds for two seconds rebuilds to the exact size")
+
+    do {
+        // A report that encodes at the size already streaming rebuilds nothing
+        let clock = SteppedClock()
+        let session = await coalescingSession(clock: clock, events: DiagnosticsRecorder(), streamingAtOneAndAHalf: false)
+
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3424, 2000))
+        expect(await waitUntil(timeoutSeconds: 2) { clock.sleeperCount == 1 }, "the first report starts a hold")
+        clock.advance(by: 0.25)
+        expect(
+            await waitUntil(timeoutSeconds: 2) { session.media.reconfiguredScales == [1.3375] },
+            "a 3424x2000 drawable streams at 1.3375x, got \(session.media.reconfiguredScales)"
+        )
+        // One pixel wider is 3425 / 2560 = 1.337890625x, which encodes at
+        // 3425 x 1926.6 and rounds to the same even 3424x1926.
+        _ = try! await session.coordinator.handleWritingResponse(drawable(3425, 2000))
+        try! await Task.sleep(for: .milliseconds(50))
+        expect(clock.sleeperCount == 0, "a report that encodes at the same size starts no hold")
+        clock.advance(by: 2.0)
+        try! await Task.sleep(for: .milliseconds(20))
+        expect(
+            session.media.reconfiguredScales == [1.3375],
+            "and rebuilds nothing, got \(session.media.reconfiguredScales)"
+        )
+        expect(
+            session.coordinator.appliedStreamScale(for: CanvasSurfaceID.allCases[0]) == 3425.0 / 2560,
+            "while the viewer is told the scale it asked for is the one applied, so it reports nothing held back"
+        )
+    }
+    print("PASS: a drawable report that encodes at the size already streaming rebuilds nothing")
 }

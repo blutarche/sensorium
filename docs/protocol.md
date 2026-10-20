@@ -155,16 +155,16 @@ The session canvas is 1920×1200 logical HiDPI, 3840×2400 real pixels. What is 
 
 ```text
 scale = min(drawablePixelWidth / 1920, drawablePixelHeight / 1200)
-        clamped to 1.0...2.0, rounded to the nearest 0.25
+        clamped to 1.0...2.0
 ```
 
-Both axes take the same factor, so the aspect ratio survives any window shape and the viewer letterboxes the remainder. Encoded dimensions are the canvas logical size multiplied by the scale.
+The scale is not rounded to a step, so the picture is encoded at exactly the size the viewer draws it. A 3840×1926 drawable is 1.605, encoded at 3082×1926. Both axes take the same factor, so the aspect ratio survives any window shape and the viewer letterboxes the remainder. Encoded dimensions are the logical size multiplied by the scale, each rounded to the nearest even number, because H.264 4:2:0 cannot encode an odd one. An odd size exactly between two even ones rounds down. The choices a person can pick from the Resolution menu stay on 0.25 steps.
 
 `viewerDrawableSize` is sent only when the derived scale changes from what the host is believed to be streaming, starting from `1.0`. Gated like `input`: authentication plus a live surface, dimensions finite, positive, and at most 16384. A refused value never drops the session. `maximumScale` is the user's own optional cap, folded into the same clamp as the ceiling the host learns by measurement (`EncodeSustainabilityPolicy`, whichever is lower), validated the same way, finite and inside `1.0...2.0`.
 
-A host-screen session honours it too. The live surface is then the host screen, not a canvas, and the scale is a fraction of that display's own logical size. Two further ceilings bound it. The first is the display's backing scale, because there is no further pixel to encode past it. The second is the largest frame the host's hardware H.264 encoder accepts. The lower of the two wins, and a person's own fixed choice of scale is held at the same two.
+A host-screen session honours it too. The live surface is then the host screen, not a canvas, and the scale is a fraction of that display's own logical size: a 3840×1926 drawable over a 2560×1440 host screen is 1.3375, encoded at 3424×1926. Two further ceilings bound it. The first is the display's backing scale, because there is no further pixel to encode past it. The second is the largest frame the host's hardware H.264 encoder accepts. The lower of the two wins, and a person's own fixed choice of scale is held at the same two.
 
-The host debounces: only a settled scale rebuilds the capture and encode path, replacing the `VTCompressionSession` and its H.264 SPS/PPS. The client learns new parameter sets from the `codecConfiguration` a keyframe carries. The host refuses any delta of a new generation before its keyframe.
+The host debounces. It follows a drawable once no newer `viewerDrawableSize` has arrived for that surface for 250 ms, or for 2 s when the drawable shrank by at most 0.25 of scale, so a strip of controls that shows and hides does not rebuild the encoder each time. It then applies the latest report, never an intermediate one, and rebuilds only when the encoded size would change. A person's own choice of scale settles after 350 ms. A rebuild replaces the capture and encode path, the `VTCompressionSession` and its H.264 SPS/PPS. The client learns new parameter sets from the `codecConfiguration` a keyframe carries. The host refuses any delta of a new generation before its keyframe.
 
 ## Viewer focus
 

@@ -157,15 +157,25 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
         Double(encodeWidth) / Double(width)
     }
 
+    /// One axis of the encode size at `streamScale`: `base` times the scale,
+    /// rounded to the nearest even number, because 4:2:0 video keeps colour
+    /// at half resolution on both axes and cannot encode an odd size. An odd
+    /// size, exactly halfway between two even ones, rounds down, so a frame
+    /// sized to fill a viewer's drawable on one axis is never taller or wider
+    /// than that drawable.
+    public static func encodeDimension(_ base: Int, streamScale: Double) -> Int {
+        2 * Int((Double(base) * streamScale / 2 - 0.5).rounded(.up))
+    }
+
     /// Rebuilds at a different fraction of the canvas's native logical size,
     /// not of the current encode size, so repeated changes cannot compound.
-    /// Both axes take the same factor, so aspect ratio is exact, and the
-    /// bitrate and its burst ceiling follow the new pixel count. The frame
-    /// rate, quality and key-frame interval currently in force are carried
-    /// over.
+    /// Both axes take the same factor, so aspect ratio is exact to within the
+    /// even rounding `encodeDimension` applies, and the bitrate and its burst
+    /// ceiling follow the new pixel count. The frame rate, quality and
+    /// key-frame interval currently in force are carried over.
     public func scaled(toStreamScale scale: Double) -> Self {
-        let scaledWidth = Int((Double(width) * scale).rounded())
-        let scaledHeight = Int((Double(height) * scale).rounded())
+        let scaledWidth = Self.encodeDimension(width, streamScale: scale)
+        let scaledHeight = Self.encodeDimension(height, streamScale: scale)
         let bitRate = Self.averageBitRate(
             encodeWidth: scaledWidth,
             encodeHeight: scaledHeight,

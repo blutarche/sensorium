@@ -26,18 +26,20 @@ func testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit() {
     expect(scale(1920, 2400) == 1.0, "a tall non-16:10 drawable follows its limiting axis")
     expect(scale(3840, 1800) == 1.5, "a 3840x1800 drawable is limited by height, not width")
 
-    // Quantized so a live window drag cannot churn the encoder over a pixel.
-    expect(scale(2000, 1250) == 1.0, "a drawable a few percent over 1x quantizes back to 1x")
-    expect(scale(2500, 1562) == 1.25, "a drawable near 1.3x quantizes to the 0.25 step")
-    expect(scale(3600, 2250) == 2.0, "a drawable near 1.9x quantizes to the 0.25 step")
+    // Not rounded to a step: the canvas fills the drawable exactly.
+    expect(scale(2000, 1250) == 2000.0 / 1920.0, "a drawable a few percent over 1x streams exactly that much over")
+    expect(scale(2500, 1562) == 1562.0 / 1200.0, "a drawable near 1.3x streams the fit of its limiting axis")
+    expect(scale(3600, 2250) == 1.875, "a drawable near 1.9x streams exactly 1.875x")
     for value in stride(from: 1000.0, through: 4200.0, by: 7.0) {
-        guard let derived = scale(value, value * 1200 / 1920) else {
+        let height = (value * 1200 / 1920).rounded()
+        guard let derived = scale(value, height) else {
             expect(false, "every plausible drawable width derives a scale")
             return
         }
+        let fit = min(value / 1920, height / 1200)
         expect(
-            (derived / StreamScalePolicy.quantum).rounded() * StreamScalePolicy.quantum == derived,
-            "every derived scale lands exactly on a 0.25 step"
+            derived == min(max(fit, StreamScalePolicy.minimumScale), StreamScalePolicy.maximumScale),
+            "every derived scale is the fit of the limiting axis, clamped"
         )
         expect(
             derived >= StreamScalePolicy.minimumScale && derived <= StreamScalePolicy.maximumScale,
@@ -72,10 +74,22 @@ func testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit() {
     )
     expect(StreamScalePolicy.defaultScale == 1.0, "the protocol default scale is today's 1x behaviour")
 
-    // A pipeline rebuild is a real, visible gap. A request one quantum above
-    // what is applied is still worth it, because a window that grew would
-    // otherwise stay soft for the whole session; one quantum below is not, so
-    // a viewer whose chrome band shows and hides does not rebuild every time.
+    // A pipeline rebuild is a real, visible gap. Any growth is followed as
+    // soon as the window stops moving, because a window that grew would
+    // otherwise stay soft; a drop of one quantum or less waits longer, so a
+    // viewer whose chrome band shows and hides does not rebuild every time.
+    expect(
+        StreamScalePolicy.isWorthReconfiguring(from: 1.25, to: 1.3375),
+        "growth of less than one quantum is followed promptly"
+    )
+    expect(
+        !StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 1.3375),
+        "a drop of less than one quantum waits"
+    )
+    expect(
+        StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 1.2),
+        "a drop of more than one quantum is followed promptly"
+    )
     expect(
         StreamScalePolicy.isWorthReconfiguring(from: 1.25, to: 1.5),
         "one quantum step up is worth a rebuild, despite floating point"
@@ -86,7 +100,7 @@ func testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit() {
     )
     expect(
         !StreamScalePolicy.isWorthReconfiguring(from: 1.75, to: 1.5),
-        "one quantum step down is not worth a rebuild"
+        "one quantum step down waits"
     )
     expect(
         !StreamScalePolicy.isWorthReconfiguring(from: 1.5, to: 1.5),
@@ -103,6 +117,23 @@ func testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit() {
     expect(
         StreamScalePolicy.isWorthReconfiguring(from: 2.0, to: 1.0),
         "a large drop is worth a rebuild"
+    )
+}
+
+/// Both viewers enlarge a picture with Catmull-Rom and shrink it with plain
+/// bilinear sampling, so any mismatch between the encoded size and the size
+/// drawn resamples every frame and softens text. The scale is therefore the
+/// exact fit of the drawable, not a nearby step.
+func testStreamScaleIsTheExactFitOfTheViewerDrawable() {
+    let fit = StreamScalePolicy.scale(
+        drawablePixelWidth: 3840,
+        drawablePixelHeight: 1926,
+        canvasLogicalWidth: 2560,
+        canvasLogicalHeight: 1440
+    )
+    expect(
+        fit == 1.3375,
+        "a 3840x1926 drawable over a 2560x1440 screen streams at exactly 1.3375x, got \(String(describing: fit))"
     )
 }
 

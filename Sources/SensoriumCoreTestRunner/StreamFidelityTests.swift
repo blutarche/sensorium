@@ -121,6 +121,20 @@ func testStreamFidelityLadderSpendsFrameRateBeforeResolutionAndQuality() {
         level(fps: 60, scaleSteps: 99).streamScale(requestedScale: 2.0) == StreamScalePolicy.minimumScale,
         "a step past the end clamps to the minimum scale, never below it"
     )
+    expect(
+        level(fps: 60, scaleSteps: 0).streamScale(requestedScale: 1.3375) == 1.3375,
+        "a level with no steps streams the requested scale exactly, got "
+            + "\(level(fps: 60, scaleSteps: 0).streamScale(requestedScale: 1.3375))"
+    )
+    expect(
+        level(fps: 60, scaleSteps: 1).streamScale(requestedScale: 1.3375) == 1.0875,
+        "a step below a scale between steps is one quantum lower and not rounded, got "
+            + "\(level(fps: 60, scaleSteps: 1).streamScale(requestedScale: 1.3375))"
+    )
+    expect(
+        level(fps: 60, scaleSteps: 2).streamScale(requestedScale: 1.3375) == StreamScalePolicy.minimumScale,
+        "two steps below 1.3375x reach the minimum scale and stop there"
+    )
 
     expect(
         StreamFidelityLadder.level(scaleStepsBelowRequested: 0, frameRateIndex: 99, qualityIndex: 99)

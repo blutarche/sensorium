@@ -168,7 +168,7 @@ public actor ClientViewportController: CanvasLifecycleObserving {
     /// correct. `sourceWidth`/`sourceHeight` reset with it.
     ///
     /// Also re-derives this window's already-known drawable pixels against
-    /// the new geometry and resends them if the quantized scale moved -- the
+    /// the new geometry and resends them if the scale moved -- the
     /// only caller of this method outside a fresh connect is a live
     /// display-mode change, which never calls `setDrawableSize` again on its
     /// own, so the resend has to live here or the host keeps applying
@@ -204,9 +204,11 @@ public actor ClientViewportController: CanvasLifecycleObserving {
     }
 
     /// The viewer's drawable in real backing pixels — not points. Reported to
-    /// the host only when it actually changes the quantized stream scale, so
-    /// dragging a window edge cannot churn the host's encoder and a
-    /// default-sized window sends nothing at all.
+    /// the host only when it changes the stream scale, so a resize along the
+    /// axis that does not limit the fit and a default-sized window send
+    /// nothing. A window drag still reports on every frame that moves the
+    /// scale; the host waits for the drawable to hold still before it
+    /// rebuilds its encoder.
     @discardableResult
     public func setDrawableSize(pixelWidth: Double, pixelHeight: Double) async -> ViewerScaleDelivery {
         guard let scale = StreamScalePolicy.scale(

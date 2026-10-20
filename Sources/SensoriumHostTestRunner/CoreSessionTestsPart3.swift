@@ -1284,6 +1284,23 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
             VideoEncoderConfiguration.fullHiDPI.scaled(toStreamScale: 1.0).encodeWidth == 1920,
             "scaling is expressed against the canvas logical size, not the previous encode size"
         )
+        // A scale between steps can land an axis on an odd or fractional
+        // size, and 4:2:0 video cannot encode an odd one.
+        let screenEncoder = HostScreenEncoderSizing.resolve(
+            for: SessionSurfaceGeometry(logicalWidth: 2560, logicalHeight: 1440, backingScale: 2)
+        ).configuration
+        let exactFit = screenEncoder.scaled(toStreamScale: 1.3375)
+        expect(
+            exactFit.encodeWidth == 3424 && exactFit.encodeHeight == 1926,
+            "a scale whose dimensions are already even encodes exactly them, got "
+                + "\(exactFit.encodeWidth)x\(exactFit.encodeHeight)"
+        )
+        let oddFit = screenEncoder.scaled(toStreamScale: 1927.0 / 1440.0)
+        expect(
+            oddFit.encodeWidth == 3426 && oddFit.encodeHeight == 1926,
+            "each axis rounds to the nearest even size, and an odd size halfway between two rounds down, got "
+                + "\(oddFit.encodeWidth)x\(oddFit.encodeHeight)"
+        )
 
         var debouncer = StreamScaleDebouncer(appliedScale: 1.0, settleSeconds: 0.3)
         debouncer.request(scale: 1.25, atSeconds: 0)
@@ -1306,6 +1323,12 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
             debouncer.appliedScale == 2.0,
             "a scale that has not been confirmed applied does not move the applied scale"
         )
+        debouncer.request(scale: 1.75, atSeconds: 3.0, settleSeconds: 2.0)
+        expect(
+            debouncer.takeSettledScale(atSeconds: 4.5) == nil,
+            "a request with its own longer hold is not taken at this debouncer's own settle time"
+        )
+        expect(debouncer.takeSettledScale(atSeconds: 5.0) == 1.75, "but is once its own hold has passed")
 
         var generation = EncoderGenerationGate()
         expect(!generation.admits(keyFrame: false), "a delta before the stream's first keyframe is refused")
@@ -1485,10 +1508,11 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         // A pipeline rebuild is a real, visible gap -- a window enumeration,
         // a torn-down and recreated VTCompressionSession -- so a
         // viewer-geometry request one quantum below what is already
-        // streaming is not worth it; one quantum above is, so a window that
-        // grew is not left soft. The very first request is exempt: there
-        // is no real applied scale yet to measure a small delta against,
-        // only the arbitrary startup default, so it always goes through.
+        // streaming waits two seconds in case it reverts; one quantum above
+        // is followed at once, so a window that grew is not left soft. The
+        // very first request is exempt: there is no real applied scale yet
+        // to measure a small delta against, only the arbitrary startup
+        // default, so it always goes through.
         do {
             let smallDeltaMedia = FakeScalableCanvasMedia()
             let smallDeltaCoordinator = HostSessionCoordinator(
@@ -1512,22 +1536,22 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
                 await waitUntil(timeoutSeconds: 2) { smallDeltaMedia.reconfiguredScales == [1.25, 1.5] },
                 "a request one quantum above what is applied reconfigures"
             )
-            // One quantum back down (1.5 -> 1.25) is not.
+            // One quantum back down (1.5 -> 1.25) is held for two seconds.
             _ = try! await smallDeltaCoordinator.handleWritingResponse(.viewerDrawableSize(pixelWidth: 2400, pixelHeight: 1500, surfaceID: nil, maximumScale: nil))
             try! await Task.sleep(for: .milliseconds(300))
             expect(
                 smallDeltaMedia.reconfiguredScales == [1.25, 1.5],
-                "a request only one quantum below what is already applied never reaches reconfigure"
+                "a request only one quantum below what is already applied does not reconfigure within its hold"
             )
             // Two quanta away from what is still applied (1.5 -> 2.0, since
-            // the step down never took effect) is worth the rebuild.
+            // the step down has not taken effect) replaces the held request.
             _ = try! await smallDeltaCoordinator.handleWritingResponse(.viewerDrawableSize(pixelWidth: 3840, pixelHeight: 2400, surfaceID: nil, maximumScale: nil))
             expect(
                 await waitUntil(timeoutSeconds: 2) { smallDeltaMedia.reconfiguredScales == [1.25, 1.5, 2.0] },
                 "a request two or more quanta away from what is actually applied still reconfigures, landing on the latest request"
             )
         }
-        print("PASS: a viewer-geometry request one quantum above is applied, one quantum below is not, and the first is never suppressed")
+        print("PASS: a viewer-geometry request one quantum above is applied, one quantum below waits, and the first is never suppressed")
 
         // Two session-owned canvases
         //

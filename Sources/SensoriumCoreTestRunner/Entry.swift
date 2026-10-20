@@ -64,6 +64,7 @@ struct SensoriumCoreTestRunner {
             ("Sensorium entry URL accepts only the canonical enter form", testSensoriumEntryURLAcceptsOnlyCanonicalEnterURL),
             ("test pattern phase bounces inside the canvas and never leaves it", testTestPatternPhaseBouncesInsideTheCanvasAndNeverLeavesIt),
             ("stream scale follows the viewer drawable within the canvas native limit", testStreamScaleFollowsViewerDrawableWithinCanvasNativeLimit),
+            ("stream scale is the exact fit of the viewer drawable", testStreamScaleIsTheExactFitOfTheViewerDrawable),
             ("encode sustainability policy withholds a verdict until there are real samples", testEncodeSustainabilityPolicyWithholdsAVerdictUntilThereAreRealSamples),
             ("viewer drawable size carries a user scale cap and validates it like its dimensions", testViewerDrawableSizeCarriesAUserScaleCapAndValidatesItLikeItsDimensions),
             ("viewer drawable size round-trips and refuses degenerate values", testViewerDrawableSizeRoundTripsAndRefusesDegenerateValues),

@@ -45,12 +45,10 @@ public enum StreamScalePreference: Equatable, Sendable {
 
     /// This preference with a `.fixed` value brought onto a real, offerable
     /// step: clamped into `StreamScalePolicy.minimumScale...maximumScale`
-    /// and rounded to the nearest quantum. Snapped rather than rejected --
-    /// the same choice `StreamScalePolicy.scale` already makes for an
-    /// out-of-range or off-quantum geometry-derived request, for the same
-    /// reason: a nearby valid value almost always exists and is a better
-    /// answer than an outright failure, whether the input came from a value
-    /// written under a different quantum, or one assembled by hand.
+    /// and rounded to the nearest quantum. Snapped rather than rejected: a
+    /// nearby valid value almost always exists and is a better answer than
+    /// an outright failure, whether the input came from a value written
+    /// under a different quantum, or one assembled by hand.
     /// `.automatic` is returned unchanged -- there is nothing to snap.
     public var normalized: StreamScalePreference {
         switch self {

@@ -62,9 +62,9 @@ func runStreamScalePreferenceHostTests() async {
 
     // A fixed choice is honoured exactly, ignoring the viewer's own window
     // geometry entirely, and takes effect immediately -- even when it lands
-    // within one quantum of what is already streaming, which
-    // `isWorthReconfiguring` would otherwise treat as not worth a rebuild.
-    // That gate exists for idle churn; a deliberate choice is not idle churn.
+    // within one quantum of what is already streaming, which a drawable
+    // change would wait longer for. That hold exists for idle churn; a
+    // deliberate choice is not idle churn.
     do {
         let media = FakeScalableCanvasMedia()
         let coordinator = HostSessionCoordinator(
@@ -89,9 +89,8 @@ func runStreamScalePreferenceHostTests() async {
             "the baseline geometry-derived scale is applied first"
         )
 
-        // 1.25 -> 1.5 is exactly one quantum: `isWorthReconfiguring` would
-        // suppress it as churn if this call site required a minimum delta.
-        // It does not.
+        // 1.25 -> 1.5 is exactly one quantum. A choice is applied on its own
+        // short settle, whatever its distance from what is applied.
         _ = try! await coordinator.handleWritingResponse(.streamScalePreference(.fixed(1.5), surfaceID: nil))
         expect(
             await waitUntil(timeoutSeconds: 2) { media.reconfiguredScales == [1.25, 1.5] },

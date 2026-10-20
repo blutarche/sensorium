@@ -87,6 +87,7 @@ struct SensoriumHostTestRunner {
             { await runHostScreenModeAccountabilityTests() },
             { await runHostScreenFidelityTests() },
             { await runHostScreenViewerGeometryTests() },
+            { await runHostScreenDrawableCoalescingTests() },
             { await runHostScreenMixedSessionTests() },
             { await runDisplayCountTests() },
             { await runHostScreenIndicationTests() },

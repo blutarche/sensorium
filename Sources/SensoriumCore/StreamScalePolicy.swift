@@ -15,8 +15,9 @@ import Foundation
 public enum StreamScalePolicy {
     public static let minimumScale: Double = 1.0
     public static let maximumScale: Double = 2.0
-    /// Resize steps coarse enough that dragging a window edge cannot churn the
-    /// encoder over a handful of pixels.
+    /// The step between the scales a person can choose from, and between the
+    /// rungs of the fidelity ladder. A scale derived from the viewer's
+    /// drawable is not rounded to it.
     public static let quantum: Double = 0.25
     /// What a viewer that never reports a drawable size is assumed to want,
     /// and what the host streams until told otherwise.
@@ -53,6 +54,12 @@ public enum StreamScalePolicy {
         value.isFinite && value >= minimumScale && value <= maximumScale
     }
 
+    /// The scale at which the canvas exactly fills the drawable on its
+    /// limiting axis, clamped to `minimumScale...maximumScale` and not
+    /// rounded to a step: both viewers resample any frame that is not the
+    /// size they draw, and the result is visibly softer text. 3840x1926
+    /// pixels over a 2560x1440 canvas is 1.3375.
+    ///
     /// `nil` when the values could not have come from a real viewer surface.
     /// Never a substituted default: a caller that cannot tell the difference
     /// between a refused value and a derived one would let a hostile peer pick
@@ -75,33 +82,31 @@ public enum StreamScalePolicy {
             drawablePixelWidth / canvasLogicalWidth,
             drawablePixelHeight / canvasLogicalHeight
         )
-        return sessionCanvasRange.normalized(fit)
+        return Swift.min(Swift.max(fit, minimumScale), maximumScale)
     }
 
-    /// Rounds to the nearest step rather than down: half a step of extra
-    /// resolution is cheaper than a visibly soft picture, and the clamp
-    /// `ScaleRange.normalized` applies elsewhere keeps a value inside
-    /// `1.0...2.0` either way -- this is the un-clamped rounding alone, for
-    /// a caller that already knows its input is in range.
+    /// Rounds a scale to the nearest step, without clamping, for a caller
+    /// that wants one of the scales a person can choose. Half a step of
+    /// extra resolution is cheaper than a visibly soft picture, so it rounds
+    /// to the nearest step rather than down.
     public static func quantize(_ scale: Double) -> Double {
         sessionCanvasRange.quantized(scale)
     }
 
-    /// Whether moving from `currentlyApplied` to `requested` is worth
-    /// rebuilding the capture/encode pipeline for. A rebuild is a real,
-    /// visible gap -- a system-wide window enumeration, a torn-down and
-    /// recreated `VTCompressionSession` -- so the two directions differ.
-    /// A request at least one quantum above the applied scale is worth it:
-    /// a window that grew would otherwise stay soft for the whole session.
-    /// A request exactly one quantum below is not, so a viewer whose chrome
-    /// band shows and hides does not rebuild on every toggle; two or more
-    /// quanta below is. The comparison allows for floating-point error, so
-    /// 1.5 against 1.25 counts as exactly one quantum.
+    /// Whether the stream should follow a drawable that moved from
+    /// `currentlyApplied` to `requested` as soon as the drawable stops
+    /// moving. True for any increase, since a window that grew is soft until
+    /// the stream follows it, and for a drop of more than one quantum.
+    /// False for no change and for a drop of at most one quantum: a strip of
+    /// controls that shows and hides shrinks the drawable by that much, so
+    /// the host waits longer before rebuilding for it, in case it reverts.
+    /// The comparison allows for floating-point error, so 1.5 against 1.25
+    /// counts as exactly one quantum.
     public static func isWorthReconfiguring(from currentlyApplied: Double, to requested: Double) -> Bool {
         let epsilon = 1e-9
         let change = requested - currentlyApplied
         if change > 0 {
-            return change >= quantum - epsilon
+            return change > epsilon
         }
         return -change > quantum + epsilon
     }
