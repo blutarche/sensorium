@@ -389,6 +389,8 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
     private let frames: [CMSampleBuffer]
     private weak var heldEncoder: VideoToolboxEncoder?
     private var nextIndex = 1
+    /// Frames taken from `frames` whose `encode` has not yet returned.
+    private var claimedNotSubmitted = 0
     private var accepted = 0
     private var outcomes = 0
     private var encoded: [EncodedFrame] = []
@@ -446,11 +448,12 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
     }
 
     /// Every frame has been submitted or refused, and every accepted one has
-    /// come back.
+    /// come back. A frame taken but not yet through `encode` counts as
+    /// neither, or the last one would read as settled before it is accepted.
     var isSettled: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return (nextIndex >= frames.count || !refused.isEmpty) && outcomes == accepted
+        return (nextIndex >= frames.count || !refused.isEmpty) && claimedNotSubmitted == 0 && outcomes == accepted
     }
 
     func setHoldInProgress(_ inProgress: Bool) {
@@ -465,6 +468,9 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         accepted += 1
+        if callbackIndex != nil {
+            claimedNotSubmitted -= 1
+        }
         if let callbackIndex, holdInProgress {
             duringHold.append(callbackIndex)
         }
@@ -482,6 +488,7 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         let index = nextIndex < frames.count ? nextIndex : nil
         if index != nil {
             nextIndex += 1
+            claimedNotSubmitted += 1
         }
         let encoder = heldEncoder
         lock.unlock()
@@ -496,6 +503,7 @@ private final class ResubmittingFrameChain: @unchecked Sendable {
         } catch {
             lock.lock()
             refused.append(index)
+            claimedNotSubmitted -= 1
             lock.unlock()
         }
     }
