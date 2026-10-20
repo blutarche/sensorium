@@ -11,6 +11,87 @@ public enum HostNetworkSessionError: Error, Equatable {
     /// session was actually configured with, so the operator log names the
     /// value that fired rather than a hardcoded default.
     case viewerSilent(after: Duration)
+    /// Closed by this host: the connection sent no `hello`,
+    /// `authenticatedHello`, `pairIntent` or `pairRequest` within this long
+    /// of being accepted.
+    case noHandshake(after: Duration)
+    /// Closed by this host: the connection neither finished pairing nor
+    /// identified itself as a paired machine within this long of being
+    /// accepted.
+    case notAdmitted(after: Duration)
+    /// Closed by this host: the connection identified itself and then asked
+    /// for neither a host screen nor a session canvas within this long of
+    /// being accepted.
+    case noTargetRequested(after: Duration)
+}
+
+/// The limits on how long a connection may stay open without becoming a
+/// session, all measured from the moment this host accepted it. Nothing a
+/// peer sends moves them. QUIC's own idle timeout is no such limit: any
+/// packet at all resets it.
+enum HostConnectionDeadline: Equatable, Sendable {
+    /// No message that starts pairing or a session arrived in time.
+    case handshake
+    /// Neither pairing finished nor a paired machine identified itself in
+    /// time.
+    case admission
+    /// A machine identified itself and asked for nothing to show in time.
+    case targetRequest
+
+    static let handshakeLimit: Duration = .seconds(15)
+    static let targetRequestLimit: Duration = .seconds(60)
+    /// A pairing code's whole life, plus time to send the last digit typed.
+    static let admissionLimit: Duration = .seconds(PairingAuthority.defaultLifetime + 30)
+
+    /// When the watchdog looks, measured from accept, in order.
+    static let checkpoints: [Duration] = [handshakeLimit, targetRequestLimit, admissionLimit]
+
+    enum Verdict: Equatable, Sendable {
+        /// Nothing later can be missed either.
+        case metForGood
+        case notYet
+        case missed(HostConnectionDeadline)
+    }
+
+    static func verdict(at elapsed: Duration, progress: HostConnectionProgress) -> Verdict {
+        if progress.hasRequestedTarget {
+            return .metForGood
+        }
+        if elapsed >= handshakeLimit, !progress.hasStartedHandshake {
+            return .missed(.handshake)
+        }
+        if elapsed >= targetRequestLimit, progress.isIdentified {
+            return .missed(.targetRequest)
+        }
+        if elapsed >= admissionLimit, !progress.isIdentified, !progress.hasPaired {
+            return .missed(.admission)
+        }
+        return .notYet
+    }
+
+    /// What the session's close reason says about this deadline.
+    var closingError: HostNetworkSessionError {
+        switch self {
+        case .handshake:
+            return .noHandshake(after: Self.handshakeLimit)
+        case .admission:
+            return .notAdmitted(after: Self.admissionLimit)
+        case .targetRequest:
+            return .noTargetRequested(after: Self.targetRequestLimit)
+        }
+    }
+}
+
+/// What a connection has done toward becoming a session.
+struct HostConnectionProgress: Equatable, Sendable {
+    var hasStartedHandshake = false
+    /// See `HostSessionController.hasIdentifiedConnection`.
+    var isIdentified = false
+    var hasPaired = false
+    /// A `canvasRequest` or `hostScreenRequest` arrived. Counted on arrival,
+    /// not on admission: waking the displays and asking the person at this
+    /// machine first can take longer than any deadline here has left.
+    var hasRequestedTarget = false
 }
 
 /// The byte stream a host session runs over. NWConnection serves the QUIC
@@ -18,10 +99,17 @@ public enum HostNetworkSessionError: Error, Equatable {
 /// because this OS build's NWListener cannot hand out working accepted
 /// connections when the listener pins its local endpoint.
 public protocol HostByteChannel: AnyObject, Sendable {
+    /// The address the connection came from, as the operator log names it,
+    /// or `nil` when the transport cannot say.
+    var peerAddress: String? { get }
     func start()
     func cancel()
     func sendBytes(_ data: Data) async throws
     func receiveBytes(count: Int) async throws -> Data
+}
+
+extension HostByteChannel {
+    public var peerAddress: String? { nil }
 }
 
 extension PosixByteChannel: HostByteChannel {
@@ -42,6 +130,10 @@ public final class NWByteChannel: HostByteChannel, @unchecked Sendable {
 
     public init(connection: NWConnection) {
         self.connection = connection
+    }
+
+    public var peerAddress: String? {
+        HostConnectionAdmission.sourceHost(of: connection.endpoint)
     }
 
     public func start() {
@@ -273,6 +365,46 @@ private final class ViewerSilenceState: @unchecked Sendable {
     }
 }
 
+/// What has arrived on this connection toward becoming a session, noted by
+/// the receive loop before each message is handled, and which deadline closed
+/// it, if one did.
+private final class ConnectionDeadlineState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var arrived = HostConnectionProgress()
+    private var missedDeadline: HostConnectionDeadline?
+
+    func noteArrival(of message: SensoriumMessage) {
+        lock.lock()
+        defer { lock.unlock() }
+        switch message {
+        case .hello, .authenticatedHello, .pairIntent, .pairRequest:
+            arrived.hasStartedHandshake = true
+        case .canvasRequest, .hostScreenRequest:
+            arrived.hasRequestedTarget = true
+        default:
+            break
+        }
+    }
+
+    var progress: HostConnectionProgress {
+        lock.lock()
+        defer { lock.unlock() }
+        return arrived
+    }
+
+    func markMissed(_ deadline: HostConnectionDeadline) {
+        lock.lock()
+        defer { lock.unlock() }
+        missedDeadline = deadline
+    }
+
+    var missed: HostConnectionDeadline? {
+        lock.lock()
+        defer { lock.unlock() }
+        return missedDeadline
+    }
+}
+
 public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     private let connection: any HostByteChannel
     private let controller: HostSessionController
@@ -335,6 +467,9 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
     private let viewerSilenceTimeout: Duration
     private let viewerSilenceTimeoutNanoseconds: Int64
     private let refusalLogClock: @Sendable () -> Int64
+    private let connectionDeadlineSleep: @Sendable (Duration) async throws -> Void
+    private let connectionDeadlineState = ConnectionDeadlineState()
+    private let connectionDeadlineWatchdogTask = CancellableTaskBox()
 
     /// The viewer sends a clock-sync message roughly every ten seconds while
     /// a session is live, so this much true silence means the link is dead,
@@ -360,6 +495,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         keyFrameRecoveryInterval: Duration = .seconds(1),
         refusalLogClock: @escaping @Sendable () -> Int64 = { MonotonicClock.nowNanoseconds() },
+        connectionDeadlineSleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         onEvent: (@Sendable (String) -> Void)? = nil,
         onPeerPresence: (@Sendable (HostPeerPresence) -> Void)? = nil,
         onViewerPing: (@Sendable (Int64?) -> Void)? = nil
@@ -376,6 +512,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         self.viewerSilenceTimeout = viewerSilenceTimeout
         self.viewerSilenceTimeoutNanoseconds = Self.nanoseconds(for: viewerSilenceTimeout)
         self.refusalLogClock = refusalLogClock
+        self.connectionDeadlineSleep = connectionDeadlineSleep
         self.onEvent = onEvent
         self.onPeerPresence = onPeerPresence
         self.onViewerPing = onViewerPing
@@ -679,7 +816,59 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         startClipboardPolling()
         startTelemetryPolling()
         startViewerSilenceWatchdog()
+        startConnectionDeadlineWatchdog()
         startHostScreenLockWatchPolling()
+    }
+
+    /// Closes a connection that has not become a session in time -- see
+    /// `HostConnectionDeadline`. Like the silence watchdog, it ends the
+    /// session by cancelling the channel, so `run()`'s own teardown does the
+    /// rest.
+    private func startConnectionDeadlineWatchdog() {
+        connectionDeadlineWatchdogTask.replace(with: Task { [weak self, sleep = connectionDeadlineSleep] in
+            var elapsed: Duration = .zero
+            for checkpoint in HostConnectionDeadline.checkpoints {
+                do {
+                    try await sleep(checkpoint - elapsed)
+                } catch {
+                    return
+                }
+                elapsed = checkpoint
+                guard let self else { return }
+                // Read and acted on in one main-actor turn, the same turn kind
+                // `HostSessionController.handle` runs in: a `pairRequest`
+                // either was approved before this looks, or is refused after.
+                let verdict = await MainActor.run {
+                    [controller = self.controller, state = self.connectionDeadlineState, elapsed] in
+                    var progress = state.progress
+                    progress.isIdentified = controller.hasIdentifiedConnection
+                    progress.hasPaired = controller.hasCompletedPairingOnConnection
+                    let verdict = HostConnectionDeadline.verdict(at: elapsed, progress: progress)
+                    if case let .missed(deadline) = verdict {
+                        state.markMissed(deadline)
+                        controller.refuseAfterMissedConnectionDeadline()
+                    }
+                    return verdict
+                }
+                switch verdict {
+                case .metForGood:
+                    return
+                case .notYet:
+                    continue
+                case let .missed(deadline):
+                    // An identified machine's close is already logged by
+                    // name, from the close reason `run()` reports.
+                    if deadline != .targetRequest {
+                        onEvent?(HostOperatorLog.closedUnidentifiedConnection(
+                            address: connection.peerAddress,
+                            because: deadline.closingError
+                        ))
+                    }
+                    connection.cancel()
+                    return
+                }
+            }
+        })
     }
 
     /// Watches for the viewer having gone silent, independently of the
@@ -882,6 +1071,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         clipboardPollTask.cancel()
         telemetryPollTask.cancel()
         viewerSilenceWatchdogTask.cancel()
+        connectionDeadlineWatchdogTask.cancel()
         hostScreenLockWatchPollTask.cancel()
         cancelHeldKeyFrameRequests()
         onPeerPresence?(.closed(reason: nil))
@@ -964,6 +1154,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 guard case let .control(message) = decoded else {
                     continue
                 }
+                connectionDeadlineState.noteArrival(of: message)
                 let response: SensoriumMessage?
                 do {
                     if let coordinator {
@@ -1057,14 +1248,20 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             clipboardPollTask.cancel()
             telemetryPollTask.cancel()
             viewerSilenceWatchdogTask.cancel()
+            connectionDeadlineWatchdogTask.cancel()
             hostScreenLockWatchPollTask.cancel()
             cancelHeldKeyFrameRequests()
             // A watchdog-triggered cancel reaches here as an ordinary
             // channel error; naming it explicitly is what lets the close
             // reason say why the link ended instead of just that it did.
-            let closingError: any Error = viewerSilenceState.isDetected
-                ? HostNetworkSessionError.viewerSilent(after: viewerSilenceTimeout)
-                : error
+            let closingError: any Error
+            if viewerSilenceState.isDetected {
+                closingError = HostNetworkSessionError.viewerSilent(after: viewerSilenceTimeout)
+            } else if let missed = connectionDeadlineState.missed {
+                closingError = missed.closingError
+            } else {
+                closingError = error
+            }
             // The error that ended the read loop is the only place this
             // machine learns why a viewer went away, so it is named in the
             // close reason.

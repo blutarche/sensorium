@@ -222,6 +222,14 @@ public final class HostSessionController {
     /// that follows gets to run, so nothing the viewer already sent is
     /// acted on in between. See `stopByHost()`.
     private var isStoppedByHost = false
+    /// Set by the transport when a connection deadline closes this
+    /// connection, so a message already on its way is refused like one
+    /// after a Stop -- see `refuseAfterMissedConnectionDeadline()`.
+    private var hasMissedConnectionDeadline = false
+    /// Only a host that does not require authentication accepts a bare
+    /// `hello`.
+    private var hasAcceptedBareHello = false
+    private var hasCompletedPairing = false
     private var authenticatedClientKey: Data?
     private var surfaces: CanvasSurfaceSlots<SurfaceState>
     /// The wire reason a person at this host's own answer already gave this
@@ -1380,6 +1388,26 @@ public final class HostSessionController {
         )
     }
 
+    /// Whether this connection has proven who it is: an accepted
+    /// `authenticatedHello`, or a bare `hello` on a host that does not
+    /// require one.
+    var hasIdentifiedConnection: Bool {
+        isAuthenticated || hasAcceptedBareHello
+    }
+
+    /// Whether a `pairRequest` on this connection was approved.
+    var hasCompletedPairingOnConnection: Bool {
+        hasCompletedPairing
+    }
+
+    /// Called by the transport, on the main actor, as a connection deadline
+    /// closes this connection. Every message after this is refused, so a
+    /// pairing request already on its way neither spends its code nor pairs
+    /// a machine that would never hear it was approved.
+    func refuseAfterMissedConnectionDeadline() {
+        hasMissedConnectionDeadline = true
+    }
+
     public func handle(_ message: SensoriumMessage) throws -> SensoriumMessage? {
         switch message {
         case .canvasRequest, .hostScreenRequest, .goodbye:
@@ -1391,7 +1419,7 @@ public final class HostSessionController {
         default:
             break
         }
-        if isStoppedByHost {
+        if isStoppedByHost || hasMissedConnectionDeadline {
             guard case .goodbye = message else {
                 throw HostSessionControllerError.authenticationRequired
             }
@@ -1404,6 +1432,7 @@ public final class HostSessionController {
             guard !requireAuthentication else {
                 throw HostSessionControllerError.authenticationRequired
             }
+            hasAcceptedBareHello = true
             return nil
         case let .pairIntent(deviceName):
             // The true "shown the moment a new machine asks to pair" moment --
@@ -1541,6 +1570,9 @@ public final class HostSessionController {
                     pairingConnectionFailureCapReached = true
                     log("Sensorium host: pairing connection failure cap reached, closing connection: attempts=\(pairingConnectionFailureCount)")
                 }
+            }
+            if case .pairApproved = response {
+                hasCompletedPairing = true
             }
             return response
         case .pairApproved, .pairRejected:

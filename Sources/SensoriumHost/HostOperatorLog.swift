@@ -20,8 +20,20 @@ public enum HostOperatorLog {
                     + "The other machine can ask again."
             }
         }
-        if let error = error as? HostNetworkSessionError, case let .viewerSilent(after) = error {
-            return "No message from the viewer for \(describeSilenceDuration(after)), so the connection was treated as dead."
+        if let error = error as? HostNetworkSessionError {
+            switch error {
+            case let .viewerSilent(after):
+                return "No message from the viewer for \(describeDuration(after)), so the connection was treated as dead."
+            case let .noHandshake(after):
+                return "No pairing or session was started within \(describeDuration(after)) of connecting."
+            case let .notAdmitted(after):
+                return "No pairing finished, and no paired machine identified itself, within "
+                    + "\(describeDuration(after)) of connecting."
+            case let .noTargetRequested(after):
+                return "No screen was asked for within \(describeDuration(after)) of connecting."
+            case .closed, .receiveFailed:
+                break
+            }
         }
         if #available(macOS 13.0, *), let error = error as? HostMediaPipelineError {
             switch error {
@@ -76,11 +88,11 @@ public enum HostOperatorLog {
         return "\(bytes / 1_000) KB"
     }
 
-    /// A silence window as a person reads it, in the configured value rather
-    /// than a hardcoded one: whole seconds when there are only whole seconds
-    /// to report, milliseconds for a value finer than this log line will ever
-    /// see outside a test.
-    private static func describeSilenceDuration(_ duration: Duration) -> String {
+    /// A silence window or deadline as a person reads it, in the configured
+    /// value rather than a hardcoded one: whole seconds when there are only
+    /// whole seconds to report, milliseconds for a value finer than this log
+    /// line will ever see outside a test.
+    private static func describeDuration(_ duration: Duration) -> String {
         let components = duration.components
         let totalMilliseconds = components.seconds * 1_000 + components.attoseconds / 1_000_000_000_000_000
         guard totalMilliseconds % 1_000 == 0 else {
@@ -104,6 +116,13 @@ public enum HostOperatorLog {
     /// the last line when a viewer sends them faster than they are logged.
     public static func refusal(_ line: String, suppressedSinceLastLine suppressed: Int) -> String {
         suppressed > 0 ? "\(line) \(suppressed) more refused since the last line." : line
+    }
+
+    /// A connection this host closed before anyone on it was identified, so
+    /// the address it came from is all there is to name it by.
+    public static func closedUnidentifiedConnection(address: String?, because error: any Error) -> String {
+        let source = address.map { " from \($0)" } ?? ""
+        return "Closed a connection\(source). " + describe(error)
     }
 
     public static func sourceRefused(address: String) -> String {

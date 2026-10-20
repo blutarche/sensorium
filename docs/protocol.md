@@ -316,6 +316,20 @@ No shipping viewer sends `hostScreenUnlockRequest`. A locked host is unlocked by
 | `password-too-long` | The password is longer than the unlock method's credential field can hold. Type it at the login window instead |
 | `failed` | The password was accepted but the screen is still locked, or some other step failed. Carries a `reason` string for the operator log only, never shown as more than "try again" |
 
+## Connection deadlines
+
+The host closes a connection that has not become a session in time. Each deadline is measured from the moment the host accepted the connection, and nothing the client sends extends it.
+
+| Deadline | Closed unless, by then |
+|---|---|
+| 15 s | the client sent `hello`, `authenticatedHello`, `pairIntent` or `pairRequest` |
+| 60 s | a client whose `authenticatedHello` was accepted sent `canvasRequest` or `hostScreenRequest` |
+| 330 s | the client's `authenticatedHello` was accepted, or one of its `pairRequest`s was approved |
+
+A `canvasRequest` or `hostScreenRequest` counts the moment it arrives, even while the host is still waking its displays or asking the person at the host. Once one has arrived, no deadline applies. The host closes the connection without sending `goodbye`.
+
+The viewer opens its pairing connection when the code screen appears and sends nothing more until a code is typed. That can outlast QUIC's 30-second idle timeout, which both ends set. When the `pairRequest` then finds the connection gone, the viewer dials once more and sends it on the new connection. The host accepts a `pairRequest` on any connection.
+
 ## Ordering rules
 
 - Control messages travel on a reliable ordered stream.

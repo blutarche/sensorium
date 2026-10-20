@@ -23,6 +23,7 @@ There is no cloud account, backend, relay, or vendor control plane to attack, be
 | One-time pairing code | `HostPairingService`, single-use and time-limited | Silent enrollment of a new machine |
 | Per-code failure budget | `PairingAuthority`, 10 wrong guesses retire the issued code | Guessing the six digits across repeated connections |
 | Per-connection failure cap | `HostSessionController`, 5 wrong guesses end the connection | A single connection working through the code space |
+| Connection deadlines, measured from accept | `HostNetworkSession` | A connection held open without ever pairing or starting a session |
 | Host-signed canvas readiness | `SensoriumFrameCodec.canvasReadyTranscript`, verified by the viewer against its pinned key | A machine impersonating the host |
 | Canvas-bounded input validation | `HostSessionController` and `ClientSessionController` | Input aimed outside the session canvas |
 | Held-input release | `HostSessionController.releaseHeldInput`, plus an explicit viewer release at disconnect | A modifier or button stuck down after a lost session |
@@ -39,6 +40,18 @@ Canvas-bounded input validation does not cover a system hotkey (Mission Control,
 The code is six digits, so a machine that reaches the port has a 1-in-10^6 shot per guess. Two caps bound it. A per-code budget allows 10 wrong guesses against the issued code itself, capping total exposure at 10-in-10^6 per ceremony no matter how many connections an attacker opens, and an eleventh attempt is refused even when correct. A per-connection cap allows 5 wrong guesses, so an attacker pays for a fresh handshake every five guesses instead of working through the per-code budget on one connection.
 
 The comparison is constant-time, so a guess cannot be refined digit by digit from how long the rejection took. The code, and any prefix of it, is never logged. The only place it appears is the host's own pairing screen.
+
+### How long a connection may stay open
+
+The host closes a connection that has not become a session in time. Each deadline is measured from the moment the host accepted the connection. Nothing the other machine sends moves it.
+
+- 15 seconds to send the first message of pairing or of a session.
+- 60 seconds, for a machine that has identified itself, to ask for a host screen or a private desktop.
+- 330 seconds to finish pairing or identify itself as a paired machine. That is a pairing code's 300-second life plus 30 seconds.
+
+QUIC's own 30-second idle timeout bounds none of this, because any packet at all resets it. Without these deadlines a tailnet machine could hold connections open indefinitely by sending frames the host skips. A connection that has asked for a screen is past every deadline. A connection that finished pairing is left for the viewer to close, which it does at once.
+
+The host logs one line for each connection it closes this way. A machine that never identified itself is named by its address. One that did is named as it is everywhere else in the log.
 
 ### What pairing proves
 

@@ -1297,6 +1297,8 @@ final class FakeHostByteChannel: HostByteChannel, @unchecked Sendable {
     /// say. Thrown instead of accepting the bytes; `sent` and `sentFrameBytes`
     /// are left exactly as a real failed write would leave them.
     var sendBytesError: Error?
+    /// What the operator log names this connection by. Set before `start()`.
+    var peerAddress: String?
     private var cancels = 0
     /// What had already been written when `cancel()` first ran, so a test can
     /// assert a message reached the peer while the socket was still open
