@@ -566,4 +566,81 @@ func runHostConnectionDeadlineTests() async {
         session.stop()
         print("PASS: a refusal on a connection that already has a session leaves it open")
     }
+
+    // A canvas request the creation gate rejects is answered, and a
+    // connection with no canvas to carry on with is then closed. A second
+    // surface rejected while the first is live leaves the session open.
+    do {
+        let device = try! DeviceIdentity.generate()
+        let adapter = FakeVirtualDisplayAdapter()
+        adapter.acquireError = CanvasCreationGateError.creationInProgress
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: adapter)),
+            approvedPublicKeys: [device.publicKey],
+            requireAuthentication: true,
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: controller,
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) { canvasRefusalCount(channel) >= 1 },
+            "the gate's refusal of the first canvas is written, got \(channel.sentPackets)"
+        )
+        expect(
+            await waitUntil(timeoutSeconds: 1) { channel.cancelCount > 0 },
+            "a canvas request the gate refused closes a connection that has no session"
+        )
+        session.stop()
+        print("PASS: a canvas request refused by the creation gate closes a connection with no session")
+    }
+
+    do {
+        let device = try! DeviceIdentity.generate()
+        let secondAdapter = FakeVirtualDisplayAdapter()
+        secondAdapter.acquireError = CanvasCreationGateError.creationInProgress
+        let controller = HostSessionController(
+            sessions: CanvasSurfaceSlots(
+                surface0: VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()),
+                surface1: VirtualDisplaySession(adapter: secondAdapter)
+            ),
+            approvedPublicKeys: [device.publicKey],
+            requireAuthentication: true,
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 0),
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: 1),
+            .timeSyncRequest(clientTimeNanoseconds: 3),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: controller,
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) {
+                channel.sentPackets.contains {
+                    if case let .control(.timeSyncReply(client, _)) = $0 { return client == 3 }
+                    return false
+                }
+            },
+            "the request after the gate's refusal of the second surface is still answered"
+        )
+        expect(canvasRefusalCount(channel) == 1, "the second surface was refused, got \(channel.sentPackets)")
+        expect(channel.cancelCount == 0, "a second surface refused during a live session leaves it open")
+        session.stop()
+        print("PASS: a second surface refused by the creation gate leaves a live session open")
+    }
 }

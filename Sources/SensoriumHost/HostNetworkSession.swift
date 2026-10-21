@@ -1197,6 +1197,12 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                             reason: CanvasRefusalReason.creationInProgress,
                             surfaceID: surfaceID
                         ))
+                        // Same rule as any refused request: with no live
+                        // canvas to carry on with, the connection ends. A
+                        // refused second surface leaves the first running.
+                        if await MainActor.run(body: { [controller] in !controller.isSessionAuthenticatedAndActive }) {
+                            throw HostNetworkSessionError.targetRefused
+                        }
                     }
                     continue
                 } catch CoreGraphicsVirtualDisplayError.creationFailed {

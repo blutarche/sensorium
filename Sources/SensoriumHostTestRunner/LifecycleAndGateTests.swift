@@ -137,11 +137,11 @@ func runLifecycleAndGateTests() async {
         }
 
         // A gate rejection reaches `HostNetworkSession` as a `CanvasCreationGateError`,
-        // not a `HostSessionControllerError` — it must take the same non-fatal
-        // path as a refused control message, not fall through to the transport's
-        // "genuinely broken" catch-all that cancels the connection. Driven
-        // through the same shared gate, so the error originates where a shipped
-        // host originates it rather than being injected at the workspace.
+        // not a `HostSessionControllerError`. The viewer is told with an
+        // explicit refusal first, and the connection, which has no canvas to
+        // carry on with, is closed after it. Driven through the same shared
+        // gate, so the error originates where a shipped host originates it
+        // rather than being injected at the workspace.
         do {
             expectRunLoopPumpCanDispatchQueuedWork("the transport-level gate rejection test")
             let transportGate = CanvasCreationGate()
@@ -162,7 +162,6 @@ func runLifecycleAndGateTests() async {
             let transportEvents = DiagnosticsRecorder()
             let transportChannel = FakeHostByteChannel(scriptedMessages: [
                 .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil),
-                .timeSyncRequest(clientTimeNanoseconds: 99),
             ])
             let transportNetworkSession = HostNetworkSession(
                 connection: transportChannel,
@@ -182,10 +181,7 @@ func runLifecycleAndGateTests() async {
                 // during the in-flight creation rather than after it.
                 transportNetworkSession.start()
                 let answered = {
-                    transportChannel.sentPackets.contains {
-                        if case let .control(.timeSyncReply(client, _)) = $0 { return client == 99 }
-                        return false
-                    }
+                    transportChannel.cancelCount > 0
                 }
                 var pumps = 0
                 while !answered(), pumps < 300 {
@@ -194,7 +190,7 @@ func runLifecycleAndGateTests() async {
                 }
                 expect(
                     answered(),
-                    "the run-loop pump ran this connection's scripted messages within \(pumps) pumps"
+                    "the run-loop pump ran this connection's refused request through to its close within \(pumps) pumps"
                 )
             }
 
@@ -203,15 +199,8 @@ func runLifecycleAndGateTests() async {
             )
 
             expect(
-                transportChannel.cancelCount == 0,
-                "a rejected canvas creation must not cancel the connection"
-            )
-            expect(
-                transportChannel.sentPackets.contains {
-                    if case let .control(.timeSyncReply(client, _)) = $0 { return client == 99 }
-                    return false
-                },
-                "the session keeps handling messages after a gate rejection and answers them normally"
+                transportChannel.cancelCount > 0,
+                "a rejected canvas creation closes a connection that has no canvas"
             )
             expect(
                 transportWorkspace.startedDisplayIDs.isEmpty,
