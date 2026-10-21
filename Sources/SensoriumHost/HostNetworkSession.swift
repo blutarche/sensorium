@@ -1213,13 +1213,18 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 // After the handling above, never before it: a hello that
                 // failed verification or came from a device this host has not
                 // paired with throws, and must not put a name on the menu bar.
-                if case let .authenticatedHello(_, deviceName, _, _, _) = message {
+                if case let .authenticatedHello(_, deviceName, publicKey, _, _) = message {
                     // A name the person at this machine chose wins over the
-                    // one the hello reports.
+                    // one the hello reports. The reported one is the other
+                    // machine's text, so it is cleaned first, and a name
+                    // with nothing left is shown as the key's fingerprint,
+                    // as for a paired machine that never reported one.
                     let chosenName = await MainActor.run { [controller] in
                         controller.authenticatedDeviceDisplayName
                     }
-                    onPeerPresence?(.identified(deviceName: chosenName ?? deviceName))
+                    let reportedName = DeviceName.sanitized(deviceName)
+                        ?? ApprovedDeviceDisplayName.fingerprint(of: publicKey)
+                    onPeerPresence?(.identified(deviceName: chosenName ?? reportedName))
                 }
                 if let response {
                     try await send(response)

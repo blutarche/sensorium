@@ -8,6 +8,11 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- The host now cleans the name a connecting machine reports before it shows
+  it in the menu bar and the host log.
+
 ## [0.5.2] - 2026-10-21
 
 ### Added

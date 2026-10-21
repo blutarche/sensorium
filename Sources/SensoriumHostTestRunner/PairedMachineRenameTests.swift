@@ -317,6 +317,45 @@ func runPairedMachineRenameTests() async {
     }
 
     do {
+        // A hello's name comes from the other machine. Before it reaches the
+        // menu bar and the host log it loses its control and format
+        // characters, and one with nothing left is named by the device's
+        // key, as an unnamed paired machine is.
+        let device = try! DeviceIdentity.generate()
+        let store = InMemoryApprovedDeviceStore()
+        let pairing = pairedService(device: device, reportedName: "Kestrel Laptop Pro", store: store)
+        for (reported, expected) in [
+            ("Kestrel\u{202E}\nLaptop\u{200B}", "Kestrel Laptop"),
+            ("\u{202E}\u{200B}", ApprovedDeviceDisplayName.fingerprint(of: device.publicKey)),
+        ] {
+            let controller = HostSessionController(
+                sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+                requireAuthentication: true,
+                pairing: pairing,
+                keyConfinement: .unconfined
+            )
+            let channel = FakeHostByteChannel(scriptedMessages: [signedHello(device, deviceName: reported)])
+            let presence = RenamePresenceRecorder()
+            let session = HostNetworkSession(
+                connection: channel,
+                controller: controller,
+                onPeerPresence: { presence.record($0) }
+            )
+            session.start()
+            let identified = await waitUntil(timeoutSeconds: 2) {
+                presence.events.contains { if case .identified = $0 { return true } else { return false } }
+            }
+            expect(identified, "a verified hello identifies the connection")
+            expect(
+                presence.events.first == .identified(deviceName: expected),
+                "a hello's name is cleaned before it is shown -- got \(presence.events), wanted \(expected)"
+            )
+            session.stop()
+        }
+        print("PASS: a hello's reported name is sanitized before the menu bar and host log show it")
+    }
+
+    do {
         // Arming never copies a chosen name into the arming record, so
         // clearing the name later shows the reported one everywhere again.
         let key = Data([0x0A])
