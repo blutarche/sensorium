@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-21
+
 ### Fixed
 
 - The host now closes a connection whose request for a screen it refused.
@@ -551,6 +553,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.3]: https://github.com/blutarche/sensorium/releases/tag/v0.5.3
 [0.5.2]: https://github.com/blutarche/sensorium/releases/tag/v0.5.2
 [0.5.1]: https://github.com/blutarche/sensorium/releases/tag/v0.5.1
 [0.5.0]: https://github.com/blutarche/sensorium/releases/tag/v0.5.0
