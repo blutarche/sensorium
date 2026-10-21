@@ -1181,6 +1181,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                         if let count = refusalLog.noteDrop(atNanoseconds: refusalLogClock()) {
                             onEvent?(HostOperatorLog.refusal(error.operatorLogLine, suppressedSinceLastLine: count - 1))
                         }
+                        try await endIfNoSession(after: message)
                         continue
                     }
                     throw error
@@ -1197,13 +1198,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                             reason: CanvasRefusalReason.creationInProgress,
                             surfaceID: surfaceID
                         ))
-                        // Same rule as any refused request: with no live
-                        // canvas or host screen to carry on with, the
-                        // connection ends. A refused second surface leaves
-                        // the first running.
-                        if await MainActor.run(body: { [controller] in !controller.isSessionAuthenticatedAndStreaming }) {
-                            throw HostNetworkSessionError.targetRefused
-                        }
+                        try await endIfNoSession(after: message)
                     }
                     continue
                 } catch CoreGraphicsVirtualDisplayError.creationFailed {
@@ -1238,17 +1233,8 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 }
                 if let response {
                     try await send(response)
-                    // A viewer ends its connect on a refused first request, so
-                    // nothing would use this connection again, and having
-                    // asked it is past every deadline. Closed after the
-                    // refusal is written so the viewer still gets it.
-                    // A refusal on a connection that already has a session,
-                    // such as one for a second surface, leaves it open.
-                    if Self.isRefusedTargetRequest(message, reply: response),
-                       await MainActor.run(body: { [controller] in !controller.hasAdmittedConnectionShape }) {
-                        throw HostNetworkSessionError.targetRefused
-                    }
                 }
+                try await endIfNoSession(after: message)
                 // An armed device discovers arming by being
                 // offered its screens unprompted, right after its hello, not
                 // by asking. `offerHostScreenList()` never touches
@@ -1307,12 +1293,23 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         }
     }
 
-    private static func isRefusedTargetRequest(_ message: SensoriumMessage, reply: SensoriumMessage) -> Bool {
-        switch (message, reply) {
-        case (.canvasRequest, .canvasRefused), (.hostScreenRequest, .hostScreenRefused):
-            return true
+    /// A request for a screen or a display count that the host has dealt
+    /// with and that left no live session ends the connection. A viewer ends
+    /// its connect on a refusal, so nothing would use the connection again,
+    /// and having asked it is past every deadline. Checked only after the
+    /// request has been handled, so one still waiting on the person at this
+    /// machine is never cut off, and after any refusal has been written, so
+    /// the viewer still receives it. A refusal on a connection that already
+    /// has a session, such as one for a second surface, leaves it open.
+    private func endIfNoSession(after message: SensoriumMessage) async throws {
+        switch message {
+        case .canvasRequest, .hostScreenRequest, .displayCount:
+            break
         default:
-            return false
+            return
+        }
+        if await MainActor.run(body: { [controller] in !controller.isSessionAuthenticatedAndStreaming }) {
+            throw HostNetworkSessionError.targetRefused
         }
     }
 

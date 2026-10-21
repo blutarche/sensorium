@@ -643,4 +643,71 @@ func runHostConnectionDeadlineTests() async {
         session.stop()
         print("PASS: a second surface refused by the creation gate leaves a live session open")
     }
+
+    // A request the host handles without leaving a session behind ends the
+    // connection, whether it was answered, refused with an error that is not
+    // fatal, or changed the connection's shape before failing.
+    do {
+        let device = try! DeviceIdentity.generate()
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            approvedPublicKeys: [device.publicKey],
+            requireAuthentication: true,
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .canvasRequest(logicalWidth: 1, logicalHeight: 1, scale: 1, surfaceID: nil),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: controller,
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) { channel.cancelCount > 0 },
+            "a canvas request with a geometry the host does not offer closes a connection that has no session"
+        )
+        session.stop()
+        print("PASS: a canvas request with bad geometry closes a connection with no session")
+    }
+
+    do {
+        let device = try! DeviceIdentity.generate()
+        let secondAdapter = FakeVirtualDisplayAdapter()
+        secondAdapter.acquireError = HostSessionControllerError.unexpectedMessage
+        let controller = HostSessionController(
+            sessions: CanvasSurfaceSlots(
+                surface0: VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter()),
+                surface1: VirtualDisplaySession(adapter: secondAdapter)
+            ),
+            approvedPublicKeys: [device.publicKey],
+            requireAuthentication: true,
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .displayCount(2),
+            .hostScreenRequest(token: Data([1, 2, 3]), resumeTicket: nil),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: controller,
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) { canvasRefusalCount(channel) >= 1 },
+            "the failed display count change is answered, got \(channel.sentPackets)"
+        )
+        expect(
+            await waitUntil(timeoutSeconds: 1) { channel.cancelCount > 0 },
+            "a display count change that fails on a connection with no session closes it"
+        )
+        session.stop()
+        print("PASS: a failed first display count change closes a connection with no session")
+    }
 }

@@ -842,12 +842,6 @@ public final class HostSessionController {
         hostScreenSurface != nil && !transportClosed
     }
 
-    /// Whether this connection has been admitted as a canvas or a host
-    /// screen. A refused first request leaves it `false`.
-    var hasAdmittedConnectionShape: Bool {
-        connectionShape != nil
-    }
-
     /// Called by `HostNetworkSession` the moment its transport ends, or the
     /// moment its own Stop path begins, before the `goodbye` teardown that
     /// follows either one has run -- see `hasLiveHostScreenSession`.

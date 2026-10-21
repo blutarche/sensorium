@@ -199,14 +199,13 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         // messages in general.
         let ordinaryController = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined,
-            privateDesktopOffered: { true }
+            keyConfinement: .unconfined
         )
         let ordinaryChannel = FakeHostByteChannel(scriptedMessages: (0..<HostSessionController.maximumPairingFailuresPerConnection).map { _ in
-            // A canvas request with an unsupported geometry: refused
-            // (`invalidCanvasRequest`), not fatal, and nothing to do with
-            // pairing.
-            SensoriumMessage.canvasRequest(logicalWidth: 1, logicalHeight: 1, scale: 1, surfaceID: nil)
+            // A drawable size naming a surface that does not exist: refused
+            // (`invalidViewerDrawableSize`), not fatal, and nothing to do
+            // with pairing.
+            SensoriumMessage.viewerDrawableSize(pixelWidth: 100, pixelHeight: 100, surfaceID: 7, maximumScale: nil)
         })
         let ordinarySession = HostNetworkSession(connection: ordinaryChannel, controller: ordinaryController)
         ordinarySession.start()
