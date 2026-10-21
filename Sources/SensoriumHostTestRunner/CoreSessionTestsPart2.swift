@@ -199,7 +199,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         // messages in general.
         let ordinaryController = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
-            keyConfinement: .unconfined
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
         )
         let ordinaryChannel = FakeHostByteChannel(scriptedMessages: (0..<HostSessionController.maximumPairingFailuresPerConnection).map { _ in
             // A canvas request with an unsupported geometry: refused

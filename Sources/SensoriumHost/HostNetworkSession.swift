@@ -23,6 +23,9 @@ public enum HostNetworkSessionError: Error, Equatable {
     /// for neither a host screen nor a session canvas within this long of
     /// being accepted.
     case noTargetRequested(after: Duration)
+    /// Closed by this host: the connection asked for a screen, was refused,
+    /// and had no session to carry on with.
+    case targetRefused
 }
 
 /// The limits on how long a connection may stay open without becoming a
@@ -1228,6 +1231,16 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 }
                 if let response {
                     try await send(response)
+                    // A viewer ends its connect on a refused first request, so
+                    // nothing would use this connection again, and having
+                    // asked it is past every deadline. Closed after the
+                    // refusal is written so the viewer still gets it.
+                    // A refusal on a connection that already has a session,
+                    // such as one for a second surface, leaves it open.
+                    if Self.isRefusedTargetRequest(message, reply: response),
+                       await MainActor.run(body: { [controller] in !controller.hasAdmittedConnectionShape }) {
+                        throw HostNetworkSessionError.targetRefused
+                    }
                 }
                 // An armed device discovers arming by being
                 // offered its screens unprompted, right after its hello, not
@@ -1284,6 +1297,15 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                 }
             }
             connection.cancel()
+        }
+    }
+
+    private static func isRefusedTargetRequest(_ message: SensoriumMessage, reply: SensoriumMessage) -> Bool {
+        switch (message, reply) {
+        case (.canvasRequest, .canvasRefused), (.hostScreenRequest, .hostScreenRefused):
+            return true
+        default:
+            return false
         }
     }
 

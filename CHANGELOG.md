@@ -10,6 +10,7 @@ once it reaches 1.0.
 
 ### Fixed
 
+- The host now closes a connection whose request for a screen it refused.
 - The host now cleans the name a connecting machine reports before it shows
   it in the menu bar and the host log.
 

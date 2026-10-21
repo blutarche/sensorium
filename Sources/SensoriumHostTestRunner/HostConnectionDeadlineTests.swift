@@ -157,6 +157,14 @@ private func waitForPairIntent(_ pairIntents: DeadlineLineRecorder) async {
     )
 }
 
+private func hostScreenRefusalCount(_ channel: FakeHostByteChannel) -> Int {
+    channel.sentPackets.filter { if case .control(.hostScreenRefused) = $0 { return true }; return false }.count
+}
+
+private func canvasRefusalCount(_ channel: FakeHostByteChannel) -> Int {
+    channel.sentPackets.filter { if case .control(.canvasRefused) = $0 { return true }; return false }.count
+}
+
 @MainActor
 func runHostConnectionDeadlineTests() async {
     // A peer that never starts a handshake is closed 15 seconds after it was
@@ -442,5 +450,120 @@ func runHostConnectionDeadlineTests() async {
         expect(channel.cancelCount == 0, "and is never closed by it")
         session.stop()
         print("PASS: a live session meets every connection deadline and is never closed by one")
+    }
+
+    // A request for a screen that the host refuses leaves a connection with
+    // no session and, once it has asked, no deadline. The host closes it
+    // right after the refusal is written, so the viewer still hears why.
+    do {
+        let device = try! DeviceIdentity.generate()
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .hostScreenRequest(token: Data([1, 2, 3]), resumeTicket: nil),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: deadlineTestController(approvedPublicKeys: [device.publicKey]),
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenRefusalCount(channel) >= 2 },
+            "the offer after the hello and the refusal of the request are both written, got \(channel.sentPackets)"
+        )
+        expect(
+            await waitUntil(timeoutSeconds: 1) { channel.cancelCount > 0 },
+            "a refused host screen request closes a connection that has no session"
+        )
+        session.stop()
+        print("PASS: a refused host screen request closes a connection with no session, after the refusal is written")
+    }
+
+    do {
+        let device = try! DeviceIdentity.generate()
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: deadlineTestController(approvedPublicKeys: [device.publicKey]),
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) { canvasRefusalCount(channel) >= 1 },
+            "the refusal of the canvas request is written, got \(channel.sentPackets)"
+        )
+        expect(
+            await waitUntil(timeoutSeconds: 1) { channel.cancelCount > 0 },
+            "a refused canvas request closes a connection that has no session"
+        )
+        session.stop()
+        print("PASS: a refused canvas request closes a connection with no session, after the refusal is written")
+    }
+
+    // The offer an unarmed device gets right after its hello is not a reply
+    // to a request, so it closes nothing.
+    do {
+        let device = try! DeviceIdentity.generate()
+        let channel = FakeHostByteChannel(scriptedMessages: [deadlineTestHello(device)])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: deadlineTestController(approvedPublicKeys: [device.publicKey]),
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) { hostScreenRefusalCount(channel) >= 1 },
+            "an unarmed device is offered nothing right after its hello"
+        )
+        try? await Task.sleep(for: .milliseconds(100))
+        expect(channel.cancelCount == 0, "and the offer does not close the connection")
+        session.stop()
+        print("PASS: the unprompted offer to an unarmed device does not close its connection")
+    }
+
+    // A refusal on a connection that already has a session ends nothing.
+    do {
+        let device = try! DeviceIdentity.generate()
+        let controller = HostSessionController(
+            sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
+            approvedPublicKeys: [device.publicKey],
+            requireAuthentication: true,
+            keyConfinement: .unconfined,
+            privateDesktopOffered: { true }
+        )
+        let channel = FakeHostByteChannel(scriptedMessages: [
+            deadlineTestHello(device),
+            .canvasRequest(logicalWidth: 1920, logicalHeight: 1200, scale: 2, surfaceID: nil),
+            .hostScreenRequest(token: Data([1, 2, 3]), resumeTicket: nil),
+            .timeSyncRequest(clientTimeNanoseconds: 2),
+        ])
+        let session = HostNetworkSession(
+            connection: channel,
+            controller: controller,
+            connectionDeadlineSleep: SteppedSleeper().sleep
+        )
+        session.attach(coordinator: HostSessionCoordinator(
+            controller: controller,
+            media: onlyOnSurfaceZero(FakeCanvasMedia()),
+            videoSink: FakeVideoSink(),
+            workspaces: onlyOnSurfaceZero(FakeCanvasWorkspace())
+        ))
+        session.start()
+        expect(
+            await waitUntil(timeoutSeconds: 2) {
+                channel.sentPackets.contains {
+                    if case let .control(.timeSyncReply(client, _)) = $0 { return client == 2 }
+                    return false
+                }
+            },
+            "the request after the refused one is still answered"
+        )
+        expect(hostScreenRefusalCount(channel) >= 2, "the host screen request was refused while the canvas was live")
+        expect(channel.cancelCount == 0, "a refusal on a connection with a live session leaves it open")
+        session.stop()
+        print("PASS: a refusal on a connection that already has a session leaves it open")
     }
 }

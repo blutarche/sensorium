@@ -31,6 +31,8 @@ public enum HostOperatorLog {
                     + "\(describeDuration(after)) of connecting."
             case let .noTargetRequested(after):
                 return "No screen was asked for within \(describeDuration(after)) of connecting."
+            case .targetRefused:
+                return "The screen asked for was refused, and the connection had no session, so it was closed."
             case .closed, .receiveFailed:
                 break
             }
