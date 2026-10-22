@@ -8,6 +8,16 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-10-22
+
+### Fixed
+
+- Typing at a locked host no longer stops when the host's video encoder
+  stalls. The host now waits for the encoder away from the part that types,
+  so keys reach the lock screen and the host can still quit.
+- The host now types and clicks as soon as Accessibility is turned on. It no
+  longer has to be quit and opened again first.
+
 ## [0.5.3] - 2026-10-21
 
 ### Fixed
@@ -553,6 +563,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.4]: https://github.com/blutarche/sensorium/releases/tag/v0.5.4
 [0.5.3]: https://github.com/blutarche/sensorium/releases/tag/v0.5.3
 [0.5.2]: https://github.com/blutarche/sensorium/releases/tag/v0.5.2
 [0.5.1]: https://github.com/blutarche/sensorium/releases/tag/v0.5.1
