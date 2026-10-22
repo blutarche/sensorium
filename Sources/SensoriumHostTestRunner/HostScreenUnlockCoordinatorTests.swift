@@ -1129,3 +1129,54 @@ private final class ParkingUnlocker: LockScreenUnlocking, @unchecked Sendable {
         }
     }
 }
+
+@MainActor
+func runInputGrantWithoutRelaunchTests() async {
+    let checker = FakeAccessibilityPermissionChecker()
+    let inner = FakeInputInjectorFactory()
+    let gated = AccessibilityGatedInputInjectorFactory(
+        gate: AccessibilityPermissionGate(checker: checker),
+        inner: inner
+    )
+    let fixture = makeUnlockFixture(
+        authenticate: true,
+        lockStateReader: FakeScreenLockState(locked: false),
+        unlocker: RecordingUnlocker(outcome: .unlocked),
+        inputInjectorFactory: gated
+    )
+    _ = await admitHostScreen(fixture)
+
+    var refused = false
+    do {
+        _ = try fixture.controller.handle(.input(.pointerMoved(x: 10, y: 20), surfaceID: nil))
+    } catch HostSessionControllerError.inputInjectionUnavailable {
+        refused = true
+    } catch {}
+    expect(refused, "a host-screen session started before Accessibility is granted refuses input")
+    expect(inner.requestedDisplayIDs.isEmpty, "and no injector is built while Accessibility is not granted")
+    expect(!checker.promptRequests.contains(true), "the gate never asks macOS to prompt")
+
+    checker.isTrusted = true
+    _ = try? fixture.controller.handle(.input(.pointerMoved(x: 10, y: 20), surfaceID: nil))
+    expect(
+        inner.injector.events == [.pointerMoved(x: 10, y: 20)],
+        "the same session injects input once Accessibility is granted, without a relaunch"
+    )
+    expect(inner.requestedSessionKinds == [.hostScreen], "the lazily built injector is a host-screen injector")
+
+    checker.isTrusted = false
+    let revoked = makeUnlockFixture(
+        authenticate: true,
+        lockStateReader: FakeScreenLockState(locked: false),
+        unlocker: RecordingUnlocker(outcome: .unlocked),
+        inputInjectorFactory: gated
+    )
+    _ = await admitHostScreen(revoked)
+    checker.isTrusted = true
+    _ = try? revoked.controller.handle(.input(.pointerMoved(x: 11, y: 21), surfaceID: nil))
+    expect(
+        inner.injector.events.last == .pointerMoved(x: 11, y: 21),
+        "a session admitted before the grant picks it up on its next input"
+    )
+    print("PASS: input starts working in a live session once Accessibility is granted, with no relaunch")
+}

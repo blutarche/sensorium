@@ -691,8 +691,13 @@ struct sensoriumd {
         let sessionFactory = HostConnectionSessionFactory(
             sessions: sessions,
             requireAuthentication: true,
-            inputInjectorFactory: inputCapability == .available
-                ? CoreGraphicsInputInjectorFactory()
+            // Present for every serve: the factory reads Accessibility each time an
+            // injector is wanted, so a grant made while the host runs counts.
+            inputInjectorFactory: verb == "serve"
+                ? AccessibilityGatedInputInjectorFactory(
+                    gate: AccessibilityPermissionGate(),
+                    inner: CoreGraphicsInputInjectorFactory()
+                )
                 : nil,
             pairing: pairing,
             onPairingRequested: { deviceName in
