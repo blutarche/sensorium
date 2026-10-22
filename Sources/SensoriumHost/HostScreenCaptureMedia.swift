@@ -240,12 +240,21 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
     }
 
     private func startPipeline(configuration: VideoEncoderConfiguration) async throws {
-        guard displayID != nil, packetHandler != nil else {
+        guard let displayID, packetHandler != nil else {
             return
         }
         do {
             try await bringUpPipeline(configuration: configuration)
         } catch {
+            log?(ScreenCaptureStopReport.startFailed(displayID: displayID, error: error))
+            // The attempt that failed is stopped and discarded before the
+            // next one is built. `bringUpPipeline` installs the pipeline
+            // before starting it, so a start that failed part-way leaves a
+            // stream this host still owns, and overwriting it would leave
+            // that stream running against the display the retry is about to
+            // capture.
+            await stopPipeline(displayID: displayID)
+            pipeline = nil
             cachedContentFilter = nil
             try await bringUpPipeline(configuration: configuration)
         }

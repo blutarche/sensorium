@@ -50,6 +50,7 @@ struct SensoriumHostTestRunner {
             { runHostLocalNetworkConnectionRegistryTests() },
             { await runCanvasReleaseAccountingTests() },
             { await runScreenCaptureCanvasMediaRetryTests() },
+            { await runHostScreenCaptureMediaRetryTests() },
             { await runScreenCaptureCanvasMediaStopSignalTests() },
             { await runCanvasCaptureStopTests() },
             { await runHostScreenArmingTests() },
