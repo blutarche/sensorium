@@ -96,7 +96,8 @@ clicks and scrolls reach it as ordinary forwarded input, posted through
 public CoreGraphics event APIs at the HID event tap while the screen is
 locked. The viewer draws no password prompt. Sensorium never recognises,
 extracts, stores or logs a password as such: it is ordinary input like any
-other typing. Screen Sharing is not needed. FileVault's pre-boot unlock is
+other typing. The host asks the person at it to turn on Screen Sharing,
+because lock-screen typing has only been shown to work with it on. FileVault's pre-boot unlock is
 out of scope.
 
 While a host-screen session is live, the person at the host must see a
