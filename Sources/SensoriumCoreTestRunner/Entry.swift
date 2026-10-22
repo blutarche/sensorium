@@ -161,7 +161,12 @@ struct SensoriumCoreTestRunner {
             ("fidelity holds the still refresh off after a slow send", testStreamFidelityHoldsTheStillRefreshOffAfterASlowSend),
             ("fidelity doubles the still refresh hold-off up to four minutes", testStreamFidelityDoublesTheStillRefreshHoldOffUpToFourMinutes),
             ("fidelity clears the still refresh hold-off after a fast send", testStreamFidelityClearsTheStillRefreshHoldOffAfterAFastSend),
-            ("fidelity leaves a still refresh it held off owed", testStreamFidelityLeavesAStillRefreshItHeldOffOwed)
+            ("fidelity leaves a still refresh it held off owed", testStreamFidelityLeavesAStillRefreshItHeldOffOwed),
+            ("motion needs a continuous run of broad changes", testStreamMotionNeedsAContinuousRunOfBroadChanges),
+            ("motion starts at once after a viewer scroll or drag", testStreamMotionStartsAtOnceAfterViewerScrollOrDrag),
+            ("motion settles only after the screen stays still", testStreamMotionSettlesOnlyAfterTheScreenStaysStill),
+            ("motion does not flap on short bursts", testStreamMotionDoesNotFlapOnShortBursts),
+            ("motion input is a scroll or a pointer moved with a button held", testStreamMotionInputIsAScrollOrAPointerMovedWithAButtonHeld)
         ]
 
         // The TIFF-to-PNG conversion is the system pasteboard's, which only
