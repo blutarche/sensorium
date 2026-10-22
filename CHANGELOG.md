@@ -17,6 +17,7 @@ once it reaches 1.0.
   so keys reach the lock screen and the host can still quit.
 - The host now types and clicks as soon as Accessibility is turned on. It no
   longer has to be quit and opened again first.
+- Quit and Try Again work again after the person at the host presses Stop.
 
 ## [0.5.3] - 2026-10-21
 
