@@ -139,12 +139,12 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
     }
 
     public func apply(qualityScale: Double) async throws {
-        try pipeline?.apply(qualityScale: qualityScale)
+        try await pipeline?.apply(qualityScale: qualityScale)
         configuration = configuration.with(qualityScale: qualityScale)
     }
 
     public func apply(keyFrameIntervalSeconds: Double) async throws {
-        try pipeline?.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+        try await pipeline?.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
         configuration = configuration.with(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
     }
 

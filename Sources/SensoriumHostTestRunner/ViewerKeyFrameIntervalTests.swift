@@ -13,7 +13,7 @@ import SensoriumHost
 @MainActor
 func runViewerKeyFrameIntervalTests() async {
     expectTheConfigurationDerivesBothBoundsFromOneInterval()
-    expectTheEncoderSessionHoldsBothBounds()
+    await expectTheEncoderSessionHoldsBothBounds()
     await expectTheCanvasMediaCarriesTheIntervalIntoEveryPipeline()
     await expectACanvasStretchesItsIntervalOnlyOnceTheViewerDeclared()
     await expectAHostScreenStretchesItsIntervalOnlyOnceTheViewerDeclared()
@@ -58,7 +58,7 @@ private func expectTheConfigurationDerivesBothBoundsFromOneInterval() {
 /// Read back from VideoToolbox, so what is checked is what the session holds
 /// rather than what this encoder meant to give it. A machine with no hardware
 /// H.264 encoder skips it, as the other real-encoder tests do.
-private func expectTheEncoderSessionHoldsBothBounds() {
+private func expectTheEncoderSessionHoldsBothBounds() async {
     guard let standard = try? VideoToolboxEncoder(configuration: .remoteDefault, frameOutcomeHandler: { _ in }) else {
         print("SKIP: this machine has no hardware H.264 encoder, so there are no key-frame bounds to read back")
         return
@@ -69,7 +69,7 @@ private func expectTheEncoderSessionHoldsBothBounds() {
         "a standard encoder opens with a key frame at least every 60 frames and every second, got \(String(describing: opening))"
     )
     do {
-        try standard.apply(keyFrameIntervalSeconds: 10)
+        try await standard.apply(keyFrameIntervalSeconds: 10)
     } catch {
         expect(false, "the running session takes a ten-second interval, got \(error)")
     }
@@ -79,7 +79,7 @@ private func expectTheEncoderSessionHoldsBothBounds() {
         "a live change sets both bounds, got \(String(describing: stretched))"
     )
     do {
-        try standard.apply(framesPerSecond: 30)
+        try await standard.apply(framesPerSecond: 30)
     } catch {
         expect(false, "the running session takes 30 fps, got \(error)")
     }
@@ -110,8 +110,8 @@ private final class IntervalRecordingPipeline: CanvasMediaPipelining {
     func start() async throws {}
     func stop() async throws {}
     func apply(framesPerSecond: Int) async throws {}
-    func apply(qualityScale: Double) throws {}
-    func apply(keyFrameIntervalSeconds: Double) throws {
+    func apply(qualityScale: Double) async throws {}
+    func apply(keyFrameIntervalSeconds: Double) async throws {
         appliedKeyFrameIntervals.append(keyFrameIntervalSeconds)
     }
     func requestKeyFrame() {}

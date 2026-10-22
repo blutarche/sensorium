@@ -502,6 +502,12 @@ public final class HostSessionCoordinator {
     /// gap would reach `restartHostScreenStreaming` at the same moment the
     /// drain's own replay is still inside it.
     private var isHostScreenCaptureRebuildInFlight = false
+    /// True while a `tickFidelity` is running. A tick waits on the encoder
+    /// for every change it makes, and an encoder can stall for minutes; a
+    /// tick that arrives meanwhile is skipped rather than queued behind it,
+    /// so a stall leaves no backlog of decisions taken against counters that
+    /// are stale by the time they run.
+    private var isFidelityTickInFlight = false
     /// A `.hostScreenModeRequest` that arrived while a rebuild owned the
     /// host-screen surface, parked here instead of blocking `handle` on
     /// that rebuild's own outcome -- blocking there would starve this
@@ -1934,6 +1940,11 @@ public final class HostSessionCoordinator {
 
     /// The clock-injected form, for a caller that has its own idea of now.
     public func tickFidelity(atSeconds now: Double) async {
+        guard !isFidelityTickInFlight else {
+            return
+        }
+        isFidelityTickInFlight = true
+        defer { isFidelityTickInFlight = false }
         for surface in CanvasSurfaceID.allCases {
             guard isStreaming[surface] else {
                 // A stopped stream leaves no evidence behind: a delta taken
