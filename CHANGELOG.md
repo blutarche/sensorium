@@ -8,6 +8,11 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Removed
+
+- The host no longer asks you to turn on Screen Sharing. Typing reaches the
+  lock screen without it.
+
 ## [0.5.5] - 2026-10-23
 
 ### Added
