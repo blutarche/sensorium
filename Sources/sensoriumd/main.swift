@@ -1676,7 +1676,7 @@ struct sensoriumd {
         }
         var arguments = Array(CommandLine.arguments.dropFirst())
         if arguments == ["request-permissions"] {
-            let result = HostPermissionRequester.request()
+            let result = HostPermissionRequester.request(screenSharing: LoopbackScreenSharingProbe())
             let launchContext = SystemTerminalLaunchDetector().launchContext
             for line in HostPermissionReport.lines(result: result, launchContext: launchContext) {
                 print(line)

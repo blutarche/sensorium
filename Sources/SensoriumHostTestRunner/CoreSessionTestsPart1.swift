@@ -775,7 +775,8 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         requestAccessibilityChecker.isTrusted = true
         let permissionRequest = HostPermissionRequester.request(
             screenCapture: ScreenCapturePermissionGate(checker: requestScreenCaptureChecker),
-            accessibility: AccessibilityPermissionGate(checker: requestAccessibilityChecker)
+            accessibility: AccessibilityPermissionGate(checker: requestAccessibilityChecker),
+            screenSharing: FakeScreenSharingProbe()
         )
         expect(
             permissionRequest.isReadyForViewerControl,
