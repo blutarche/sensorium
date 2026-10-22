@@ -135,7 +135,8 @@ func armedHostScreenController(
     displayWake: DisplayWakeController,
     log: @escaping @MainActor (String) -> Void,
     modeController: (any HostScreenModeControlling)? = nil,
-    inputInjectorFactory: (any InputInjectingFactory)? = nil
+    inputInjectorFactory: (any InputInjectingFactory)? = nil,
+    hostScreenLockStateReader: any ScreenLockStateReading = CGSessionScreenLockState()
 ) -> HostSessionController {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
@@ -156,6 +157,7 @@ func armedHostScreenController(
         hostScreenCurrentDisplaysProvider: { displays.read() },
         hostScreenModeController: modeController,
         displayWake: displayWake,
+        hostScreenLockStateReader: hostScreenLockStateReader,
         log: log
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(

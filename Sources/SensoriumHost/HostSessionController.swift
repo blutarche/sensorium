@@ -135,6 +135,7 @@ private struct HostScreenSurfaceState {
     /// it was admitted on. A sharp screen has one fixed size, so no mode is
     /// offered or changed for it.
     var isSharpScreen = false
+    var inputDiagnostics = HostScreenInputDiagnostics()
 }
 
 /// What `HostSessionController.rebindHostScreenToReplacedPlaceholder()`
@@ -494,6 +495,10 @@ public final class HostSessionController {
     /// happened -- see `releaseHeldInput`, whose lines are the only ones here
     /// that touch held input at all.
     private let log: @MainActor (String) -> Void
+    /// Read once per forwarded host-screen input event, only to say in the
+    /// session log whether that input lands on the lock screen. The injector
+    /// reads its own reader to choose where to post.
+    private let hostScreenLockStateReader: any ScreenLockStateReading
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -525,6 +530,7 @@ public final class HostSessionController {
         displayWake: DisplayWakeController? = nil,
         captureAvailability: HostCaptureAvailability = .shared,
         privateDesktopOffered: @escaping () -> Bool = { false },
+        hostScreenLockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
         log: @escaping @MainActor (String) -> Void = { print($0) }
     ) {
         self.captureAvailability = captureAvailability
@@ -552,6 +558,7 @@ public final class HostSessionController {
         self.hostScreenModeController = hostScreenModeController
         self.hostScreenModeRestorePolicy = hostScreenModeRestorePolicy
         self.displayWake = displayWake
+        self.hostScreenLockStateReader = hostScreenLockStateReader
         self.log = log
         surfaces = CanvasSurfaceSlots { _ in SurfaceState(inputInjector: inputInjector) }
     }
@@ -2537,6 +2544,16 @@ public final class HostSessionController {
         ) else {
             throw HostSessionControllerError.invalidInput
         }
+        // The injector factory is available exactly when Accessibility is
+        // granted: the host wires it behind `AccessibilityGatedInputInjectorFactory`.
+        let inputLine = surface.inputDiagnostics.input(
+            locked: hostScreenLockStateReader.isScreenLocked(),
+            accessibilityTrusted: { inputInjectorFactory?.isAvailable == true }
+        )
+        hostScreenSurface = surface
+        if let inputLine {
+            log(inputLine)
+        }
         if surface.inputInjector == nil, let injector = try? makeInjectorIfAvailable(
             displayID: surface.displayID, sessionKind: .hostScreen
         ) {
@@ -2544,6 +2561,7 @@ public final class HostSessionController {
             hostScreenSurface = surface
         }
         guard let inputInjector = surface.inputInjector else {
+            logHostScreenInputDropped(inputInjectorFactory?.isAvailable == false ? .accessibilityOff : .noInjector)
             throw HostSessionControllerError.inputInjectionUnavailable
         }
         if case .releaseAllInput = event {
@@ -2557,9 +2575,18 @@ public final class HostSessionController {
             try inputInjector.inject(event)
         } catch is InputInjectionSuppressed {
             return false
+        } catch {
+            logHostScreenInputDropped(HostScreenInputDiagnostics.DropCause(failure: error))
+            throw error
         }
         trackHostScreen(event)
         return true
+    }
+
+    private func logHostScreenInputDropped(_ cause: HostScreenInputDiagnostics.DropCause) {
+        if let line = hostScreenSurface?.inputDiagnostics.dropped(cause) {
+            log(line)
+        }
     }
 
     /// Host-screen keys go wherever the host's own focus is; that is the

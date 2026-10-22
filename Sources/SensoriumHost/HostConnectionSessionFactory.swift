@@ -63,6 +63,8 @@ public final class HostConnectionSessionFactory {
     /// Read fresh by each controller at every canvas request; see
     /// `HostSessionController`'s own property of the same name.
     private let privateDesktopOffered: () -> Bool
+    /// Where every controller this factory builds writes its own lines.
+    private let log: @MainActor (String) -> Void
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -84,7 +86,8 @@ public final class HostConnectionSessionFactory {
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
         displayWake: DisplayWakeController? = nil,
-        privateDesktopOffered: @escaping () -> Bool = { false }
+        privateDesktopOffered: @escaping () -> Bool = { false },
+        log: @escaping @MainActor (String) -> Void = { print($0) }
     ) {
         self.sessions = sessions
         self.approvedPublicKeys = approvedPublicKeys
@@ -106,6 +109,7 @@ public final class HostConnectionSessionFactory {
         self.hostScreenModeController = hostScreenModeController
         self.displayWake = displayWake
         self.privateDesktopOffered = privateDesktopOffered
+        self.log = log
     }
 
     /// `onClipboardSharingChanged` is per-call, not factory-level like
@@ -134,7 +138,8 @@ public final class HostConnectionSessionFactory {
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake,
-            privateDesktopOffered: privateDesktopOffered
+            privateDesktopOffered: privateDesktopOffered,
+            log: log
         )
     }
 }
