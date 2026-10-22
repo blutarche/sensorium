@@ -268,6 +268,14 @@ public struct VideoEncoderConfiguration: Equatable, Sendable {
         )
     }
 
+    /// This resolution at `other`'s frame rate, quality and key-frame
+    /// interval, with the bitrate those three give it.
+    func withFidelity(of other: Self) -> Self {
+        with(framesPerSecond: other.framesPerSecond)
+            .with(qualityScale: other.qualityScale)
+            .with(keyFrameIntervalSeconds: other.keyFrameIntervalSeconds)
+    }
+
     /// The same configuration at a different profile. Everything else,
     /// bitrate included, is unchanged.
     public func with(profileLevel newProfileLevel: VideoEncoderProfileLevel) -> Self {

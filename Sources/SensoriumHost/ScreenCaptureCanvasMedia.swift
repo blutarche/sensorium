@@ -222,13 +222,16 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         packetizer.beginNewEncoderGeneration()
         do {
             try await startPipeline(configuration: target)
-            configuration = target
+            // A fidelity change applied while the new pipeline was built
+            // went into `configuration`, not `target`, and that pipeline
+            // already runs it.
+            configuration = target.withFidelity(of: configuration)
         } catch {
             await stopPipeline(displayID: displayID)
             pipeline = nil
             packetizer.beginNewEncoderGeneration()
             try await startPipeline(configuration: previous)
-            configuration = previous
+            configuration = previous.withFidelity(of: configuration)
             throw CanvasMediaReconfigurationError.recoveredToPreviousScale(previous.streamScale)
         }
     }
@@ -326,5 +329,54 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         // never folded into whatever the previous scale had already recorded.
         latencyRecorder?.resetEncodeCheckpoint(for: surface)
         try await pipeline.start()
+        await catchUpFidelity(of: pipeline, builtWith: configuration)
+    }
+
+    /// Brings `pipeline` to the fidelity this media records now. It was
+    /// built from `built`, and building it waits on the encoder service: a
+    /// change applied during that wait found no pipeline to take it, so it
+    /// was only recorded. A change in resolution is not one of these; it
+    /// rebuilds the pipeline instead. A lever the pipeline refuses keeps the
+    /// value it was built with, and the configuration goes back to saying
+    /// so. Nothing is thrown: the pipeline is already streaming, as built.
+    private func catchUpFidelity(
+        of pipeline: any CanvasMediaPipelining,
+        builtWith built: VideoEncoderConfiguration
+    ) async {
+        guard self.pipeline === pipeline else {
+            return
+        }
+        let wanted = configuration
+        var kept = wanted
+        if wanted.framesPerSecond != built.framesPerSecond {
+            do {
+                try await pipeline.apply(framesPerSecond: wanted.framesPerSecond)
+            } catch {
+                kept = kept.with(framesPerSecond: built.framesPerSecond)
+                log?("frame rate \(wanted.framesPerSecond) fps did not apply to the new capture; it stays at \(built.framesPerSecond) fps: \(error)")
+            }
+        }
+        if wanted.qualityScale != built.qualityScale {
+            do {
+                try await pipeline.apply(qualityScale: wanted.qualityScale)
+            } catch {
+                kept = kept.with(qualityScale: built.qualityScale)
+                log?("quality \(wanted.qualityScale) did not apply to the new capture; it stays at \(built.qualityScale): \(error)")
+            }
+        }
+        if wanted.keyFrameIntervalSeconds != built.keyFrameIntervalSeconds {
+            do {
+                try await pipeline.apply(keyFrameIntervalSeconds: wanted.keyFrameIntervalSeconds)
+            } catch {
+                kept = kept.with(keyFrameIntervalSeconds: built.keyFrameIntervalSeconds)
+                log?("key frames every \(wanted.keyFrameIntervalSeconds) s did not apply to the new capture; they stay every \(built.keyFrameIntervalSeconds) s: \(error)")
+            }
+        }
+        // A stop, a newer build, or a change applied straight to this
+        // pipeline while it caught up owns the configuration from then on.
+        guard kept != wanted, self.pipeline === pipeline, configuration == wanted else {
+            return
+        }
+        configuration = kept
     }
 }
