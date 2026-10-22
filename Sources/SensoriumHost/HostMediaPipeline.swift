@@ -84,6 +84,9 @@ public final class HostMediaPipeline {
     /// link.
     public var droppedCaptureFrameCount: Int { admissionGate.droppedFrameCount }
 
+    /// The stream's own encoder, for this package's tests.
+    package var streamEncoder: VideoToolboxEncoder { encoder }
+
     /// The screen-capture pipeline: frames come from a ScreenCaptureKit
     /// stream over `contentFilter`.
     public convenience init(
@@ -275,7 +278,7 @@ public final class HostMediaPipeline {
     /// a step that failed is exactly when the two halves must still agree.
     public func apply(framesPerSecond: Int) async throws {
         let previousFramesPerSecond = encoder.appliedFramesPerSecond
-        try encoder.apply(framesPerSecond: framesPerSecond)
+        try await encoder.apply(framesPerSecond: framesPerSecond)
         do {
             try await capture.apply(framesPerSecond: framesPerSecond)
         } catch {
@@ -284,21 +287,21 @@ public final class HostMediaPipeline {
             // the media above has not recorded the new rate either, so the
             // next attempt re-applies both halves from the rate still in
             // force.
-            try? encoder.apply(framesPerSecond: previousFramesPerSecond)
+            try? await encoder.apply(framesPerSecond: previousFramesPerSecond)
             throw error
         }
     }
 
     /// Quality is an encoder-side lever only: capture delivers the same
     /// pixels either way, and how many bits they are worth is decided after.
-    public func apply(qualityScale: Double) throws {
-        try encoder.apply(qualityScale: qualityScale)
+    public func apply(qualityScale: Double) async throws {
+        try await encoder.apply(qualityScale: qualityScale)
     }
 
     /// An encoder-side lever only, like quality: capture delivers the same
     /// frames whatever the encoder makes of them.
-    public func apply(keyFrameIntervalSeconds: Double) throws {
-        try encoder.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+    public func apply(keyFrameIntervalSeconds: Double) async throws {
+        try await encoder.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
     }
 
     public func requestKeyFrame() {
@@ -453,18 +456,29 @@ public final class HostMediaPipeline {
         // right now must find this generation changed when it comes back, so
         // it gives its frame up instead of handing it to a stopped pipeline.
         generation += 1
-        defer {
-            // Nothing may outlive the capture session that vended it.
-            lastCapturedFrame.clear()
-            // After capture, so no frame can be admitted against a slot this
-            // pipeline has already given back. Explicit rather than left to
-            // `deinit`: the encoder's callback holds the gate, so ARC may
-            // free it long after the session that owned its slots ended.
-            // Unconditional so a capture stop that throws still releases
-            // every admitted slot rather than leaking them.
-            admissionGate.shutDown()
+        var captureStopError: (any Error)?
+        do {
+            try await capture.stop()
+        } catch {
+            captureStopError = error
         }
-        try await capture.stop()
+        // Nothing may outlive the capture session that vended it.
+        lastCapturedFrame.clear()
+        // After capture, so no frame can be admitted against a slot this
+        // pipeline has already given back. Explicit rather than left to
+        // `deinit`: the encoder's callback holds the gate, so ARC may free it
+        // long after the session that owned its slots ended. Whether or not
+        // capture stopped cleanly, so a capture stop that throws still
+        // releases every admitted slot rather than leaking them.
+        admissionGate.shutDown()
+        // After the gate, so the flush's last outcomes admit nothing new.
+        // Awaited, so the session is gone before a caller rebuilding at
+        // another resolution stands the next one up; off the main actor,
+        // because the flush waits on the encoder service.
+        await encoder.shutDown()
+        if let captureStopError {
+            throw captureStopError
+        }
     }
 }
 
@@ -478,8 +492,8 @@ public protocol CanvasMediaPipelining: AnyObject {
     func start() async throws
     func stop() async throws
     func apply(framesPerSecond: Int) async throws
-    func apply(qualityScale: Double) throws
-    func apply(keyFrameIntervalSeconds: Double) throws
+    func apply(qualityScale: Double) async throws
+    func apply(keyFrameIntervalSeconds: Double) async throws
     func requestKeyFrame()
     @discardableResult
     func refreshStillPicture() async throws -> Int?

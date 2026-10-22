@@ -38,6 +38,35 @@ public enum VideoEncodeOutcome {
     }
 }
 
+/// The VideoToolbox calls a `VideoToolboxEncoder` makes on a session it has
+/// already created: property changes on the live session, and the flush
+/// before it is invalidated. Both go through the encoder service and can wait
+/// on the hardware encoder for as long as it is stuck. Replaceable so a test
+/// can stand in for an encoder service that stops answering; production uses
+/// `live` alone.
+@available(macOS 13.0, *)
+package struct VideoToolboxSessionCalls: Sendable {
+    package var setProperty: @Sendable (VTSession, CFString, CFTypeRef?) -> OSStatus
+    package var completeFrames: @Sendable (VTCompressionSession) -> Void
+
+    package init(
+        setProperty: @escaping @Sendable (VTSession, CFString, CFTypeRef?) -> OSStatus,
+        completeFrames: @escaping @Sendable (VTCompressionSession) -> Void
+    ) {
+        self.setProperty = setProperty
+        self.completeFrames = completeFrames
+    }
+
+    package static let live = VideoToolboxSessionCalls(
+        setProperty: { session, key, value in
+            VTSessionSetProperty(session, key: key, value: value)
+        },
+        completeFrames: { session in
+            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
+        }
+    )
+}
+
 /// The submission half of an encoder, named separately so the frame path can
 /// be driven without a live `VTCompressionSession`.
 @available(macOS 13.0, *)
@@ -72,6 +101,32 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     /// and quality, so deriving from the opening values would make either
     /// lever silently undo the other.
     private var applied: VideoEncoderConfiguration
+    private var calls = VideoToolboxSessionCalls.live
+    /// Where every change to the live session runs. Each one is a round trip
+    /// to the encoder service, which waits on the hardware encoder for as long
+    /// as that is stuck -- minutes, on a locked machine. A caller on the main
+    /// actor would stall host-screen input injection, session control and
+    /// shutdown with it, so no change runs on the caller's thread. Serial, so
+    /// changes reach the session, and advance `applied`, in the order they
+    /// were asked for.
+    private let liveChangeQueue = DispatchQueue(label: "sensorium.encoder-live-changes")
+    /// Set once the session has been flushed and invalidated, by `shutDown`.
+    private var isFinished = false
+
+    /// The calls this encoder makes on its live session. For this package's
+    /// tests, which replace them to stand in for a stalled encoder service.
+    package var sessionCalls: VideoToolboxSessionCalls {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return calls
+        }
+        set {
+            stateLock.lock()
+            calls = newValue
+            stateLock.unlock()
+        }
+    }
 
     /// The frame rate currently in force, for a caller that has to put it
     /// back -- `HostMediaPipeline` reverts this encoder when the capture half
@@ -209,10 +264,82 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         }
     }
 
+    /// Emits every frame still in flight and invalidates the session, on
+    /// `liveChangeQueue`: behind any change still waiting on the encoder
+    /// service rather than racing it, and never on the caller's thread, since
+    /// the flush waits on that service too. Returns once both are done, so a
+    /// caller that builds the next encoder after this has the previous
+    /// session's frames out first. Every later call does nothing.
+    public func shutDown() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            liveChangeQueue.async { [self] in
+                finishSessionOnLiveChangeQueue()
+                continuation.resume()
+            }
+        }
+    }
+
+    private func finishSessionOnLiveChangeQueue() {
+        stateLock.lock()
+        let wasFinished = isFinished
+        isFinished = true
+        let calls = calls
+        stateLock.unlock()
+        guard !wasFinished, let session else {
+            return
+        }
+        calls.completeFrames(session)
+        VTCompressionSessionInvalidate(session)
+    }
+
+    /// For an encoder released without `shutDown`. Released wherever its last
+    /// reference went, which can be the main actor, so the flush is handed to
+    /// `liveChangeQueue` instead of run here.
     deinit {
-        if let session {
-            VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
+        guard !isFinished, let session else {
+            return
+        }
+        let finishing = FinishingSession(session: session, calls: calls, callbackBox: callbackBox)
+        liveChangeQueue.async {
+            finishing.finish()
+        }
+    }
+
+    /// What finishing a released encoder's session needs, carried to
+    /// `liveChangeQueue`. The output callback reaches `callbackBox` through an
+    /// unretained pointer, so it is held here until the flush has reported
+    /// every frame still in flight. Nothing else holds the session once the
+    /// encoder is gone, which is what makes handing it across safe.
+    private final class FinishingSession: @unchecked Sendable {
+        let session: VTCompressionSession
+        let calls: VideoToolboxSessionCalls
+        let callbackBox: CallbackBox
+
+        init(session: VTCompressionSession, calls: VideoToolboxSessionCalls, callbackBox: CallbackBox) {
+            self.session = session
+            self.calls = calls
+            self.callbackBox = callbackBox
+        }
+
+        func finish() {
+            calls.completeFrames(session)
             VTCompressionSessionInvalidate(session)
+            withExtendedLifetime(callbackBox) {}
+        }
+    }
+
+    /// Runs one change to the live session on `liveChangeQueue` and returns
+    /// once VideoToolbox has answered it, with whatever it threw.
+    private func onLiveChangeQueue(_ change: @escaping @Sendable () throws -> Void) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            liveChangeQueue.async {
+                do {
+                    try change()
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
     }
 
@@ -220,11 +347,26 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     /// session, with no rebuild: `AverageBitRate` and `DataRateLimits` are
     /// both settable on a live `VTCompressionSession`, unlike the frame
     /// dimensions, which are fixed for the session's whole life.
-    public func apply(qualityScale: Double) throws {
-        guard let session else {
+    ///
+    /// Runs on `liveChangeQueue`, never on the caller's thread.
+    public func apply(qualityScale: Double) async throws {
+        try await onLiveChangeQueue { [self] in
+            try applyOnLiveChangeQueue(qualityScale: qualityScale)
+        }
+    }
+
+    private func applyOnLiveChangeQueue(qualityScale: Double) throws {
+        guard let session = unfinishedSession() else {
             throw VideoEncoderError.propertyUpdateFailed(-1)
         }
         try applyRate(currentlyApplied().with(qualityScale: qualityScale), to: session)
+    }
+
+    /// The session, unless `shutDown` has already finished it.
+    private func unfinishedSession() -> VTCompressionSession? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return isFinished ? nil : session
     }
 
     private func currentlyApplied() -> VideoEncoderConfiguration {
@@ -260,10 +402,11 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         dataRateLimitSeconds: Double,
         to session: VTCompressionSession
     ) throws {
-        let bitRateStatus = VTSessionSetProperty(
+        let calls = sessionCalls
+        let bitRateStatus = calls.setProperty(
             session,
-            key: kVTCompressionPropertyKey_AverageBitRate,
-            value: averageBitRate as CFNumber
+            kVTCompressionPropertyKey_AverageBitRate,
+            averageBitRate as CFNumber
         )
         guard bitRateStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(bitRateStatus)
@@ -272,10 +415,10 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
             dataRateLimitBytes as CFNumber,
             dataRateLimitSeconds as CFNumber
         ]
-        let limitsStatus = VTSessionSetProperty(
+        let limitsStatus = calls.setProperty(
             session,
-            key: kVTCompressionPropertyKey_DataRateLimits,
-            value: dataRateLimits as CFArray
+            kVTCompressionPropertyKey_DataRateLimits,
+            dataRateLimits as CFArray
         )
         guard limitsStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(limitsStatus)
@@ -290,23 +433,32 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     /// in force; `MaxKeyFrameIntervalDuration` is deliberately not touched,
     /// because the interval it enforces is exactly what must not change when
     /// the frame rate does.
-    public func apply(framesPerSecond: Int) throws {
-        guard let session else {
+    ///
+    /// Runs on `liveChangeQueue`, never on the caller's thread.
+    public func apply(framesPerSecond: Int) async throws {
+        try await onLiveChangeQueue { [self] in
+            try applyOnLiveChangeQueue(framesPerSecond: framesPerSecond)
+        }
+    }
+
+    private func applyOnLiveChangeQueue(framesPerSecond: Int) throws {
+        guard let session = unfinishedSession() else {
             throw VideoEncoderError.propertyUpdateFailed(-1)
         }
         let target = currentlyApplied().with(framesPerSecond: framesPerSecond)
-        let expectedRateStatus = VTSessionSetProperty(
+        let calls = sessionCalls
+        let expectedRateStatus = calls.setProperty(
             session,
-            key: kVTCompressionPropertyKey_ExpectedFrameRate,
-            value: framesPerSecond as CFNumber
+            kVTCompressionPropertyKey_ExpectedFrameRate,
+            framesPerSecond as CFNumber
         )
         guard expectedRateStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(expectedRateStatus)
         }
-        let keyFrameIntervalStatus = VTSessionSetProperty(
+        let keyFrameIntervalStatus = calls.setProperty(
             session,
-            key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-            value: target.maxKeyFrameIntervalFrames as CFNumber
+            kVTCompressionPropertyKey_MaxKeyFrameInterval,
+            target.maxKeyFrameIntervalFrames as CFNumber
         )
         guard keyFrameIntervalStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(keyFrameIntervalStatus)
@@ -320,23 +472,32 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     ///
     /// `applied` is advanced only once both have been accepted, so a later
     /// frame-rate change keeps whichever interval the session actually has.
-    public func apply(keyFrameIntervalSeconds: Double) throws {
-        guard let session else {
+    ///
+    /// Runs on `liveChangeQueue`, never on the caller's thread.
+    public func apply(keyFrameIntervalSeconds: Double) async throws {
+        try await onLiveChangeQueue { [self] in
+            try applyOnLiveChangeQueue(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+        }
+    }
+
+    private func applyOnLiveChangeQueue(keyFrameIntervalSeconds: Double) throws {
+        guard let session = unfinishedSession() else {
             throw VideoEncoderError.propertyUpdateFailed(-1)
         }
         let target = currentlyApplied().with(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
-        let framesStatus = VTSessionSetProperty(
+        let calls = sessionCalls
+        let framesStatus = calls.setProperty(
             session,
-            key: kVTCompressionPropertyKey_MaxKeyFrameInterval,
-            value: target.maxKeyFrameIntervalFrames as CFNumber
+            kVTCompressionPropertyKey_MaxKeyFrameInterval,
+            target.maxKeyFrameIntervalFrames as CFNumber
         )
         guard framesStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(framesStatus)
         }
-        let durationStatus = VTSessionSetProperty(
+        let durationStatus = calls.setProperty(
             session,
-            key: kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
-            value: target.keyFrameIntervalSeconds as CFNumber
+            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration,
+            target.keyFrameIntervalSeconds as CFNumber
         )
         guard durationStatus == noErr else {
             throw VideoEncoderError.propertyUpdateFailed(durationStatus)
