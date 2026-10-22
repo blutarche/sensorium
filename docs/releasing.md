@@ -72,6 +72,12 @@ The script refuses to continue when:
 
 It uploads the zips, the disk images and `SHA256SUMS` first, then the manifest and its signature in a separate call. It never replaces a file that is already on the release.
 
+## The Fedora package
+
+The workflow `release-linux` builds the Fedora package and attaches it, with its checksum, when a release is published. It refuses a tag that does not match `VERSION`.
+
+To fill in an older release, open Actions, choose `release-linux`, pick Run workflow and enter the tag, for example `v1.2.3`. The workflow checks out that tag and replaces the package on the release if one is already there.
+
 ## Forks
 
 Set `SENSORIUM_RELEASE_CERT_LEAF` to the leaf of your own certificate, for example `H"0123..."`. Use your own update key and public key.
