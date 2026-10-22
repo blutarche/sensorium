@@ -100,6 +100,7 @@ struct SensoriumHostTestRunner {
             { await runHostIdentityFailureTests() },
             { runHostIdentityReplacementTests() },
             { await runHostSetupPermissionButtonCaseTests() },
+            { await runHostScreenSharingAlertTests() },
             { await runHostAutoLoginSwitchTests() },
             { runHostPrivateDesktopSwitchTests() },
             { runHostLocalNetworkSwitchTests() },

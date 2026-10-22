@@ -1,4 +1,4 @@
-/// Names exactly which of the two host-pollable permissions changed, so a log
+/// Names exactly which host-pollable permission or service changed, so a log
 /// line can say what changed and what to do about it. Remote Desktop
 /// (macOS 14+) is deliberately absent here: Apple exposes no public API to
 /// query it, so nothing in this file can honestly monitor it — see
@@ -6,6 +6,7 @@
 public enum HostPermissionKind: String, Equatable, Sendable {
     case screenRecording = "Screen Recording"
     case accessibility = "Accessibility"
+    case screenSharing = "Screen Sharing"
 }
 
 public enum HostPermissionTransition: Equatable, Sendable {
@@ -16,6 +17,13 @@ public enum HostPermissionTransition: Equatable, Sendable {
     /// reads correctly even torn out of surrounding log context.
     public var logLine: String {
         switch self {
+        case .lost(.screenSharing):
+            // Not a permission: nothing was revoked, and the switch lives in
+            // Sharing rather than Privacy & Security.
+            return "Screen Sharing is off. Until you turn it on in System Settings > General > Sharing, " +
+                "your other machine cannot type at this machine\u{2019}s lock screen."
+        case .recovered(.screenSharing):
+            return "Screen Sharing is on."
         case let .lost(kind):
             // The row to switch on reads `Sensorium Host`, from the host
             // bundle's CFBundleName. The person at this machine told to look
@@ -50,14 +58,18 @@ public final class HostPermissionMonitor {
     private let onTransition: (HostPermissionTransition) -> Void
     private var lastScreenCaptureStatus: ScreenCapturePermissionStatus
     private var lastAccessibilityStatus: AccessibilityPermissionStatus
+    private let screenSharing: any ScreenSharingProbing
+    private var lastScreenSharingStatus: ScreenSharingStatus = .notChecked
 
     public init(
         screenCapture: ScreenCapturePermissionGate,
         accessibility: AccessibilityPermissionGate,
+        screenSharing: any ScreenSharingProbing,
         onTransition: @escaping (HostPermissionTransition) -> Void
     ) {
         self.screenCapture = screenCapture
         self.accessibility = accessibility
+        self.screenSharing = screenSharing
         self.onTransition = onTransition
         lastScreenCaptureStatus = screenCapture.currentStatus
         lastAccessibilityStatus = accessibility.currentStatus
@@ -73,6 +85,22 @@ public final class HostPermissionMonitor {
         if accessibilityStatus != lastAccessibilityStatus {
             lastAccessibilityStatus = accessibilityStatus
             onTransition(accessibilityStatus == .granted ? .recovered(.accessibility) : .lost(.accessibility))
+        }
+    }
+
+    /// Probes Screen Sharing off the main actor -- a loopback connect can
+    /// block for up to its timeout -- and reports a change the same way
+    /// `poll()` does. The first call always reports, since nothing was known
+    /// before it. Kept apart from `poll()` because it suspends.
+    public func pollScreenSharing() async {
+        let probe = screenSharing
+        let isOn = await Task.detached(priority: .utility) {
+            probe.isScreenSharingOn()
+        }.value
+        let status: ScreenSharingStatus = isOn ? .on : .off
+        if status != lastScreenSharingStatus {
+            lastScreenSharingStatus = status
+            onTransition(isOn ? .recovered(.screenSharing) : .lost(.screenSharing))
         }
     }
 }

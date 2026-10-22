@@ -3,6 +3,7 @@ import Foundation
 public struct HostPermissionRequestResult: Equatable {
     public let screenCapture: ScreenCapturePermissionStatus
     public let accessibility: AccessibilityPermissionStatus
+    public let screenSharing: ScreenSharingStatus
 
     public var isReadyForViewerControl: Bool {
         screenCapture == .granted && accessibility == .granted
@@ -10,10 +11,12 @@ public struct HostPermissionRequestResult: Equatable {
 
     public init(
         screenCapture: ScreenCapturePermissionStatus,
-        accessibility: AccessibilityPermissionStatus
+        accessibility: AccessibilityPermissionStatus,
+        screenSharing: ScreenSharingStatus = .notChecked
     ) {
         self.screenCapture = screenCapture
         self.accessibility = accessibility
+        self.screenSharing = screenSharing
     }
 }
 
@@ -22,11 +25,14 @@ public struct HostPermissionRequestResult: Equatable {
 public enum HostPermissionRequester {
     public static func request(
         screenCapture: ScreenCapturePermissionGate = ScreenCapturePermissionGate(),
-        accessibility: AccessibilityPermissionGate = AccessibilityPermissionGate()
+        accessibility: AccessibilityPermissionGate = AccessibilityPermissionGate(),
+        screenSharing: any ScreenSharingProbing
     ) -> HostPermissionRequestResult {
         HostPermissionRequestResult(
             screenCapture: screenCapture.requestApproval(),
-            accessibility: accessibility.requestApproval()
+            accessibility: accessibility.requestApproval(),
+            // Blocking is fine here: this is a one-shot command, not the GUI.
+            screenSharing: screenSharing.isScreenSharingOn() ? .on : .off
         )
     }
 }

@@ -212,7 +212,7 @@ A locked host is unlocked the way it would be at the machine. While a live host-
 
 ### 9.1 Gating
 
-Unlocking needs nothing beyond the live host-screen session itself. It opens no separate connection and asks for no separate arming record. A session canvas cannot reach the lock screen: its input is dropped while the machine is locked. Out of scope entirely: FileVault's pre-boot, cold-boot unlock screen, which no session reaches.
+Unlocking needs nothing beyond the live host-screen session itself. It opens no separate connection and asks for no separate arming record. Screen Sharing should still be on, as §9.3 explains. A session canvas cannot reach the lock screen: its input is dropped while the machine is locked. Out of scope entirely: FileVault's pre-boot, cold-boot unlock screen, which no session reaches.
 
 ### 9.2 Lock state
 
@@ -220,7 +220,9 @@ The host rereads its own lock state every two seconds for as long as the host-sc
 
 ### 9.3 Unused unlock request
 
-The wire format still defines `hostScreenUnlockRequest` and `hostScreenUnlockResult`. The host still answers them through an RFB client for the built-in screen-sharing service on loopback (`RFBLockScreenUnlocker`). No shipping viewer sends that request, so unlocking never depends on Screen Sharing being on. See `docs/protocol.md` for the messages.
+The wire format still defines `hostScreenUnlockRequest` and `hostScreenUnlockResult`. The host still answers them through an RFB client for the built-in screen-sharing service on loopback (`RFBLockScreenUnlocker`). No shipping viewer sends that request. See `docs/protocol.md` for the messages.
+
+Typing at the lock screen has only been tested with Screen Sharing on, so the host asks the person at it to turn Screen Sharing on. It finds out whether it is on by connecting to 127.0.0.1:5900 and closing the connection at once. See `docs/macos-permissions.md`.
 
 ### 9.4 Unused wrong-guess budget
 

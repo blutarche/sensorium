@@ -409,7 +409,8 @@ extension HostOperatorStatus {
     }
 
     /// Screen Recording first: without it the other machine sees nothing at all,
-    /// which outranks not being able to type into what it cannot see.
+    /// which outranks not being able to type into what it cannot see. Screen
+    /// Sharing last: without it only typing at the lock screen is in doubt.
     private static func alerts(for permissions: HostPermissionRequestResult) -> [HostOperatorPermissionAlert] {
         var alerts: [HostOperatorPermissionAlert] = []
         if permissions.screenCapture != .granted {
@@ -430,6 +431,17 @@ extension HostOperatorStatus {
                 windowButtonTitle: "Open Accessibility settings",
                 detail: "Until you allow Accessibility, your other machine cannot type or click.",
                 settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            ))
+        }
+        // Only once a probe has found it off: not having looked yet is not a
+        // reason to send anyone into System Settings.
+        if permissions.screenSharing == .off {
+            alerts.append(HostOperatorPermissionAlert(
+                kind: .screenSharing,
+                title: "Open Sharing Settings",
+                windowButtonTitle: "Open Sharing settings",
+                detail: "Until you turn on Screen Sharing, your other machine cannot type at this machine\u{2019}s lock screen.",
+                settingsURL: "x-apple.systempreferences:com.apple.preferences.sharing?Services_ScreenSharing"
             ))
         }
         return alerts
@@ -664,30 +676,30 @@ public final class HostOperatorStatusStore {
     }
 
     /// Folds a transition the running host detected into the status, without
-    /// re-reading either gate: the monitor has already done that read.
+    /// re-reading any gate or the probe: the monitor has already done that read.
     public func apply(_ transition: HostPermissionTransition) {
+        var screenCapture = status.permissions.screenCapture
+        var accessibility = status.permissions.accessibility
+        var screenSharing = status.permissions.screenSharing
         switch transition {
         case .lost(.screenRecording):
-            status.permissions = HostPermissionRequestResult(
-                screenCapture: .approvalRequired,
-                accessibility: status.permissions.accessibility
-            )
+            screenCapture = .approvalRequired
         case .recovered(.screenRecording):
-            status.permissions = HostPermissionRequestResult(
-                screenCapture: .granted,
-                accessibility: status.permissions.accessibility
-            )
+            screenCapture = .granted
         case .lost(.accessibility):
-            status.permissions = HostPermissionRequestResult(
-                screenCapture: status.permissions.screenCapture,
-                accessibility: .approvalRequired
-            )
+            accessibility = .approvalRequired
         case .recovered(.accessibility):
-            status.permissions = HostPermissionRequestResult(
-                screenCapture: status.permissions.screenCapture,
-                accessibility: .granted
-            )
+            accessibility = .granted
+        case .lost(.screenSharing):
+            screenSharing = .off
+        case .recovered(.screenSharing):
+            screenSharing = .on
         }
+        status.permissions = HostPermissionRequestResult(
+            screenCapture: screenCapture,
+            accessibility: accessibility,
+            screenSharing: screenSharing
+        )
         notify()
     }
 
