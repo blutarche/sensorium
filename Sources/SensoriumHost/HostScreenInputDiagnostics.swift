@@ -45,21 +45,37 @@ struct HostScreenInputDiagnostics {
 
     /// The line for a forwarded event arriving while the screen is `locked`,
     /// or `nil` when there is nothing new to say.
-    mutating func input(locked: Bool, accessibilityTrusted: () -> Bool) -> String? {
+    mutating func input(locked: Bool, accessibilityTrusted: () -> Bool) -> HostScreenInputLogLine? {
         defer { lastLockState = locked }
         let tap = locked ? "posting at the HID tap" : "posting at the session tap"
         guard let lastLockState else {
             let accessibility = accessibilityTrusted() ? "on" : "off"
-            return "host screen input: \(locked ? "locked" : "unlocked"), \(tap), Accessibility \(accessibility)"
+            return HostScreenInputLogLine(
+                "host screen input: \(locked ? "locked" : "unlocked"), \(tap), Accessibility \(accessibility)"
+            )
         }
         guard locked != lastLockState else { return nil }
-        return "host screen input: now \(locked ? "locked" : "unlocked"), \(tap)"
+        return HostScreenInputLogLine("host screen input: now \(locked ? "locked" : "unlocked"), \(tap)")
     }
 
     /// The line for input dropped for `cause`, or `nil` when this session
     /// has already said so.
-    mutating func dropped(_ cause: DropCause) -> String? {
+    mutating func dropped(_ cause: DropCause) -> HostScreenInputLogLine? {
         guard loggedDrops.insert(cause).inserted else { return nil }
-        return "host screen input dropped: \(cause.words)"
+        return HostScreenInputLogLine("host screen input dropped: \(cause.words)")
+    }
+}
+
+/// One of the fixed-wording lines above, ready for the session log.
+///
+/// The unified log shows this line without private data enabled, which is
+/// safe only because its wording is fixed. The initializer is private to
+/// this file, so nothing outside `HostScreenInputDiagnostics` can mark a
+/// line this way and an arbitrary string can never become one.
+public struct HostScreenInputLogLine: Sendable {
+    public let text: String
+
+    fileprivate init(_ text: String) {
+        self.text = text
     }
 }

@@ -495,6 +495,9 @@ public final class HostSessionController {
     /// happened -- see `releaseHeldInput`, whose lines are the only ones here
     /// that touch held input at all.
     private let log: @MainActor (String) -> Void
+    /// Where the fixed-wording host-screen input diagnostics go, when they
+    /// are kept apart from `log`; `log` carries them as plain text otherwise.
+    private let inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)?
     /// Read once per forwarded host-screen input event, only to say in the
     /// session log whether that input lands on the lock screen. The injector
     /// reads its own reader to choose where to post.
@@ -531,7 +534,8 @@ public final class HostSessionController {
         captureAvailability: HostCaptureAvailability = .shared,
         privateDesktopOffered: @escaping () -> Bool = { false },
         hostScreenLockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
-        log: @escaping @MainActor (String) -> Void = { print($0) }
+        log: @escaping @MainActor (String) -> Void = { print($0) },
+        inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil
     ) {
         self.captureAvailability = captureAvailability
         self.privateDesktopOffered = privateDesktopOffered
@@ -560,6 +564,7 @@ public final class HostSessionController {
         self.displayWake = displayWake
         self.hostScreenLockStateReader = hostScreenLockStateReader
         self.log = log
+        self.inputDiagnosticLog = inputDiagnosticLog
         surfaces = CanvasSurfaceSlots { _ in SurfaceState(inputInjector: inputInjector) }
     }
 
@@ -2552,7 +2557,7 @@ public final class HostSessionController {
         )
         hostScreenSurface = surface
         if let inputLine {
-            log(inputLine)
+            logInputDiagnostic(inputLine)
         }
         if surface.inputInjector == nil, let injector = try? makeInjectorIfAvailable(
             displayID: surface.displayID, sessionKind: .hostScreen
@@ -2585,7 +2590,15 @@ public final class HostSessionController {
 
     private func logHostScreenInputDropped(_ cause: HostScreenInputDiagnostics.DropCause) {
         if let line = hostScreenSurface?.inputDiagnostics.dropped(cause) {
-            log(line)
+            logInputDiagnostic(line)
+        }
+    }
+
+    private func logInputDiagnostic(_ line: HostScreenInputLogLine) {
+        if let inputDiagnosticLog {
+            inputDiagnosticLog(line)
+        } else {
+            log(line.text)
         }
     }
 
