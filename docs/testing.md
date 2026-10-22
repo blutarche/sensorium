@@ -39,6 +39,36 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 | `Scripts/test-make-dmg-layout.sh` | The Finder window file `Scripts/make-dmg-layout.swift` writes into a scratch disk image: icon positions, window size and chrome, the background picture it points at, and that it names no path or disk of the machine that built it |
 | `Scripts/test-package-linux.sh` | The Fedora package `Scripts/package-linux.sh` builds: its desktop entry, its metainfo, its icons, the libraries it asks for, and that removing it leaves nothing behind. Runs only inside the CI Fedora container, where installing a package is safe |
 | `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-machine boundaries, and do not regress to an earlier, stale claim |
+| `Scripts/test-clean-build-output.py` | `Scripts/clean-build-output.py` against throwaway repositories with a bare remote and agent worktrees: what it removes, every guard that keeps a worktree or a build directory, and that it never follows a symbolic link |
+
+## Cleaning up agent worktrees
+
+Coding agents work in git worktrees under `.claude/worktrees/agent-*`, each on a `worktree-agent-*` branch. A finished agent's worktree stays behind, and its `.build` grows past a gigabyte.
+
+```sh
+python3 Scripts/clean-build-output.py [--apply] [--min-idle MINUTES] [--min-free SIZE] [--quiet]
+```
+
+Run it from anywhere inside the repository. Without `--apply` it only prints what it would do, why it keeps each item, and how much space it would reclaim.
+
+It removes an agent worktree, then its branch, only when all of these hold:
+
+| Guard | Kept when |
+|---|---|
+| Lock | The worktree is locked. A running agent's worktree is |
+| Changes | `git status` shows a modified, staged or untracked file |
+| Commits | Its HEAD is on neither `main` nor any remote-tracking branch |
+| Processes | A process works in it or holds a file open in it |
+| Build lock | A SwiftPM build holds the lock on one of its `.build` directories |
+| Idle | A file in it changed within `--min-idle` minutes, 60 by default. `.build` does not count |
+
+It uses `git worktree remove` and `git branch -d`, so git refuses anything unmerged on its own as well. Worktrees outside `.claude/worktrees` are never touched.
+
+With `--min-free 40G`, and only while the disk has less than that free, it also deletes gitignored `.build` and `DerivedData` directories in unlocked agent worktrees and in the main checkout. Each one is kept while a process works in its checkout or holds a file open in it, while SwiftPM holds its lock, or while a file in it changed within `--min-idle` minutes. Your own shell sitting in the main checkout keeps the main checkout's build output.
+
+SwiftPM locks a scratch directory for the whole build, with a lock file in the build's temporary directory rather than inside `.build`. The script takes that lock itself while it deletes, so a build that starts meanwhile waits.
+
+A guard it cannot evaluate keeps the item and makes the script exit 1.
 
 ## Stand-in host for latency benchmarks
 
