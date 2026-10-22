@@ -215,23 +215,4 @@ func runHostScreenSharingAlertTests() async {
         reportLines.contains("Screen Sharing: off"),
         "request-permissions reports Screen Sharing's state when it is known -- got: \(reportLines)"
     )
-
-    let requestScreenCaptureChecker = FakeScreenCapturePermissionChecker()
-    requestScreenCaptureChecker.isAuthorized = true
-    let requestAccessibilityChecker = FakeAccessibilityPermissionChecker()
-    requestAccessibilityChecker.isTrusted = true
-    let requestProbe = FakeScreenSharingProbe()
-    let requested = HostPermissionRequester.request(
-        screenCapture: ScreenCapturePermissionGate(checker: requestScreenCaptureChecker),
-        accessibility: AccessibilityPermissionGate(checker: requestAccessibilityChecker),
-        screenSharing: requestProbe
-    )
-    expect(
-        requested.screenSharing == .off && requestProbe.callsOnMainThread.count == 1,
-        "request-permissions probes Screen Sharing once and carries what it found -- got: \(requested.screenSharing)"
-    )
-    expect(
-        requested.isReadyForViewerControl,
-        "Screen Sharing off does not make request-permissions report the host unready"
-    )
 }
