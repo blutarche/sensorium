@@ -795,7 +795,6 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
         let permissionMonitor = HostPermissionMonitor(
             screenCapture: ScreenCapturePermissionGate(checker: monitorScreenCaptureChecker),
             accessibility: AccessibilityPermissionGate(checker: monitorAccessibilityChecker),
-            screenSharing: FakeScreenSharingProbe(),
             onTransition: { permissionTransitions.append($0) }
         )
         permissionMonitor.poll()

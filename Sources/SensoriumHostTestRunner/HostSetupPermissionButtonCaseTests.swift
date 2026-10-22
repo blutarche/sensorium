@@ -58,21 +58,4 @@ func runHostSetupPermissionButtonCaseTests() async {
 
         print("PASS: the Accessibility permission button in the host window reads sentence case")
     }
-
-    do {
-        // Screen Sharing off: window button reads sentence case and opens Sharing
-        let button = permissionButton(in: controller(
-            permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted, screenSharing: .off)
-        ))
-        expect(
-            !button.isHidden && button.attributedTitle.string == "Open Sharing settings",
-            "the Screen Sharing case gets the same sentence-case button -- got: \(button.attributedTitle.string)"
-        )
-        expect(
-            button.identifier?.rawValue == "x-apple.systempreferences:com.apple.preferences.sharing?Services_ScreenSharing",
-            "the Screen Sharing button opens Sharing at Screen Sharing -- got: \(button.identifier?.rawValue ?? "nil")"
-        )
-
-        print("PASS: the Screen Sharing button in the host window reads sentence case")
-    }
 }

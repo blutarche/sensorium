@@ -563,18 +563,6 @@ MainActor.assumeIsolated {
                     accessibility: .granted
                 )
             )
-        ),
-        (
-            "host-menu-panel-6-screen-sharing-off",
-            "Screen Sharing found off, nobody connected: typing at the lock screen is the one thing in doubt",
-            HostOperatorStatus(
-                connection: .hosting(address: "203.0.113.42"),
-                permissions: HostPermissionRequestResult(
-                    screenCapture: .granted,
-                    accessibility: .granted,
-                    screenSharing: .off
-                )
-            )
         )
     ]
     for (prefix, description, status) in operatorStates {
@@ -759,19 +747,6 @@ MainActor.assumeIsolated {
             HostOperatorStatus(
                 connection: .hosting(address: "203.0.113.42"),
                 permissions: HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .granted)
-            ),
-            noRows
-        ),
-        (
-            "host-window-8b-screen-sharing-off",
-            "Screen Sharing found off, with a button that opens Sharing at Screen Sharing",
-            HostOperatorStatus(
-                connection: .hosting(address: "203.0.113.42"),
-                permissions: HostPermissionRequestResult(
-                    screenCapture: .granted,
-                    accessibility: .granted,
-                    screenSharing: .off
-                )
             ),
             noRows
         ),
