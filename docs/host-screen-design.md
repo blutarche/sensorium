@@ -212,7 +212,7 @@ A locked host is unlocked the way it would be at the machine. While a live host-
 
 ### 9.1 Gating
 
-Unlocking needs nothing beyond the live host-screen session itself. It opens no separate connection and asks for no separate arming record. A session canvas cannot reach the lock screen: its input is dropped while the machine is locked. Out of scope entirely: FileVault's pre-boot, cold-boot unlock screen, which no session reaches.
+Unlocking needs nothing beyond the live host-screen session itself. It opens no separate connection and asks for no separate arming record. Screen Sharing should still be on, as §9.3 explains. A session canvas cannot reach the lock screen: its input is dropped while the machine is locked. Out of scope entirely: FileVault's pre-boot, cold-boot unlock screen, which no session reaches.
 
 ### 9.2 Lock state
 
