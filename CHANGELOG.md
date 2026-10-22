@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-10-23
+
 ### Removed
 
 - The host no longer asks you to turn on Screen Sharing. Typing reaches the
@@ -586,6 +588,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.6]: https://github.com/blutarche/sensorium/releases/tag/v0.5.6
 [0.5.5]: https://github.com/blutarche/sensorium/releases/tag/v0.5.5
 [0.5.4]: https://github.com/blutarche/sensorium/releases/tag/v0.5.4
 [0.5.3]: https://github.com/blutarche/sensorium/releases/tag/v0.5.3
