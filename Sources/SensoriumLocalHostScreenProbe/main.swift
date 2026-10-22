@@ -1,5 +1,6 @@
 import AppKit
 import CoreGraphics
+import CoreImage
 import CryptoKit
 import Foundation
 import Network
@@ -18,6 +19,7 @@ import SensoriumHost
 ///   SensoriumLocalHostScreenProbe arm <arming-file-path>
 ///   SensoriumLocalHostScreenProbe wait-idle <timeout-seconds>
 ///   SensoriumLocalHostScreenProbe enter <tailnet-host> <port>
+///   SensoriumLocalHostScreenProbe lock-typing <tailnet-host> <port> <screenshot-directory>
 ///
 /// `arm` stands in for the arming ceremony a person performs in the host app's
 /// own interface (docs/host-screen-design.md §2.1). No wire message can create
@@ -86,6 +88,9 @@ struct SensoriumLocalHostScreenProbe {
         case "enter":
             guard arguments.count == 3 else { usageAndExit() }
             try await enter(host: arguments[1], rawPort: arguments[2])
+        case "lock-typing":
+            guard arguments.count == 4 else { usageAndExit() }
+            try await lockTyping(host: arguments[1], rawPort: arguments[2], shotDirectory: arguments[3])
         default:
             usageAndExit()
         }
@@ -473,6 +478,108 @@ struct SensoriumLocalHostScreenProbe {
             .first
     }
 
+    private static func screenIsLocked() -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+        return session["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
+    /// Proves the viewer's keys reach the host's lock screen password field.
+    /// It locks this machine if it is not locked already, types five letters
+    /// (never Return, so nothing is submitted) with no click first, and
+    /// compares the lower-centre of the streamed frame before and after: the
+    /// lock screen centres its password field horizontally in the lower part
+    /// of the display, and typing changes it. The machine is left locked.
+    private static func lockTyping(host: String, rawPort: String, shotDirectory: String) async throws {
+        let port = try endpointPort(rawPort)
+        let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
+        let approval = try JSONDecoder().decode(SavedApproval.self, from: Data(contentsOf: approvalURL()))
+        // A locked machine's display may be asleep and so not active; fall
+        // back to any online one.
+        guard let display = targetDisplay() ?? DisplayInventory.online().first else {
+            throw HostScreenProbeError.noTargetDisplay
+        }
+        let connection = NetworkControlConnection(
+            host: NWEndpoint.Host(host),
+            port: port,
+            tlsCertificateHash: approval.tlsCertificateHash,
+            transport: .tcpLocalVerification
+        )
+        try await connection.start()
+        let session = ClientSessionController(
+            transport: connection,
+            identity: identity,
+            pinnedHostPublicKey: approval.hostPublicKey
+        )
+        let window = try ClientCanvasWindowController(title: "Sensorium Lock Typing Probe", session: session)
+        await session.setCanvasObserver(window.canvasObserver())
+        let outcome = try await session.connect(
+            deviceName: deviceName,
+            target: .hostScreen(displayIdentity: HostScreenDisplayIdentity(display).wireStableIdentifier)
+        )
+        guard case let .hostScreen(geometry, _, _) = outcome else {
+            throw HostScreenProbeError.sessionIsNotHostScreen
+        }
+        print("host_screen_geometry=\(geometry.logicalWidth)x\(geometry.logicalHeight)@\(geometry.backingScale)")
+        await window.show()
+
+        let runner = ClientSessionRunner(connection: connection, session: session, window: window)
+        let latest = LatestDecodedFrame()
+        try runner.start(onDecodedFrame: { frame in latest.set(frame.pixelBuffer) })
+        guard await pollFrames(atLeast: 1, within: 10, runner: runner) else {
+            throw HostScreenProbeError.noPresentedFrames
+        }
+
+        let viewport = ClientViewportController(
+            mapper: VirtualCanvasInputMapper(
+                logicalWidth: Double(geometry.logicalWidth),
+                logicalHeight: Double(geometry.logicalHeight)
+            ),
+            pointerSink: session
+        )
+        let router = CanvasSurfaceEventRouter(viewport: viewport)
+        _ = await router.route(.boundsChanged(width: Double(geometry.logicalWidth), height: Double(geometry.logicalHeight)))
+        await viewport.canvasDidBecomeReady()
+
+        print("started_locked=\(screenIsLocked() ? "yes" : "no")")
+        if !screenIsLocked() {
+            let delivery = await viewport.sendKeySequence(ShortcutStripAction.lockScreen.events())
+            print("lock_chord_route=\(describe(delivery))")
+            _ = await pollUntil(seconds: 15) { screenIsLocked() }
+        }
+        guard screenIsLocked() else { throw HostScreenProbeError.screenNeverLocked }
+        print("screen_locked=yes")
+        // The lock screen takes a few seconds to finish drawing its password field.
+        try await Task.sleep(for: .seconds(8))
+
+        let directory = URL(fileURLWithPath: shotDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard let before = latest.get() else { throw HostScreenProbeError.noPresentedFrames }
+        let beforeFrame = try LockScreenFrame(before)
+        try beforeFrame.writePNG(to: directory.appendingPathComponent("lock-before-typing.png"))
+
+        // ANSI z, x, c, v, b.
+        for code: UInt16 in [6, 7, 8, 9, 11] {
+            _ = await router.route(.key(keyCode: code, isDown: true, modifiers: []))
+            _ = await router.route(.key(keyCode: code, isDown: false, modifiers: []))
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        try await Task.sleep(for: .seconds(3))
+        guard let after = latest.get() else { throw HostScreenProbeError.noPresentedFrames }
+        let afterFrame = try LockScreenFrame(after)
+        try afterFrame.writePNG(to: directory.appendingPathComponent("lock-after-typing.png"))
+
+        let changed = beforeFrame.passwordRegionDiffers(from: afterFrame)
+        print("lock_typing_field_changed=\(changed ? "yes" : "no")")
+
+        let escape: UInt16 = 53
+        _ = await router.route(.key(keyCode: escape, isDown: true, modifiers: []))
+        _ = await router.route(.key(keyCode: escape, isDown: false, modifiers: []))
+        try await Task.sleep(for: .seconds(1))
+        runner.stop()
+        await session.disconnect(reason: "lock-typing-probe-complete")
+        if !changed { throw HostScreenProbeError.lockFieldUnchanged }
+    }
+
     /// `PointerDelivery` carries no description of its own; this names each
     /// case (and the point a `.delivered` one actually carried) for the one
     /// diagnostic line printed when a route is anything else.
@@ -721,4 +828,80 @@ private enum HostScreenProbeError: Error {
     case framesDidNotResumeAfterModeChange
     case displayModeDidNotMatchRequest
     case displayNotRestored
+    case screenNeverLocked
+    case lockFieldUnchanged
+}
+
+/// The newest decoded frame, written from the runner's decode callback and
+/// read from the probe's task.
+private final class LatestDecodedFrame: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer: CVPixelBuffer?
+
+    func set(_ newBuffer: CVPixelBuffer) {
+        lock.lock()
+        buffer = newBuffer
+        lock.unlock()
+    }
+
+    func get() -> CVPixelBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        return buffer
+    }
+}
+
+/// One streamed frame copied into RGBA bytes, so two frames can be compared
+/// without depending on the decoder's pixel format.
+private struct LockScreenFrame {
+    let width: Int
+    let height: Int
+    private let pixels: [UInt8]
+    private let image: CIImage
+
+    init(_ buffer: CVPixelBuffer) throws {
+        image = CIImage(cvPixelBuffer: buffer)
+        width = CVPixelBufferGetWidth(buffer)
+        height = CVPixelBufferGetHeight(buffer)
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw HostScreenProbeError.noPresentedFrames
+        }
+        CIContext().render(
+            image,
+            toBitmap: &bytes,
+            rowBytes: width * 4,
+            bounds: image.extent,
+            format: .RGBA8,
+            colorSpace: colorSpace
+        )
+        pixels = bytes
+    }
+
+    func writePNG(to url: URL) throws {
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw HostScreenProbeError.noPresentedFrames
+        }
+        try CIContext().writePNGRepresentation(of: image, to: url, format: .RGBA8, colorSpace: colorSpace)
+    }
+
+    /// Compares the bottom-centre third of both frames, where the lock screen
+    /// puts its password field. Typing draws dots there; the clock and any
+    /// wallpaper motion sit elsewhere or change too little to count.
+    func passwordRegionDiffers(from other: LockScreenFrame) -> Bool {
+        guard width == other.width, height == other.height else { return true }
+        let channelThreshold = 24
+        let minimumChangedPixels = 20
+        var changed = 0
+        for y in (height * 2 / 3)..<height {
+            for x in (width / 3)..<(width * 2 / 3) {
+                let offset = (y * width + x) * 4
+                for channel in 0..<3 where abs(Int(pixels[offset + channel]) - Int(other.pixels[offset + channel])) > channelThreshold {
+                    changed += 1
+                    break
+                }
+            }
+        }
+        return changed >= minimumChangedPixels
+    }
 }
