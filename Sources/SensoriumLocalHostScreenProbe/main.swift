@@ -140,7 +140,7 @@ struct SensoriumLocalHostScreenProbe {
     /// window on is only printed, never armed for.
     private static func arm(armingFilePath: String) throws {
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
-        guard let display = targetDisplay() else {
+        guard let display = targetDisplay() ?? DisplayInventory.online().first else {
             throw HostScreenProbeError.noTargetDisplay
         }
         HostScreenArmingStore(url: URL(fileURLWithPath: armingFilePath)).arm(
@@ -525,7 +525,9 @@ struct SensoriumLocalHostScreenProbe {
         let runner = ClientSessionRunner(connection: connection, session: session, window: window)
         let latest = LatestDecodedFrame()
         try runner.start(onDecodedFrame: { frame in latest.set(frame.pixelBuffer) })
-        guard await pollFrames(atLeast: 1, within: 10, runner: runner) else {
+        // Decoded, not presented: a locked host's lock screen covers this
+        // probe's own window on the same machine, so nothing is ever presented.
+        guard await pollUntil(seconds: 10, condition: { latest.get() != nil }) else {
             throw HostScreenProbeError.noPresentedFrames
         }
 
@@ -885,16 +887,17 @@ private struct LockScreenFrame {
         try CIContext().writePNGRepresentation(of: image, to: url, format: .RGBA8, colorSpace: colorSpace)
     }
 
-    /// Compares the bottom-centre third of both frames, where the lock screen
-    /// puts its password field. Typing draws dots there; the clock and any
-    /// wallpaper motion sit elsewhere or change too little to count.
+    /// Compares only the band where the lock screen draws its password
+    /// field: centred, between 88% and 95% of the frame's height. The
+    /// animated avatar sits just above that band and must stay out of it, or
+    /// its motion alone would read as typed dots.
     func passwordRegionDiffers(from other: LockScreenFrame) -> Bool {
         guard width == other.width, height == other.height else { return true }
         let channelThreshold = 24
         let minimumChangedPixels = 20
         var changed = 0
-        for y in (height * 2 / 3)..<height {
-            for x in (width / 3)..<(width * 2 / 3) {
+        for y in (height * 88 / 100)..<(height * 95 / 100) {
+            for x in (width * 44 / 100)..<(width * 56 / 100) {
                 let offset = (y * width + x) * 4
                 for channel in 0..<3 where abs(Int(pixels[offset + channel]) - Int(other.pixels[offset + channel])) > channelThreshold {
                     changed += 1

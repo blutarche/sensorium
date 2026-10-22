@@ -32,9 +32,6 @@ PACKAGE="$ROOT/Scripts/package-apps.sh"
 PACKAGED_HOST_APP="$ROOT/Artifacts/Sensorium/Sensorium Host.app"
 HOST_APP="${HOST_APP:-$PACKAGED_HOST_APP}"
 PROBE="$ROOT/.build/arm64-apple-macosx/release/SensoriumLocalHostScreenProbe"
-# The host asks the person at the machine before sharing a screen when somebody
-# used it recently, and nobody can answer for them, so this waits the rule out.
-IDLE_WAIT_SECONDS=900
 HOST_PID=""
 
 if [ "${SENSORIUM_ALLOW_LOCK:-}" != 1 ]; then
@@ -124,16 +121,8 @@ env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" arm "$ARMING_F
   || fail "the probe could not write the host's arming record"
 test -f "$ARMING_FILE" || fail "no arming record was written at $ARMING_FILE"
 
-set +e
-env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" wait-idle "$IDLE_WAIT_SECONDS" >> "$PROBE_LOG" 2>&1
-idle_status=$?
-set -e
-if [ "$idle_status" = 3 ]; then
-  trap - ERR
-  tail -n 1 "$PROBE_LOG" >&2
-  exit 3
-fi
-[ "$idle_status" = 0 ] || fail "the probe could not read this machine's local-input idle time"
+# No idle wait: asking first is off in a fresh HOME, so the host never prompts
+# the person at the machine before sharing this screen.
 
 : > "$HOST_LOG"
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args serve "$ADDRESS" 7783 --transport tcp-local-verification &
