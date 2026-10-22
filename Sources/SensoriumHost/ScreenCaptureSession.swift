@@ -243,7 +243,7 @@ public final class ScreenCaptureSession: NSObject, SCStreamOutput {
 
     /// The one place an `SCStreamConfiguration` is built, so every field this
     /// capture depends on is chosen in exactly one place.
-    private static func streamConfiguration(
+    nonisolated package static func streamConfiguration(
         configuration: VideoEncoderConfiguration,
         captureTarget: CaptureCursorPolicy.Target
     ) -> SCStreamConfiguration {
@@ -252,7 +252,17 @@ public final class ScreenCaptureSession: NSObject, SCStreamOutput {
         streamConfiguration.height = configuration.captureHeight
         streamConfiguration.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(configuration.framesPerSecond))
         streamConfiguration.queueDepth = configuration.maxQueueDepth
-        streamConfiguration.pixelFormat = kCVPixelFormatType_32BGRA
+        // The encoder's native input is video-range 4:2:0, so ScreenCaptureKit
+        // does the colour conversion in its own hardware and the encoder skips
+        // converting a packed frame. The matrix is named rather than left to
+        // the default because the encoded stream carries no colour
+        // description for this input: both viewers read an untagged stream as
+        // video range with the high-definition matrix, and a capture that
+        // converted with another matrix would shift hues with nothing in the
+        // stream to say so. `colorSpaceName` stays unset, so the display's own
+        // colour space is kept, as it was for a packed capture.
+        streamConfiguration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        streamConfiguration.colorMatrix = CGDisplayStream.yCbCrMatrix_ITU_R_709_2
         streamConfiguration.showsCursor = CaptureCursorPolicy.showsCursor(for: captureTarget)
         streamConfiguration.capturesAudio = false
         if #available(macOS 14.0, *) {

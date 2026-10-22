@@ -121,6 +121,7 @@ struct SensoriumHostTestRunner {
             { await runApprovedDeviceStoreSafetyTests() },
             { await runFakeHostByteChannelTests() },
             { await runCaptureCursorPolicyTests() },
+            { await runCaptureStreamColorTests() },
             { await runHostMediaPipelineFrameSourceTests() },
             { await runEncoderStallTests() },
             { await runEncoderCreationStallTests() },
