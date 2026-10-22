@@ -65,6 +65,9 @@ public final class HostConnectionSessionFactory {
     private let privateDesktopOffered: () -> Bool
     /// Where every controller this factory builds writes its own lines.
     private let log: @MainActor (String) -> Void
+    /// Where every controller's fixed-wording input diagnostics go, when
+    /// kept apart from `log`.
+    private let inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)?
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -87,7 +90,8 @@ public final class HostConnectionSessionFactory {
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
         displayWake: DisplayWakeController? = nil,
         privateDesktopOffered: @escaping () -> Bool = { false },
-        log: @escaping @MainActor (String) -> Void = { print($0) }
+        log: @escaping @MainActor (String) -> Void = { print($0) },
+        inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil
     ) {
         self.sessions = sessions
         self.approvedPublicKeys = approvedPublicKeys
@@ -110,6 +114,7 @@ public final class HostConnectionSessionFactory {
         self.displayWake = displayWake
         self.privateDesktopOffered = privateDesktopOffered
         self.log = log
+        self.inputDiagnosticLog = inputDiagnosticLog
     }
 
     /// `onClipboardSharingChanged` is per-call, not factory-level like
@@ -139,7 +144,8 @@ public final class HostConnectionSessionFactory {
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake,
             privateDesktopOffered: privateDesktopOffered,
-            log: log
+            log: log,
+            inputDiagnosticLog: inputDiagnosticLog
         )
     }
 }

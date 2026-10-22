@@ -20,5 +20,15 @@ func runHostSessionLogLineTests() {
         HostSessionLog.unifiedLogLine("host screen: armed without asking first") == "host screen: armed without asking first",
         "a bare line reaches the unified log unchanged"
     )
+    expect(
+        HostSessionLog.printedLine("Sensorium host bound 100.64.1.7:4433; tailnet sources only")
+            == "Sensorium host bound 100.64.1.7:4433; tailnet sources only",
+        "a line that opens with the host name and no colon is printed as it is, which scripts waiting on it rely on"
+    )
+    expect(
+        HostSessionLog.unifiedLogLine("Sensorium host bound 100.64.1.7:4433; tailnet sources only")
+            == "bound 100.64.1.7:4433; tailnet sources only",
+        "the unified log carries a colon-less line without the host name too"
+    )
     print("PASS: the session log prints each line under one host prefix and logs it without one")
 }

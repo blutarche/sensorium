@@ -16,6 +16,7 @@ func runHostScreenInputDiagnosticsTests() async {
     dropsAreLoggedOncePerCause()
     noLineCarriesTypedContent()
     factoryForwardsItsLogToEveryController()
+    diagnosticLinesTakeThePublicPath()
 }
 
 private let unlockedFirstLine = "host screen input: unlocked, posting at the session tap, Accessibility on"
@@ -176,6 +177,43 @@ private func factoryForwardsItsLogToEveryController() {
     print("PASS: every controller a session factory builds writes to the log the factory was given")
 }
 
+/// The input diagnostics are fixed wording, so the unified log shows them
+/// without private data enabled; every other session line stays redacted.
+@MainActor
+private func diagnosticLinesTakeThePublicPath() {
+    let session = DiagnosticsSession(locked: true, routesDiagnosticsApart: true)
+    session.send(.key(keyCode: 0, isDown: true, modifiers: []))
+    session.injector.failure = CoreGraphicsInputInjectorError.eventCreationFailed
+    session.send(.key(keyCode: 0, isDown: true, modifiers: []))
+    expect(
+        session.diagnostics.map(\.text) == [lockedFirstLine, eventNotCreatedDropLine],
+        "a controller given a diagnostic log hands it the input diagnostics, got \(session.diagnostics.map(\.text))"
+    )
+    expect(session.lines.isEmpty, "the input diagnostics do not also reach the ordinary session log, got \(session.lines)")
+
+    var written: [(HostSessionLog.UnifiedLogPrivacy, String)] = []
+    for line in session.diagnostics {
+        HostSessionLog.record(line) { written.append(($0, $1)) }
+    }
+    expect(
+        written.map(\.0) == [.readable, .readable] && written.map(\.1) == [lockedFirstLine, eventNotCreatedDropLine],
+        "each input diagnostic is written to the unified log as readable without private data, got \(written)"
+    )
+
+    written = []
+    HostSessionLog.record("Sensorium host: offered 1 host screens to Kestrel Laptop Pro") { written.append(($0, $1)) }
+    HostSessionLog.record("accepted a connection from 100.64.1.7") { written.append(($0, $1)) }
+    expect(
+        written.map(\.0) == [.redacted, .redacted],
+        "an ordinary session line is written to the unified log as private, got \(written)"
+    )
+    expect(
+        written.map(\.1) == ["offered 1 host screens to Kestrel Laptop Pro", "accepted a connection from 100.64.1.7"],
+        "an ordinary line reaches the unified log without the host prefix, got \(written)"
+    )
+    print("PASS: input diagnostics are written to the unified log as readable and every other session line as private")
+}
+
 /// An admitted host-screen session whose lock state, Accessibility and
 /// injector a test controls, recording every line logged after admission.
 @MainActor
@@ -184,12 +222,14 @@ private final class DiagnosticsSession {
     let injector: FailingInputInjector
     private let controller: HostSessionController
     private var logged: [String] = []
+    private var diagnosticLines: [HostScreenInputLogLine] = []
     private var admitted = false
 
     var lines: [String] { logged }
+    var diagnostics: [HostScreenInputLogLine] { diagnosticLines }
     var injected: [SensoriumInputEvent] { injector.events }
 
-    init(locked: Bool, accessibilityTrusted: Bool = true) {
+    init(locked: Bool, accessibilityTrusted: Bool = true, routesDiagnosticsApart: Bool = false) {
         lockState = FlippableLockState(locked: locked)
         let list = FakeDisplayList([monitorSnapshot(id: 2)])
         let wake = DisplayWakeController(power: FakeDisplayPower(), displays: { list.read() }, wait: { _ in })
@@ -198,6 +238,11 @@ private final class DiagnosticsSession {
         let injector = FailingInputInjector()
         self.injector = injector
         var record: (String) -> Void = { _ in }
+        var recordDiagnostic: (HostScreenInputLogLine) -> Void = { _ in }
+        var diagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)?
+        if routesDiagnosticsApart {
+            diagnosticLog = { recordDiagnostic($0) }
+        }
         controller = armedHostScreenController(
             displays: list,
             displayWake: wake,
@@ -206,7 +251,8 @@ private final class DiagnosticsSession {
                 gate: AccessibilityPermissionGate(checker: checker),
                 inner: FixedInputInjectorFactory(injector: injector)
             ),
-            hostScreenLockStateReader: lockState
+            hostScreenLockStateReader: lockState,
+            inputDiagnosticLog: diagnosticLog
         )
         guard case let .hostScreenList(entries, _) = try! controller.offerHostScreenList(),
               let entry = entries.first,
@@ -215,6 +261,7 @@ private final class DiagnosticsSession {
             return
         }
         record = { [weak self] line in self?.logged.append(line) }
+        recordDiagnostic = { [weak self] line in self?.diagnosticLines.append(line) }
         admitted = true
     }
 

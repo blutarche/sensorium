@@ -516,7 +516,7 @@ struct sensoriumd {
                 screenCapture: ScreenCapturePermissionGate(),
                 accessibility: AccessibilityPermissionGate(),
                 onTransition: { transition in
-                    print("Sensorium host: \(transition.logLine)")
+                    HostSessionLog.record("Sensorium host: \(transition.logLine)")
                     operatorBox.status.apply(transition)
                 }
             )
@@ -703,7 +703,7 @@ struct sensoriumd {
             onPairingRequested: { deviceName in
                 operatorBox.status.recordPairingRequest(deviceName: deviceName) {
                     let code = pairing.issueCode()
-                    print("Sensorium host: \(deviceName) asked to pair. Pairing code: \(code)")
+                    HostSessionLog.record("Sensorium host: \(deviceName) asked to pair. Pairing code: \(code)")
                     return (code, Date().addingTimeInterval(PairingAuthority.defaultLifetime))
                 }
             },
@@ -738,7 +738,8 @@ struct sensoriumd {
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake,
             privateDesktopOffered: privateDesktopOffered,
-            log: { HostSessionLog.record($0) }
+            log: { HostSessionLog.record($0) },
+            inputDiagnosticLog: { HostSessionLog.record($0) }
         )
 
         if verb == "pair" {
@@ -843,7 +844,7 @@ struct sensoriumd {
                             // while nobody was at this machine; the menu bar
                             // below only shows what is happening now.
                             if let line = peerLog.log.line(for: peer, from: connectionToken) {
-                                print("Sensorium host: \(line)")
+                                HostSessionLog.record("Sensorium host: \(line)")
                             }
                             operatorBox.status.apply(peer, from: connectionToken)
                             if case .closed = peer {
@@ -934,7 +935,7 @@ struct sensoriumd {
                             droppedFrameCount: session.droppedVideoFrameCount,
                             frameCounts: latencyRecorder.frameCounts
                         ) {
-                            print("Sensorium host: \(summary)")
+                            HostSessionLog.record("Sensorium host: \(summary)")
                         }
                         try? hostTrace?.write(latencyRecorder.metrics)
                     },
@@ -942,7 +943,7 @@ struct sensoriumd {
                     // looking at a picture that stopped updating; its
                     // reconnect driver then brings a working stream back.
                     onStreamUnrecoverable: { [weak session] reason in
-                        print("Sensorium host: ending session: \(reason)")
+                        HostSessionLog.record("Sensorium host: ending session: \(reason)")
                         session?.stop()
                     },
                     hostScreenMediaFactory: hostScreenAccountableMedia.makeMedia,
@@ -970,7 +971,7 @@ struct sensoriumd {
             // transport binds the tailnet address with BSD sockets.
             print("Transport: TCP local-verification mode. Sessions stay Ed25519-authenticated; TLS is absent.")
             let listener = try PosixTailnetListener(tailnetAddress: tailnetAddress, port: port)
-            print("Sensorium host bound \(listener.boundAddress):\(listener.boundPort); tailnet sources only")
+            HostSessionLog.record("Sensorium host bound \(listener.boundAddress):\(listener.boundPort); tailnet sources only")
             // Registered before any session, and teardowns run in
             // registration order: a quit stops accepting first, so no
             // connection can arrive while the live ones are coming down.
@@ -1000,10 +1001,10 @@ struct sensoriumd {
                 case let .ready(boundPort):
                     Task { @MainActor in
                         if localNetworkConnections?.allowsLocalNetwork == true {
-                            print("Sensorium host listening on port \(boundPort) on every interface; "
+                            HostSessionLog.record("Sensorium host listening on port \(boundPort) on every interface; "
                                 + "tailnet sources and sources on this host\u{2019}s own subnets")
                         } else {
-                            print("Sensorium host bound \(tailnetAddress):\(boundPort); tailnet sources only")
+                            HostSessionLog.record("Sensorium host bound \(tailnetAddress):\(boundPort); tailnet sources only")
                         }
                         onListenerReady?(HostListenerReady(
                             address: tailnetAddress,
@@ -1014,17 +1015,17 @@ struct sensoriumd {
                         operatorBox.status.setConnection(.hosting(address: tailnetAddress))
                     }
                 case let .failed(reason):
-                    print("Sensorium host could not bind \(tailnetAddress):\(port): \(reason)")
+                    HostSessionLog.record("Sensorium host could not bind \(tailnetAddress):\(port): \(reason)")
                     Task { @MainActor in
                         operatorBox.status.reportProblem("Could not start hosting on \(tailnetAddress): \(reason)")
                         onBindFailure()
                     }
                 case .cancelled:
-                    print("Sensorium host listener canceled")
+                    HostSessionLog.record("Sensorium host listener canceled")
                 case .rebuilding:
-                    print("Sensorium host: rebuilding the listener on \(tailnetAddress):\(port)")
+                    HostSessionLog.record("Sensorium host: rebuilding the listener on \(tailnetAddress):\(port)")
                 case let .refusedSource(address):
-                    print("Sensorium host: \(HostOperatorLog.sourceRefused(address: address))")
+                    HostSessionLog.record("Sensorium host: \(HostOperatorLog.sourceRefused(address: address))")
                 }
             } onConnection: { connection in
                 guard let localNetworkConnections,
@@ -1116,9 +1117,9 @@ struct sensoriumd {
         case .notNeeded:
             break
         case .locked:
-            print("Sensorium host: locked the screen at launch -- no local input since before this process started")
+            HostSessionLog.record("Sensorium host: locked the screen at launch -- no local input since before this process started")
         case .lockFailed:
-            print("Sensorium host: no local input since before this process started, but the relock post failed")
+            HostSessionLog.record("Sensorium host: no local input since before this process started, but the relock post failed")
         case .skippedForUpdateRelaunch:
             HostUpdateLog.record("this launch replaces an earlier host for an update, so the screen is left as it was")
         }
@@ -1134,7 +1135,7 @@ struct sensoriumd {
             registering: autoLoginRegistering,
             store: autoLoginDefaultAppliedStore
         ) {
-            print("Sensorium host: could not register to open at login: \(HostOperatorLog.describe(error))")
+            HostSessionLog.record("Sensorium host: could not register to open at login: \(HostOperatorLog.describe(error))")
         }
 
         let operatorBox = HostOperatorBox(
@@ -1431,17 +1432,17 @@ struct sensoriumd {
                             onListenerReady: onListenerReady
                         )
                     } catch is HostStartupError {
-                        print("Sensorium host failed to start: the file holding this machine\u{2019}s own key could not be read.")
+                        HostSessionLog.record("Sensorium host failed to start: the file holding this machine\u{2019}s own key could not be read.")
                         operatorBox.status.reportIdentityProblem(.cannotReadKey)
                     } catch {
-                        print("Sensorium host failed to start: \(error)")
+                        HostSessionLog.record("Sensorium host failed to start: \(error)")
                         operatorBox.status.reportProblem("Sensorium Host could not start hosting: \(HostOperatorLog.describe(error))")
                     }
                 case .none:
                     operatorBox.status.reportProblem(HostStartupProblemCopy.noTailnetAddress)
                 }
             case let .unsupported(reason):
-                print("Sensorium host: \(reason)")
+                HostSessionLog.record("Sensorium host: \(reason)")
                 operatorBox.status.reportProblem(reason)
             }
         }
@@ -1570,7 +1571,7 @@ struct sensoriumd {
                     listenerBox.listener?.setAllowsLocalNetwork(false)
                     localNetworkConnections.setAllowsLocalNetwork(false)
                 }
-                print("Sensorium host: connections from this network are now \(isOn ? "allowed" : "refused")")
+                HostSessionLog.record("Sensorium host: connections from this network are now \(isOn ? "allowed" : "refused")")
             },
             installsUpdatesAutomatically: installsUpdatesAutomatically,
             onToggleAutomaticUpdates: { isOn in
@@ -1616,7 +1617,7 @@ struct sensoriumd {
         mainMenu = HostMainMenuController(quit: { application.terminate(nil) }, checkForUpdates: checkForUpdates)
         mainMenu?.install(into: application)
         installTerminationSignalHandlers {
-            print("Sensorium host: stopping, and releasing every virtual display this host created")
+            HostSessionLog.record("Sensorium host: stopping, and releasing every virtual display this host created")
             currentSession.session?.stop()
             operatorBox.canvas.releaseEverything()
             Foundation.exit(0)
@@ -1775,7 +1776,7 @@ struct sensoriumd {
             // main actor cannot run a canvas-creating task queued during
             // `beginHosting` until these handlers are already installed.
             installTerminationSignalHandlers {
-                print("Sensorium host: stopping, and releasing every virtual display this host created")
+                HostSessionLog.record("Sensorium host: stopping, and releasing every virtual display this host created")
                 currentSession.session?.stop()
                 operatorBox.canvas.releaseEverything()
                 Foundation.exit(0)
@@ -1795,7 +1796,7 @@ struct sensoriumd {
             // specific reason; nothing more to say before exiting.
             Foundation.exit(1)
         } catch {
-            print("Sensorium host failed to start: \(error)")
+            HostSessionLog.record("Sensorium host failed to start: \(error)")
             Foundation.exit(1)
         }
     }
