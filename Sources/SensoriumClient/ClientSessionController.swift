@@ -609,18 +609,50 @@ public actor ClientSessionController {
             await transport.close()
             return
         }
-        _ = try? await transport.send(.input(.releaseAllInput, surfaceID: nil))
-        // Each opened surface holds its own input state on the host; releasing
-        // only the primary would leave the second canvas's input stuck.
-        if secondCanvasDisplayID != nil {
-            _ = try? await transport.send(.input(.releaseAllInput, surfaceID: Self.secondarySurfaceID))
-        }
-        _ = try? await transport.send(.goodbye(reason: reason))
+        await sendFarewell(reason: reason, releasesSecondSurface: secondCanvasDisplayID != nil)
         canvasDisplayID = nil
         secondCanvasDisplayID = nil
         hostScreenGeometry = nil
         await canvasObserver?.canvasDidEnd()
         await transport.close()
+    }
+
+    /// Long enough for a few small writes on a link that is still alive, short
+    /// enough that a host which has already hung up cannot hold the viewer's
+    /// own Quit or Try again behind writes that will never return.
+    private static let farewellWriteDeadlineSeconds = 1.0
+
+    /// Sends the input release and the goodbye, and returns when they are
+    /// written or when the deadline passes, whichever comes first. The writes
+    /// run unstructured so a stalled one is never awaited past the deadline;
+    /// closing the transport afterwards fails it and ends that task.
+    private func sendFarewell(reason: String, releasesSecondSurface: Bool) async {
+        let transport = self.transport
+        let secondarySurfaceID = Self.secondarySurfaceID
+        let deadline = Self.farewellWriteDeadlineSeconds
+        await withCheckedContinuation { (finished: CheckedContinuation<Void, Never>) in
+            let resumed = FarewellResumeFlag()
+            let writes = Task {
+                _ = try? await transport.send(.input(.releaseAllInput, surfaceID: nil))
+                // Each opened surface holds its own input state on the host;
+                // releasing only the primary would leave the second canvas's
+                // input stuck.
+                if releasesSecondSurface {
+                    _ = try? await transport.send(.input(.releaseAllInput, surfaceID: secondarySurfaceID))
+                }
+                _ = try? await transport.send(.goodbye(reason: reason))
+                if resumed.claim() {
+                    finished.resume()
+                }
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(deadline))
+                writes.cancel()
+                if resumed.claim() {
+                    finished.resume()
+                }
+            }
+        }
     }
 
     public func sendPointer(_ point: CanvasInputPoint) async throws {
@@ -836,5 +868,22 @@ public actor ClientSessionController {
         case .releaseAllInput, .pointerCaptureChanged:
             return true
         }
+    }
+}
+
+/// Work exactly one of two racing tasks may do. `claim()` is `true` for the
+/// first caller and `false` for every one after it.
+private final class FarewellResumeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !claimed else {
+            return false
+        }
+        claimed = true
+        return true
     }
 }

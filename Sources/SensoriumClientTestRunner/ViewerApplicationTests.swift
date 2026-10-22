@@ -326,8 +326,18 @@ actor GatedControlConnection: ClientControlConnection {
     nonisolated func beginHostSilenceWatch() {}
     nonisolated func endHostSilenceWatch() {}
     nonisolated func enqueue(_ packet: SensoriumTransportPacket) {}
-    func send(_ message: SensoriumMessage) async throws {}
-    func send(_ packet: SensoriumTransportPacket) async throws {}
+    /// Once set, every send parks and never returns, as a write to a peer that
+    /// has already gone does. `close()` deliberately leaves them parked.
+    private var stallsSends = false
+    func stallSends() { stallsSends = true }
+    func send(_ message: SensoriumMessage) async throws { await parkIfStalled() }
+    func send(_ packet: SensoriumTransportPacket) async throws { await parkIfStalled() }
+
+    private func parkIfStalled() async {
+        if stallsSends {
+            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+        }
+    }
 
     func receiveWirePacket() async throws -> SensoriumTransportPacket {
         if !pending.isEmpty {
@@ -427,6 +437,8 @@ func testViewerApplicationTests() async {
     await testViewerApplicationFailedDialReturnsToTheList()
     await testViewerApplicationReportsEachSessionRun()
     await testViewerApplicationLiveSessionAndHostEnding()
+    await testViewerApplicationPanelQuitAfterHostStopWithStalledSends()
+    await testViewerApplicationPanelTryAgainAfterHostStopWithStalledSends()
     await testViewerApplicationQuitLatchStopsTheEventLoop()
     await testViewerApplicationEnterURLSelectsWithoutDialling()
     await testViewerApplicationBareEnterURLIsTheEnterVerb()
@@ -628,6 +640,101 @@ private func testViewerApplicationLiveSessionAndHostEnding() async {
     expect(await harness.settle(until: { harness.eventLoop.stopCount == 1 }), "and quitting ends the loop")
     expect(window.closeCount > 0, "and the session's window is closed behind it")
     print("PASS: a session that goes live shows its window, hides the list, and says who ended it")
+}
+
+/// Takes a session live, then has the host stop it while every send the viewer
+/// makes from then on never completes, and hands the ended session's panel to
+/// `body`.
+@MainActor
+private func withHostStoppedSessionWhoseSendsStall(
+    _ body: (ViewerApplicationHarness, FakeViewerSessionWindow, GatedControlConnection) async -> Void
+) async {
+    let hostIdentity = try! DeviceIdentity.generate()
+    let machine = savedTestMachine(hostPublicKey: hostIdentity.publicKey, startTargetPreference: .virtualDisplay)
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("sensorium-viewer-app-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let viewerIdentity = try! FileDeviceIdentityStore(
+        url: directory.appendingPathComponent("device-identity.json")
+    ).loadOrCreate()
+    let signature = try! hostIdentity.sign(SensoriumFrameCodec.canvasReadyTranscript(
+        displayID: 42,
+        logicalWidth: 1920,
+        logicalHeight: 1200,
+        clientPublicKey: viewerIdentity.publicKey,
+        surfaceID: 0
+    ))
+    let connection = GatedControlConnection(responses: [
+        .control(.hostScreenRefused(reason: "host-screen-not-armed")),
+        .control(.canvasReady(
+            displayID: 42,
+            logicalWidth: 1920,
+            logicalHeight: 1200,
+            hostSignature: signature,
+            surfaceID: 0,
+            hostName: "Studio Mac"
+        ))
+    ])
+    let harness = ViewerApplicationHarness(directory: directory) { connection }
+    defer { harness.cleanUp() }
+    harness.store.save(machine)
+
+    await harness.viewer.run(arguments: [])
+    expect(await harness.settle(until: { harness.launch.showCount > 0 }), "the launch window is shown")
+    harness.launch.onConnect?(machine)
+    expect(
+        await harness.settle(until: { !harness.windowFactory.made.isEmpty }),
+        "the canvas window is built for the attempt"
+    )
+    let window = harness.windowFactory.made[0]
+    expect(
+        await harness.settle(until: { !window.appliedStatuses.isEmpty }),
+        "and the connect is reported to it"
+    )
+    window.reportDecodedFrame()
+    expect(
+        await harness.settle(until: { window.showCount > 0 }),
+        "the canvas window goes on screen at the first picture"
+    )
+
+    await connection.stallSends()
+    await connection.push(.control(.goodbye(reason: GoodbyeReason.stoppedByHost)))
+    expect(
+        await harness.settle(until: { window.appliedStatuses.last?.headline == "Stopped at Studio." }),
+        "the panel says the host stopped it, got \(String(describing: window.appliedStatuses.last?.headline))"
+    )
+    await body(harness, window, connection)
+}
+
+/// The viewer's farewell writes go to a host that has already hung up, so they
+/// never return. The panel's Quit must still end the app.
+@MainActor
+private func testViewerApplicationPanelQuitAfterHostStopWithStalledSends() async {
+    await withHostStoppedSessionWhoseSendsStall { harness, window, _ in
+        window.onSessionAction?(.quit)
+        expect(
+            await harness.settle(until: { harness.eventLoop.stopCount == 1 }),
+            "Quit on the host-stopped panel ends the loop although the farewell writes never return"
+        )
+        expect(window.closeCount > 0, "and the session's window is closed behind it")
+    }
+    print("PASS: Quit after a host Stop works even when the viewer's farewell writes never complete")
+}
+
+/// Same stall: Try Again has to dial, not only repaint the panel.
+@MainActor
+private func testViewerApplicationPanelTryAgainAfterHostStopWithStalledSends() async {
+    await withHostStoppedSessionWhoseSendsStall { harness, window, _ in
+        let dialsBefore = harness.transports.dialCount
+        window.onSessionAction?(.tryAgain)
+        expect(
+            await harness.settle(until: { harness.transports.dialCount > dialsBefore }),
+            "Try Again on the host-stopped panel dials again, got \(harness.transports.dialCount) dials "
+                + "after \(dialsBefore)"
+        )
+    }
+    print("PASS: Try Again after a host Stop dials again even when the viewer's farewell writes never complete")
 }
 
 /// docs/ux-spec.md line 65: closing the launch window is the same choice as
