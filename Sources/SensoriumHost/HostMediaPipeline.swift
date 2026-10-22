@@ -72,6 +72,8 @@ public final class HostMediaPipeline {
     /// actor that may have torn this pipeline down while it was away, and a
     /// frame belonging to a pipeline that has stopped is not sent.
     private var generation = 0
+    /// Whether `start` has asked capture to start.
+    private var hasStartedCapture = false
 
     /// Frames dropped before they ever reached the encoder because capture
     /// outran it, or outran the link: captures wait while this surface's send
@@ -100,8 +102,8 @@ public final class HostMediaPipeline {
         captureTarget: CaptureCursorPolicy.Target,
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
         encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Bool
-    ) throws {
-        try self.init(
+    ) async throws {
+        try await self.init(
             surface: surface,
             configuration: configuration,
             latencyRecorder: latencyRecorder,
@@ -116,7 +118,11 @@ public final class HostMediaPipeline {
 
     /// `frameSourceFactory` is called once, with the closures that feed this
     /// pipeline's capture bookkeeping and encoder admission.
-    public init(
+    ///
+    /// Returns once the encoder's session is ready. It is created off the
+    /// main actor -- see `VideoToolboxEncoder.make` -- so the actor is free
+    /// while this waits.
+    public convenience init(
         surface: CanvasSurfaceID,
         configuration: VideoEncoderConfiguration = .remoteDefault,
         latencyRecorder: HostMediaLatencyRecorder? = nil,
@@ -126,7 +132,35 @@ public final class HostMediaPipeline {
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
         frameSourceFactory: HostFrameSourceFactory,
         encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Bool
-    ) throws {
+    ) async throws {
+        try await self.init(
+            surface: surface,
+            configuration: configuration,
+            latencyRecorder: latencyRecorder,
+            sessionAdmissionGate: sessionAdmissionGate,
+            focus: focus,
+            sendFeedback: sendFeedback,
+            streamStoppedHandler: streamStoppedHandler,
+            frameSourceFactory: frameSourceFactory,
+            encoderSessionCalls: .live,
+            encodedFrameHandler: encodedFrameHandler
+        )
+    }
+
+    /// The same, with `encoderSessionCalls` in place in the encoder from its
+    /// session's creation on. For this package's tests.
+    package init(
+        surface: CanvasSurfaceID,
+        configuration: VideoEncoderConfiguration = .remoteDefault,
+        latencyRecorder: HostMediaLatencyRecorder? = nil,
+        sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
+        focus: CanvasFocusTracker = CanvasFocusTracker(),
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
+        streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
+        frameSourceFactory: HostFrameSourceFactory,
+        encoderSessionCalls: VideoToolboxSessionCalls,
+        encodedFrameHandler: @escaping @Sendable (CMSampleBuffer) -> Bool
+    ) async throws {
         // Bounds the frames outstanding between capture and
         // VTCompressionSessionEncodeFrame: without it, a capture callback that
         // outruns the encoder (true even with kVTCompressionPropertyKey_-
@@ -156,8 +190,9 @@ public final class HostMediaPipeline {
         )
         // Every outcome releases the frame's slot; only the successful ones
         // go onward.
-        let encoder = try VideoToolboxEncoder(
+        let encoder = try await VideoToolboxEncoder.make(
             configuration: configuration,
+            sessionCalls: encoderSessionCalls,
             frameOutcomeHandler: { outcome in
                 admissionGate.frameFinished(outcome)
             }
@@ -204,8 +239,8 @@ public final class HostMediaPipeline {
         packetizer: H264SampleBufferPacketizer = H264SampleBufferPacketizer(),
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
         encodedPacketHandler: @escaping @Sendable (EncodedVideoFramePacket) -> Bool
-    ) throws {
-        try self.init(
+    ) async throws {
+        try await self.init(
             surface: surface,
             configuration: configuration,
             latencyRecorder: latencyRecorder,
@@ -232,8 +267,8 @@ public final class HostMediaPipeline {
         streamStoppedHandler: (@Sendable (Error) -> Void)? = nil,
         frameSourceFactory: HostFrameSourceFactory,
         encodedPacketHandler: @escaping @Sendable (EncodedVideoFramePacket) -> Bool
-    ) throws {
-        try self.init(
+    ) async throws {
+        try await self.init(
             surface: surface,
             configuration: configuration,
             latencyRecorder: latencyRecorder,
@@ -448,19 +483,27 @@ public final class HostMediaPipeline {
     }
 
     public func start() async throws {
+        // Before the await, so a stop that arrives while capture is still
+        // coming up, or after it failed to, still stops it.
+        hasStartedCapture = true
         try await capture.start()
     }
 
+    /// Also how a pipeline that was built and never started is discarded:
+    /// its capture is left alone, since there is none to stop, and its
+    /// encoder is shut down.
     public func stop() async throws {
         // Before anything else: a still-screen refresh encoding off the actor
         // right now must find this generation changed when it comes back, so
         // it gives its frame up instead of handing it to a stopped pipeline.
         generation += 1
         var captureStopError: (any Error)?
-        do {
-            try await capture.stop()
-        } catch {
-            captureStopError = error
+        if hasStartedCapture {
+            do {
+                try await capture.stop()
+            } catch {
+                captureStopError = error
+            }
         }
         // Nothing may outlive the capture session that vended it.
         lastCapturedFrame.clear()

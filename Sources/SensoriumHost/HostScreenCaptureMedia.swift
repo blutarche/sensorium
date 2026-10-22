@@ -30,7 +30,9 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
     private let focus: CanvasFocusTracker
     private let admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>
     private let sendFeedback: VideoSendFeedback
-    private var pipeline: HostMediaPipeline?
+    private var pipeline: (any CanvasMediaPipelining)?
+    private let pipelineFactory: HostMediaPipelineFactory
+    private let contentFilterProvider: (UInt32) async throws -> SCContentFilter
     private let packetizer: H264SampleBufferPacketizer
     private var displayID: UInt32?
     private var packetHandler: (@Sendable (EncodedVideoFramePacket) -> Bool)?
@@ -45,6 +47,11 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
     /// until `setCaptureStoppedHandler` is called, which
     /// `HostSessionCoordinator` does before this pipeline is ever started.
     private var captureStoppedHandler: (@Sendable () -> Void)?
+    /// Bumped for every pipeline built and at `stop`. Building a pipeline
+    /// waits on the encoder service, for minutes when the hardware encoder
+    /// is stuck, and a stop or a newer build that comes in meanwhile wins:
+    /// the pipeline that arrives late is discarded, never installed.
+    private var pipelineGeneration = 0
 
     /// `configuration` is the caller's own, already sized for the real
     /// target display -- see `HostScreenEncoderSizing`. This type never
@@ -56,7 +63,7 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
     /// replaces -- injects the same instance into every `HostScreenCaptureMedia`
     /// it builds for that session, so a display-mode change that discards
     /// this object and builds another keeps one packet sequence across both.
-    public init(
+    public convenience init(
         configuration: VideoEncoderConfiguration,
         latencyRecorder: HostMediaLatencyRecorder? = nil,
         focus: CanvasFocusTracker = CanvasFocusTracker(),
@@ -65,6 +72,50 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         sequencer: VideoPacketSequencer = VideoPacketSequencer(),
         log: (@Sendable (String) -> Void)? = nil
     ) {
+        self.init(
+            configuration: configuration,
+            latencyRecorder: latencyRecorder,
+            focus: focus,
+            admissionGate: admissionGate,
+            sendFeedback: sendFeedback,
+            sequencer: sequencer,
+            log: log,
+            contentFilterProvider: { displayID in
+                try await HostScreenCapture.contentFilter(displayID: displayID)
+            },
+            pipelineFactory: { contentFilter, surface, configuration, latencyRecorder, sessionAdmissionGate, focus, sendFeedback, captureTarget, packetizer, streamStoppedHandler, encodedPacketHandler in
+                try await HostMediaPipeline(
+                    contentFilter: contentFilter,
+                    surface: surface,
+                    configuration: configuration,
+                    latencyRecorder: latencyRecorder,
+                    sessionAdmissionGate: sessionAdmissionGate,
+                    focus: focus,
+                    sendFeedback: sendFeedback,
+                    captureTarget: captureTarget,
+                    packetizer: packetizer,
+                    streamStoppedHandler: streamStoppedHandler,
+                    encodedPacketHandler: encodedPacketHandler
+                )
+            }
+        )
+    }
+
+    /// The same, resolving the display's content filter through
+    /// `contentFilterProvider` and building each pipeline through
+    /// `pipelineFactory`. For this package's tests, which cannot run
+    /// ScreenCaptureKit.
+    package init(
+        configuration: VideoEncoderConfiguration,
+        latencyRecorder: HostMediaLatencyRecorder? = nil,
+        focus: CanvasFocusTracker = CanvasFocusTracker(),
+        admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>,
+        sendFeedback: VideoSendFeedback = VideoSendFeedback(),
+        sequencer: VideoPacketSequencer = VideoPacketSequencer(),
+        log: (@Sendable (String) -> Void)? = nil,
+        contentFilterProvider: @escaping (UInt32) async throws -> SCContentFilter,
+        pipelineFactory: @escaping HostMediaPipelineFactory
+    ) {
         self.configuration = configuration
         self.latencyRecorder = latencyRecorder
         self.focus = focus
@@ -72,6 +123,8 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         self.sendFeedback = sendFeedback
         self.packetizer = H264SampleBufferPacketizer(sequencer: sequencer)
         self.log = log
+        self.contentFilterProvider = contentFilterProvider
+        self.pipelineFactory = pipelineFactory
     }
 
     public func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {
@@ -139,6 +192,7 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
             await stopPipeline(displayID: displayID)
         }
         pipeline = nil
+        pipelineGeneration += 1
         displayID = nil
         packetHandler = nil
         cachedContentFilter = nil
@@ -198,29 +252,48 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         guard let displayID, let packetHandler else {
             return
         }
+        pipelineGeneration += 1
+        let generation = pipelineGeneration
         let filter: SCContentFilter
         if let cachedContentFilter {
             filter = cachedContentFilter
         } else {
-            filter = try await HostScreenCapture.contentFilter(displayID: displayID)
+            filter = try await contentFilterProvider(displayID)
             cachedContentFilter = filter
         }
-        let pipeline = try HostMediaPipeline(
-            contentFilter: filter,
-            surface: Self.telemetrySurface,
-            configuration: configuration,
-            latencyRecorder: latencyRecorder,
-            sessionAdmissionGate: admissionGate,
-            focus: focus,
-            sendFeedback: sendFeedback,
-            captureTarget: .hostScreen,
-            packetizer: packetizer,
-            streamStoppedHandler: { [log, captureStoppedHandler] error in
-                log?(ScreenCaptureStopReport.streamStopped(displayID: displayID, error: error))
-                captureStoppedHandler?()
-            },
-            encodedPacketHandler: packetHandler
-        )
+        let pipeline: any CanvasMediaPipelining
+        do {
+            pipeline = try await pipelineFactory(
+                filter,
+                Self.telemetrySurface,
+                configuration,
+                latencyRecorder,
+                admissionGate,
+                focus,
+                sendFeedback,
+                .hostScreen,
+                packetizer,
+                { [log, captureStoppedHandler] error in
+                    log?(ScreenCaptureStopReport.streamStopped(displayID: displayID, error: error))
+                    captureStoppedHandler?()
+                },
+                packetHandler
+            )
+        } catch {
+            // A build the caller has already moved on from failing is not
+            // the live capture failing to start.
+            guard generation == pipelineGeneration else {
+                return
+            }
+            throw error
+        }
+        guard generation == pipelineGeneration else {
+            // A stop or a newer build came in while this one waited on the
+            // encoder service. Stopping a pipeline that was never started
+            // shuts its encoder down and leaves capture alone.
+            try? await pipeline.stop()
+            return
+        }
         self.pipeline = pipeline
         latencyRecorder?.resetEncodeCheckpoint(for: Self.telemetrySurface)
         try await pipeline.start()

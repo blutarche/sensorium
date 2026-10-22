@@ -122,6 +122,7 @@ struct SensoriumHostTestRunner {
             { await runCaptureCursorPolicyTests() },
             { await runHostMediaPipelineFrameSourceTests() },
             { await runEncoderStallTests() },
+            { await runEncoderCreationStallTests() },
             { await runFidelityTickOverlapTests() },
             { await runStreamFidelityLeverTests() },
             { await runScreenChangeAdmissionTests() },

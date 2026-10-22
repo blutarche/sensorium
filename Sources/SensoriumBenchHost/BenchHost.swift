@@ -181,7 +181,7 @@ private final class BenchHostRun {
                     sendFeedback: sendFeedback,
                     log: { print("bench-host host: \($0)") },
                     pipelineFactory: { _, surface, configuration, latencyRecorder, gate, focus, sendFeedback, _, packetizer, streamStopped, packetHandler in
-                        try HostMediaPipeline(
+                        try await HostMediaPipeline(
                             surface: surface,
                             configuration: configuration,
                             latencyRecorder: latencyRecorder,

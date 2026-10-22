@@ -77,7 +77,7 @@ func runHostMediaPipelineFrameSourceTests() async {
     let recorder = HostMediaLatencyRecorder()
     let encoded = EncodedFrameCounter()
     var source: ScriptedFrameSource?
-    let pipeline = try! HostMediaPipeline(
+    let pipeline = try! await HostMediaPipeline(
         surface: surface,
         configuration: configuration,
         latencyRecorder: recorder,
@@ -115,7 +115,7 @@ func runHostMediaPipelineFrameSourceTests() async {
 
     let packets = EncodedFrameCounter()
     var packetSource: ScriptedFrameSource?
-    let packetPipeline = try! HostMediaPipeline(
+    let packetPipeline = try! await HostMediaPipeline(
         surface: surface,
         configuration: configuration,
         sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(

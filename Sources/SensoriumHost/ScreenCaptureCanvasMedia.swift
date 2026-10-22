@@ -19,7 +19,7 @@ public typealias HostMediaPipelineFactory = @MainActor (
     _ packetizer: H264SampleBufferPacketizer,
     _ streamStoppedHandler: (@Sendable (Error) -> Void)?,
     _ encodedPacketHandler: @escaping @Sendable (EncodedVideoFramePacket) -> Bool
-) throws -> any CanvasMediaPipelining
+) async throws -> any CanvasMediaPipelining
 
 /// Resolves the content filter for one owned canvas display. Given the same
 /// argument `SessionCanvasCapture.contentFilter(ownedHandle:)` takes, so a
@@ -76,7 +76,11 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
     private var captureStoppedHandler: (@Sendable () -> Void)?
     /// Bumped for every pipeline built and at `stop`, so a stream-stopped
     /// signal from a pipeline this media already replaced or stopped is
-    /// dropped rather than reported as the live capture ending.
+    /// dropped rather than reported as the live capture ending. Building a
+    /// pipeline waits on the encoder service, for minutes when the hardware
+    /// encoder is stuck, and a stop or a newer build that comes in meanwhile
+    /// wins the same way: the pipeline that arrives late is discarded, never
+    /// installed.
     private var pipelineGeneration = 0
 
     public init(
@@ -88,7 +92,7 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         sendFeedback: VideoSendFeedback = VideoSendFeedback(),
         log: (@Sendable (String) -> Void)? = nil,
         pipelineFactory: @escaping HostMediaPipelineFactory = { contentFilter, surface, configuration, latencyRecorder, sessionAdmissionGate, focus, sendFeedback, captureTarget, packetizer, streamStoppedHandler, encodedPacketHandler in
-            try HostMediaPipeline(
+            try await HostMediaPipeline(
                 contentFilter: contentFilter,
                 surface: surface,
                 configuration: configuration,
@@ -269,6 +273,8 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         guard let canvasDisplayID, let packetHandler else {
             return
         }
+        pipelineGeneration += 1
+        let generation = pipelineGeneration
         let filter: SCContentFilter
         if let cachedContentFilter {
             filter = cachedContentFilter
@@ -276,29 +282,44 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
             filter = try await contentFilterProvider(VirtualDisplayHandle(rawValue: canvasDisplayID))
             cachedContentFilter = filter
         }
-        pipelineGeneration += 1
-        let generation = pipelineGeneration
-        let pipeline = try pipelineFactory(
-            filter,
-            surface,
-            configuration,
-            latencyRecorder,
-            admissionGate,
-            focus,
-            sendFeedback,
-            .sessionCanvas,
-            packetizer,
-            { [log, weak self] error in
-                log?(ScreenCaptureStopReport.streamStopped(displayID: canvasDisplayID, error: error))
-                Task { @MainActor [weak self] in
-                    guard let self, generation == self.pipelineGeneration else {
-                        return
+        let pipeline: any CanvasMediaPipelining
+        do {
+            pipeline = try await pipelineFactory(
+                filter,
+                surface,
+                configuration,
+                latencyRecorder,
+                admissionGate,
+                focus,
+                sendFeedback,
+                .sessionCanvas,
+                packetizer,
+                { [log, weak self] error in
+                    log?(ScreenCaptureStopReport.streamStopped(displayID: canvasDisplayID, error: error))
+                    Task { @MainActor [weak self] in
+                        guard let self, generation == self.pipelineGeneration else {
+                            return
+                        }
+                        self.captureStoppedHandler?()
                     }
-                    self.captureStoppedHandler?()
-                }
-            },
-            packetHandler
-        )
+                },
+                packetHandler
+            )
+        } catch {
+            // A build the caller has already moved on from failing is not
+            // the live capture failing to start.
+            guard generation == pipelineGeneration else {
+                return
+            }
+            throw error
+        }
+        guard generation == pipelineGeneration else {
+            // A stop or a newer build came in while this one waited on the
+            // encoder service. Stopping a pipeline that was never started
+            // shuts its encoder down and leaves capture alone.
+            try? await pipeline.stop()
+            return
+        }
         self.pipeline = pipeline
         // Before `start()`, not after: any frame this new pipeline produces
         // from here on belongs to the checkpoint that names its own scale,

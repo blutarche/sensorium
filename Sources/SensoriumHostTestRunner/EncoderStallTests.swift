@@ -1,6 +1,7 @@
 import CoreGraphics
 import CoreMedia
 import Foundation
+import ScreenCaptureKit
 import SensoriumCore
 import SensoriumHost
 
@@ -63,14 +64,32 @@ private final class StalledEncoderService: @unchecked Sendable {
         release.signal()
     }
 
+    private var completeFramesCalls = 0
+
+    /// How many sessions made through `calls` have been flushed for teardown.
+    var completedFramesCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return completeFramesCalls
+    }
+
     var calls: VideoToolboxSessionCalls {
         VideoToolboxSessionCalls(
+            createSession: { [self] width, height, codecType, encoderSpecification, outputCallback, refcon in
+                stallOnce()
+                return VideoToolboxSessionCalls.liveCreateSession(
+                    width, height, codecType, encoderSpecification, outputCallback, refcon
+                )
+            },
             setProperty: { [self] session, key, value in
                 stallOnce()
                 return VideoToolboxSessionCalls.live.setProperty(session, key, value)
             },
             completeFrames: { [self] session in
                 stallOnce()
+                lock.lock()
+                completeFramesCalls += 1
+                lock.unlock()
                 VideoToolboxSessionCalls.live.completeFrames(session)
             }
         )
@@ -81,9 +100,11 @@ private final class StalledEncoderService: @unchecked Sendable {
 @MainActor
 private final class SilentFrameSource: HostFrameSource {
     private(set) var appliedFramesPerSecond: [Int] = []
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
 
-    func start() async throws {}
-    func stop() async throws {}
+    func start() async throws { startCount += 1 }
+    func stop() async throws { stopCount += 1 }
     func apply(framesPerSecond: Int) async throws { appliedFramesPerSecond.append(framesPerSecond) }
 }
 
@@ -158,14 +179,25 @@ private final class EncoderStallIdleSignal: HostLocalActivitySignal, @unchecked 
 
 @available(macOS 13.0, *)
 @MainActor
-private func makeStallablePipeline(source: SilentFrameSource) -> HostMediaPipeline? {
-    try? HostMediaPipeline(
+private func makeStallablePipeline(source: SilentFrameSource) async -> HostMediaPipeline? {
+    try? await makePipeline(source: source, sessionCalls: .live)
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private func makePipeline(
+    source: SilentFrameSource,
+    sessionCalls: VideoToolboxSessionCalls,
+    sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer> = SharedEncodeAdmissionGate<CMSampleBuffer>(
+        capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
+    )
+) async throws -> HostMediaPipeline {
+    try await HostMediaPipeline(
         surface: CanvasSurfaceID.allCases[0],
         configuration: .remoteDefault,
-        sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
-            capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
-        ),
+        sessionAdmissionGate: sessionAdmissionGate,
         frameSourceFactory: { _, _, _, _ in source },
+        encoderSessionCalls: sessionCalls,
         encodedFrameHandler: { _ in true }
     )
 }
@@ -216,7 +248,7 @@ private func expectInputIsInjectedWhileTheEncoderStalls(
 func runEncoderStallTests() async {
     do {
         let source = SilentFrameSource()
-        guard let pipeline = makeStallablePipeline(source: source) else {
+        guard let pipeline = await makeStallablePipeline(source: source) else {
             print("SKIP: this machine has no hardware H.264 encoder, so there is no encoder to stall")
             return
         }
@@ -236,7 +268,7 @@ func runEncoderStallTests() async {
 
     do {
         let source = SilentFrameSource()
-        guard let pipeline = makeStallablePipeline(source: source) else {
+        guard let pipeline = await makeStallablePipeline(source: source) else {
             return
         }
         let service = StalledEncoderService()
@@ -250,7 +282,7 @@ func runEncoderStallTests() async {
 
     do {
         let source = SilentFrameSource()
-        guard let pipeline = makeStallablePipeline(source: source) else {
+        guard let pipeline = await makeStallablePipeline(source: source) else {
             return
         }
         let service = StalledEncoderService()
@@ -270,7 +302,7 @@ func runEncoderStallTests() async {
     do {
         let source = SilentFrameSource()
         let holder = PipelineHolder()
-        holder.pipeline = makeStallablePipeline(source: source)
+        holder.pipeline = await makeStallablePipeline(source: source)
         // Never bound to a local: the release below must drop the last
         // reference, or there is no teardown to stall.
         guard holder.pipeline != nil else {
@@ -283,5 +315,110 @@ func runEncoderStallTests() async {
             holder.pipeline = nil
         }
         print("PASS: an encoder flush stalled at teardown leaves the main actor injecting input")
+    }
+}
+
+/// Starts `media` against a creation that stalls in the encoder service,
+/// stops it while the creation is still waiting, then lets the creation
+/// finish. The stop must win: the encoder that arrives late is shut down, its
+/// pipeline is never installed, and no capture is started for it.
+@available(macOS 13.0, *)
+@MainActor
+private func expectStopWinsOverAStalledCreation(
+    of what: String,
+    media: any CanvasMediaStreaming,
+    source: SilentFrameSource,
+    service: StalledEncoderService
+) async {
+    let starting = Task { @MainActor in
+        try await media.start(canvasDisplayID: 42, onPacket: { _ in true })
+    }
+    let reached = await waitUntil(timeoutSeconds: 10) { service.hasEntered }
+    expect(reached, "starting \(what) reaches the encoder service")
+    await media.stop()
+    let stalledWhenStopped = service.isStalledNow
+    service.letGo()
+    let outcome = await starting.result
+
+    expect(
+        stalledWhenStopped && !service.endedByTimeout,
+        "\(what) is stopped while its encoder is still being created"
+    )
+    if case .failure(let error) = outcome {
+        expect(false, "a start overtaken by a stop ends quietly, got \(error) (\(what))")
+    }
+    expect(
+        service.completedFramesCount == 1,
+        "the encoder that arrives after the stop is shut down, got \(service.completedFramesCount) flushes (\(what))"
+    )
+    expect(
+        source.startCount == 0,
+        "no capture is started for a pipeline the stop overtook, got \(source.startCount) starts (\(what))"
+    )
+    try? await media.apply(framesPerSecond: 15)
+    let refreshed = try? await media.refreshStillPicture()
+    expect(
+        source.appliedFramesPerSecond.isEmpty && refreshed == nil,
+        "the pipeline the stop overtook is never installed, got capture changes \(source.appliedFramesPerSecond) (\(what))"
+    )
+}
+
+/// Creating a compression session is a round trip to the encoder service as
+/// well, and on a locked machine it has waited minutes there. Every pipeline
+/// is built from the main actor: a session's first capture, a rebuild at
+/// another resolution, a display-mode change.
+@available(macOS 13.0, *)
+@MainActor
+func runEncoderCreationStallTests() async {
+    guard let probe = try? await VideoToolboxEncoder.make(frameOutcomeHandler: { _ in }) else {
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no encoder creation to stall")
+        return
+    }
+    await probe.shutDown()
+
+    do {
+        let source = SilentFrameSource()
+        let service = StalledEncoderService()
+        let holder = PipelineHolder()
+        await expectInputIsInjectedWhileTheEncoderStalls(during: "building a pipeline", service: service) {
+            holder.pipeline = try await makePipeline(source: source, sessionCalls: service.calls)
+        }
+        expect(holder.pipeline != nil, "the pipeline whose encoder creation stalled is built once the encoder answers")
+        try? await holder.pipeline?.stop()
+        print("PASS: an encoder creation stalled in the encoder service leaves the main actor injecting input")
+    }
+
+    do {
+        let source = SilentFrameSource()
+        let service = StalledEncoderService()
+        let media = HostScreenCaptureMedia(
+            configuration: .remoteDefault,
+            admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
+                capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
+            ),
+            contentFilterProvider: { _ in SCContentFilter() },
+            pipelineFactory: { _, _, _, _, gate, _, _, _, _, _, _ in
+                try await makePipeline(source: source, sessionCalls: service.calls, sessionAdmissionGate: gate)
+            }
+        )
+        await expectStopWinsOverAStalledCreation(of: "a host-screen capture", media: media, source: source, service: service)
+        print("PASS: a host-screen capture stopped while its encoder is created discards the late encoder and starts no capture")
+    }
+
+    do {
+        let source = SilentFrameSource()
+        let service = StalledEncoderService()
+        let media = ScreenCaptureCanvasMedia(
+            surface: CanvasSurfaceID.allCases[0],
+            admissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
+                capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
+            ),
+            pipelineFactory: { _, _, _, _, gate, _, _, _, _, _, _ in
+                try await makePipeline(source: source, sessionCalls: service.calls, sessionAdmissionGate: gate)
+            },
+            contentFilterProvider: { _ in SCContentFilter() }
+        )
+        await expectStopWinsOverAStalledCreation(of: "a canvas capture", media: media, source: source, service: service)
+        print("PASS: a canvas capture stopped while its encoder is created discards the late encoder and starts no capture")
     }
 }

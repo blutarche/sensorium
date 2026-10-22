@@ -38,21 +38,35 @@ public enum VideoEncodeOutcome {
     }
 }
 
-/// The VideoToolbox calls a `VideoToolboxEncoder` makes on a session it has
-/// already created: property changes on the live session, and the flush
-/// before it is invalidated. Both go through the encoder service and can wait
-/// on the hardware encoder for as long as it is stuck. Replaceable so a test
-/// can stand in for an encoder service that stops answering; production uses
+/// The VideoToolbox calls a `VideoToolboxEncoder` makes on its session:
+/// creating it, property changes on the live session, and the flush before it
+/// is invalidated. Every one goes through the encoder service and can wait on
+/// the hardware encoder for as long as it is stuck. Replaceable so a test can
+/// stand in for an encoder service that stops answering; production uses
 /// `live` alone.
 @available(macOS 13.0, *)
 package struct VideoToolboxSessionCalls: Sendable {
+    /// `VTCompressionSessionCreate`, given the arguments that vary between
+    /// encoders. Answers the status and, when it is `noErr`, the session.
+    package typealias CreateSession = @Sendable (
+        _ width: Int32,
+        _ height: Int32,
+        _ codecType: CMVideoCodecType,
+        _ encoderSpecification: CFDictionary?,
+        _ outputCallback: VTCompressionOutputCallback,
+        _ refcon: UnsafeMutableRawPointer?
+    ) -> (status: OSStatus, session: VTCompressionSession?)
+
+    package var createSession: CreateSession
     package var setProperty: @Sendable (VTSession, CFString, CFTypeRef?) -> OSStatus
     package var completeFrames: @Sendable (VTCompressionSession) -> Void
 
     package init(
+        createSession: @escaping CreateSession = Self.liveCreateSession,
         setProperty: @escaping @Sendable (VTSession, CFString, CFTypeRef?) -> OSStatus,
         completeFrames: @escaping @Sendable (VTCompressionSession) -> Void
     ) {
+        self.createSession = createSession
         self.setProperty = setProperty
         self.completeFrames = completeFrames
     }
@@ -65,6 +79,23 @@ package struct VideoToolboxSessionCalls: Sendable {
             VTCompressionSessionCompleteFrames(session, untilPresentationTimeStamp: .invalid)
         }
     )
+
+    package static let liveCreateSession: CreateSession = { width, height, codecType, encoderSpecification, outputCallback, refcon in
+        var session: VTCompressionSession?
+        let status = VTCompressionSessionCreate(
+            allocator: kCFAllocatorDefault,
+            width: width,
+            height: height,
+            codecType: codecType,
+            encoderSpecification: encoderSpecification,
+            imageBufferAttributes: nil,
+            compressedDataAllocator: nil,
+            outputCallback: outputCallback,
+            refcon: refcon,
+            compressionSessionOut: &session
+        )
+        return (status, session)
+    }
 }
 
 /// The submission half of an encoder, named separately so the frame path can
@@ -150,14 +181,28 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
     /// never only for the ones that produced output. A caller holding a
     /// per-frame resource (`EncodeAdmissionGate` holds an admission slot)
     /// depends on that, so the callback below must not filter any outcome out.
-    public init(
+    ///
+    /// Creates the session on the caller's thread, which waits on the encoder
+    /// service for as long as that takes. A caller on the main actor uses
+    /// `make` instead.
+    public convenience init(
         configuration: VideoEncoderConfiguration = .remoteDefault,
+        frameOutcomeHandler: @escaping @Sendable (VideoEncodeOutcome) -> Void
+    ) throws {
+        try self.init(configuration: configuration, sessionCalls: .live, frameOutcomeHandler: frameOutcomeHandler)
+    }
+
+    /// The same, with `sessionCalls` in place from the session's creation on.
+    /// For this package's tests.
+    package init(
+        configuration: VideoEncoderConfiguration = .remoteDefault,
+        sessionCalls: VideoToolboxSessionCalls,
         frameOutcomeHandler: @escaping @Sendable (VideoEncodeOutcome) -> Void
     ) throws {
         self.configuration = configuration
         applied = configuration
+        calls = sessionCalls
         callbackBox = CallbackBox(handler: frameOutcomeHandler)
-        var createdSession: VTCompressionSession?
         let codecType: CMVideoCodecType = configuration.codec == .h264
             ? kCMVideoCodecType_H264
             : kCMVideoCodecType_HEVC
@@ -166,15 +211,12 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
             encoderSpecificationEntries[kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder] = kCFBooleanTrue
             encoderSpecificationEntries[kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder] = kCFBooleanTrue
         }
-        let status = VTCompressionSessionCreate(
-            allocator: kCFAllocatorDefault,
-            width: Int32(configuration.encodeWidth),
-            height: Int32(configuration.encodeHeight),
-            codecType: codecType,
-            encoderSpecification: encoderSpecificationEntries.isEmpty ? nil : encoderSpecificationEntries as CFDictionary,
-            imageBufferAttributes: nil,
-            compressedDataAllocator: nil,
-            outputCallback: { refcon, _, status, _, sampleBuffer in
+        let (status, createdSession) = sessionCalls.createSession(
+            Int32(configuration.encodeWidth),
+            Int32(configuration.encodeHeight),
+            codecType,
+            encoderSpecificationEntries.isEmpty ? nil : encoderSpecificationEntries as CFDictionary,
+            { refcon, _, status, _, sampleBuffer in
                 // `refcon` is the box this initializer passes below, so it is
                 // never nil in practice; every other argument combination is a
                 // real outcome and must be reported, not filtered out here.
@@ -182,8 +224,7 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
                 let box = Unmanaged<CallbackBox>.fromOpaque(refcon).takeUnretainedValue()
                 box.handler(VideoEncodeOutcome.callbackOutcome(status: status, sampleBuffer: sampleBuffer))
             },
-            refcon: Unmanaged.passUnretained(callbackBox).toOpaque(),
-            compressionSessionOut: &createdSession
+            Unmanaged.passUnretained(callbackBox).toOpaque()
         )
         guard status == noErr, let createdSession else {
             throw VideoEncoderError.sessionCreationFailed(status)
@@ -247,6 +288,49 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
             value: Self.profileLevelKey(codec: configuration.codec, profileLevel: configuration.profileLevel)
         )
         VTCompressionSessionPrepareToEncodeFrames(createdSession)
+    }
+
+    /// Where `make` creates sessions. Concurrent, so a creation stuck in the
+    /// encoder service holds up no other: the one that replaces it, after a
+    /// stop or a rebuild, must not queue behind it.
+    private static let creationQueue = DispatchQueue(
+        label: "sensorium.encoder-creation",
+        attributes: .concurrent
+    )
+
+    /// Creates an encoder off the caller's thread and returns once its
+    /// session is ready, with whatever creating it threw. Creating a session
+    /// and setting it up are round trips to the encoder service, which waits
+    /// on the hardware encoder for as long as that is stuck -- minutes, on a
+    /// locked machine -- and a caller on the main actor would stall
+    /// host-screen input injection, session control and shutdown with it.
+    public static func make(
+        configuration: VideoEncoderConfiguration = .remoteDefault,
+        frameOutcomeHandler: @escaping @Sendable (VideoEncodeOutcome) -> Void
+    ) async throws -> VideoToolboxEncoder {
+        try await make(configuration: configuration, sessionCalls: .live, frameOutcomeHandler: frameOutcomeHandler)
+    }
+
+    /// The same, with `sessionCalls` in place from the session's creation on.
+    /// For this package's tests.
+    package static func make(
+        configuration: VideoEncoderConfiguration = .remoteDefault,
+        sessionCalls: VideoToolboxSessionCalls,
+        frameOutcomeHandler: @escaping @Sendable (VideoEncodeOutcome) -> Void
+    ) async throws -> VideoToolboxEncoder {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<VideoToolboxEncoder, any Error>) in
+            creationQueue.async {
+                do {
+                    continuation.resume(returning: try VideoToolboxEncoder(
+                        configuration: configuration,
+                        sessionCalls: sessionCalls,
+                        frameOutcomeHandler: frameOutcomeHandler
+                    ))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     private static func profileLevelKey(codec: VideoCodec, profileLevel: VideoEncoderProfileLevel) -> CFString {
