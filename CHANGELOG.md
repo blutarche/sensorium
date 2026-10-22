@@ -8,6 +8,23 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-10-23
+
+### Added
+
+- The host asks you to turn on Screen Sharing when it is off, so your other
+  machine can type at this machine's lock screen.
+- The host now writes its session log to the system log, so it is kept when
+  the host is opened from Finder. It notes whether the screen was locked when
+  input arrived, never what was typed.
+
+### Fixed
+
+- Typing no longer stops while the host sets up its video encoder.
+- A quality change made while a stream is starting is no longer lost.
+- A screen capture that fails to start is stopped before the host tries again,
+  so two captures never run at once.
+
 ## [0.5.4] - 2026-10-22
 
 ### Fixed
@@ -564,6 +581,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.5]: https://github.com/blutarche/sensorium/releases/tag/v0.5.5
 [0.5.4]: https://github.com/blutarche/sensorium/releases/tag/v0.5.4
 [0.5.3]: https://github.com/blutarche/sensorium/releases/tag/v0.5.3
 [0.5.2]: https://github.com/blutarche/sensorium/releases/tag/v0.5.2
