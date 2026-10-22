@@ -8,17 +8,26 @@ If a file cannot be read, the app shows its own window with **Try again** and **
 
 ## Host
 
-Sensorium Host needs three permissions, and can use a fourth macOS service for one opt-in feature. Grant the permissions in System Settings.
+Sensorium Host needs three permissions and one macOS service. Grant the permissions in System Settings > Privacy & Security. Turn the service on in System Settings > General > Sharing.
 
 | Permission or service | Used for | Checked by the app |
 |---|---|---|
 | Screen Recording | Capturing the session canvas it streams | Yes |
 | Accessibility | Injecting mouse and keyboard input | Yes |
 | Remote Desktop | Apple's gate on unattended remote access | No. macOS has no API for it. |
+| Screen Sharing | Typing at the lock screen | Yes, by connecting to it on loopback |
 
 Without Accessibility the host still streams video. It only refuses input.
 
-Screen Sharing is not needed. A locked host screen unlocks through the same Accessibility input as any other typing.
+### Screen Sharing
+
+Turn on Screen Sharing so your other machine can type at this machine's lock screen. Typing at the lock screen has only been tested with it on. Until it is on, the host window and the menu bar ask for it, with a button that opens Sharing.
+
+Keystrokes at the lock screen still travel as ordinary Accessibility input. Sensorium does not stream through Screen Sharing.
+
+The host checks whether it is on by opening a connection to port 5900 at 127.0.0.1 and closing it at once. It sends nothing. It checks at launch and every 30 seconds. Its only other connection to Screen Sharing answers an unlock request no shipping viewer sends. See [host screen design](host-screen-design.md#93-unused-unlock-request).
+
+Turning Screen Sharing on makes macOS's own service listen on port 5900 on every network interface, not only loopback. That listener belongs to macOS, not Sensorium. Sensorium opens no listener for it.
 
 ### Waking the screen
 
