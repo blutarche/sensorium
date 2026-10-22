@@ -160,11 +160,8 @@ new app. A self-signed certificate fixes that. See
 [Install](docs/install.md#keeping-permissions-across-rebuilds).
 
 **Does it need Screen Sharing turned on?**
-Yes, to type at the host's lock screen. Typing there has only been tested with
-Screen Sharing on, so the host asks for it until it is on. The host uses Screen
-Recording to capture and Accessibility to type and click. Turning Screen
-Sharing on makes macOS's own service listen on port 5900. See
-[macOS permissions](docs/macos-permissions.md#screen-sharing).
+No. The host uses Screen Recording to capture and Accessibility to type and
+click. See [macOS permissions](docs/macos-permissions.md).
 
 **Does it talk to anything besides my other machine?**
 Only GitHub, on macOS, to check for and download updates. Turning automatic
