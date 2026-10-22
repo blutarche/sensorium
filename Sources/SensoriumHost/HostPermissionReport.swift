@@ -13,6 +13,14 @@ public enum HostPermissionReport {
             "Screen Recording: \(result.screenCapture == .granted ? "granted" : "approval required")",
             "Accessibility: \(result.accessibility == .granted ? "granted" : "approval required")"
         ]
+        switch result.screenSharing {
+        case .on:
+            lines.append("Screen Sharing: on")
+        case .off:
+            lines.append("Screen Sharing: off")
+        case .notChecked:
+            break
+        }
         switch launchContext {
         case .terminalAttached:
             lines.append(

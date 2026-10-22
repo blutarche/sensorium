@@ -515,15 +515,20 @@ struct sensoriumd {
             let permissionMonitor = HostPermissionMonitor(
                 screenCapture: ScreenCapturePermissionGate(),
                 accessibility: AccessibilityPermissionGate(),
+                screenSharing: LoopbackScreenSharingProbe(),
                 onTransition: { transition in
                     print("Sensorium host: \(transition.logLine)")
                     operatorBox.status.apply(transition)
                 }
             )
             Task { @MainActor in
+                // Screen Sharing has no reading at launch to start from, so
+                // it is probed once now rather than a poll interval later.
+                await permissionMonitor.pollScreenSharing()
                 while true {
                     try? await Task.sleep(for: .seconds(HostPermissionMonitor.defaultPollIntervalSeconds))
                     permissionMonitor.poll()
+                    await permissionMonitor.pollScreenSharing()
                 }
             }
         }

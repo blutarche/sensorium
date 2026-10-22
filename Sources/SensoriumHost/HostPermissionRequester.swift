@@ -3,6 +3,7 @@ import Foundation
 public struct HostPermissionRequestResult: Equatable {
     public let screenCapture: ScreenCapturePermissionStatus
     public let accessibility: AccessibilityPermissionStatus
+    public let screenSharing: ScreenSharingStatus
 
     public var isReadyForViewerControl: Bool {
         screenCapture == .granted && accessibility == .granted
@@ -10,10 +11,12 @@ public struct HostPermissionRequestResult: Equatable {
 
     public init(
         screenCapture: ScreenCapturePermissionStatus,
-        accessibility: AccessibilityPermissionStatus
+        accessibility: AccessibilityPermissionStatus,
+        screenSharing: ScreenSharingStatus = .notChecked
     ) {
         self.screenCapture = screenCapture
         self.accessibility = accessibility
+        self.screenSharing = screenSharing
     }
 }
 

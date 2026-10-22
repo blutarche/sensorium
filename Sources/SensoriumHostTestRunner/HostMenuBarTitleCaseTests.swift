@@ -88,4 +88,39 @@ func runHostMenuBarTitleCaseTests() async {
 
         print("PASS: the Screen Recording alert's action item reads in Title Case alongside Host Setup and Quit")
     }
+
+    do {
+        // Screen Sharing off: its item follows Accessibility's and opens Sharing.
+        let presence = HostMenuBarPresence(
+            status: HostOperatorStatus(
+                connection: .hosting(address: "203.0.113.42"),
+                permissions: HostPermissionRequestResult(
+                    screenCapture: .granted,
+                    accessibility: .approvalRequired,
+                    screenSharing: .off
+                )
+            ),
+            openSetup: {},
+            onStop: {},
+            quit: {}
+        )
+        presence.install()
+        guard let menu = statusItem(in: presence).menu else {
+            fatalError("the status item's menu was never installed")
+        }
+        let titles = menu.items.map { $0.title }
+        let accessibilityIndex = titles.firstIndex(of: "Open Accessibility Settings")
+        let sharingIndex = titles.firstIndex(of: "Open Sharing Settings")
+        expect(
+            accessibilityIndex != nil && sharingIndex != nil && accessibilityIndex! < sharingIndex!,
+            "the Screen Sharing item reads in Title Case, after Accessibility's -- got titles \(titles)"
+        )
+        expect(
+            sharingIndex.map { menu.items[$0].representedObject as? String }
+                == "x-apple.systempreferences:com.apple.preferences.sharing?Services_ScreenSharing",
+            "the Screen Sharing item opens Sharing at Screen Sharing"
+        )
+
+        print("PASS: the Screen Sharing alert's action item reads in Title Case after Accessibility's")
+    }
 }
