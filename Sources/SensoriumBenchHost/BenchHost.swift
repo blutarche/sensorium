@@ -270,6 +270,9 @@ struct SensoriumBenchHost {
     static func main() {
         setvbuf(stdout, nil, _IOLBF, 0)
         let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.first == "motion-bench" {
+            runMotionBench(Array(arguments.dropFirst()))
+        }
         if arguments.isEmpty || arguments.contains("--help") || arguments.contains("-h") {
             print(BenchHostOptions.usage)
             Foundation.exit(arguments.isEmpty ? 2 : 0)
@@ -306,6 +309,31 @@ struct SensoriumBenchHost {
             signalSources.append(source)
         }
         started.start()
+        dispatchMain()
+    }
+
+    private static func runMotionBench(_ arguments: [String]) -> Never {
+        if arguments.contains("--help") || arguments.contains("-h") {
+            print(MotionBenchOptions.usage)
+            Foundation.exit(0)
+        }
+        let options: MotionBenchOptions
+        switch MotionBenchOptions.parse(arguments) {
+        case let .success(parsed):
+            options = parsed
+        case let .failure(.message(reason)):
+            FileHandle.standardError.write(Data("bench-host error: \(reason)\n\n\(MotionBenchOptions.usage)\n".utf8))
+            Foundation.exit(2)
+        }
+        Task { @MainActor in
+            do {
+                try await MotionBench.run(options)
+                Foundation.exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("bench-host error: \(error)\n".utf8))
+                Foundation.exit(1)
+            }
+        }
         dispatchMain()
     }
 }

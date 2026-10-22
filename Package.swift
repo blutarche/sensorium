@@ -164,7 +164,7 @@ let package = Package(
         .executableTarget(name: "SensoriumCanvasExerciser", dependencies: ["SensoriumCore"]),
         // Test scaffolding, never bundled: streams synthetic frames through the
         // real host pipeline and listener.
-        .executableTarget(name: "SensoriumBenchHost", dependencies: ["SensoriumHost", "SensoriumCore"]),
+        .executableTarget(name: "SensoriumBenchHost", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumClient"]),
         .executableTarget(name: "SensoriumLocalWorkspaceInputProbe", dependencies: ["SensoriumCore", "SensoriumClient"]),
         // Depends on SensoriumHost for the arming record and display inventory
         // this rig has to write and read exactly as the host does.
