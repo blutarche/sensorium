@@ -53,7 +53,7 @@ private final class HostOperatorBox: @unchecked Sendable {
             isRuntimeAvailable: { BridgeVirtualDisplayCreator.isRuntimeAvailable },
             isCaptureResolvable: { await HostScreenCapture.isShareable(displayID: $0) },
             shutdown: canvas,
-            log: { print("Sensorium host: \($0)") }
+            log: { HostSessionLog.record($0) }
         )
         sharpScreens.observeDisplayChanges()
     }
@@ -571,7 +571,7 @@ struct sensoriumd {
                 adapter: CoreGraphicsVirtualDisplayAdapter(
                     surface: surface,
                     shutdown: operatorBox.canvas,
-                    log: { print("Sensorium host: \($0)") }
+                    log: { HostSessionLog.record($0) }
                 ),
                 creationGate: creationGate
             )
@@ -681,7 +681,7 @@ struct sensoriumd {
         // at session start and keeps them awake while a session is live,
         // through public IOKit power management and nothing else. Shared
         // across connections: this machine has one power state.
-        let displayWake = DisplayWakeController(log: { print("Sensorium host: \($0)") })
+        let displayWake = DisplayWakeController(log: { HostSessionLog.record($0) })
         // Belt and braces over the session teardown that already drops the
         // hold, exactly as the mode restore above is: a process that goes
         // down without one still leaves this machine idling its displays.
@@ -737,7 +737,8 @@ struct sensoriumd {
             hostScreenPresenceGate: hostScreenPresenceGate,
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake,
-            privateDesktopOffered: privateDesktopOffered
+            privateDesktopOffered: privateDesktopOffered,
+            log: { HostSessionLog.record($0) }
         )
 
         if verb == "pair" {
@@ -818,7 +819,7 @@ struct sensoriumd {
                         isEnabled: ClipboardSyncEngine.hostSharingEnabledAtConnect
                     ),
                     isSessionAdmissible: { controller.isClipboardAdmissible },
-                    log: { print("Sensorium host: \($0)") },
+                    log: { HostSessionLog.record($0) },
                     // The viewer is told, so a person there can see why a
                     // copy did not arrive.
                     onRefusal: { refusal in
@@ -833,7 +834,7 @@ struct sensoriumd {
                     latencyRecorder: latencyRecorder,
                     clipboard: clipboard,
                     sendFeedback: sendFeedback,
-                    onEvent: { print("Sensorium host: \($0)") },
+                    onEvent: { HostSessionLog.record($0) },
                     // Who is on this machine, for the menu bar: the name
                     // chosen at this machine, else the one the hello reports.
                     onPeerPresence: { peer in
@@ -886,7 +887,7 @@ struct sensoriumd {
                             admissionGate: controller.encodeAdmission,
                             sendFeedback: sendFeedback,
                             sequencer: sequencer,
-                            log: { print("Sensorium host: \($0)") }
+                            log: { HostSessionLog.record($0) }
                         )
                     },
                     sessionLog: sessionLog,
@@ -916,7 +917,7 @@ struct sensoriumd {
                             // session contend with.
                             admissionGate: controller.encodeAdmission,
                             sendFeedback: sendFeedback,
-                            log: { print("Sensorium host: \($0)") }
+                            log: { HostSessionLog.record($0) }
                         )
                     },
                     videoSink: session,
@@ -926,7 +927,7 @@ struct sensoriumd {
                     // adaptive fidelity is decided from what this session
                     // actually measured, never from a static guess.
                     latencyRecorder: latencyRecorder,
-                    onEvent: { print("Sensorium host: \($0)") },
+                    onEvent: { HostSessionLog.record($0) },
                     onSessionEnded: {
                         if let summary = HostLatencySummary.line(
                             metrics: latencyRecorder.metrics,
@@ -1390,7 +1391,7 @@ struct sensoriumd {
         func startHosting() {
             switch HostVirtualDisplayCapability.startupCheck(
                 offersPrivateDesktop: privateDesktopSettingStore.load().offersPrivateDesktop,
-                log: { print("Sensorium host: \($0)") },
+                log: { HostSessionLog.record($0) },
                 shutdown: operatorBox.canvas
             ) {
             case .supported, .notOffered:
