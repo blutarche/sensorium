@@ -83,6 +83,7 @@ struct SensoriumHostTestRunner {
             { runMutableHostInjectedHIDActivityTests() },
             { await runHostScreenRelockWiringTests() },
             { await runHostScreenLiveSessionTests() },
+            { await runInputGrantWithoutRelaunchTests() },
             { await runHostScreenModeCoordinatorTests() },
             { await runHostScreenModeAccountabilityTests() },
             { await runHostScreenFidelityTests() },

@@ -664,6 +664,18 @@ public final class HostSessionController {
         return HostScreenOfferEligibility.offerGapReason(for: display, among: current)
     }
 
+    /// Nil when there is no factory or it cannot build right now (Accessibility
+    /// not granted): the session still streams and input is refused.
+    private func makeInjectorIfAvailable(
+        displayID: UInt32,
+        sessionKind: InputSessionKind
+    ) throws -> (any InputInjecting)? {
+        guard let inputInjectorFactory, inputInjectorFactory.isAvailable else {
+            return nil
+        }
+        return try inputInjectorFactory.make(canvasDisplayID: displayID, sessionKind: sessionKind)
+    }
+
     /// Moves this connection's live host-screen surface onto `displayID`,
     /// which a fresh display read must show online: the sharp screen
     /// standing in for the placeholder this session was admitted on, or the
@@ -687,7 +699,7 @@ public final class HostSessionController {
         var injector = current.inputInjector
         if current.displayID != displayID {
             do {
-                injector = try inputInjectorFactory?.make(canvasDisplayID: displayID, sessionKind: .hostScreen)
+                injector = try makeInjectorIfAvailable(displayID: displayID, sessionKind: .hostScreen)
             } catch {
                 log("Sensorium host: no input injector for display \(displayID): \(HostOperatorLog.describe(error))")
                 return nil
@@ -2035,7 +2047,7 @@ public final class HostSessionController {
                 // leaving the device to self-heal on its next admission.
                 let injector: (any InputInjecting)?
                 do {
-                    injector = try inputInjectorFactory?.make(canvasDisplayID: displayID, sessionKind: .hostScreen)
+                    injector = try makeInjectorIfAvailable(displayID: displayID, sessionKind: .hostScreen)
                 } catch {
                     releaseHostScreenSessionClaim()
                     throw error
@@ -2334,10 +2346,10 @@ public final class HostSessionController {
     ) throws -> SensoriumMessage {
         let handle = try sessions[surface].start(owner: canvasOwner, configuration: configuration)
         surfaces[surface].canvas = configuration
-        if surfaces[surface].inputInjector == nil, let inputInjectorFactory {
+        if surfaces[surface].inputInjector == nil {
             do {
-                surfaces[surface].inputInjector = try inputInjectorFactory.make(
-                    canvasDisplayID: handle.rawValue,
+                surfaces[surface].inputInjector = try makeInjectorIfAvailable(
+                    displayID: handle.rawValue,
                     sessionKind: .sessionCanvas
                 )
             } catch {
@@ -2517,13 +2529,19 @@ public final class HostSessionController {
     /// decide whether an `.inputApplied` reply is honest to send.
     @discardableResult
     private func handleHostScreenInput(_ event: SensoriumInputEvent) throws -> Bool {
-        guard let surface = hostScreenSurface else {
+        guard var surface = hostScreenSurface else {
             throw HostSessionControllerError.inputSessionUnavailable
         }
         guard isValid(
             event, logicalWidth: surface.geometry.logicalWidth, logicalHeight: surface.geometry.logicalHeight
         ) else {
             throw HostSessionControllerError.invalidInput
+        }
+        if surface.inputInjector == nil, let injector = try? makeInjectorIfAvailable(
+            displayID: surface.displayID, sessionKind: .hostScreen
+        ) {
+            surface.inputInjector = injector
+            hostScreenSurface = surface
         }
         guard let inputInjector = surface.inputInjector else {
             throw HostSessionControllerError.inputInjectionUnavailable

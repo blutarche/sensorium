@@ -29,4 +29,37 @@ public enum InputSessionKind: Sendable, Equatable {
 @MainActor
 public protocol InputInjectingFactory: AnyObject {
     func make(canvasDisplayID: UInt32, sessionKind: InputSessionKind) throws -> any InputInjecting
+
+    /// Whether `make` can produce an injector right now. Read each time an
+    /// injector is wanted, so a permission granted while the host runs is
+    /// honored without a relaunch.
+    var isAvailable: Bool { get }
+}
+
+extension InputInjectingFactory {
+    public var isAvailable: Bool { true }
+}
+
+/// Builds injectors only while Accessibility is granted. The check never asks
+/// macOS to present its approval UI.
+@MainActor
+public final class AccessibilityGatedInputInjectorFactory: InputInjectingFactory {
+    private let gate: AccessibilityPermissionGate
+    private let inner: any InputInjectingFactory
+
+    public init(gate: AccessibilityPermissionGate, inner: any InputInjectingFactory) {
+        self.gate = gate
+        self.inner = inner
+    }
+
+    public var isAvailable: Bool {
+        gate.currentStatus == .granted && inner.isAvailable
+    }
+
+    public func make(canvasDisplayID: UInt32, sessionKind: InputSessionKind) throws -> any InputInjecting {
+        guard isAvailable else {
+            throw HostSessionControllerError.inputInjectionUnavailable
+        }
+        return try inner.make(canvasDisplayID: canvasDisplayID, sessionKind: sessionKind)
+    }
 }
