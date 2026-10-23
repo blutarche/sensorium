@@ -64,7 +64,7 @@ It removes an agent worktree, then its branch, only when all of these hold:
 
 It uses `git worktree remove` and `git branch -d`, so git refuses anything unmerged on its own as well. Worktrees outside `.claude/worktrees` are never touched.
 
-With `--min-free 40G`, and only while the disk has less than that free, it also deletes gitignored `.build` and `DerivedData` directories in unlocked agent worktrees and in the main checkout. Each one is kept while a process works in its checkout or holds a file open in it, while SwiftPM holds its lock, or while a file in it changed within `--min-idle` minutes. Your own shell sitting in the main checkout keeps the main checkout's build output.
+With `--min-free 40G`, and only while the disk has less than that free, it also deletes gitignored `.build` and `DerivedData` directories in unlocked agent worktrees and in the main checkout. Each one is kept while a process works in its checkout or holds a file open in it, while SwiftPM holds its lock, or while a file in it changed within `--min-idle` minutes. The script and the shell that runs it do not count. Any other process working in the main checkout keeps its build output. Work inside an agent worktree does not.
 
 SwiftPM locks a scratch directory for the whole build, with a lock file in the build's temporary directory rather than inside `.build`. The script takes that lock itself while it deletes, so a build that starts meanwhile waits.
 

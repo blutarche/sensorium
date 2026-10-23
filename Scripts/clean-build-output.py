@@ -265,7 +265,8 @@ class ProcessTable:
         cwd_roots = roots if cwd_root is None else {cwd_root, real(cwd_root)}
         excluded = set() if cwd_exclude is None else {cwd_exclude, real(cwd_exclude)}
         for process in self.processes:
-            if process.pid == os.getpid():
+            # The script and the lsof it ran inherit its working directory.
+            if process.pid == os.getpid() or process.ppid == os.getpid():
                 continue
             if process.pid not in self.invokers and process.cwd \
                     and any(is_under(process.cwd, r) for r in cwd_roots) \

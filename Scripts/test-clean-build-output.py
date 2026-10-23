@@ -235,6 +235,20 @@ def test_main_build_kept_while_someone_works_in_main(fx: Fixture) -> None:
     assert str(sleeper.pid) in out, out
 
 
+def test_main_build_not_held_by_the_shell_running_the_script(fx: Fixture) -> None:
+    main_build = fx.build_dir(fx.repo)
+    fx.settle()
+    env = dict(GIT_ENV, CLEAN_BUILD_OUTPUT_TEST_FREE_BYTES=str(1 * GIB))
+    # The shell stays the script's parent, as a hook's shell does.
+    result = subprocess.run(
+        ["/bin/sh", "-c", 'cd "$1" && "$2" "$3" --apply --min-free 40G; status=$?; exit $status',
+         "sh", str(fx.repo), sys.executable, str(SCRIPT)],
+        env=env, capture_output=True, text=True, timeout=120,
+    )
+    out = check(result)
+    assert not main_build.exists(), out
+
+
 def test_main_build_not_held_by_work_in_agent_worktree(fx: Fixture) -> None:
     wt = fx.worktree("b6")
     git(fx.repo, "worktree", "lock", str(wt))
