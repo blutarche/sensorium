@@ -25,6 +25,7 @@ jobs:
           python3 Scripts/test-compare-display-inventory.py
           python3 Scripts/test-check-display-active.py
           python3 Scripts/test-documentation-status.py
+          python3 Scripts/test-clean-build-output.py
 
       # The Linux icons are committed, because the renderer is CoreGraphics
       # and only this job's machine can run it. This proves the committed

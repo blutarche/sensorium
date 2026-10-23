@@ -14,6 +14,7 @@ python3 Scripts/test-classify-workspace-focus-blocker.py
 python3 Scripts/test-compare-display-inventory.py
 python3 Scripts/test-check-display-active.py
 python3 Scripts/test-documentation-status.py
+python3 Scripts/test-clean-build-output.py
 # Both configurations. Release is what every packaging script ships, and it
 # is the only place the optimizer's freedom -- ARC releasing an object at its
 # last use, among others -- can change behaviour.
