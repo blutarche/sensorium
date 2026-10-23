@@ -62,5 +62,8 @@ grep -F 'SENSORIUM_ALLOW_FOCUS_RELEASE_SMOKE' "$PROBE_SOURCE" >/dev/null
 # Throwaway state must never alias the real Application Support or the installed
 # host's port.
 sh "$ROOT/Scripts/assert-smoke-isolated.sh" "$SMOKE"
+grep -F 'SENSORIUM_TEST_HOST_PID="$HOST_PID"' "$SMOKE" >/dev/null
+grep -F 'SENSORIUM_TEST_HOST_EXECUTABLE=' "$SMOKE" >/dev/null
+sh "$ROOT/Scripts/test-workspace-host-target.sh"
 
 printf 'PASS: real local focus release smoke harness contract\n'

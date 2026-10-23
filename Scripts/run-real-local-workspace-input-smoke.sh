@@ -24,17 +24,59 @@ PROBE="$ROOT/.build/arm64-apple-macosx/release/SensoriumLocalWorkspaceInputProbe
 CLASSIFIER="$ROOT/Scripts/classify-host-permission-blocker.py"
 FOCUS_CLASSIFIER="$ROOT/Scripts/classify-workspace-focus-blocker.py"
 HOST_PID=""
+LAUNCHER_PID=""
+
+require_verification_port_available() {
+  if lsof -nP -a -iTCP:"$1" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "FAIL: verification port $1 already has a listener" >&2
+    return 1
+  else
+    listener_status=$?
+    if [ "$listener_status" -ne 1 ]; then
+      echo "FAIL: could not check verification port $1" >&2
+      return 1
+    fi
+  fi
+}
+
+resolve_host_listener_pid() {
+  listener_port="$1"
+  expected_executable="$2"
+  listener_pids="$(lsof -nP -a -iTCP:"$listener_port" -sTCP:LISTEN -t 2>/dev/null | sort -u)"
+  case "$listener_pids" in
+    ""|*[!0-9]*) echo "FAIL: expected one test-host listener on port $listener_port" >&2; return 1 ;;
+  esac
+  actual_executable="$(ps -p "$listener_pids" -o comm=)"
+  if [ "$actual_executable" != "$expected_executable" ]; then
+    echo "FAIL: verification listener is not the repository test host" >&2
+    return 1
+  fi
+  printf '%s\n' "$listener_pids"
+}
 
 stop_host() {
-  app_process="$HOST_APP/Contents/MacOS/SensoriumHost"
-  child_pids="$(pgrep -f "$app_process.* 7781" || true)"
-  if [ -n "$child_pids" ]; then
-    kill -TERM $child_pids 2>/dev/null || true
+  if [ -z "$HOST_PID" ] && [ -n "$LAUNCHER_PID" ]; then
+    HOST_PID="$(resolve_host_listener_pid 7781 "$HOST_APP/Contents/MacOS/SensoriumHost")" || {
+      echo "FAIL: cannot identify the launched test host; leaving its launcher running for safe cleanup" >&2
+      return 1
+    }
   fi
   if [ -n "$HOST_PID" ]; then
-    kill -TERM "$HOST_PID" 2>/dev/null || true
-    wait "$HOST_PID" 2>/dev/null || true
+    actual_executable="$(ps -p "$HOST_PID" -o comm= 2>/dev/null || true)"
+    if [ "$actual_executable" = "$HOST_APP/Contents/MacOS/SensoriumHost" ]; then
+      kill -TERM "$HOST_PID" 2>/dev/null || {
+        echo "FAIL: could not stop the identified test host" >&2
+        return 1
+      }
+    elif [ -n "$actual_executable" ]; then
+      echo "FAIL: test-host PID changed executable; leaving it and the launcher running" >&2
+      return 1
+    fi
     HOST_PID=""
+  fi
+  if [ -n "$LAUNCHER_PID" ]; then
+    wait "$LAUNCHER_PID" 2>/dev/null || true
+    LAUNCHER_PID=""
   fi
 }
 
@@ -74,6 +116,10 @@ wait_for_text() {
 # permission boundary.
 fail_with_diagnosis() {
   context="$1"
+  if [ -f "$PROBE_LOG" ] && grep -qF 'workspace_text_observation_blocked=yes' "$PROBE_LOG"; then
+    echo 'BLOCKED: the local probe could not read the exact test-host workspace editor through Accessibility; existing Accessibility authorization is required for text observation.' >&2
+    exit 3
+  fi
   focus_reason=""
   if [ -f "$PROBE_LOG" ]; then
     focus_reason="$(python3 "$FOCUS_CLASSIFIER" "$PROBE_LOG" 2>/dev/null || true)"
@@ -124,24 +170,27 @@ mkdir -p "$HOST_HOME" "$CLIENT_HOME"
 swift Scripts/display_inventory.swift > "$STATE/display-inventory-pre.json"
 python3 Scripts/check-display-active.py "$STATE/display-inventory-pre.json" || exit 3
 
+require_verification_port_available 7781 || fail_with_diagnosis "verification port 7781 was not available before launch"
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args pair "$ADDRESS" 7781 --transport tcp-local-verification &
-HOST_PID=$!
+LAUNCHER_PID=$!
 wait_for_text 'Pairing code:' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'Pairing code:' in host log"
+HOST_PID="$(resolve_host_listener_pid 7781 "$HOST_APP/Contents/MacOS/SensoriumHost")" || fail_with_diagnosis "could not identify the paired test host"
 CODE="$(python3 -c 'import re; print(re.search(r"Pairing code: (\d{6})", open("'"$HOST_LOG"'").read()).group(1))')"
 env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" pair "$ADDRESS" 7781 "$CODE" > "$PROBE_LOG" 2>&1
 wait_for_text 'local_input_probe_paired=yes' "$PROBE_LOG" 5 || fail_with_diagnosis "timed out waiting for 'local_input_probe_paired=yes' in probe log"
 stop_host
 : > "$HOST_LOG"
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args serve "$ADDRESS" 7781 --transport tcp-local-verification &
-HOST_PID=$!
+LAUNCHER_PID=$!
 wait_for_text 'Sensorium host bound' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'Sensorium host bound' in host log"
-if ! env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" enter "$ADDRESS" 7781 >> "$PROBE_LOG" 2>&1; then
+HOST_PID="$(resolve_host_listener_pid 7781 "$HOST_APP/Contents/MacOS/SensoriumHost")" || fail_with_diagnosis "could not identify the serving test host"
+if ! env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" SENSORIUM_TEST_HOST_PID="$HOST_PID" SENSORIUM_TEST_HOST_EXECUTABLE="$HOST_APP/Contents/MacOS/SensoriumHost" "$PROBE" enter "$ADDRESS" 7781 >> "$PROBE_LOG" 2>&1; then
   fail_with_diagnosis "the probe's 'enter' step failed"
 fi
 
 wait_for_text 'workspace started on session canvas' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'workspace started on session canvas' in host log"
 wait_for_text 'capture started on session canvas' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'capture started on session canvas' in host log"
-wait_for_text 'Sensorium workspace: text input observed' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'Sensorium workspace: text input observed' in host log"
+wait_for_text 'workspace_text_observed=yes' "$PROBE_LOG" 5 || fail_with_diagnosis "the exact test-host workspace editor did not change after input"
 wait_for_text 'viewer_presented_frames=' "$PROBE_LOG" 5 || fail_with_diagnosis "timed out waiting for 'viewer_presented_frames=' in probe log"
 wait_for_text 'workspace_input_sent=yes' "$PROBE_LOG" 5 || fail_with_diagnosis "timed out waiting for 'workspace_input_sent=yes' in probe log"
 python3 -c 'import re,sys; text=open("'"$PROBE_LOG"'", errors="replace").read(); match=re.search(r"viewer_presented_frames=(\d+)", text); count=int(match.group(1)) if match else 0; print(f"viewer_presented_frames={count}"); print("workspace_input_sent=yes" if count > 0 and "workspace_input_sent=yes" in text else "workspace_input_sent=no"); sys.exit(0 if count > 0 and "workspace_input_sent=yes" in text else 1)' || fail_with_diagnosis "no presented frames or no sent-input evidence in probe log"

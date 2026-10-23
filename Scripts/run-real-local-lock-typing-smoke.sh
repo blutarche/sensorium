@@ -15,8 +15,8 @@
 # This locks the machine and leaves it locked, with its password field empty.
 # It therefore refuses to run unless SENSORIUM_ALLOW_LOCK=1 is set.
 #
-# HOST_APP selects the host to test; the packaged build is the default. Set it
-# to "/Applications/Sensorium Host.app" to test an installed copy.
+# HOST_APP selects a repository .build test fixture; the packaged repository
+# build is the default. Installed hosts and paths outside the repo are refused.
 #
 # Every process this starts is pointed at a throwaway state directory under
 # .build through CFFIXED_USER_HOME (`HOME` alone does not move Foundation's
@@ -39,6 +39,7 @@ PACKAGED_HOST_APP="$ROOT/Artifacts/Sensorium/Sensorium Host.app"
 HOST_APP="${HOST_APP:-$PACKAGED_HOST_APP}"
 PROBE="$ROOT/.build/arm64-apple-macosx/release/SensoriumLocalHostScreenProbe"
 HOST_PID=""
+LAUNCHER_PID=""
 
 if [ "${SENSORIUM_ALLOW_LOCK:-}" != 1 ]; then
   echo 'REFUSED: this smoke locks the machine and leaves it locked.' >&2
@@ -46,16 +47,68 @@ if [ "${SENSORIUM_ALLOW_LOCK:-}" != 1 ]; then
   exit 2
 fi
 
+validate_host_app() {
+  python3 - "$ROOT" "$1" <<'PYPATH'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1]).resolve()
+app = Path(sys.argv[2]).resolve()
+packaged = root / "Artifacts/Sensorium/Sensorium Host.app"
+if app != packaged and not (app.is_relative_to(root / ".build") and app.suffix == ".app"):
+    raise SystemExit("FAIL: HOST_APP must be the repository package or a .build test fixture")
+executable = (app / "Contents/MacOS/SensoriumHost").resolve()
+if not executable.is_relative_to(app):
+    raise SystemExit("FAIL: test-host executable resolves outside its repository bundle")
+print(app)
+PYPATH
+}
+
+require_host_port_free() {
+  listener_pids="$(lsof -nP -a -iTCP:"$1" -sTCP:LISTEN -t 2>/dev/null || true)"
+  if [ -n "$listener_pids" ]; then
+    echo "FAIL: test-host port $1 is already occupied; no host was launched or signalled" >&2
+    return 1
+  fi
+}
+
+resolve_host_listener_pid() {
+  listener_port="$1"
+  expected_executable="$2"
+  listener_pids="$(lsof -nP -a -iTCP:"$listener_port" -sTCP:LISTEN -t 2>/dev/null | sort -u)"
+  case "$listener_pids" in
+    ""|0|*[!0-9]*) echo "FAIL: expected one test-host listener on port $listener_port" >&2; return 1 ;;
+  esac
+  actual_executable="$(ps -p "$listener_pids" -o comm=)"
+  if [ "$actual_executable" != "$expected_executable" ]; then
+    echo "FAIL: verification listener is not the repository test host" >&2
+    return 1
+  fi
+  printf '%s\n' "$listener_pids"
+}
 stop_host() {
-  app_process="$HOST_APP/Contents/MacOS/SensoriumHost"
-  child_pids="$(pgrep -f "$app_process.* 7783" || true)"
-  if [ -n "$child_pids" ]; then
-    kill -TERM $child_pids 2>/dev/null || true
+  if [ -z "$HOST_PID" ] && [ -n "$LAUNCHER_PID" ]; then
+    HOST_PID="$(resolve_host_listener_pid 7783 "$HOST")" || {
+      echo "FAIL: cannot identify the launched test host; leaving its launcher running for safe cleanup" >&2
+      return 1
+    }
   fi
   if [ -n "$HOST_PID" ]; then
-    kill -TERM "$HOST_PID" 2>/dev/null || true
-    wait "$HOST_PID" 2>/dev/null || true
+    actual_executable="$(ps -p "$HOST_PID" -o comm= 2>/dev/null || true)"
+    if [ "$actual_executable" = "$HOST" ]; then
+      kill -TERM "$HOST_PID" 2>/dev/null || {
+        echo "FAIL: could not stop the identified test host" >&2
+        return 1
+      }
+    elif [ -n "$actual_executable" ]; then
+      echo "FAIL: test-host PID changed executable; leaving it and the launcher running" >&2
+      return 1
+    fi
     HOST_PID=""
+  fi
+  if [ -n "$LAUNCHER_PID" ]; then
+    wait "$LAUNCHER_PID" 2>/dev/null || true
+    LAUNCHER_PID=""
   fi
 }
 
@@ -100,12 +153,16 @@ fail() {
   exit 1
 }
 
+HOST_APP="$(validate_host_app "$HOST_APP")" || exit 1
+HOST="$HOST_APP/Contents/MacOS/SensoriumHost"
 cd "$ROOT"
 test -x "$TAILSCALE"
 if [ "$HOST_APP" = "$PACKAGED_HOST_APP" ]; then
   "$PACKAGE" >/dev/null
 fi
 swift build -c release --product SensoriumLocalHostScreenProbe >/dev/null
+HOST_APP="$(validate_host_app "$HOST_APP")" || exit 1
+HOST="$HOST_APP/Contents/MacOS/SensoriumHost"
 test -d "$HOST_APP" && test -x "$HOST_APP/Contents/MacOS/SensoriumHost" && test -x "$PROBE"
 ADDRESS="$($TAILSCALE ip -4)"
 test -n "$ADDRESS"
@@ -116,9 +173,11 @@ mkdir -p "$HOST_HOME" "$CLIENT_HOME" "$SHOT_DIR"
 # The displays as they stand before anything runs, to compare once the host stops.
 swift Scripts/display_inventory.swift > "$STATE/display-inventory-pre.json"
 
+require_host_port_free 7783 || fail "test-host port is already occupied"
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args pair "$ADDRESS" 7783 --transport tcp-local-verification &
-HOST_PID=$!
+LAUNCHER_PID=$!
 wait_for_text 'Pairing code:' "$HOST_LOG" 10 || fail "timed out waiting for 'Pairing code:' in host log"
+HOST_PID="$(resolve_host_listener_pid 7783 "$HOST")" || fail "could not identify the pairing test host"
 CODE="$(python3 -c 'import re; print(re.search(r"Pairing code: (\d{6})", open("'"$HOST_LOG"'").read()).group(1))')"
 env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" pair "$ADDRESS" 7783 "$CODE" > "$PROBE_LOG" 2>&1
 wait_for_text 'host_screen_probe_paired=yes' "$PROBE_LOG" 5 || fail "timed out waiting for 'host_screen_probe_paired=yes' in probe log"
@@ -134,9 +193,11 @@ test -f "$ARMING_FILE" || fail "no arming record was written at $ARMING_FILE"
 # the person at the machine before sharing this screen.
 
 : > "$HOST_LOG"
+require_host_port_free 7783 || fail "test-host port is already occupied"
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args serve "$ADDRESS" 7783 --transport tcp-local-verification &
-HOST_PID=$!
+LAUNCHER_PID=$!
 wait_for_text 'Sensorium host bound' "$HOST_LOG" 10 || fail "timed out waiting for 'Sensorium host bound' in host log"
+HOST_PID="$(resolve_host_listener_pid 7783 "$HOST")" || fail "could not identify the streaming test host"
 
 set +e
 env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" lock-typing "$ADDRESS" 7783 "$SHOT_DIR" >> "$PROBE_LOG" 2>&1

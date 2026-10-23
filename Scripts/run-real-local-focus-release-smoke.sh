@@ -128,7 +128,7 @@ env HOME="$HOST_HOME" CFFIXED_USER_HOME="$HOST_HOME" "$HOST" serve "$ADDRESS" "$
 HOST_PID=$!
 wait_for_pattern 'Sensorium host bound' "$HOST_LOG" 10 || fail_with_diagnosis "timed out waiting for 'Sensorium host bound' in host log"
 
-env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" SENSORIUM_ALLOW_FOCUS_RELEASE_SMOKE=1 "$PROBE" enter-focus-release "$ADDRESS" "$PORT" >> "$PROBE_LOG" 2>&1 &
+env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" SENSORIUM_ALLOW_FOCUS_RELEASE_SMOKE=1 SENSORIUM_TEST_HOST_PID="$HOST_PID" SENSORIUM_TEST_HOST_EXECUTABLE="$HOST" "$PROBE" enter-focus-release "$ADDRESS" "$PORT" >> "$PROBE_LOG" 2>&1 &
 PROBE_PID=$!
 
 wait_for_pattern 'workspace started on session canvas' "$HOST_LOG" 20 \

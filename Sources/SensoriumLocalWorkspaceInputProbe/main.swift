@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 import CoreVideo
 import Foundation
@@ -13,6 +14,7 @@ import SensoriumCore
 ///
 /// usage:
 ///   SensoriumLocalWorkspaceInputProbe pair <tailnet-host> <port> <pairing-code>
+///   SensoriumLocalWorkspaceInputProbe enter-video <tailnet-host> <port>
 ///   SensoriumLocalWorkspaceInputProbe enter <tailnet-host> <port>
 ///   SensoriumLocalWorkspaceInputProbe enter-resize <tailnet-host> <port>
 ///   SensoriumLocalWorkspaceInputProbe enter-focus-release <tailnet-host> <port>
@@ -36,6 +38,7 @@ import SensoriumCore
 struct SensoriumLocalWorkspaceInputProbe {
     private struct SavedApproval: Codable {
         let hostPublicKey: Data
+        let tlsCertificateHash: Data?
     }
 
     static func main() async {
@@ -54,6 +57,9 @@ struct SensoriumLocalWorkspaceInputProbe {
                     rawPort: arguments[2],
                     code: arguments[3]
                 )
+            case "enter-video":
+                guard arguments.count == 3 else { usageAndExit() }
+                try await enterVideo(host: arguments[1], rawPort: arguments[2])
             case "enter":
                 guard arguments.count == 3 else { usageAndExit() }
                 try await enter(host: arguments[1], rawPort: arguments[2])
@@ -83,18 +89,72 @@ struct SensoriumLocalWorkspaceInputProbe {
         try await connection.start()
         let session = ClientSessionController(transport: connection, identity: identity)
         let approval = try await session.pair(deviceName: "Sensorium local workspace input probe", code: code)
-        try JSONEncoder().encode(SavedApproval(hostPublicKey: approval.hostPublicKey)).write(to: approvalURL(), options: .atomic)
+        try JSONEncoder().encode(SavedApproval(hostPublicKey: approval.hostPublicKey, tlsCertificateHash: approval.tlsCertificateHash)).write(to: approvalURL(), options: .atomic)
         await connection.close()
         print("local_input_probe_paired=yes")
     }
 
-    private static func enter(host: String, rawPort: String) async throws {
+    private static func enterVideo(host: String, rawPort: String) async throws {
         let port = try endpointPort(rawPort)
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
         let approval = try JSONDecoder().decode(SavedApproval.self, from: Data(contentsOf: approvalURL()))
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
             port: port,
+            tlsCertificateHash: approval.tlsCertificateHash,
+            transport: .tcpLocalVerification
+        )
+        try await connection.start()
+        let session = ClientSessionController(
+            transport: connection,
+            identity: identity,
+            pinnedHostPublicKey: approval.hostPublicKey
+        )
+        let window = try ClientCanvasWindowController(title: "Sensorium Local Video Smoke", session: session)
+        await session.setCanvasObserver(window.canvasObserver())
+        _ = try await session.connect(deviceName: "Sensorium local video smoke probe")
+        await window.show()
+
+        let runner = ClientSessionRunner(connection: connection, session: session, window: window)
+        do {
+            try runner.start()
+        } catch {
+            await session.disconnect(reason: "video-probe-failed")
+            throw error
+        }
+        print("video_probe_session_started=yes")
+        let deadline = ProcessInfo.processInfo.systemUptime + 15
+        var decoded = 0
+        var presented = 0
+        repeat {
+            let metrics = await runner.latency.metrics()
+            decoded = metrics.samples(for: .decode).count
+            presented = metrics.samples(for: .present).count
+            if decoded > 0 && presented > 0 { break }
+            try? await Task.sleep(for: .milliseconds(100))
+        } while ProcessInfo.processInfo.systemUptime < deadline
+
+        runner.stop()
+        await session.disconnect(reason: "video-probe-complete")
+        print("video_probe_disconnected=yes")
+        print("decoded_frames=\(decoded)")
+        print("presented_frames=\(presented)")
+        guard decoded > 0, presented > 0 else {
+            print("workspace_frame_presented=no")
+            throw decoded == 0 ? InputProbeError.noDecodedFrames : InputProbeError.noPresentedFrames
+        }
+        print("workspace_frame_presented=yes")
+    }
+
+    private static func enter(host: String, rawPort: String) async throws {
+        let hostTarget = try hostWorkspaceTarget()
+        let port = try endpointPort(rawPort)
+        let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
+        let approval = try JSONDecoder().decode(SavedApproval.self, from: Data(contentsOf: approvalURL()))
+        let connection = NetworkControlConnection(
+            host: NWEndpoint.Host(host),
+            port: port,
+            tlsCertificateHash: approval.tlsCertificateHash,
             transport: .tcpLocalVerification
         )
         try await connection.start()
@@ -133,7 +193,7 @@ struct SensoriumLocalWorkspaceInputProbe {
         // refuses it otherwise -- correctly, since that guard is what stops
         // a viewer that swallows all input from locking the user out of
         // their own machine.
-        let (hostFocused, contendingApp) = await activateHostWorkspace()
+        let (hostFocused, contendingApp) = await activateHostWorkspace(hostTarget)
         print("workspace_focus_confirmed=\(hostFocused)")
         guard hostFocused else {
             print("workspace_focus_holder=\(contendingApp ?? "unknown")")
@@ -143,23 +203,26 @@ struct SensoriumLocalWorkspaceInputProbe {
             throw InputProbeError.hostWorkspaceNeverFocused
         }
 
-        // Confirming this machine's own frontmost app only proves the
-        // hand-off reached the host process, not that the host's own window
-        // has finished becoming key inside it -- `HostSessionController.mayPost`
-        // reads `NativeCanvasWorkspace.hasKeyFocus`, a `Bool` this probe has
-        // no way to read, updated by AppKit's own notification once the
-        // host's main run loop gets to process the activation it was just
-        // handed. Nothing this probe can observe answers "has that landed
-        // yet", so retry the identical authenticated key send, bounded,
-        // rather than guess how long the one send above needs to sleep.
+        let textBeforeInput = try workspaceText(in: hostTarget)
+        let sentinel = "sensoriumprobe" + UUID().uuidString.lowercased().filter { $0.isLetter }
+        let keyCodes: [Character: UInt16] = [
+            "a": 0, "b": 11, "c": 8, "d": 2, "e": 14, "f": 3, "i": 34,
+            "m": 46, "n": 45, "o": 31, "p": 35, "r": 15, "s": 1, "u": 32
+        ]
+        let sentinelKeys = sentinel.compactMap { keyCodes[$0] }
+        precondition(sentinelKeys.count == sentinel.count)
         var down = PointerDelivery.droppedFailed
         var up = PointerDelivery.droppedFailed
-        for attempt in 0..<30 {
-            down = await router.route(.key(keyCode: 0, isDown: true, modifiers: []))
-            up = await router.route(.key(keyCode: 0, isDown: false, modifiers: []))
-            if attempt < 29 {
-                try? await Task.sleep(for: .milliseconds(100))
+        // Activation may precede the host's key-window notification. A new
+        // sentinel observed through AX proves a complete attempt landed.
+        for _ in 0..<5 {
+            for keyCode in sentinelKeys {
+                down = await router.route(.key(keyCode: keyCode, isDown: true, modifiers: []))
+                up = await router.route(.key(keyCode: keyCode, isDown: false, modifiers: []))
             }
+            try? await Task.sleep(for: .milliseconds(150))
+            if let current = try? workspaceText(in: hostTarget),
+               WorkspaceTextObservation.changed(before: textBeforeInput, after: current, sentinel: sentinel) { break }
         }
         // `.delivered`/`.deliveredWithoutLocation` only mean the client's
         // authenticated transport accepted the send; the wire protocol has no
@@ -177,6 +240,16 @@ struct SensoriumLocalWorkspaceInputProbe {
             throw InputProbeError.routedInputNotDelivered
         }
         print("workspace_input_sent=yes")
+        let textChanged = await pollUntil(seconds: 5) {
+            guard let current = try? workspaceText(in: hostTarget) else { return false }
+            return WorkspaceTextObservation.changed(before: textBeforeInput, after: current, sentinel: sentinel)
+        }
+        print("workspace_text_observed=\(textChanged ? "yes" : "no")")
+        guard textChanged else {
+            runner.stop()
+            await session.disconnect(reason: "input-probe-text-unchanged")
+            throw InputProbeError.workspaceTextNotObserved
+        }
 
         try await Task.sleep(for: .seconds(2))
         let presented = await runner.latency.metrics().samples(for: .present).count
@@ -208,6 +281,7 @@ struct SensoriumLocalWorkspaceInputProbe {
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
             port: port,
+            tlsCertificateHash: approval.tlsCertificateHash,
             transport: .tcpLocalVerification
         )
         try await connection.start()
@@ -291,6 +365,7 @@ struct SensoriumLocalWorkspaceInputProbe {
     /// `CoreGraphicsInputInjector` in the real host process — not anything
     /// this probe or the host keeps in a Swift struct.
     private static func enterFocusRelease(host: String, rawPort: String) async throws {
+        let hostTarget = try hostWorkspaceTarget()
         guard ProcessInfo.processInfo.environment["SENSORIUM_ALLOW_FOCUS_RELEASE_SMOKE"] == "1" else {
             print("focus_release_smoke_gate=refused")
             throw InputProbeError.focusReleaseSmokeNotOptedIn
@@ -303,6 +378,7 @@ struct SensoriumLocalWorkspaceInputProbe {
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
             port: port,
+            tlsCertificateHash: approval.tlsCertificateHash,
             transport: .tcpLocalVerification
         )
         try await connection.start()
@@ -344,7 +420,7 @@ struct SensoriumLocalWorkspaceInputProbe {
         // own `show()` left it, not the host workspace, holding frontmost.
         // The button above carries its own canvas coordinates and needs no
         // frontmost app to land, but the key below does.
-        let (hostFocused, contendingApp) = await activateHostWorkspace()
+        let (hostFocused, contendingApp) = await activateHostWorkspace(hostTarget)
         print("workspace_focus_confirmed=\(hostFocused)")
         guard hostFocused else {
             print("workspace_focus_holder=\(contendingApp ?? "unknown")")
@@ -422,43 +498,62 @@ struct SensoriumLocalWorkspaceInputProbe {
         print("focus_release_smoke_complete=yes")
     }
 
-    /// The host binary's file name -- `SensoriumHost` when this probe is
-    /// driving the packaged `Sensorium Host.app`
-    /// (`Scripts/run-real-local-workspace-input-smoke.sh`), `sensoriumd` when
-    /// it is driving the raw, unbundled SwiftPM executable
-    /// (`Scripts/run-real-local-focus-release-smoke.sh`), which is not
-    /// renamed by packaging. The raw binary has no `Info.plist`, so it has no
-    /// `CFBundleIdentifier` for `NSRunningApplication.bundleIdentifier` to
-    /// report. The executable path is the one identifier both forms share.
-    private static let hostExecutableNames: Set<String> = ["SensoriumHost", "sensoriumd"]
+    private static func workspaceText(in target: HostWorkspaceActivationTarget) throws -> String {
+        func denied() throws -> Never {
+            print("workspace_text_observation_blocked=yes")
+            throw InputProbeError.workspaceTextObservationUnavailable
+        }
+        guard AXIsProcessTrusted() else { try denied() }
+        guard NSRunningApplication(processIdentifier: target.processIdentifier)?.executableURL?
+                .resolvingSymlinksInPath().standardizedFileURL == target.executableURL else {
+            throw HostWorkspaceActivationTarget.ValidationError.processExecutableMismatch
+        }
+        var authorizationDenied = false
+        var targetMismatch = false
+        func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
+            var pid: pid_t = 0
+            let pidResult = AXUIElementGetPid(element, &pid)
+            if pidResult == .apiDisabled { authorizationDenied = true }
+            guard pidResult == .success else { return nil }
+            guard pid == target.processIdentifier else { targetMismatch = true; return nil }
+            var value: CFTypeRef?
+            let result = AXUIElementCopyAttributeValue(element, name as CFString, &value)
+            if result == .apiDisabled { authorizationDenied = true }
+            return result == .success ? value : nil
+        }
+        let application = AXUIElementCreateApplication(target.processIdentifier)
+        let windows = attribute(application, kAXWindowsAttribute) as? [AXUIElement] ?? []
+        let text = WorkspaceTextObservation.read(
+            windows: windows,
+            title: { attribute($0, kAXTitleAttribute) as? String },
+            isEditor: { attribute($0, kAXRoleAttribute) as? String == kAXTextAreaRole },
+            children: { attribute($0, kAXChildrenAttribute) as? [AXUIElement] ?? [] },
+            value: { attribute($0, kAXValueAttribute) as? String }
+        )
+        if targetMismatch { throw HostWorkspaceActivationTarget.ValidationError.processExecutableMismatch }
+        if authorizationDenied { try denied() }
+        guard let text else { throw InputProbeError.workspaceTextObservationUnavailable }
+        return text
+    }
 
-    /// Explicitly asks the host process to become the frontmost app, then
-    /// waits for `NSWorkspace` -- real, OS-level, cross-process ground
-    /// truth, not this probe's own bookkeeping -- to confirm it actually
-    /// did. `NSRunningApplication.activate` is itself asynchronous (it is a
-    /// WindowServer round trip), so a caller that sent a key immediately
-    /// after issuing it, without waiting for this, would still race the
-    /// same way `HostSessionController.mayPost` warns its own `raise` can.
-    ///
-    /// On failure also reports which application actually held frontmost at
-    /// the end of the poll: macOS refuses to hand a background app
-    /// frontmost while someone is actively using this machine, and that
-    /// app's name is the one piece of real evidence this probe has for
-    /// telling that apart from a genuine workspace-focus regression.
-    private static func activateHostWorkspace() async -> (confirmed: Bool, contendingApp: String?) {
-        guard let hostApp = NSWorkspace.shared.runningApplications.first(
-            where: { hostExecutableNames.contains($0.executableURL?.lastPathComponent ?? "") }
-        ) else {
-            return (false, NSWorkspace.shared.frontmostApplication?.localizedName)
+    private static func hostWorkspaceTarget() throws -> HostWorkspaceActivationTarget {
+        try HostWorkspaceActivationTarget.resolve(
+            environment: ProcessInfo.processInfo.environment,
+            repositoryRoot: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent(),
+            executablePath: { NSRunningApplication(processIdentifier: $0)?.executableURL?.path }
+        )
+    }
+
+    private static func activateHostWorkspace(_ target: HostWorkspaceActivationTarget) async -> (confirmed: Bool, contendingApp: String?) {
+        guard let hostApp = NSRunningApplication(processIdentifier: target.processIdentifier),
+              hostApp.executableURL?.resolvingSymlinksInPath().standardizedFileURL == target.executableURL else {
+            return (false, nil)
         }
         hostApp.activate(options: .activateIgnoringOtherApps)
         let confirmed = await pollUntil(seconds: 5) {
-            hostExecutableNames.contains(NSWorkspace.shared.frontmostApplication?.executableURL?.lastPathComponent ?? "")
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier
         }
-        if confirmed {
-            return (true, nil)
-        }
-        return (false, NSWorkspace.shared.frontmostApplication?.localizedName)
+        return (confirmed, confirmed ? nil : NSWorkspace.shared.frontmostApplication?.localizedName)
     }
 
     /// Polls at 100ms resolution instead of a single fixed sleep: the host's
@@ -520,7 +615,7 @@ struct SensoriumLocalWorkspaceInputProbe {
     }
 
     private static func usageAndExit() -> Never {
-        print("usage: SensoriumLocalWorkspaceInputProbe <pair|enter|enter-resize|enter-focus-release> <tailnet-host> <port> [pairing-code]")
+        print("usage: SensoriumLocalWorkspaceInputProbe <pair|enter-video|enter|enter-resize|enter-focus-release> <tailnet-host> <port> [pairing-code]")
         Foundation.exit(2)
     }
 }
@@ -529,6 +624,8 @@ private enum InputProbeError: Error {
     case invalidPort
     case hostWorkspaceNeverFocused
     case routedInputNotDelivered
+    case workspaceTextObservationUnavailable
+    case workspaceTextNotObserved
     case noPresentedFrames
     case noDecodedFrames
     case drawableSizeNotSent
@@ -572,5 +669,71 @@ private final class DecodedFrameTracker: @unchecked Sendable {
             lock.unlock()
         }
         return DecodedFrameSnapshot(count: count, width: lastWidth, height: lastHeight)
+    }
+}
+enum WorkspaceTextObservation {
+    static func read<Node>(
+        windows: [Node], title: (Node) -> String?, isEditor: (Node) -> Bool,
+        children: (Node) -> [Node], value: (Node) -> String?
+    ) -> String? {
+        let workspaces = windows.filter { title($0) == "Sensorium Workspace" }
+        guard workspaces.count == 1 else { return nil }
+        var pending = workspaces
+        var editors: [Node] = []
+        var visited = 0
+        while let node = pending.popLast() {
+            visited += 1
+            guard visited <= 512 else { return nil }
+            if isEditor(node) { editors.append(node) }
+            pending.append(contentsOf: children(node))
+        }
+        guard editors.count == 1 else { return nil }
+        return value(editors[0])
+    }
+
+    static func changed(before: String, after: String, sentinel: String) -> Bool {
+        guard !sentinel.isEmpty, before != after else { return false }
+        return after.components(separatedBy: sentinel).count > before.components(separatedBy: sentinel).count
+    }
+}
+
+struct HostWorkspaceActivationTarget: Equatable {
+    let processIdentifier: Int32
+    let executableURL: URL
+
+    enum ValidationError: Error {
+        case missingOrInvalidProcessIdentifier
+        case missingOrUnexpectedExecutable
+        case processExecutableMismatch
+    }
+
+    static func resolve(
+        environment: [String: String],
+        repositoryRoot: URL,
+        executablePath: (Int32) -> String?
+    ) throws -> Self {
+        guard let rawPID = environment["SENSORIUM_TEST_HOST_PID"],
+              let pid = Int32(rawPID), pid > 1 else {
+            throw ValidationError.missingOrInvalidProcessIdentifier
+        }
+        guard let expectedPath = environment["SENSORIUM_TEST_HOST_EXECUTABLE"], expectedPath.hasPrefix("/") else {
+            throw ValidationError.missingOrUnexpectedExecutable
+        }
+        let root = repositoryRoot.resolvingSymlinksInPath().standardizedFileURL
+        let expected = URL(fileURLWithPath: expectedPath).resolvingSymlinksInPath().standardizedFileURL
+        let packaged = root.appendingPathComponent("Artifacts/Sensorium/Sensorium Host.app/Contents/MacOS/SensoriumHost")
+        let buildRoot = root.appendingPathComponent(".build").path + "/"
+        let buildComponents = expected.path.hasPrefix(buildRoot)
+            ? String(expected.path.dropFirst(buildRoot.count)).split(separator: "/").map(String.init) : []
+        let isBuildHost = buildComponents.count == 3
+            && ["debug", "release"].contains(buildComponents[1]) && buildComponents[2] == "sensoriumd"
+        guard !expected.path.hasPrefix("/Applications/"), expected == packaged || isBuildHost else {
+            throw ValidationError.missingOrUnexpectedExecutable
+        }
+        guard let actualPath = executablePath(pid),
+              URL(fileURLWithPath: actualPath).resolvingSymlinksInPath().standardizedFileURL == expected else {
+            throw ValidationError.processExecutableMismatch
+        }
+        return Self(processIdentifier: pid, executableURL: expected)
     }
 }

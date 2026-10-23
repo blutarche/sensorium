@@ -7,7 +7,8 @@ SMOKE="$ROOT/Scripts/run-real-local-workspace-input-smoke.sh"
 
 [ -x "$SMOKE" ]
 grep -F 'SensoriumLocalWorkspaceInputProbe' "$SMOKE" >/dev/null
-grep -F 'Sensorium workspace: text input observed' "$SMOKE" >/dev/null
+grep -F 'workspace_text_observed=yes' "$SMOKE" >/dev/null
+grep -F 'workspace_text_observation_blocked=yes' "$SMOKE" >/dev/null
 grep -F 'viewer_presented_frames=' "$SMOKE" >/dev/null
 grep -F 'workspace_input_sent=yes' "$SMOKE" >/dev/null
 grep -F 'compare-display-inventory.py' "$SMOKE" >/dev/null
@@ -74,5 +75,8 @@ fi
 # Throwaway state must never alias the real Application Support or the installed
 # host's port.
 sh "$ROOT/Scripts/assert-smoke-isolated.sh" "$SMOKE"
+grep -F 'SENSORIUM_TEST_HOST_PID="$HOST_PID"' "$SMOKE" >/dev/null
+grep -F 'SENSORIUM_TEST_HOST_EXECUTABLE=' "$SMOKE" >/dev/null
+sh "$ROOT/Scripts/test-workspace-host-target.sh"
 
 printf 'PASS: real local workspace input smoke harness contract\n'
