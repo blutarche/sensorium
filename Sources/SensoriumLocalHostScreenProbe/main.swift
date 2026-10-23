@@ -488,7 +488,9 @@ struct SensoriumLocalHostScreenProbe {
     /// (never Return, so nothing is submitted) with no click first, and
     /// compares the lower-centre of the streamed frame before and after: the
     /// lock screen centres its password field horizontally in the lower part
-    /// of the display, and typing changes it. The machine is left locked.
+    /// of the display, and typing changes it. It empties the field before
+    /// typing and again after, and fails if the field is not left empty. The
+    /// machine is left locked.
     private static func lockTyping(host: String, rawPort: String, shotDirectory: String) async throws {
         let port = try endpointPort(rawPort)
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
@@ -553,6 +555,10 @@ struct SensoriumLocalHostScreenProbe {
         // The lock screen takes a few seconds to finish drawing its password field.
         try await Task.sleep(for: .seconds(8))
 
+        // Starts from an empty field, whatever an earlier run or person left in it.
+        try await pressBackspace(times: 20, through: router)
+        try await Task.sleep(for: .seconds(1))
+
         let directory = URL(fileURLWithPath: shotDirectory, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         guard let before = latest.get() else { throw HostScreenProbeError.noPresentedFrames }
@@ -573,6 +579,18 @@ struct SensoriumLocalHostScreenProbe {
         let changed = beforeFrame.passwordRegionDiffers(from: afterFrame)
         print("lock_typing_field_changed=\(changed ? "yes" : "no")")
 
+        // Leaves the field as it found it: empty. Polled because the caret
+        // blinks, and a frame caught mid-blink differs from `before` by it.
+        try await pressBackspace(times: 10, through: router)
+        let cleared = await pollUntil(seconds: 3) {
+            guard let frame = latest.get(), let now = try? LockScreenFrame(frame) else { return false }
+            return !beforeFrame.passwordRegionDiffers(from: now)
+        }
+        if let frame = latest.get() {
+            try LockScreenFrame(frame).writePNG(to: directory.appendingPathComponent("lock-after-clearing.png"))
+        }
+        print("lock_typing_field_cleared=\(cleared ? "yes" : "no")")
+
         let escape: UInt16 = 53
         _ = await router.route(.key(keyCode: escape, isDown: true, modifiers: []))
         _ = await router.route(.key(keyCode: escape, isDown: false, modifiers: []))
@@ -580,6 +598,16 @@ struct SensoriumLocalHostScreenProbe {
         runner.stop()
         await session.disconnect(reason: "lock-typing-probe-complete")
         if !changed { throw HostScreenProbeError.lockFieldUnchanged }
+        if !cleared { throw HostScreenProbeError.lockFieldNotCleared }
+    }
+
+    private static func pressBackspace(times: Int, through router: CanvasSurfaceEventRouter) async throws {
+        let delete: UInt16 = 51
+        for _ in 0..<times {
+            _ = await router.route(.key(keyCode: delete, isDown: true, modifiers: []))
+            _ = await router.route(.key(keyCode: delete, isDown: false, modifiers: []))
+            try await Task.sleep(for: .milliseconds(60))
+        }
     }
 
     /// `PointerDelivery` carries no description of its own; this names each
@@ -832,6 +860,7 @@ private enum HostScreenProbeError: Error {
     case displayNotRestored
     case screenNeverLocked
     case lockFieldUnchanged
+    case lockFieldNotCleared
 }
 
 /// The newest decoded frame, written from the runner's decode callback and

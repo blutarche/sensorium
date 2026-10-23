@@ -4,7 +4,8 @@
 # unlocked. The viewer connects to the host screen, locks the machine with the
 # lock shortcut if it is not locked already, types five letters (never Return)
 # with no click first, and compares the lower centre of the streamed frame
-# before and after. The field changing is the pass condition.
+# before and after. It empties the field before typing and again after. The
+# field changing, and being left empty, is the pass condition.
 #
 # This locks the machine and leaves it locked: the person at it unlocks it.
 # It therefore refuses to run unless SENSORIUM_ALLOW_LOCK=1 is set.
@@ -90,7 +91,7 @@ fail() {
   echo "FAIL: $1" >&2
   echo "  host log: $HOST_LOG" >&2
   echo "  probe log: $PROBE_LOG" >&2
-  echo "  This machine may be locked; unlock it yourself." >&2
+  echo "  This machine may be left locked, and its password field may not be empty." >&2
   exit 1
 }
 
@@ -135,14 +136,17 @@ probe_status=$?
 set -e
 
 stop_host
-if contains_text 'lock_typing_field_changed=yes' "$PROBE_LOG" && [ "$probe_status" = 0 ]; then
+if contains_text 'lock_typing_field_changed=yes' "$PROBE_LOG" && contains_text 'lock_typing_field_cleared=yes' "$PROBE_LOG" && [ "$probe_status" = 0 ]; then
   trap - ERR
   printf 'PASS: real local lock typing smoke\n'
   echo "  screenshots: $SHOT_DIR"
-  echo '  This machine is left locked; unlock it yourself.'
+  echo '  This machine is left locked, with its password field empty.'
   exit 0
 fi
 if contains_text 'lock_typing_field_changed=no' "$PROBE_LOG"; then
   fail "typing did not change the lock screen password field (compare the PNGs in $SHOT_DIR)"
+fi
+if contains_text 'lock_typing_field_cleared=no' "$PROBE_LOG"; then
+  fail "the typed letters were not deleted from the lock screen password field (see lock-after-clearing.png in $SHOT_DIR)"
 fi
 fail "the lock-typing probe stopped before it could judge the password field (status $probe_status)"

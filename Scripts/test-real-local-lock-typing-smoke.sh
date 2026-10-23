@@ -29,6 +29,8 @@ fi
 # The host under test can be chosen, and the script says it leaves the machine locked.
 grep -F 'HOST_APP="${HOST_APP:-' "$SMOKE" >/dev/null
 grep -F 'left locked' "$SMOKE" >/dev/null
+# It passes only when the probe left the password field empty.
+grep -F 'lock_typing_field_cleared=yes' "$SMOKE" >/dev/null
 
 # Throwaway state, never the real Application Support.
 grep -F 'STATE="$ROOT/.build/real-local-lock-typing-smoke"' "$SMOKE" >/dev/null
