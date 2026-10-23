@@ -30,9 +30,13 @@ While a session is live, macOS reports Sensorium as the reason the screen stays 
 
 If a screen does not come back within five seconds, the host says so and refuses to share it.
 
-### Grants expire
+### Signing and capture consent
 
-macOS ties a grant to the app's bundle identifier and the certificate that signed it. A rebuild signed with the same certificate keeps the grant. A rebuild signed ad hoc, or with a different certificate, drops it. Since macOS Sequoia, grants also expire about weekly and after a restart.
+macOS ties a grant to the app's bundle identifier and the certificate that signed it. A rebuild signed with the same certificate keeps the grant. A rebuild signed ad hoc, or with a different certificate, drops it.
+
+macOS can also show a direct-capture consent dialog when capture starts. The dialog describes bypassing the system private window picker: Sensorium selects the display requested by the authenticated session instead of presenting that picker locally. The host disables audio capture.
+
+Apple's [Persistent Content Capture entitlement](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.persistent-content-capture) supports persistent screen capture for VNC apps. It requires Apple approval, followed by a change to the app's profile. The current build does not include this entitlement.
 
 The host checks both permissions every 30 seconds while it runs. A lost permission logs which System Settings pane to reopen.
 

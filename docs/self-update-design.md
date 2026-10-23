@@ -217,7 +217,7 @@ Key rotation is out of scope for this version.
 
 Its "Stored on disk" table gains a row for both apps: `~/Library/Application Support/Sensorium/host-update-state.json` for the host and `viewer-update-state.json` for the viewer, owner-only, each holding the highest version seen, the time of the last check, and each version that failed to install, with its zip's SHA-256 and how many times it was tried. A download and its staging folder live in the system's temporary items folder and are deleted once the update installs or fails.
 
-`docs/macos-permissions.md` says a rebuild drops a grant. That holds for an ad hoc signed build only. It gains that a build signed with the same certificate keeps its grants, an update included. The periodic expiry macOS has applied since Sequoia is separate from updates, and stays as written.
+`docs/macos-permissions.md` says a rebuild drops a grant. That holds for an ad hoc signed build only. It gains that a build signed with the same certificate keeps its grants, an update included. System capture-consent prompts are separate from signing continuity; an update must not promise to suppress them.
 
 `CLAUDE.md` forbids cloud APIs and a backend. It gains one sentence allowing exactly this: fetching the signed update manifest from the project's GitHub releases, and the release files it names.
 

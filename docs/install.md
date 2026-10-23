@@ -61,7 +61,7 @@ A signed release built with an Apple Team ID would keep the grants across rebuil
 1. Open `Sensorium Host.app`.
 2. Its window names any setting it still needs. Click the button it shows, and grant that permission in System Settings.
 
-See [macOS permissions](macos-permissions.md) for what each permission is for, and why macOS can ask again after a rebuild or a restart.
+See [macOS permissions](macos-permissions.md) for what each permission is for, and how signing and capture consent affect permission prompts.
 
 ## Pair the two apps
 
