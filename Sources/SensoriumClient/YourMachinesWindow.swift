@@ -648,7 +648,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         ViewerFormControls.style(renameButton, title: YourMachinesWindowModel.renameConfirmTitle, isPrimary: true, isEnabled: true)
         renameButton.keyEquivalent = "\r"
         ViewerFormControls.style(renameCancelButton, title: YourMachinesWindowModel.renameCancelTitle, isPrimary: false, isEnabled: true)
-        let buttonRow = NSStackView(views: [renameButton, renameCancelButton])
+        let buttonRow = NSStackView(views: [renameCancelButton, renameButton])
         buttonRow.orientation = .horizontal
         buttonRow.alignment = .centerY
         buttonRow.spacing = ViewerDesign.Space.md

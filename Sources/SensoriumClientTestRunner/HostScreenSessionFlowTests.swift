@@ -96,10 +96,10 @@ func testHostScreenSessionFlowTests() async {
         expect(
             HostScreenRefusalCopy.line(reason: "a-future-reason")
                 == "That machine gave a reason this version of Sensorium does not know: "
-                    + "\u{201C}a\u{2011}future\u{2011}reason.\u{201D} Update both apps.",
+                    + "\u{201C}a\u{2011}future\u{2011}reason\u{201D}. Update both apps.",
             "an unknown reason's remedy never promises a fresh Host screen pick this build cannot honour, "
                 + "since it does not know what went wrong -- a session canvas may not even be offered -- and "
-                + "US punctuation puts the period inside the closing quote -- got: "
+                + "the token stays separate from the sentence punctuation -- got: "
                 + "\(HostScreenRefusalCopy.line(reason: "a-future-reason"))"
         )
 
@@ -117,7 +117,7 @@ func testHostScreenSessionFlowTests() async {
         expect(!line.contains("does not know"), "this build minted the reason itself, so it is not an unknown one")
         expect(line.localizedCaseInsensitiveContains("no longer available"), "says plainly that the screen is gone")
         expect(
-            line == "The screen you chose is no longer available there.",
+            line == "The screen you chose is no longer available. Connect from Your Machines to choose an available screen.",
             "the one gone screen never rules out a different host screen that may still be available, and "
                 + "never names a specific recovery path the on-screen button may not offer -- got \(line)"
         )
@@ -156,8 +156,7 @@ func testHostScreenSessionFlowTests() async {
         // case and to name the host's own toggle exactly.
         let canvasSessionActive = HostScreenRefusalCopy.line(reason: "canvas-session-active")
         expect(
-            canvasSessionActive == "That machine was already showing this machine a virtual display. That session "
-                + "has ended.",
+            canvasSessionActive == "An earlier private desktop session was still active. It has now ended. Choose the host again from Your Machines.",
             "canvas-session-active must say the connection's own session ended, not just what it could not "
                 + "do -- receiving this reason is what ends it -- and never names a specific recovery path the "
                 + "on-screen button may not offer -- got \(canvasSessionActive)"
@@ -171,15 +170,14 @@ func testHostScreenSessionFlowTests() async {
         // connection" case, which cannot occur here.
         let hostScreenSessionActive = HostScreenRefusalCopy.line(reason: "host-screen-session-active")
         expect(
-            hostScreenSessionActive == "That machine was already showing this machine a host screen. That session "
-                + "has ended.",
+            hostScreenSessionActive == "An earlier screen sharing session was still active. It has now ended. Choose the host again from Your Machines.",
             "host-screen-session-active mirrors canvas-session-active's own wording in the opposite "
                 + "direction, since both fire on the same connection -- got \(hostScreenSessionActive)"
         )
 
         let hostScreenNotAllowed = HostScreenRefusalCopy.line(reason: "host-screen-not-allowed")
         expect(
-            hostScreenNotAllowed == "Sensorium Host on that machine has host screen turned off for this machine.",
+            hostScreenNotAllowed == "Screen sharing is off for this viewer. Enable it in Sensorium Host on the other machine, then connect from Your Machines.",
             "host-screen-not-allowed says host screen is off for this machine, without claiming this machine "
                 + "never had it -- pairing itself may have armed it, and the person at that machine turned it off -- "
                 + "got \(hostScreenNotAllowed)"
@@ -187,7 +185,7 @@ func testHostScreenSessionFlowTests() async {
 
         let presenceCheckRequired = HostScreenRefusalCopy.line(reason: "host-screen-presence-check-required")
         expect(
-            presenceCheckRequired == "That machine needed to ask and could not.",
+            presenceCheckRequired == "Sensorium Host could not ask for permission to share the screen. Quit and reopen Sensorium Host there, then connect from Your Machines.",
             "host-screen-presence-check-required must not imply a specific person declined, since the same "
                 + "reason fires when no gate was configured or another prompt was already on screen -- "
                 + "got \(presenceCheckRequired)"
@@ -546,7 +544,7 @@ func testHostScreenSessionFlowTests() async {
     do {
         let retryNeedsPerson = HostScreenRefusalCopy.line(reason: "host-screen-retry-needs-person")
         expect(
-            retryNeedsPerson == "The connection dropped before the screen came up. Connect again to ask for it.",
+            retryNeedsPerson == "The connection dropped before the screen came up. Choose the host again from Your Machines to request its screen.",
             "host-screen-retry-needs-person asks the person at this machine, not the one at the host -- "
                 + "got \(retryNeedsPerson)"
         )

@@ -1592,11 +1592,11 @@ func testDualCanvasReconnectAndUITests() async {
             "no transport jargon reaches the person reading it, got: \(dropped.detail)"
         )
         expect(
-            dropped.detail.contains("frozen") && !dropped.detail.contains("trying"),
+            dropped.detail.contains("paused") && !dropped.detail.contains("trying"),
             "the drop says what the user is looking at and lets the buttons offer the retry, rather than announcing one beside a Try again button, got: \(dropped.detail)"
         )
         expect(
-            dropped.detail.contains("The picture behind this is frozen from before the drop."),
+            dropped.detail.contains("The picture is paused from before the connection dropped."),
             "the drop describes the frozen frame as behind the panel that is covering it, not \"below\" -- "
                 + "got: \(dropped.detail)"
         )
@@ -1664,7 +1664,7 @@ func testDualCanvasReconnectAndUITests() async {
         // A host-screen connect that never became a session is not a session
         // that ended -- nothing began, so the overlay must not claim it did.
         var neverStarted = ViewerSessionStateMachine(hostName: "Studio")
-        let refused = neverStarted.handle(.hostScreenConnectEnded(reasonLine: "Some reason."))
+        let refused = neverStarted.handle(.hostScreenConnectEnded(reasonLine: "Some reason.", offersVirtualDisplay: true))
         expect(
             refused.eyebrow == "NOT STARTED",
             "a refusal before any frame ever arrived is not a session that ended, got: \(refused.eyebrow)"
@@ -1674,7 +1674,7 @@ func testDualCanvasReconnectAndUITests() async {
             "the headline never orphans the host's name on its own line, got: \(refused.headline)"
         )
         expect(
-            refused.buttons.map(\.title) == ["Connect with a Virtual Display", "Your Machines"],
+            refused.buttons.map(\.title) == ["Connect to a private desktop", "Your Machines"],
             "the list sits beside the virtual-display offer so a refusal is never a dead end, got: "
                 + "\(refused.buttons.map(\.title))"
         )

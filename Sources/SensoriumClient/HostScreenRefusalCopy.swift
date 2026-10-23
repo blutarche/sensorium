@@ -32,23 +32,23 @@ public enum HostScreenRefusalCopy {
         case noneAvailableReason:
             return "The host has no screen available to share right now."
         case "canvas-session-active":
-            return "That machine was already showing this machine a virtual display. That session has ended."
+            return "An earlier private desktop session was still active. It has now ended. Choose the host again from Your Machines."
         case "host-screen-not-allowed":
-            return "Sensorium Host on that machine has host screen turned off for this machine."
+            return "Screen sharing is off for this viewer. Enable it in Sensorium Host on the other machine, then connect from Your Machines."
         case "host-screen-presence-declined":
             return "The person at that machine chose not to share its screen this time. "
                 + "They will be asked again when you connect from Your Machines."
         case "host-screen-presence-unanswered":
             return "No one at that machine answered the request within thirty seconds."
         case "host-screen-presence-check-required":
-            return "That machine needed to ask and could not."
+            return "Sensorium Host could not ask for permission to share the screen. Quit and reopen Sensorium Host there, then connect from Your Machines."
         case "host-screen-display-unavailable":
-            return "The screen you chose is no longer available there."
+            return "The screen you chose is no longer available. Connect from Your Machines to choose an available screen."
         case "host-screen-retry-needs-person":
             // Minted here rather than sent by the host: an automatic redial
             // after a request was sent, holding no resume ticket, never
             // reaches that machine at all.
-            return "The connection dropped before the screen came up. Connect again to ask for it."
+            return "The connection dropped before the screen came up. Choose the host again from Your Machines to request its screen."
         case "host-screen-resume-refused":
             // The host ended or never knew the session this resume named: a
             // Stop at the host, a restart, or a changed arming record. The
@@ -60,7 +60,7 @@ public enum HostScreenRefusalCopy {
             // this way, or by a viewer that does not start one.
             return "The connection was away too long to resume."
         case "host-screen-session-active":
-            return "That machine was already showing this machine a host screen. That session has ended."
+            return "An earlier screen sharing session was still active. It has now ended. Choose the host again from Your Machines."
         case "host-screen-already-live":
             // "Another window here" is a real cause, not a hypothetical one:
             // `HostScreenLiveSessionRegistry.admit` keys its one-live-session
@@ -76,7 +76,7 @@ public enum HostScreenRefusalCopy {
                 + "seconds \u{2014} connect again from Your Machines then."
         default:
             return "That machine gave a reason this version of Sensorium does not know: "
-                + "\u{201C}\(nonBreaking(reason)).\u{201D} Update both apps."
+                + "\u{201C}\(nonBreaking(reason))\u{201D}. Update both apps."
         }
     }
 
@@ -97,7 +97,7 @@ public enum HostScreenRefusalCopy {
             return "\(hostLabel) is no longer showing this machine its screen, so its resolution did not change."
         default:
             return "\(hostLabel) would not change its screen\u{2019}s resolution, and gave a reason this version "
-                + "of Sensorium does not know: \u{201C}\(nonBreaking(reason)).\u{201D} Update both apps, then try again."
+                + "of Sensorium does not know: \u{201C}\(nonBreaking(reason))\u{201D}. Update both apps, then try again."
         }
     }
 

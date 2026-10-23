@@ -25,6 +25,7 @@ func testViewerChromeRectContainsTests() {
 /// given logical size, and what that is in real pixels once the compositor's
 /// fractional scale is applied. Pure geometry: no compositor, no cairo.
 func testWaylandOverlayLayoutTests() {
+    testDiagnosticsViewportTests()
     let scrim = WaylandOverlayLayout.canvasScrim(windowWidth: 1280, windowHeight: 800)
     expect(
         scrim.x == 0 && scrim.y == 0 && scrim.width == 1280 && scrim.height == 800,
@@ -223,7 +224,7 @@ func testViewerStatusPanelHitTestTests() {
     // A refused host-screen connect is the state whose row is exactly two
     // buttons, taken from the state machine rather than made up here.
     var machine = ViewerSessionStateMachine(hostName: "studio")
-    let buttons = machine.handle(.hostScreenConnectEnded(reasonLine: "No.")).buttons
+    let buttons = machine.handle(.hostScreenConnectEnded(reasonLine: "No.", offersVirtualDisplay: true)).buttons
     let layouts = ViewerStatusPanelHitTest.buttonRow(buttons: buttons, panel: panel, measure: measure)
     expect(layouts.count == 2, "one rect per button")
     expect(

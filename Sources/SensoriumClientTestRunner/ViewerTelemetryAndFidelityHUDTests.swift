@@ -213,7 +213,7 @@ private func streamSectionNamesTheFramesThisViewerGaveUp() {
 
     let quiet = sections(beforeDecode: 0, beforePresent: 0, grew: false)
     expect(
-        hudRow(quiet, "DROPPED HERE")?.value == "0 before decode, 0 before present",
+        hudRow(quiet, "DROPPED HERE")?.value == "0 / 0",
         "the panel names both places this viewer can give a frame up, got: \(hudRow(quiet, "DROPPED HERE")?.value ?? "nil")"
     )
     expect(
@@ -231,7 +231,7 @@ private func streamSectionNamesTheFramesThisViewerGaveUp() {
 
     let growing = sections(beforeDecode: 12, beforePresent: 3, grew: true)
     expect(
-        hudRow(growing, "DROPPED HERE")?.value == "12 before decode, 3 before present",
+        hudRow(growing, "DROPPED HERE")?.value == "12 / 3",
         "both counts are shown as themselves, got: \(hudRow(growing, "DROPPED HERE")?.value ?? "nil")"
     )
     expect(
@@ -576,8 +576,8 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
     // panel already does, where "this machine" is the one the panel is drawn on.
     expect(
         hudRow(limited, "REQUESTED")?.note
-            == "Held to 1.50x at 30 fps. Automatic asked for 2.00x, which the link cannot carry, "
-                + "by what this machine and Studio measured.",
+            == "Held to 1.50x at 30 fps. Automatic asked for 2.00x, "
+                + "which exceeds the link capacity measured by both machines.",
         "the sentence names the frame rate, what cannot keep up, and whose measurement says so"
     )
 

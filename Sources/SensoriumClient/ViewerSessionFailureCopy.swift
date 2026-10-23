@@ -93,10 +93,9 @@ public enum ViewerSessionFailureCopy {
         case .unverifiedHost:
             // Security-relevant, and the one failure where trying again is the
             // wrong reflex: pairing again would pin whatever answered.
-            return "Stopped: \(hostLabel) did not prove it is the machine this one paired with. The key it "
-                + "presented is not the key saved at pairing. That is what a host reinstalled or reset "
-                + "on that machine looks like, and also what another machine answering in its place would "
-                + "look like. Check at the machine itself before pairing with it again."
+            return "\(hostLabel) did not prove its identity: its key differs from the saved pairing key. Sensorium Host may have "
+                + "been reset or reinstalled, or a different machine may be answering. Check at the host "
+                + "itself before pairing again."
         case let .canvasRefused(reason):
             return canvasRefusalLine(reason: reason, hostLabel: hostLabel)
         case .canvasIdentityMismatch:

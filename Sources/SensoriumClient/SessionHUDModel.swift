@@ -469,7 +469,7 @@ public enum SessionHUDPanel {
         case FidelityLimitReason.encoder:
             return "which \(hostReference(hostName))'s encoder cannot keep up with"
         case FidelityLimitReason.link:
-            return "which the link cannot carry, by what this machine and \(hostReference(hostName)) measured"
+            return "which exceeds the link capacity measured by both machines"
         case FidelityLimitReason.viewer:
             return "which this machine cannot keep up with"
         default:
@@ -710,14 +710,13 @@ public enum SessionHUDPanel {
             ),
             SessionHUDRow(
                 label: "DROPPED HERE",
-                value: "\(telemetry.viewerDroppedBeforeDecode) before decode, "
-                    + "\(telemetry.viewerDroppedBeforePresent) before present",
+                value: "\(telemetry.viewerDroppedBeforeDecode) / \(telemetry.viewerDroppedBeforePresent)",
                 // Marked only while it is still growing. A total that stopped
                 // growing describes a moment that has passed, and colouring it
                 // would leave the panel amber for the rest of the session.
                 tone: telemetry.viewerDropsGrew && !isSessionDown ? .warn : nil,
                 isStale: isSessionDown,
-                note: "Given up on this machine, not sent by \(hostReference(telemetry.hostName))."
+                note: "Before decode / before present on this machine; not sent by \(hostReference(telemetry.hostName))."
             ),
             decoderRow(telemetry)
         ])

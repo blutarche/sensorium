@@ -186,6 +186,58 @@ func testSessionHUDViewMatchesRowLayoutTests() {
             "VIDEO IN's sparkline sits at \(rect), got \(frame)"
         )
     }
+    let shortCanvas = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 360))
+    let shortWindow = NSWindow(contentRect: shortCanvas.frame, styleMask: [.titled], backing: .buffered, defer: false)
+    shortWindow.isReleasedWhenClosed = false
+    shortWindow.contentView = shortCanvas
+    defer { shortWindow.close() }
+    let shortHUD = SessionHUDView()
+    shortHUD.apply(telemetry: fixtureSnapshot())
+    shortCanvas.addSubview(shortHUD)
+    NSLayoutConstraint.activate([
+        shortCanvas.widthAnchor.constraint(equalToConstant: 960),
+        shortCanvas.heightAnchor.constraint(equalToConstant: 360),
+        shortHUD.leadingAnchor.constraint(equalTo: shortCanvas.leadingAnchor, constant: 8),
+        shortHUD.topAnchor.constraint(equalTo: shortCanvas.topAnchor, constant: 8),
+        shortHUD.bottomAnchor.constraint(lessThanOrEqualTo: shortCanvas.bottomAnchor, constant: -8)
+    ])
+    shortCanvas.layoutSubtreeIfNeeded()
+    guard let scroll = descendants(shortHUD).compactMap({ $0 as? NSScrollView }).first,
+          let document = scroll.documentView else {
+        expect(false, "an oversized HUD has a scrollable document")
+        return
+    }
+    guard let referenceScroll = descendants(view).compactMap({ $0 as? NSScrollView }).first,
+          let referenceDocument = referenceScroll.documentView else {
+        expect(false, "the unconstrained HUD has a reference document")
+        return
+    }
+    expect(
+        abs(document.frame.height - referenceDocument.frame.height) < 0.5,
+        "a short HUD preserves its full document height: expected \(referenceDocument.frame.height), got \(document.frame.height)"
+    )
+    let referenceFields = descendants(referenceDocument).compactMap { $0 as? NSTextField }
+        .filter { !$0.isHidden && !$0.stringValue.isEmpty }
+    let shortFields = descendants(document).compactMap { $0 as? NSTextField }
+        .filter { !$0.isHidden && !$0.stringValue.isEmpty }
+    expect(shortFields.count == referenceFields.count, "scrolling preserves every HUD heading, value and note")
+    for (reference, short) in zip(referenceFields, shortFields) {
+        let referenceFrame = reference.convert(reference.bounds, to: referenceDocument)
+        let shortFrame = short.convert(short.bounds, to: document)
+        expect(reference.stringValue == short.stringValue, "both HUDs contain the same readings in order")
+        expect(
+            abs(referenceFrame.height - shortFrame.height) < 0.5
+                && abs(referenceFrame.minY - shortFrame.minY) < 0.5,
+            "a short HUD preserves the full frame for \(reference.stringValue): expected \(referenceFrame), got \(shortFrame)"
+        )
+    }
+    expect(shortHUD.frame.height <= 344, "the HUD fits the short canvas, got \(shortHUD.frame)")
+    expect(document.frame.height > scroll.contentView.bounds.height, "the full HUD stays taller than its viewport")
+    expect(scroll.hasVerticalScroller, "the HUD signals that more readings are below")
+    expect(document.visibleRect.minY < 1, "the HUD opens at its first reading")
+    document.scroll(NSPoint(x: 0, y: document.frame.height))
+    expect(document.visibleRect.maxY >= document.bounds.maxY - 1, "scrolling reaches the final HUD reading")
+
     print("PASS: the macOS HUD's VIDEO IN value and sparkline sit where the shared row layout puts them")
 }
 #endif

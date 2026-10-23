@@ -31,6 +31,7 @@ struct WaylandSessionChrome {
     /// for a subsurface, and what a hit test needs.
     var overlayPointerX: Double = 0
     var overlayPointerY: Double = 0
+    var diagnosticsViewport = DiagnosticsViewport(contentHeight: 0, viewportHeight: 0)
     var overlays: [WaylandOverlayKind: WaylandOverlaySurface] = [:]
     /// The band a pinned strip has taken off the top of the window, in the
     /// logical units a pointer position is reported in. The picture and
@@ -299,16 +300,26 @@ extension WaylandSessionWindow: SessionWindowChrome {
 
         if state.isDiagnosticsVisible {
             let blocks = state.diagnosticsBlocks
-            let measured = SessionChromePainter.diagnosticsSize(blocks: blocks)
+            let width = min(SessionChromePainter.diagnosticsWidth, max(0, size.width - WaylandOverlayLayout.diagnosticsMargin * 2))
+            let measured = SessionChromePainter.diagnosticsSize(blocks: blocks, width: width)
             let rect = WaylandOverlayLayout.diagnosticsHUD(
                 windowWidth: size.width,
+                windowHeight: size.height,
                 contentWidth: measured.width,
                 contentHeight: measured.height,
                 topInset: topInset
             )
+            chrome.diagnosticsViewport = DiagnosticsViewport(
+                contentHeight: measured.height, viewportHeight: rect.height, offset: chrome.diagnosticsViewport.offset
+            )
+            let offset = chrome.diagnosticsViewport.offset
             let isFlagged = state.telemetry?.isAttentionWorthy ?? false
-            place(.diagnostics, at: rect, scale: scale) { context, bounds in
-                SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
+            if rect.width > 0, rect.height > 0 {
+                place(.diagnostics, at: rect, scale: scale) { context, bounds in
+                    SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged, scrollOffset: offset)
+                }
+            } else {
+                chrome.overlays[.diagnostics]?.hide()
             }
         } else {
             chrome.overlays[.diagnostics]?.hide()
@@ -654,14 +665,24 @@ extension WaylandSessionWindow: SessionWindowChrome {
         }
     }
 
+    func scrollDiagnostics(_ event: CanvasSurfaceEvent, surface: OpaquePointer?) -> Bool {
+        guard case let .scrolled(_, deltaY, _, _, _, _, _, _) = event,
+              chrome.diagnosticsViewport.consumeScroll(
+                deltaY: deltaY, isOverDiagnostics: overlayKind(for: surface) == .diagnostics
+              ) else { return false }
+        relayoutChrome()
+        return true
+    }
+
     /// Opens a link only when the press lands on its own text, laid out by
     /// the same drawing that put it there.
     private func pressDiagnostics() {
         guard let rect = chrome.overlays[.diagnostics]?.rect else { return }
-        let local = ViewerChromeRect(x: 0, y: 0, width: rect.width, height: rect.height)
+        let local = ViewerChromeRect(x: 0, y: 0, width: rect.width, height: chrome.diagnosticsViewport.contentHeight)
         let layouts = SessionChromePainter.diagnosticsLinkLayouts(blocks: chrome.state.diagnosticsBlocks, bounds: local)
-        guard let link = SessionHUDLinkHitTest.link(
-            atX: chrome.overlayPointerX, y: chrome.overlayPointerY, in: layouts
+        guard let contentY = chrome.diagnosticsViewport.contentY(atViewportY: chrome.overlayPointerY),
+              let link = SessionHUDLinkHitTest.link(
+            atX: chrome.overlayPointerX, y: contentY, in: layouts
         ) else {
             return
         }

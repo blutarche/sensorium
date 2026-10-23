@@ -281,18 +281,16 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
             metalView.bottomAnchor.constraint(equalTo: surfaceView.bottomAnchor)
         ])
 
-        // Corner-pinned, not resized with the view: the panel's height is its
-        // rows' business and must never depend on the window's. Constraints
-        // rather than an autoresizing mask because the panel sizes itself
-        // from its content, and a mask needs a frame nobody here can compute.
-        // Pinned to the top-left, inset the same amount below the top as
-        // `metalView` -- both give up the same band to a pinned strip.
+        // Keep the full diagnostics document inside a scrollable viewport
+        // when the canvas is shorter than its readings. Both the viewport
+        // and `metalView` give up the same band to a pinned strip.
         sessionHUD.isHidden = true
         surfaceView.addSubview(sessionHUD, positioned: .above, relativeTo: metalView)
         sessionHUDTop = sessionHUD.topAnchor.constraint(equalTo: surfaceView.topAnchor, constant: ViewerDesign.Space.xs)
         NSLayoutConstraint.activate([
             sessionHUD.leadingAnchor.constraint(equalTo: surfaceView.leadingAnchor, constant: ViewerDesign.Space.xs),
-            sessionHUDTop
+            sessionHUDTop,
+            sessionHUD.bottomAnchor.constraint(lessThanOrEqualTo: surfaceView.bottomAnchor, constant: -ViewerDesign.Space.xs)
         ])
 
         // Topmost, so a dead session is never hidden behind anything -- the

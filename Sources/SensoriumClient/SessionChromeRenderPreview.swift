@@ -49,6 +49,18 @@ public enum SessionChromeRenderPreview {
         }
     }
 
+    package static func renderDiagnosticsViewport(
+        blocks: [SessionHUDBlock], width: Double, height: Double, offset: Double, to url: URL
+    ) -> Bool {
+        renderToPNG(logicalWidth: width, logicalHeight: height, scale: 1, to: url) { context in
+            SessionChromePainter.drawDiagnostics(
+                blocks: blocks, in: context,
+                bounds: ViewerChromeRect(x: 0, y: 0, width: width, height: height),
+                isFlagged: false, scrollOffset: offset
+            )
+        }
+    }
+
     /// Renders a black window of `windowWidth` x `windowHeight` logical units
     /// with every overlay `state` says is on screen, each placed exactly the
     /// way `WaylandSessionWindow.relayoutChrome()` places it on a real
@@ -87,15 +99,19 @@ public enum SessionChromeRenderPreview {
             if state.isDiagnosticsVisible {
                 let blocks = state.diagnosticsBlocks
                 let isFlagged = state.telemetry?.isAttentionWorthy ?? false
-                let measured = SessionChromePainter.diagnosticsSize(blocks: blocks)
+                let width = min(SessionChromePainter.diagnosticsWidth, max(0, windowWidth - WaylandOverlayLayout.diagnosticsMargin * 2))
+                let measured = SessionChromePainter.diagnosticsSize(blocks: blocks, width: width)
                 let rect = WaylandOverlayLayout.diagnosticsHUD(
                     windowWidth: windowWidth,
+                    windowHeight: windowHeight,
                     contentWidth: measured.width,
                     contentHeight: measured.height,
                     topInset: topInset
                 )
                 drawAt(rect, in: context) { bounds in
-                    SessionChromePainter.drawDiagnostics(blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged)
+                    SessionChromePainter.drawDiagnostics(
+                        blocks: blocks, in: context, bounds: bounds, isFlagged: isFlagged
+                    )
                 }
             }
             if state.isScrimVisible {

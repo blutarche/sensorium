@@ -1219,7 +1219,9 @@ public final class WaylandSessionWindow:
 
     fileprivate func handlePointerFrame() {
         let isOverChrome = chromeContainsPointer(surface: pointerSurface)
-        guard let event = scroll.frame(x: pointerX, y: pointerY, isOverChrome: isOverChrome) else { return }
+        guard let event = scroll.frame(x: pointerX, y: pointerY) else { return }
+        if scrollDiagnostics(event, surface: pointerSurface) { return }
+        guard !isOverChrome else { return }
         route(event)
     }
 

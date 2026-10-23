@@ -16,6 +16,8 @@ import CoreText
 @MainActor
 public final class SessionHUDView: NSView {
     private let stack = NSStackView()
+    private let scrollView = NSScrollView()
+    private let document = SessionHUDDocumentView()
     private var blockViews: [SessionHUDBlockView] = []
     private var telemetry: SessionHUDSnapshot?
     private var session: ViewerSessionStatus?
@@ -44,16 +46,38 @@ public final class SessionHUDView: NSView {
         // rows, pulling a short column out of line with the one beside it.
         stack.setHuggingPriority(.required, for: .vertical)
         setContentHuggingPriority(.required, for: .vertical)
-        addSubview(stack)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.scrollerKnobStyle = .light
+        scrollView.autohidesScrollers = false
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(viewportChanged),
+            name: NSView.boundsDidChangeNotification, object: scrollView.contentView
+        )
+        scrollView.documentView = document
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+        addSubview(scrollView)
 
         let inset = ViewerDesign.Space.sm
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: Self.panelWidth),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: inset),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset)
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: inset),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -inset),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: inset),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -inset)
         ])
+        let contentHeight = heightAnchor.constraint(equalTo: document.heightAnchor)
+        contentHeight.priority = .defaultLow
+        contentHeight.isActive = true
     }
 
     @available(*, unavailable)
@@ -79,6 +103,24 @@ public final class SessionHUDView: NSView {
         (isAttentionWorthy ? ViewerDesign.warn : ViewerDesign.chromeBorder2).nsColor.setStroke()
         border.lineWidth = 1
         border.stroke()
+
+        let visible = document.visibleRect
+        guard document.bounds.height > visible.height + 1 else { return }
+        let trackHeight = max(0, bounds.height - ViewerDesign.Space.sm * 2)
+        let thumbHeight = max(24, trackHeight * visible.height / document.bounds.height)
+        let progress = visible.minY / (document.bounds.height - visible.height)
+        let thumb = NSRect(
+            x: bounds.width - 7,
+            y: ViewerDesign.Space.sm + (trackHeight - thumbHeight) * (1 - progress),
+            width: 3,
+            height: min(trackHeight, thumbHeight)
+        )
+        ViewerDesign.muted.nsColor.setFill()
+        NSBezierPath(roundedRect: thumb, xRadius: 1.5, yRadius: 1.5).fill()
+    }
+
+    @objc private func viewportChanged() {
+        needsDisplay = true
     }
 
     /// The per-surface reading, pushed once per telemetry tick.
@@ -117,6 +159,10 @@ public final class SessionHUDView: NSView {
             view.update(block)
         }
     }
+}
+
+private final class SessionHUDDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// One entry in the panel's vertical run: a single section, or two of them

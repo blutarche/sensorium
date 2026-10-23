@@ -407,11 +407,59 @@ func testShortcutStripOverflowNeverOverlapsTests() {
     print("PASS: the shortcut strip never overlaps its own buttons or overruns the bar at 1280, 1024 or 800")
 }
 
+@MainActor
+private func testDiagnosticsViewportPixelTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sensorium-hud-scroll-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let link = SessionHUDLink(title: "Decoder help", url: "https://example.invalid/decoder")
+    let blocks: [SessionHUDBlock] = (0..<12).map { index in
+        .section(SessionHUDSection(title: "SECTION \(index)", rows: [
+            SessionHUDRow(label: "VALUE", value: "\(index)", link: index == 11 ? link : nil)
+        ]))
+    }
+    let full = directory.appendingPathComponent("full.png")
+    let bottom = directory.appendingPathComponent("bottom.png")
+    let height = 160.0
+    let measured = SessionChromeRenderPreview.diagnosticsSize(blocks: blocks)
+    let offset = floor(measured.height - height)
+    expect(SessionChromeRenderPreview.renderOverlay(.diagnostics(blocks: blocks, isFlagged: false), scale: 1, to: full),
+           "the full diagnostics reference renders")
+    expect(SessionChromeRenderPreview.renderDiagnosticsViewport(blocks: blocks, width: 320, height: height, offset: offset, to: bottom),
+           "the final diagnostics section renders inside a bounded scrolled viewport")
+    expect(pngSize(at: bottom)?.height == Int(height), "the viewport bitmap fits the available height")
+    var compared = 0
+    for y in stride(from: 12, to: Int(height) - 12, by: 3) {
+        for x in stride(from: 12, to: 300, by: 3) {
+            if let actual = pngPixel(at: bottom, x: x, y: y),
+               let expected = pngPixel(at: full, x: x, y: y + Int(offset)) {
+                expect(abs(actual.r - expected.r) < 0.02 && abs(actual.g - expected.g) < 0.02 && abs(actual.b - expected.b) < 0.02,
+                       "scrolled diagnostics draws the same content pixels at the translated position")
+                compared += 1
+            }
+        }
+    }
+    expect(compared > 100, "the translated viewport was compared against the full content")
+    let viewport = DiagnosticsViewport(contentHeight: measured.height, viewportHeight: height, offset: offset)
+    let layouts = SessionChromeRenderPreview.diagnosticsLinkLayouts(blocks: blocks)
+    if let target = layouts.first {
+        let visibleY = target.rect.y + target.rect.height / 2 - viewport.offset
+        expect(visibleY >= 0 && visibleY < height, "the last section's help link is visible after scrolling")
+        expect(viewport.contentY(atViewportY: visibleY).flatMap {
+            SessionHUDLinkHitTest.link(atX: target.rect.x + 1, y: $0, in: layouts)
+        } == link, "the scrolled help link activates at its visible location")
+    } else {
+        expect(false, "the final section's help link was laid out")
+    }
+    print("PASS: diagnostics viewport paints translated content and hits the final help link")
+}
+
 /// A value too long for its column stays on one line and loses its end to
 /// an ellipsis, as a truncating-tail value does on macOS, and its label still
 /// draws whole.
 @MainActor
 func testSessionHUDLongValueStaysOnOneLineTests() {
+    testDiagnosticsViewportPixelTests()
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
         "sensorium-hud-one-line-tests-\(UUID().uuidString)", isDirectory: true
     )

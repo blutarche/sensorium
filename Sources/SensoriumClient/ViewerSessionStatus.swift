@@ -100,9 +100,9 @@ public enum ViewerSessionEvent: Equatable, Sendable {
     /// `ViewerSessionFailureCopy`/`HostScreenRefusalCopy` before this call:
     /// this state machine holds no wire vocabulary of its own, the same way
     /// `ClientReconnectEvent.attemptFailed`'s text lives outside this type.
-    /// `offersVirtualDisplay` is false when the host said it opens no
-    /// session canvas, so the panel offers none.
-    case hostScreenConnectEnded(reasonLine: String, offersVirtualDisplay: Bool = true)
+    /// `offersVirtualDisplay` is true only for a confirmed private desktop
+    /// offer. An unknown capability keeps the same-target retry instead.
+    case hostScreenConnectEnded(reasonLine: String, offersVirtualDisplay: Bool = false)
     /// One dial attempt ended without a session and the reconnect policy is
     /// about to try again -- the already-translated sentence, same
     /// discipline as `hostScreenConnectEnded`: this state machine holds no
@@ -202,7 +202,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "SESSION LOST",
                 headline: "Connection to \(hostName) lost.",
-                detail: "The picture behind this is frozen from before the drop.",
+                detail: "The picture is paused from before the connection dropped.",
                 buttons: Self.recoveryButtons
             )
         case let .stoppedByHost(reasonLine):
@@ -309,19 +309,16 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     /// refused may stay that way all night, so Your Machines is the filled
     /// default -- it sits rightmost, the way macOS itself places a default
     /// button in a horizontal row. The private desktop is opt-in and starts
-    /// only when named, so Connect with a Virtual Display must never be
+    /// only when named, so Connect to a private desktop must never be
     /// what a stray Return fires.
     private static let endedButtons = [
         ViewerSessionButton(
-            action: .connectAsVirtualDisplay, title: "Connect with a Virtual Display", isPrimary: false
+            action: .connectAsVirtualDisplay, title: "Connect to a private desktop", isPrimary: false
         ),
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
     ]
 
-    private static let endedWithoutVirtualDisplayButtons = [
-        ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
-    ]
+    private static let endedWithoutVirtualDisplayButtons = recoveryButtons
 
     /// A certificate pin or host key mismatch is security-relevant and
     /// terminal: re-pinning the key is the only fix, so it leads, and it is

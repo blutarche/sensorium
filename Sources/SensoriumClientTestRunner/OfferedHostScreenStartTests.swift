@@ -169,6 +169,9 @@ func testOfferedHostScreenStartTests() async {
             withCanvas.buttons.contains { $0.action == .connectAsVirtualDisplay },
             "the ended panel offers a virtual display when the host has one"
         )
+        let unknownCanvas = machine.handle(.hostScreenConnectEnded(reasonLine: "x"))
+        expect(!unknownCanvas.buttons.contains { $0.action == .connectAsVirtualDisplay }, "an unknown capability never offers a private desktop")
+        expect(unknownCanvas.buttons.last?.action == .tryAgain, "the viewer can explicitly retry the same host screen request")
         let withoutCanvas = machine.handle(.hostScreenConnectEnded(reasonLine: "x", offersVirtualDisplay: false))
         expect(
             !withoutCanvas.buttons.contains { $0.action == .connectAsVirtualDisplay },

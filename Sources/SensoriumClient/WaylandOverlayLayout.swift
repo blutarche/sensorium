@@ -108,6 +108,7 @@ public enum WaylandOverlayLayout {
     /// moves down by rather than sitting under.
     public static func diagnosticsHUD(
         windowWidth: Double,
+        windowHeight: Double = .greatestFiniteMagnitude,
         contentWidth: Double,
         contentHeight: Double,
         topInset: Double = 0
@@ -117,7 +118,7 @@ public enum WaylandOverlayLayout {
             x: diagnosticsMargin,
             y: topInset + diagnosticsMargin,
             width: width,
-            height: contentHeight
+            height: min(contentHeight, max(0, windowHeight - topInset - diagnosticsMargin * 2))
         )
     }
 
@@ -228,5 +229,41 @@ public enum WaylandOverlayLayout {
             min(contentWidth, max(0, windowWidth - edgeMargin * 2)),
             min(contentHeight, max(0, windowHeight - edgeMargin * 2))
         )
+    }
+}
+
+/// Scroll coordinates stay local to diagnostics; none of this movement is
+/// forwarded to the remote desktop. The same offset maps drawing and links.
+package struct DiagnosticsViewport: Equatable, Sendable {
+    package let contentHeight: Double
+    package let viewportHeight: Double
+    package private(set) var offset: Double
+
+    package init(contentHeight: Double, viewportHeight: Double, offset: Double = 0) {
+        self.contentHeight = max(0, contentHeight)
+        self.viewportHeight = max(0, viewportHeight)
+        self.offset = min(max(0, offset), max(0, self.contentHeight - self.viewportHeight))
+    }
+
+    package mutating func scroll(deltaY: Double) {
+        offset = min(max(0, offset - deltaY), max(0, contentHeight - viewportHeight))
+    }
+
+    package mutating func consumeScroll(deltaY: Double, isOverDiagnostics: Bool) -> Bool {
+        guard isOverDiagnostics else { return false }
+        scroll(deltaY: deltaY)
+        return true
+    }
+
+    package func contentY(atViewportY y: Double) -> Double? {
+        guard y >= 0, y < viewportHeight else { return nil }
+        return y + offset
+    }
+
+    package var thumb: (y: Double, height: Double)? {
+        guard contentHeight > viewportHeight, viewportHeight > 0 else { return nil }
+        let height = min(viewportHeight, max(20, viewportHeight * viewportHeight / contentHeight))
+        let y = offset / (contentHeight - viewportHeight) * (viewportHeight - height)
+        return (y, height)
     }
 }
