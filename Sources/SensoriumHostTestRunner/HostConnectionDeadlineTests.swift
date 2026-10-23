@@ -9,7 +9,9 @@ import SensoriumHost
 private final class SteppedSleeper: @unchecked Sendable {
     private let lock = NSLock()
     private var requested: [Duration] = []
+    private var advanced: [Duration] = []
     private var waiting: CheckedContinuation<Void, Error>?
+    private var waitingDuration: Duration?
     private var cancelled = false
 
     var sleep: @Sendable (Duration) async throws -> Void {
@@ -20,6 +22,16 @@ private final class SteppedSleeper: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return requested
+    }
+
+    /// The sleeps `advance()` has ended, so their sum is how far the
+    /// watchdog's clock has moved. Not `requestedDurations`: by the time
+    /// `advance()` returns, the watchdog may already have looked and asked
+    /// for its next sleep, which has not passed.
+    var advancedDurations: [Duration] {
+        lock.lock()
+        defer { lock.unlock() }
+        return advanced
     }
 
     var isWaiting: Bool {
@@ -39,6 +51,7 @@ private final class SteppedSleeper: @unchecked Sendable {
                 }
                 requested.append(duration)
                 waiting = continuation
+                waitingDuration = duration
                 lock.unlock()
             }
         } onCancel: {
@@ -46,6 +59,7 @@ private final class SteppedSleeper: @unchecked Sendable {
             cancelled = true
             let continuation = waiting
             waiting = nil
+            waitingDuration = nil
             lock.unlock()
             continuation?.resume(throwing: CancellationError())
         }
@@ -65,7 +79,11 @@ private final class SteppedSleeper: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         let continuation = waiting
+        if let waitingDuration {
+            advanced.append(waitingDuration)
+        }
         waiting = nil
+        waitingDuration = nil
         return continuation
     }
 }
@@ -227,7 +245,7 @@ func runHostConnectionDeadlineTests() async {
         while true {
             channel.feed([unknownControlFrame(), unknownTagFrame()])
             expect(await sleeper.advance(), "the watchdog is waiting \(elapsed) after accept")
-            elapsed = sleeper.requestedDurations.reduce(.zero, +)
+            elapsed = sleeper.advancedDurations.reduce(.zero, +)
             if elapsed >= .seconds(330) {
                 break
             }
@@ -283,7 +301,7 @@ func runHostConnectionDeadlineTests() async {
         while true {
             channel.feed([unknownControlFrame(), unknownTagFrame()])
             expect(await sleeper.advance(), "the watchdog is waiting \(elapsed) after accept")
-            elapsed = sleeper.requestedDurations.reduce(.zero, +)
+            elapsed = sleeper.advancedDurations.reduce(.zero, +)
             if elapsed >= .seconds(60) {
                 break
             }
@@ -332,7 +350,7 @@ func runHostConnectionDeadlineTests() async {
         )
         session.start()
         await waitForPairIntent(pairIntents)
-        while channel.cancelCount == 0, sleeper.requestedDurations.reduce(.zero, +) < .seconds(330) {
+        while channel.cancelCount == 0, sleeper.advancedDurations.reduce(.zero, +) < .seconds(330) {
             expect(await sleeper.advance(), "the watchdog keeps watching a connection that announced pairing")
         }
         expect(
