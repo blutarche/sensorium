@@ -231,10 +231,12 @@ env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" arm "$ARMING_F
   || fail_with_diagnosis "the probe could not write the host's arming record"
 test -f "$ARMING_FILE" || fail_with_diagnosis "no arming record was written at $ARMING_FILE"
 
-set +e
-env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" wait-idle "$IDLE_WAIT_SECONDS" >> "$PROBE_LOG" 2>&1
-idle_status=$?
-set -e
+idle_status=0
+if env HOME="$CLIENT_HOME" CFFIXED_USER_HOME="$CLIENT_HOME" "$PROBE" wait-idle "$IDLE_WAIT_SECONDS" >> "$PROBE_LOG" 2>&1; then
+  idle_status=0
+else
+  idle_status=$?
+fi
 if [ "$idle_status" = 3 ]; then
   blocked "$(tail -n 1 "$PROBE_LOG")"
 fi

@@ -182,4 +182,26 @@ with tempfile.TemporaryDirectory() as directory:
 print("PASS: host-screen isolation fixtures enforce exact listener/executable, safe cleanup, vacant ports and fixed bundle")
 PYHOST
 
+python3 - "$SMOKE" <<'PYIDLE'
+from pathlib import Path
+import subprocess
+import sys
+source = Path(sys.argv[1]).read_text()
+arming = source.index('test -f "$ARMING_FILE"')
+start = source.index("\n", arming) + 1
+end = source.index('if [ "$idle_status" = 3 ]; then', start)
+block = source[start:end]
+fixture = """set -e
+trap 'echo UNEXPECTED_FAILURE >&2' ERR
+env() { return 3; }
+CLIENT_HOME=fixture
+PROBE=fixture
+IDLE_WAIT_SECONDS=1
+PROBE_LOG=/dev/null
+""" + block + '\n[ "$idle_status" = 3 ]\n'
+result = subprocess.run(["bash", "-c", fixture], text=True, capture_output=True)
+assert result.returncode == 0 and "UNEXPECTED_FAILURE" not in result.stderr, result
+print("PASS: expected idle blocker retains status 3 without the unexpected-failure trap")
+PYIDLE
+
 printf 'PASS: real local host screen smoke harness contract\n'
