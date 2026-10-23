@@ -42,7 +42,7 @@ func runHostScreenIndicationTests() async {
             permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
         ).presentation(now: Date())
         expect(
-            canvasServing.detail == "It sees and controls a virtual display, not this machine\u{2019}s own screen.",
+            canvasServing.detail == "It sees and controls a private desktop, separate from this machine\u{2019}s screens.",
             "canvas mode's own privacy sentence is unchanged in substance, narrowed only in where it applies, "
                 + "it does not delete it -- got: \(canvasServing.detail)"
         )

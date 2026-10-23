@@ -14,12 +14,12 @@ func runHostUpdateStatusLineTests() {
     let newer = UpdateVersion("0.5.0")!
 
     expect(
-        HostUpdateStatusLine.line(for: .current, runningVersion: running) == "Sensorium Host 0.4.0, up to date",
+        HostUpdateStatusLine.line(for: .current, runningVersion: running) == "Sensorium Host 0.4.0, up to date.",
         "current"
     )
     expect(
         HostUpdateStatusLine.line(for: .waiting(newer), runningVersion: running)
-            == "Sensorium Host 0.5.0 will install when no machine is connected",
+            == "Sensorium Host 0.5.0 will install when no machine is connected.",
         "waiting"
     )
     expect(
@@ -206,7 +206,7 @@ func runHostUpdaterTests() async {
     do {
         let probe = Probe()
         let host = updater(probe)
-        expect(host.line == "Sensorium Host 0.4.0, up to date", "before any check the line is the current one")
+        expect(host.line == "Sensorium Host 0.4.0, up to date.", "before any check the line is the current one")
         var lines: [String] = []
         host.onLineChange = { lines.append($0) }
         host.start()
@@ -253,7 +253,7 @@ func runHostUpdaterTests() async {
         host.checkForUpdates()
         expect(await waitUntil(timeoutSeconds: 5) { probe.stages == 1 }, "Check for Updates… checks even with the checkbox off")
         expect(
-            host.line == "Sensorium Host 0.5.0 will install when no machine is connected",
+            host.line == "Sensorium Host 0.5.0 will install when no machine is connected.",
             "a staged update on a busy host waits, got \(host.line)"
         )
         expect(probe.installs == 0, "nothing installs while a machine is connected")
@@ -279,7 +279,7 @@ func runHostUpdaterTests() async {
         host.start()
         expect(await waitUntil(timeoutSeconds: 5) { probe.installs == 1 }, "an idle host installs at once")
         expect(
-            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.5.0 will install when no machine is connected" },
+            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.5.0 will install when no machine is connected." },
             "a failure that could pass on another try keeps the waiting line, got \(host.line)"
         )
         print("PASS: a failure that could pass on another try keeps the waiting line")
@@ -291,7 +291,7 @@ func runHostUpdaterTests() async {
         probe.result = .heldBack(offer(newer))
         host.start()
         expect(
-            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.5.0 will install when no machine is connected" },
+            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.5.0 will install when no machine is connected." },
             "a release held back until the next check keeps the waiting line, got \(host.line)"
         )
         expect(probe.stages == 0 && probe.installs == 0, "and is neither downloaded nor installed")

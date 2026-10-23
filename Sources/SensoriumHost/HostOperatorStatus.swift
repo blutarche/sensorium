@@ -211,7 +211,7 @@ public struct HostOperatorPresentation: Equatable, Sendable {
         case "COULD NOT START", "SCREEN RECORDING NEEDED":
             return CanvasDesign.warn
         default:
-            return CanvasDesign.muted2
+            return CanvasDesign.muted
         }
     }
 
@@ -286,7 +286,7 @@ extension HostOperatorStatus {
         case let .serving(peerName):
             eyebrow = "CONNECTED"
             headline = "Connected to \(peerName)"
-            detail = "It sees and controls a virtual display, not this machine’s own screen."
+            detail = "It sees and controls a private desktop, separate from this machine’s screens."
             indicator = .serving
         case let .servingHostScreen(peerName, displayName):
             eyebrow = "SHARING HOST SCREEN"
@@ -294,7 +294,7 @@ extension HostOperatorStatus {
             // Deliberately the opposite claim from `.serving`'s: this mode
             // exists precisely because the virtual-display sentence would
             // be false here. Every privacy claim is mode-specific.
-            detail = "It sees and controls \(displayName) \u{2014} this machine’s own screen, not a virtual display."
+            detail = "It sees and controls \(displayName) \u{2014} this machine’s own screen."
             menuBarTitle = peerName
             indicator = .servingHostScreen
         }

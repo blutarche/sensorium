@@ -198,12 +198,12 @@ public enum CanvasLauncherPresentation {
     ) -> CanvasLauncherEmptyState {
         guard catalogCount > 0 else {
             return CanvasLauncherEmptyState(
-                heading: "Nothing to Launch",
+                heading: "Nothing to launch",
                 subtext: "Install an application on \(hostName) and reconnect."
             )
         }
         return CanvasLauncherEmptyState(
-            heading: "No Matching Applications",
+            heading: "No matching applications",
             subtext: "Clear the filter, or type fewer letters."
         )
     }
@@ -425,7 +425,7 @@ final class CanvasLauncherView: NSView, NSTableViewDataSource, NSTableViewDelega
         let hasStatus = !statusLabel.stringValue.isEmpty
         let statusHeight = hasStatus ? measuredHeight(statusLabel, width: innerWidth) : 0
         let statusGapAbove = hasStatus ? CanvasDesign.Space.sm : 0
-        let statusGapBelow = hasStatus ? CanvasDesign.Space.xs : 0
+        let statusGapBelow = hasStatus ? CanvasDesign.Space.sm : 0
         let hintHeight = measuredHeight(hintLabel, width: innerWidth)
         // Everything above the list, and everything below it, both fixed.
         let head = pad + 18 + CanvasDesign.Space.sm + 32 + CanvasDesign.Space.md + 14 + CanvasDesign.Space.xs
@@ -814,7 +814,7 @@ private final class LauncherEmptyStateView: NSView {
     init() {
         super.init(frame: .zero)
         heading.font = CanvasDesign.font(.primary, size: 14, weight: .medium)
-        heading.textColor = CanvasDesign.ink2.nsColor
+        heading.textColor = CanvasDesign.ink.nsColor
         heading.alignment = .center
         addSubview(heading)
 

@@ -243,7 +243,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             string: "Stop",
             attributes: [
                 .font: CanvasDesign.font(.primary, size: 14, weight: .semibold),
-                .foregroundColor: NSColor.white
+                .foregroundColor: CanvasDesign.chromeBg.nsColor
             ]
         )
         stopButton.target = self

@@ -91,7 +91,7 @@ func runCanvasLauncherEmptyStateWrapTests() async {
     // y, so the status (above the hint) has the larger y, and the gap
     // between them is the status's own minY less the hint's maxY.
     expect(
-        abs((withStatus.statusFrame.minY - withStatus.hintFrame.maxY) - CanvasDesign.Space.xs) < 0.5,
+        abs((withStatus.statusFrame.minY - withStatus.hintFrame.maxY) - CanvasDesign.Space.sm) < 0.5,
         "the hint sits its usual gap below a real status line -- got status \(withStatus.statusFrame), hint \(withStatus.hintFrame)"
     )
     expect(

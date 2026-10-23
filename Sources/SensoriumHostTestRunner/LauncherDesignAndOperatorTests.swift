@@ -327,7 +327,7 @@ func runLauncherDesignAndOperatorTests() async {
             expect(
                 CanvasLauncherPresentation.emptyState(catalogCount: 0, hostName: "Kestrel Studio")
                     == CanvasLauncherEmptyState(
-                        heading: "Nothing to Launch",
+                        heading: "Nothing to launch",
                         subtext: "Install an application on Kestrel Studio and reconnect."
                     ),
                 "an empty catalog is advised to install something, never to clear a query it does not have -- on "
@@ -345,7 +345,7 @@ func runLauncherDesignAndOperatorTests() async {
             expect(
                 CanvasLauncherPresentation.emptyState(catalogCount: 40)
                     == CanvasLauncherEmptyState(
-                        heading: "No Matching Applications",
+                        heading: "No matching applications",
                         subtext: "Clear the filter, or type fewer letters."
                     ),
                 "a filter that matched nothing is advised to widen it, because there is something to find"
@@ -772,7 +772,7 @@ func runLauncherDesignAndOperatorTests() async {
                     + "not the grey a neutral status like Ready gets -- got: \(couldNotStart.eyebrowColor)"
             )
             expect(
-                notHosting.eyebrowColor == CanvasDesign.muted2,
+                notHosting.eyebrowColor == CanvasDesign.muted,
                 "a neutral status eyebrow like this not-hosting, no-problem state stays grey -- got: \(notHosting.eyebrowColor)"
             )
             let missingScreenRecording = HostOperatorStatus(

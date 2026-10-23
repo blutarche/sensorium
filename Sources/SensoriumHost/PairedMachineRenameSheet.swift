@@ -30,6 +30,9 @@ public final class PairedMachineRenameView: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.backgroundColor = CanvasDesign.chromeBg.cgColor
+        layer?.borderWidth = 1
+        layer?.borderColor = CanvasDesign.line2.cgColor
+        layer?.cornerRadius = CanvasDesign.Radius.base
 
         titleLabel.font = CanvasDesign.font(.primary, size: 14, weight: .semibold)
         titleLabel.textColor = CanvasDesign.ink.nsColor

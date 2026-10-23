@@ -72,7 +72,7 @@ final class PairedMachinesView: NSView {
 
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
@@ -271,7 +271,7 @@ private final class PairedMachineRowView: NSView {
         let inset = CanvasDesign.Space.sm
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -inset),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: inset),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset)
         ])
@@ -363,7 +363,7 @@ private final class PairedMachineRowView: NSView {
         button.translatesAutoresizingMaskIntoConstraints = false
         let titleSize = attributedTitle.size()
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: ceil(titleSize.width) + CanvasDesign.Space.md * 2),
+            button.widthAnchor.constraint(equalToConstant: ceil(titleSize.width) + CanvasDesign.Space.sm * 2),
             button.heightAnchor.constraint(equalToConstant: ceil(titleSize.height) + CanvasDesign.Space.xs * 2)
         ])
     }

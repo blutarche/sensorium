@@ -47,7 +47,7 @@ func runHostScreenPresencePromptTests() async {
             .foregroundColor, at: 0, effectiveRange: nil
         ) as? NSColor
         expect(
-            color == CanvasDesign.muted2.nsColor,
+            color == CanvasDesign.muted.nsColor,
             "a host-screen request is a normal ask, not an alert -- it keeps the neutral grey eyebrow colour every "
                 + "other status line uses, not the gold a missing permission or a failure gets -- got: \(String(describing: color))"
         )

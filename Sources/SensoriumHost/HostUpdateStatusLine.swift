@@ -8,11 +8,11 @@ public enum HostUpdateStatusLine {
     public static func line(for status: UpdateStatus, runningVersion: UpdateVersion) -> String? {
         switch status {
         case .current:
-            "Sensorium Host \(runningVersion), up to date"
+            "Sensorium Host \(runningVersion), up to date."
         case .checking, .downloading:
             nil
         case let .ready(version), let .waiting(version):
-            "Sensorium Host \(version) will install when no machine is connected"
+            "Sensorium Host \(version) will install when no machine is connected."
         case let .failed(reason):
             failed(reason: reason, runningVersion: runningVersion)
         case .notUpdatable:

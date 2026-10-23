@@ -39,7 +39,7 @@ func runHostUpdateWindowTests() {
         let window = controller(installsUpdatesAutomatically: nil)
         let checkbox = stored("automaticUpdatesCheckbox", in: window, as: NSButton.self)
         let line = stored("updateLineLabel", in: window, as: NSTextField.self)
-        window.setUpdateLine("Sensorium Host 0.4.0, up to date")
+        window.setUpdateLine("Sensorium Host 0.4.0, up to date.")
         expect(checkbox.isHidden, "a build with no updater shows no update checkbox")
         expect(line.isHidden, "and no update line, whatever it is given")
         print("PASS: a build with no updater shows neither the checkbox nor the line")
@@ -103,10 +103,10 @@ func runHostUpdateWindowTests() {
         let window = controller(installsUpdatesAutomatically: { true })
         let line = stored("updateLineLabel", in: window, as: NSTextField.self)
         expect(line.isHidden, "no line until the updater gives one")
-        window.setUpdateLine("Sensorium Host 0.5.0 will install when no machine is connected")
+        window.setUpdateLine("Sensorium Host 0.5.0 will install when no machine is connected.")
         expect(!line.isHidden, "the line shows once given")
         expect(
-            line.stringValue == "Sensorium Host 0.5.0 will install when no machine is connected",
+            line.stringValue == "Sensorium Host 0.5.0 will install when no machine is connected.",
             "the line shows the updater's words exactly, got \(line.stringValue)"
         )
         window.setUpdateLine(nil)

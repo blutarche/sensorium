@@ -206,7 +206,7 @@ public enum CanvasDesign {
     /// `size` departs from 12 only where the surface itself is smaller
     /// than a window, such as the host-screen badge.
     @MainActor
-    public static func eyebrow(_ text: String, color: DesignColor = CanvasDesign.muted2, size: CGFloat = 12) -> NSAttributedString {
+    public static func eyebrow(_ text: String, color: DesignColor = CanvasDesign.muted, size: CGFloat = 12) -> NSAttributedString {
         NSAttributedString(
             string: text.uppercased(),
             attributes: [
