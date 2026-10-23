@@ -12,7 +12,7 @@
 # reports skipped-single-mode, which is not a failure), the mode being
 # restored, and the display inventory being unchanged once the host stops.
 #
-# This locks the machine and leaves it locked: the person at it unlocks it.
+# This locks the machine and leaves it locked, with its password field empty.
 # It therefore refuses to run unless SENSORIUM_ALLOW_LOCK=1 is set.
 #
 # HOST_APP selects the host to test; the packaged build is the default. Set it
