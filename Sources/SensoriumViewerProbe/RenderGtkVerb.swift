@@ -79,7 +79,7 @@ enum RenderGtkVerb {
         lastConnectedAt: Date(timeIntervalSince1970: 500)
     )
     private static let longNamedHost = SavedHost(
-        displayName: "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max",
+        displayName: "Kestrel-Field-Station-Long-Range-Research-Notebook",
         host: "alexandria-whitfield-sinclairs-laptop.tail1234.ts.net",
         port: 7777,
         hostPublicKey: Data([4]),

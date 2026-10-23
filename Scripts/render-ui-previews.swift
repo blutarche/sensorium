@@ -17,10 +17,8 @@
 // SwiftPM cannot build inside a nested sandbox; run this unsandboxed. It
 // writes only to the output directory and `.build`.
 //
-// Reads `/Applications`, `/System/Applications` and `~/Applications` — one
-// directory listing each, no file contents. That is `CanvasApplicationCatalog`
-// doing exactly what it does on the host; a launcher rendered against a fake
-// catalog would not be the launcher.
+// Launcher previews use an invented catalog through the real view's catalog
+// adoption path, so installed application names never enter the images.
 
 import Foundation
 
@@ -388,9 +386,14 @@ MainActor.assumeIsolated {
 
     // Every sentence on the launcher that names the host reads the view's
     // own `hostName`; a fixed one keeps these renders the same on every machine.
+    let catalog = ["Atlas Editor", "Kestrel Browser", "Notebook", "Sketchbook"].map { name in
+        LaunchableApplication(name: name, bundleURL: URL(fileURLWithPath: "/Applications/\(name).app"))
+    }
+
     @MainActor func launcher() -> CanvasLauncherView {
         let view = CanvasLauncherView(frame: launcherFrame, canvas: placement)
         view.hostName = "Kestrel Studio"
+        view.testAdoptCatalog(catalog)
         return view
     }
 
@@ -410,17 +413,10 @@ MainActor.assumeIsolated {
         pumpUntil({ label.stringValue == expected.text }, description: "the launch status relay")
     }
 
-    let catalog = CanvasApplicationCatalog.discover(
-        roots: CanvasApplicationCatalog.defaultSearchRoots(
-            homeDirectory: FileManager.default.homeDirectoryForCurrentUser
-        ),
-        list: CanvasApplicationCatalog.systemListing
-    )
-
     hostPasses(
         render(launcher()),
         prefix: "host-launcher-1-populated",
-        state: "CanvasLauncherView, catalog as discovered on this machine (\(catalog.count) applications)"
+        state: "CanvasLauncherView, invented catalog (\(catalog.count) applications)"
     )
 
     let unique = catalog.first { CanvasApplicationCatalog.filter(catalog, query: $0.name).count == 1 }
@@ -512,6 +508,7 @@ MainActor.assumeIsolated {
         frame: NSRect(x: 0, y: 0, width: canvas.logicalWidth, height: canvas.logicalHeight),
         canvas: placement
     )
+    stored("launcher", of: workspace, as: CanvasLauncherView.self).testAdoptCatalog(catalog)
     hostPasses(
         render(workspace),
         prefix: "host-workspace-content",
@@ -596,7 +593,13 @@ MainActor.assumeIsolated {
             tailscaleAppURLLookup: tailscaleAppURLLookup,
             onOpenTailscaleApp: onOpenTailscaleApp,
             onToggleSharing: { _, _ in },
-            onRemovePairedDevice: { _ in }
+            onRemovePairedDevice: { _ in },
+            autoLoginStatus: { .enabled },
+            offersPrivateDesktop: {
+                if case .serving = status.connection { return true }
+                return false
+            },
+            installsUpdatesAutomatically: { true }
         )
     }
 
@@ -636,7 +639,7 @@ MainActor.assumeIsolated {
     // key-fingerprint line beneath it are exactly what a real approved-
     // devices store produces, named and unnamed.
     let namedDeviceKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x01])
-    let unnamedLegacyDeviceKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x02])
+    let unnamedLegacyDeviceKey = Data([0x6E, 0xC8, 0x53, 0xB3, 0x02])
     let namedAndUnnamedRows = HostScreenArmingPresentation.pairedMachineRows(
         approvedDevices: [
             (namedDeviceKey, "kestrel-mbp"),
@@ -649,7 +652,7 @@ MainActor.assumeIsolated {
     // read "External Display" alone, told apart here by where they sit
     // relative to the main display, the same disambiguation
     // `sharedDisplaysLine` applies to any pair that collides.
-    let sameNameDisplaysKey = Data([0xEE])
+    let sameNameDisplaysKey = Data([0xEE, 0x47, 0x92, 0xC1])
     let sameNameMainDisplay = DisplaySnapshot(
         id: 1, pixelWidth: 1512, pixelHeight: 982, modeWidth: 1512, modeHeight: 982,
         modePixelWidth: 3024, modePixelHeight: 1964, bounds: CGRect(x: 0, y: 0, width: 1512, height: 982),
@@ -679,7 +682,7 @@ MainActor.assumeIsolated {
 
     // An armed machine with no display list to judge from, which leaves the
     // row silent about displays rather than claiming this machine has none.
-    let armedWithoutDisplaysKey = Data([0x33])
+    let armedWithoutDisplaysKey = Data([0x33, 0x8A, 0xF1, 0x62])
     let armedWithoutDisplaysRows = HostScreenArmingPresentation.pairedMachineRows(
         approvedDevices: [(armedWithoutDisplaysKey, "Kestrel Laptop")],
         arming: HostScreenArming(devices: [
@@ -758,13 +761,13 @@ MainActor.assumeIsolated {
         ),
         (
             "host-window-10-paired-machines-one-blocked",
-            "one paired machine, sharing blocked, the row saying why in plain words on its own line",
+            "one paired machine with Share host screen turned off",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             onePairedRow
         ),
         (
             "host-window-11-paired-machines-two",
-            "two paired machines, one sharing its host screen, one not yet able to",
+            "two paired machines, one allowed to share host screen and one with sharing turned off",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             twoPairedRows
         ),
@@ -1217,8 +1220,8 @@ MainActor.assumeIsolated {
     )
 
     let longNamed = machinesWindow(hosts: [SavedHost(
-        displayName: "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max",
-        host: "alexandria-whitfield-sinclairs-laptop.tail1234.ts.net",
+        displayName: "Kestrel-Field-Station-Long-Range-Research-Notebook",
+        host: "kestrel-field-station-notebook.tail1234.ts.net",
         port: 7777,
         hostPublicKey: Data([4]),
         tlsCertificateHash: Data([4, 4]),
@@ -1475,16 +1478,16 @@ MainActor.assumeIsolated {
     // overlay is never on screen before then.
     var viewerStates: [(String, String, ViewerSessionStatus)] = []
 
-    var machine = ViewerSessionStateMachine(hostName: "workstation")
+    var machine = ViewerSessionStateMachine(hostName: "Workstation")
     viewerStates.append(("viewer-status-1-connecting", "first connect, before any frame", machine.status))
     machine.handle(.connectStarted)
 
     // A first attempt that never answers before the retry policy dials
     // again: the connecting panel names which attempt failed and why.
-    var failedFirstConnect = ViewerSessionStateMachine(hostName: "workstation")
+    var failedFirstConnect = ViewerSessionStateMachine(hostName: "Workstation")
     failedFirstConnect.handle(.connectStarted)
     let connectingAfterFailure = failedFirstConnect.handle(
-        .attemptFailed(reasonLine: ViewerSessionFailureCopy.line(for: .unreachable, hostLabel: "workstation"))
+        .attemptFailed(reasonLine: ViewerSessionFailureCopy.line(for: .unreachable, hostLabel: "Workstation"))
     )
     viewerStates.append((
         "viewer-status-1b-connecting-after-failure",
@@ -1534,7 +1537,7 @@ MainActor.assumeIsolated {
         "host-screen-resume-refused"
     ]
     for (index, (slug, reason)) in hostScreenEndedReasons.enumerated() {
-        var endedMachine = ViewerSessionStateMachine(hostName: "workstation")
+        var endedMachine = ViewerSessionStateMachine(hostName: "Workstation")
         if reasonsAfterALiveSession.contains(reason) {
             endedMachine.handle(.connectStarted)
             endedMachine.handle(.canvasReady)
@@ -1556,7 +1559,7 @@ MainActor.assumeIsolated {
     // it; a long name is the wrap risk that check exists for, so one
     // long-name pass each for two reasons checks the shape most likely to
     // break.
-    let longHostName = "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max"
+    let longHostName = "Kestrel-Field-Station-Long-Range-Research-Notebook"
     for (slug, reason) in [
         ("presence-declined", "host-screen-presence-declined"),
         ("not-allowed", "host-screen-not-allowed")
@@ -1578,11 +1581,11 @@ MainActor.assumeIsolated {
     // see ClientReconnectDriver's own no-auto-redial branch for it -- instead
     // of redialling forever.
     do {
-        var unverifiedMachine = ViewerSessionStateMachine(hostName: "workstation")
+        var unverifiedMachine = ViewerSessionStateMachine(hostName: "Workstation")
         unverifiedMachine.handle(.connectStarted)
         let status = unverifiedMachine.handle(
             .unverifiedHostConnectEnded(
-                reasonLine: ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: "workstation")
+                reasonLine: ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: "Workstation")
             )
         )
         viewerStates.append((
@@ -1591,6 +1594,16 @@ MainActor.assumeIsolated {
             status
         ))
     }
+
+    var privateDesktopOffered = ViewerSessionStateMachine(hostName: "Workstation")
+    viewerStates.append((
+        "viewer-status-16-private-desktop-offered",
+        "host screen unavailable with an explicitly offered private desktop",
+        privateDesktopOffered.handle(.hostScreenConnectEnded(
+            reasonLine: HostScreenRefusalCopy.line(reason: HostScreenRefusalCopy.noneAvailableReason),
+            offersVirtualDisplay: true
+        ))
+    ))
 
     for (prefix, description, status) in viewerStates {
         let overlay = ViewerSessionStatusOverlay()
@@ -1856,17 +1869,23 @@ MainActor.assumeIsolated {
     // are never behind a panel of numbers. Both are reproduced here rather
     // than asserted, because the real placement needs a window server.
     @MainActor
-    func hudOverCanvas(status: ViewerSessionStatus?) -> CGImage {
+    func hudOverCanvas(status: ViewerSessionStatus?, size: NSSize? = nil, scrolledToBottom: Bool = false) -> CGImage {
+        let viewportSize = size ?? viewerSize
         // The pin, resolved by Auto Layout exactly as the window controller
         // resolves it, so the offset below is measured rather than assumed.
-        let container = NSView(frame: NSRect(origin: .zero, size: viewerSize))
+        let container = NSView(frame: NSRect(origin: .zero, size: viewportSize))
+        NSLayoutConstraint.activate([
+            container.widthAnchor.constraint(equalToConstant: viewportSize.width),
+            container.heightAnchor.constraint(equalToConstant: viewportSize.height)
+        ])
         let pinned = SessionHUDView()
         pinned.apply(session: status ?? liveSession)
         pinned.apply(telemetry: hudStates[1].2)
         container.addSubview(pinned)
         NSLayoutConstraint.activate([
             pinned.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: ViewerDesign.Space.xs),
-            pinned.topAnchor.constraint(equalTo: container.topAnchor, constant: ViewerDesign.Space.xs)
+            pinned.topAnchor.constraint(equalTo: container.topAnchor, constant: ViewerDesign.Space.xs),
+            pinned.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -ViewerDesign.Space.xs)
         ])
         container.layoutSubtreeIfNeeded()
         // Rendered on its own and placed, rather than cached as a subview:
@@ -1878,27 +1897,29 @@ MainActor.assumeIsolated {
         // The same status the overlay gets: the window hands both the one
         // state, so a preview that gave the HUD a live session behind a lost
         // one depicted a screen the product cannot produce.
-        let hud = SessionHUDView()
-        hud.apply(session: status ?? liveSession)
-        hud.apply(telemetry: hudStates[1].2)
-        hud.layoutSubtreeIfNeeded()
-        hud.frame = NSRect(origin: .zero, size: hud.fittingSize)
-        let panel = render(hud)
+        if scrolledToBottom {
+            let scroll = stored("scrollView", of: pinned, as: NSScrollView.self)
+            if let document = scroll.documentView {
+                document.scroll(NSPoint(x: 0, y: document.frame.height))
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+        }
+        let panel = render(pinned)
         // Backing pixels per point, read off the render rather than assumed.
-        let scale = CGFloat(panel.width) / hud.frame.width
+        let scale = CGFloat(panel.width) / pinned.frame.width
         let frame = syntheticFrame(
-            width: Int(viewerSize.width * scale),
-            height: Int(viewerSize.height * scale)
+            width: Int(viewportSize.width * scale),
+            height: Int(viewportSize.height * scale)
         )
         var canvas = place(panel, over: frame, in: CGRect(
             x: pinned.frame.minX * scale,
             y: pinned.frame.minY * scale,
-            width: hud.frame.width * scale,
-            height: hud.frame.height * scale
+            width: pinned.frame.width * scale,
+            height: pinned.frame.height * scale
         ))
         if let status {
             let overlay = ViewerSessionStatusOverlay()
-            overlay.frame = NSRect(origin: .zero, size: viewerSize)
+            overlay.frame = NSRect(origin: .zero, size: viewportSize)
             overlay.apply(status)
             canvas = composite(render(overlay), over: canvas)
         }
@@ -1911,6 +1932,13 @@ MainActor.assumeIsolated {
         state: "SessionHUDView pinned to the canvas view's top-left corner, \(Int(ViewerDesign.Space.xs))pt in,"
             + " over a synthetic frame — a live session shows no status overlay"
     )
+    for (name, scrolled) in [("top", false), ("bottom", true)] {
+        write(
+            hudOverCanvas(status: nil, size: NSSize(width: 960, height: 360), scrolledToBottom: scrolled),
+            named: "viewer-hud-12-short-window-\(name).png",
+            state: "SessionHUDView in a short window, scrolled to the \(name) of its readings"
+        )
+    }
     var lostMachine = ViewerSessionStateMachine(hostName: "Workstation")
     lostMachine.handle(.connectStarted)
     lostMachine.handle(.canvasReady)
@@ -1955,7 +1983,7 @@ MainActor.assumeIsolated {
     ]
     for (prefix, reason, description) in noticeStates {
         let notice = ViewerTransientNoticeView()
-        notice.show(DisplayCountRefusalCopy.line(reason: reason, hostLabel: "workstation"))
+        notice.show(DisplayCountRefusalCopy.line(reason: reason, hostLabel: "Workstation"))
         notice.layoutSubtreeIfNeeded()
         notice.frame = NSRect(origin: .zero, size: notice.fittingSize)
         write(
@@ -1980,7 +2008,7 @@ MainActor.assumeIsolated {
         let container = NSView(frame: NSRect(origin: .zero, size: viewerSize))
         let strip = pinned
             ? ShortcutStripView(hostName: "Workstation", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: true))
-            : ShortcutStripView(hostName: "Workstation")
+            : ShortcutStripView(hostName: "Workstation", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
         container.addSubview(strip)
         NSLayoutConstraint.activate([
             strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
