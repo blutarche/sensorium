@@ -55,5 +55,6 @@ Scripts/test-real-local-workspace-input-smoke.sh
 Scripts/test-real-local-resize-smoke.sh
 Scripts/test-real-local-focus-release-smoke.sh
 Scripts/test-real-local-host-screen-smoke.sh
+Scripts/test-real-local-lock-typing-smoke.sh
 
 printf '\nAll runners passed.\n'
