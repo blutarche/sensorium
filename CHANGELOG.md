@@ -8,6 +8,11 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- A large picture is sent smaller while you scroll or drag, and sharp again
+  half a second after it stops moving, so scrolling keeps up.
+
 ## [0.5.6] - 2026-10-23
 
 ### Removed

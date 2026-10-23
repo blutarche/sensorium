@@ -166,6 +166,22 @@ A host-screen session honours it too. The live surface is then the host screen, 
 
 The host debounces. It follows a drawable once no newer `viewerDrawableSize` has arrived for that surface for 250 ms, or for 2 s when the drawable shrank by at most 0.25 of scale, so a strip of controls that shows and hides does not rebuild the encoder each time. It then applies the latest report, never an intermediate one, and rebuilds only when the encoded size would change. A person's own choice of scale settles after 350 ms. A rebuild replaces the capture and encode path, the `VTCompressionSession` and its H.264 SPS/PPS. The client learns new parameter sets from the `codecConfiguration` a keyframe carries. The host refuses any delta of a new generation before its keyframe.
 
+### While the picture moves
+
+A large stream is sent smaller while the picture moves, and whole again once it settles. Encoding fewer pixels keeps scrolling and dragging at the frame rate.
+
+| Rule | Value |
+|---|---|
+| Which streams | Those of at least 1.5 times 1920×1080 pixels |
+| Size while moving | Scaled down to about 1920×1080 pixels, same aspect ratio |
+| Broad change | A captured frame that changes at least 10% of the picture |
+| Moving starts | A broad change within 250 ms of the viewer scrolling or moving the pointer with a button held, or 4 broad changes in a row, each within 50 ms of the last |
+| Settled | 500 ms after the last broad change. The host then sends the last captured picture again at full size |
+
+The host keeps a second encoder warm at the moving size, so a switch rebuilds nothing on the host. Each switch starts with a keyframe whose `codecConfiguration` carries the other size, and the viewer replaces its decoder as for any other new configuration. A short burst of change does not switch. A 300 ms pause between two scrolls does not switch back.
+
+The stream scale reported in telemetry is the scale of the picture being sent, so it reads lower while the picture moves.
+
 ## Viewer focus
 
 `viewerFocus(surfaceID, hasViewerFocus)` tells the host which canvas the user is looking at, so it can prefer that canvas when both contend for the one hardware encoder and the one byte channel.
@@ -202,7 +218,7 @@ A stage with no samples yet is absent, never a fabricated zero. `framesPerSecond
 
 | Field | Meaning |
 |---|---|
-| `appliedStreamScale` | What the surface is actually encoded at |
+| `appliedStreamScale` | What the surface is actually encoded at. Lower while the picture moves (see Streamed resolution) |
 | `sustainableScaleCeiling` | The highest scale this session has found it can sustain |
 | `clampedFromUserChoice` | The scale a person explicitly chose (`streamScalePreference`), when the learned ceiling held `appliedStreamScale` below it |
 | `hostRequestedStreamScale` | The scale the host itself derived from the client's last reported drawable size, before any measured ceiling |

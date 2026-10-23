@@ -109,6 +109,7 @@ private final class MotionBenchLedger: @unchecked Sendable {
         let presentationTime: Int64
         let isKeyFrame: Bool
         let bytes: Int
+        let packetizedAt: Int64
     }
 
     struct Decoded {
@@ -206,7 +207,8 @@ enum MotionBench {
                 ledger.record(MotionBenchLedger.Packet(
                     presentationTime: presentationTime,
                     isKeyFrame: packet.isKeyFrame,
-                    bytes: packet.payload.count
+                    bytes: packet.payload.count,
+                    packetizedAt: MonotonicClock.nowNanoseconds()
                 ))
                 decodeQueue.async {
                     receipts.record(
@@ -282,6 +284,22 @@ enum MotionBench {
                 .min { $0.presentationTime < $1.presentationTime }
                 .map { $0.decodedAt - window.start }
         }
+        // The same first frames, by stage: the page moving to its capture,
+        // capture to the packet leaving the encoder, and the packet to its
+        // decoded frame. Medians, in that order.
+        let firstFrameStages: [(Int64, Int64, Int64)] = scrollWindows.compactMap { window in
+            guard let decoded = snapshot.decoded
+                .filter({ $0.presentationTime >= window.start })
+                .min(by: { $0.presentationTime < $1.presentationTime }),
+                let packet = snapshot.packets.first(where: { $0.presentationTime == decoded.presentationTime }) else {
+                return nil
+            }
+            return (
+                decoded.presentationTime - window.start,
+                packet.packetizedAt - decoded.presentationTime,
+                decoded.decodedAt - packet.packetizedAt
+            )
+        }
         let keyFrames = snapshot.packets.filter(\.isKeyFrame)
         let settledSizes: [String] = stillEnds.map { end in
             snapshot.decoded.filter { $0.decodedAt <= end }.max { $0.decodedAt < $1.decodedAt }
@@ -292,6 +310,19 @@ enum MotionBench {
         print("motion-bench encode p50=\(format(Double(encode.p50 ?? 0) / 1_000_000))ms p95=\(format(Double(encode.p95 ?? 0) / 1_000_000))ms samples=\(encode.count)")
         print("motion-bench scroll encoded-fps=\(format(Double(scrollPackets.count) / scrollSeconds)) end-to-end p50=\(format(percentile(endToEnd, 0.5)))ms p95=\(format(percentile(endToEnd, 0.95)))ms frames=\(endToEnd.count)")
         print("motion-bench first-frame-after-motion p50=\(format(percentile(firstFrames, 0.5)))ms max=\(format(percentile(firstFrames, 1.0)))ms episodes=\(firstFrames.count)")
+        print("motion-bench first-frame-stages capture p50=\(format(percentile(firstFrameStages.map(\.0), 0.5)))ms encode p50=\(format(percentile(firstFrameStages.map(\.1), 0.5)))ms decode p50=\(format(percentile(firstFrameStages.map(\.2), 0.5)))ms")
+        // Each packet's size against the size of the frame it decoded to,
+        // so a key frame that changes size is told from one that does not.
+        let sizeAt = Dictionary(snapshot.decoded.map { ($0.presentationTime, "\($0.width)x\($0.height)") }, uniquingKeysWith: { first, _ in first })
+        for size in sizes {
+            let ofSize = snapshot.packets.filter { sizeAt[$0.presentationTime] == size }
+            let keys = ofSize.filter(\.isKeyFrame).map { Int64($0.bytes) }
+            let deltas = ofSize.filter { !$0.isKeyFrame }.map { Int64($0.bytes) }
+            // `percentile` reads nanoseconds as milliseconds; undo that for bytes.
+            let keyKiB = percentile(keys, 0.5) * 1_000_000 / 1024
+            let deltaKiB = percentile(deltas, 0.5) * 1_000_000 / 1024
+            print("motion-bench frame-bytes \(size) key-frames=\(keys.count) key-p50=\(format(keyKiB))KiB delta-p50=\(format(deltaKiB))KiB")
+        }
         print("motion-bench key-frames count=\(keyFrames.count) bytes=\(keyFrames.reduce(0) { $0 + $1.bytes }) total-bytes=\(snapshot.packets.reduce(0) { $0 + $1.bytes }) packets=\(snapshot.packets.count)")
         print("motion-bench decoded-sizes \(sizes.joined(separator: " ")) settled-after-each-rest \(settledSizes.joined(separator: " ")) decode-failures=\(snapshot.decodeFailures)")
     }
