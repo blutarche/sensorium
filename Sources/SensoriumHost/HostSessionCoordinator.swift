@@ -78,12 +78,21 @@ public protocol CanvasMediaStreaming: AnyObject {
     /// the running encoder refuses it, which leaves the interval it had.
     /// Default no-op below, for a conformer with no encoder of its own.
     func apply(keyFrameIntervalSeconds: Double) async throws
+    /// The viewer scrolled or dragged on this surface; see
+    /// `HostMediaPipeline.viewerInteracted`. Default no-op below.
+    func viewerInteracted()
+    /// The stream scale of the moving picture while that is what is being
+    /// sent, smaller than `currentStreamScale`; `nil` while the settled
+    /// picture is. Default `nil` below, for a conformer that sends one size.
+    var encodingStreamScale: Double? { get }
 }
 
 public extension CanvasMediaStreaming {
     func setCaptureStoppedHandler(_ handler: (@Sendable () -> Void)?) {}
     func use(profileLevel: VideoEncoderProfileLevel) {}
     func apply(keyFrameIntervalSeconds: Double) async throws {}
+    func viewerInteracted() {}
+    var encodingStreamScale: Double? { nil }
 }
 
 public enum CanvasMediaReconfigurationError: Error, Equatable {
@@ -390,6 +399,9 @@ public final class HostSessionCoordinator {
     /// been logged; `nil` until then and again once the surface stops. A
     /// later change shows on the fidelity line rather than a line of its own.
     private var loggedViewerDecoderKind = CanvasSurfaceSlots<Bool?> { _ in nil }
+    /// Which pointer buttons the viewer holds on each surface, so a drag can
+    /// be told from hovering.
+    private var motionInput = CanvasSurfaceSlots { _ in StreamMotionInput() }
     /// Whether this surface's stream has been said to send its periodic key
     /// frame at the long interval. Cleared once the surface stops, so the next
     /// stream on it says so again; a capture rebuilt for the same stream does
@@ -804,6 +816,15 @@ public final class HostSessionCoordinator {
             // A request for a surface not streaming is ignored: there is no
             // encoder to ask, and the next one to start opens on a key frame.
             videoSink.viewerRequestedKeyFrame(on: surface)
+        }
+
+        if case let .input(event, surfaceID, _) = message,
+           let surface = isHostScreenStreaming ? Self.hostScreenTelemetrySurface : CanvasSurfaceID(wireValue: surfaceID),
+           motionInput[surface].isMotion(event),
+           isStreaming[surface] || isHostScreenSurface(surface) {
+            // After the controller took the event, so only input that reached
+            // the screen tells the stream a change is coming.
+            streamingMedia(on: surface).viewerInteracted()
         }
 
         if case .viewerKeyFrameRecovery = message {
@@ -1480,6 +1501,14 @@ public final class HostSessionCoordinator {
     /// other way to learn that a backoff moved it.
     public func appliedStreamScale(for surface: CanvasSurfaceID) -> Double {
         streamScale[surface].appliedScale
+    }
+
+    /// The scale of the picture this surface is sending now, which is what
+    /// the viewer is told: `appliedStreamScale`, or the smaller motion scale
+    /// while the stream sends a moving picture. The viewer's own size label
+    /// reads the frames it decodes, and the two then agree.
+    public func streamedScale(for surface: CanvasSurfaceID) -> Double {
+        streamingMedia(on: surface).encodingStreamScale ?? appliedStreamScale(for: surface)
     }
 
     /// The highest scale this surface's measured fidelity allows right now,

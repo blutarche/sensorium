@@ -159,6 +159,12 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         pipeline?.requestKeyFrame()
     }
 
+    public func viewerInteracted() {
+        pipeline?.viewerInteracted()
+    }
+
+    public var encodingStreamScale: Double? { pipeline?.encodingStreamScale }
+
     /// The same still-screen refresh the canvas path sends, on a real
     /// display's own pipeline: a screen nobody is at stops changing exactly
     /// as a canvas does.

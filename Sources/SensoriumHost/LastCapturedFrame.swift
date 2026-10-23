@@ -34,6 +34,15 @@ public final class LastCapturedFrame: @unchecked Sendable {
         return taken
     }
 
+    /// The held frame, still held. For sending the same picture again
+    /// through the stream's own encoder, which leaves it for a still-screen
+    /// refresh to take later.
+    public func peek() -> CMSampleBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        return sampleBuffer
+    }
+
     public var isHoldingFrame: Bool {
         lock.lock()
         defer { lock.unlock() }

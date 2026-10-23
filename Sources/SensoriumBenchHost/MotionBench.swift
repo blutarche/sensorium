@@ -236,10 +236,12 @@ enum MotionBench {
                 switch step {
                 case .scroll:
                     while MonotonicClock.nowNanoseconds() < end {
-                        pointer.move(byX: 0, y: options.speed)
+                        // As a viewer's scroll reaches the host: before the
+                        // change it causes.
                         if options.reportsInteraction {
-                            reportInteraction(to: pipeline)
+                            pipeline.viewerInteracted()
                         }
+                        pointer.move(byX: 0, y: options.speed)
                         try await Task.sleep(for: .nanoseconds(1_000_000_000 / 60))
                     }
                     scrollWindows.append((start, MonotonicClock.nowNanoseconds()))
@@ -254,10 +256,6 @@ enum MotionBench {
         decodeQueue.sync {}
         report(ledger.snapshot(), recorder: recorder, surface: surface, scrollWindows: scrollWindows, stillEnds: stillEnds)
     }
-
-    /// What the host does with a scroll the viewer sent, for the pipeline's
-    /// part of it. A build whose pipeline has no such signal ignores it.
-    private static func reportInteraction(to pipeline: HostMediaPipeline) {}
 
     private static func report(
         _ snapshot: (packets: [MotionBenchLedger.Packet], decoded: [MotionBenchLedger.Decoded], decodeFailures: Int),

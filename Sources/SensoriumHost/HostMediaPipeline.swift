@@ -44,8 +44,15 @@ public typealias HostFrameSourceFactory = @MainActor (
 public final class HostMediaPipeline {
     private let capture: any HostFrameSource
     private let encoder: VideoToolboxEncoder
+    /// The encoder a moving picture is sent from, at `movingConfiguration`.
+    /// `nil` for a stream too small to have a motion size.
+    private let movingEncoder: VideoToolboxEncoder?
+    private let movingConfiguration: VideoEncoderConfiguration?
+    /// What the admission gate submits to: `encoder` and `movingEncoder`
+    /// behind one frame path. Held here because the gate holds it weakly.
+    private let motion: StreamMotionEncoder
     private let admissionGate: EncodeAdmissionGate
-    private let lastCapturedFrame = LastCapturedFrame()
+    private let lastCapturedFrame: LastCapturedFrame
     private let surface: CanvasSurfaceID
     private let latencyRecorder: HostMediaLatencyRecorder?
     /// What the frames this pipeline encodes are worth, for the one frame a
@@ -188,23 +195,62 @@ public final class HostMediaPipeline {
                 _ = encodedFrameHandler(sampleBuffer)
             }
         )
-        // Every outcome releases the frame's slot; only the successful ones
-        // go onward.
-        let encoder = try await VideoToolboxEncoder.make(
-            configuration: configuration,
-            sessionCalls: encoderSessionCalls,
-            frameOutcomeHandler: { outcome in
+        let lastCapturedFrame = LastCapturedFrame()
+        let settleQueue = DispatchQueue(label: "sensorium.stream-motion-settle")
+        let motion = StreamMotionEncoder(
+            clock: { Double(MonotonicClock.nowNanoseconds()) / 1_000_000_000 },
+            scheduleSettleCheck: { afterSeconds, check in
+                settleQueue.asyncAfter(deadline: .now() + afterSeconds, execute: check)
+            },
+            settled: {
+                Self.resendSettledPicture(
+                    lastCapturedFrame: lastCapturedFrame,
+                    admissionGate: admissionGate,
+                    latencyRecorder: latencyRecorder,
+                    surface: surface
+                )
+            },
+            // Every outcome releases the frame's slot; only the successful
+            // ones go onward.
+            frameFinished: { outcome in
                 admissionGate.frameFinished(outcome)
             }
         )
+        let encoder = try await VideoToolboxEncoder.make(
+            configuration: configuration,
+            sessionCalls: encoderSessionCalls,
+            frameOutcomeHandler: motion.outcomeHandler(for: .settled)
+        )
+        // A stream that cannot have its motion encoder is still a stream: it
+        // is sent at one size, as one that is too small for a motion size is.
+        let movingConfiguration = configuration.motionConfiguration
+        var movingEncoder: VideoToolboxEncoder?
+        if let movingConfiguration {
+            do {
+                movingEncoder = try await VideoToolboxEncoder.make(
+                    configuration: movingConfiguration,
+                    sessionCalls: encoderSessionCalls,
+                    frameOutcomeHandler: motion.outcomeHandler(for: .moving)
+                )
+            } catch {
+                print("Sensorium host: motion encoder unavailable, sending one size: \(error)")
+            }
+        }
+        motion.attach(settled: encoder, moving: movingEncoder)
+        if movingEncoder != nil {
+            await Self.prime(motion, width: configuration.captureWidth, height: configuration.captureHeight)
+        }
         self.encoder = encoder
+        self.movingEncoder = movingEncoder
+        self.movingConfiguration = movingEncoder == nil ? nil : movingConfiguration
+        self.motion = motion
+        self.lastCapturedFrame = lastCapturedFrame
         deliverEncodedFrame = encodedFrameHandler
-        admissionGate.encoder = encoder
+        admissionGate.encoder = motion
         self.admissionGate = admissionGate
         self.configuration = configuration
         self.surface = surface
         self.latencyRecorder = latencyRecorder
-        let lastCapturedFrame = lastCapturedFrame
         capture = try frameSourceFactory(
             configuration,
             { delivery in
@@ -213,6 +259,9 @@ public final class HostMediaPipeline {
             streamStoppedHandler
         ) { sampleBuffer in
             lastCapturedFrame.record(sampleBuffer)
+            // Before admission, so the change that shows motion is itself
+            // encoded as the moving picture.
+            motion.screenChanged(changedFraction: StreamMotionEncoder.changedFraction(of: sampleBuffer))
             if let latencyRecorder, let presentationTime = CMSampleBufferPresentationTiming.nanoseconds(sampleBuffer) {
                 latencyRecorder.recordCapture(
                     surface: surface,
@@ -289,6 +338,103 @@ public final class HostMediaPipeline {
         )
     }
 
+    /// Sends the picture the screen settled on again, through the stream's
+    /// own path, so it goes out from the settled encoder at full size.
+    /// Capture is change-driven and the screen has stopped, so nothing else
+    /// would send it. The frame is left held for a still-screen refresh,
+    /// which still comes later and sends it sharp.
+    ///
+    /// Counted as the host's own frame: it is a deliberate key frame, not the
+    /// screen changing, and not evidence of what the frame rate in force
+    /// costs.
+    nonisolated private static func resendSettledPicture(
+        lastCapturedFrame: LastCapturedFrame,
+        admissionGate: EncodeAdmissionGate,
+        latencyRecorder: HostMediaLatencyRecorder?,
+        surface: CanvasSurfaceID
+    ) {
+        guard let captured = lastCapturedFrame.peek() else {
+            return
+        }
+        // A timestamp of its own: the encoder needs every frame later than the
+        // last, and the latency recorder tells frames apart by it.
+        let presentationTime = MonotonicClock.nowNanoseconds()
+        var timing = CMSampleTimingInfo(
+            duration: CMSampleBufferGetDuration(captured),
+            presentationTimeStamp: CMTime(value: presentationTime, timescale: 1_000_000_000),
+            decodeTimeStamp: .invalid
+        )
+        var resent: CMSampleBuffer?
+        guard CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: captured,
+            sampleTimingEntryCount: 1,
+            sampleTimingArray: &timing,
+            sampleBufferOut: &resent
+        ) == noErr, let resent else {
+            return
+        }
+        latencyRecorder?.recordHostRequestedFrame(
+            surface: surface,
+            presentationTimeNanoseconds: presentationTime,
+            atNanoseconds: MonotonicClock.nowNanoseconds()
+        )
+        admissionGate.admit(resent)
+    }
+
+    /// `StreamMotionEncoder.prime`, with a blank frame the size capture
+    /// delivers, so the scaling in front of the moving encoder runs too. Off
+    /// the main actor, since priming waits on VideoToolbox.
+    nonisolated private static func prime(_ motion: StreamMotionEncoder, width: Int, height: Int) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                if let frame = blankFrame(width: width, height: height) {
+                    motion.prime(with: frame)
+                }
+                continuation.resume()
+            }
+        }
+    }
+
+    nonisolated private static func blankFrame(width: Int, height: Int) -> CMSampleBuffer? {
+        var pixelBuffer: CVPixelBuffer?
+        let attributes: [CFString: Any] = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
+        guard CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &pixelBuffer
+        ) == kCVReturnSuccess, let pixelBuffer else {
+            return nil
+        }
+        var formatDescription: CMVideoFormatDescription?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescriptionOut: &formatDescription
+        ) == noErr, let formatDescription else {
+            return nil
+        }
+        var timing = CMSampleTimingInfo(
+            duration: .invalid,
+            presentationTimeStamp: CMTime(value: MonotonicClock.nowNanoseconds(), timescale: 1_000_000_000),
+            decodeTimeStamp: .invalid
+        )
+        var sampleBuffer: CMSampleBuffer?
+        guard CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: pixelBuffer,
+            formatDescription: formatDescription,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer
+        ) == noErr else {
+            return nil
+        }
+        return sampleBuffer
+    }
+
     private static func screenCapture(
         of contentFilter: SCContentFilter,
         captureTarget: CaptureCursorPolicy.Target
@@ -311,36 +457,62 @@ public final class HostMediaPipeline {
     /// If capture then refuses the change, the encoder is put back. Left
     /// alone it would budget bits for a rate capture is not delivering, and
     /// a step that failed is exactly when the two halves must still agree.
+    ///
+    /// Every lever reaches the moving encoder too, so a picture that starts
+    /// moving keeps the fidelity in force.
     public func apply(framesPerSecond: Int) async throws {
         let previousFramesPerSecond = encoder.appliedFramesPerSecond
         try await encoder.apply(framesPerSecond: framesPerSecond)
         do {
+            try await movingEncoder?.apply(framesPerSecond: framesPerSecond)
             try await capture.apply(framesPerSecond: framesPerSecond)
         } catch {
-            // Best effort: if putting the encoder back also fails, the
+            // Best effort: if putting the encoders back also fails, the
             // original refusal is still what the caller needs to hear, and
             // the media above has not recorded the new rate either, so the
-            // next attempt re-applies both halves from the rate still in
+            // next attempt re-applies every half from the rate still in
             // force.
             try? await encoder.apply(framesPerSecond: previousFramesPerSecond)
+            try? await movingEncoder?.apply(framesPerSecond: previousFramesPerSecond)
             throw error
         }
     }
 
     /// Quality is an encoder-side lever only: capture delivers the same
     /// pixels either way, and how many bits they are worth is decided after.
+    /// A refusal from either encoder is the caller's to hear: the media above
+    /// then has not recorded the new quality, and its next attempt applies it
+    /// to both again.
     public func apply(qualityScale: Double) async throws {
         try await encoder.apply(qualityScale: qualityScale)
+        try await movingEncoder?.apply(qualityScale: qualityScale)
     }
 
     /// An encoder-side lever only, like quality: capture delivers the same
     /// frames whatever the encoder makes of them.
     public func apply(keyFrameIntervalSeconds: Double) async throws {
         try await encoder.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
+        try await movingEncoder?.apply(keyFrameIntervalSeconds: keyFrameIntervalSeconds)
     }
 
     public func requestKeyFrame() {
-        encoder.requestKeyFrame()
+        motion.requestKeyFrame()
+    }
+
+    /// The viewer scrolled or dragged on this surface, so the change it causes
+    /// is sent as a moving picture from its first frame.
+    public func viewerInteracted() {
+        motion.viewerInteracted()
+    }
+
+    /// The stream scale of the picture the viewer has now, while it is the
+    /// moving one. `nil` while it is the settled one, which is encoded at the
+    /// stream scale this pipeline was built with.
+    public var encodingStreamScale: Double? {
+        guard motion.encodingRole == .moving, let movingConfiguration else {
+            return nil
+        }
+        return movingConfiguration.streamScale
     }
 
     /// Sends the frame this pipeline last captured again, whole, so a screen
@@ -405,10 +577,10 @@ public final class HostMediaPipeline {
         // exit, so the refresh has already been handed on when they go in;
         // on the queue, so their submission stays off the main actor.
         let queue = stillRefreshQueue
-        let encoder = encoder
+        let motion = motion
         defer {
             queue.async {
-                encoder.resumeHeldFramesWithKeyFrame()
+                motion.resumeHeldFramesWithKeyFrame()
             }
         }
         guard encodedAgainst == generation else {
@@ -463,7 +635,9 @@ public final class HostMediaPipeline {
     ) async throws -> (frame: CMSampleBuffer, encodedAt: Int64) {
         let queue = stillRefreshQueue
         let box = StillRefreshEncodeInput(imageBuffer: imageBuffer)
-        let encoder = encoder
+        // Both of the stream's encoders: the frame after the refresh is a key
+        // frame from whichever one sends it.
+        let encoder = motion
         return try await withCheckedThrowingContinuation { continuation in
             queue.async {
                 do {
@@ -497,6 +671,8 @@ public final class HostMediaPipeline {
         // right now must find this generation changed when it comes back, so
         // it gives its frame up instead of handing it to a stopped pipeline.
         generation += 1
+        // As early: a settle due now would send a picture into the teardown.
+        motion.stop()
         var captureStopError: (any Error)?
         if hasStartedCapture {
             do {
@@ -519,6 +695,7 @@ public final class HostMediaPipeline {
         // another resolution stands the next one up; off the main actor,
         // because the flush waits on the encoder service.
         await encoder.shutDown()
+        await movingEncoder?.shutDown()
         if let captureStopError {
             throw captureStopError
         }
@@ -540,6 +717,15 @@ public protocol CanvasMediaPipelining: AnyObject {
     func requestKeyFrame()
     @discardableResult
     func refreshStillPicture() async throws -> Int?
+    func viewerInteracted()
+    var encodingStreamScale: Double? { get }
+}
+
+/// For a stand-in that sends one size.
+@available(macOS 13.0, *)
+public extension CanvasMediaPipelining {
+    func viewerInteracted() {}
+    var encodingStreamScale: Double? { nil }
 }
 
 @available(macOS 13.0, *)

@@ -979,7 +979,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
                         guard let coordinator else { return nil }
                         return CanvasSurfaceSlots { surface in
                             SurfaceFidelityState(
-                                appliedScale: coordinator.appliedStreamScale(for: surface),
+                                appliedScale: coordinator.streamedScale(for: surface),
                                 sustainableScaleCeiling: coordinator.sustainableScaleCeiling(for: surface),
                                 clampedFromUserChoice: coordinator.clampedStreamScaleFromUserChoice(for: surface),
                                 hostRequestedStreamScale: coordinator.hostRequestedStreamScale(for: surface),

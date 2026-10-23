@@ -652,6 +652,15 @@ final class FakeCanvasMedia: CanvasMediaStreaming {
         keyFrameRequestCount += 1
     }
 
+    private(set) var viewerInteractionCount = 0
+    /// What this media says the moving picture is encoded at, if it is
+    /// sending one.
+    var encodingStreamScale: Double?
+
+    func viewerInteracted() {
+        viewerInteractionCount += 1
+    }
+
     func emit(_ packet: EncodedVideoFramePacket) {
         packetHandler?(packet)
     }

@@ -216,6 +216,12 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         await inner?.requestKeyFrame()
     }
 
+    public func viewerInteracted() {
+        inner?.viewerInteracted()
+    }
+
+    public var encodingStreamScale: Double? { inner?.encodingStreamScale }
+
     public func refreshStillPicture() async throws -> Int? {
         guard let inner else {
             return nil

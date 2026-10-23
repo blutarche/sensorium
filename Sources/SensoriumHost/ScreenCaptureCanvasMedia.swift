@@ -156,6 +156,12 @@ public final class ScreenCaptureCanvasMedia: CanvasMediaStreaming {
         pipeline?.requestKeyFrame()
     }
 
+    public func viewerInteracted() {
+        pipeline?.viewerInteracted()
+    }
+
+    public var encodingStreamScale: Double? { pipeline?.encodingStreamScale }
+
     public func use(profileLevel: VideoEncoderProfileLevel) {
         configuration = configuration.with(profileLevel: profileLevel)
     }
