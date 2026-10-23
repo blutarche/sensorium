@@ -13,6 +13,8 @@ import SensoriumHost
 func runStreamMotionPipelineTests() async {
     await expectAPipelineSendsAMovingPictureSmallerAndTheSettledOneWhole()
     await expectTheCoordinatorTellsTheStreamAboutAScrollOrADrag()
+    await expectASmallChangeNeverBlursTheWholeFrame()
+    await expectAScrollOfRealPixelsStillReachesTheMovingEncoder()
 }
 
 @available(macOS 13.0, *)
@@ -157,19 +159,9 @@ private func motionPipelinePixels(width: Int, height: Int, offset: Int) -> CVPix
 }
 
 @available(macOS 13.0, *)
-@MainActor
-private func waitForFrames(_ log: MotionEncodedFrameLog, count: Int, seconds: Double) async {
-    let deadline = Date().addingTimeInterval(seconds)
-    while log.all.count < count, Date() < deadline {
-        try? await Task.sleep(nanoseconds: 10_000_000)
-    }
-}
-
-@available(macOS 13.0, *)
-@MainActor
-private func expectAPipelineSendsAMovingPictureSmallerAndTheSettledOneWhole() async {
+private func motionPipelineConfiguration() -> VideoEncoderConfiguration {
     let logicalBitRate = VideoEncoderConfiguration.averageBitRate(encodeWidth: 1773, encodeHeight: 997)
-    let configuration = VideoEncoderConfiguration(
+    return VideoEncoderConfiguration(
         width: 1773,
         height: 997,
         framesPerSecond: 60,
@@ -188,6 +180,21 @@ private func expectAPipelineSendsAMovingPictureSmallerAndTheSettledOneWhole() as
     )
     .scaled(toStreamScale: 2.0)
     .with(keyFrameIntervalSeconds: VideoEncoderConfiguration.viewerRecoveryKeyFrameIntervalSeconds)
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private func waitForFrames(_ log: MotionEncodedFrameLog, count: Int, seconds: Double) async {
+    let deadline = Date().addingTimeInterval(seconds)
+    while log.all.count < count, Date() < deadline {
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private func expectAPipelineSendsAMovingPictureSmallerAndTheSettledOneWhole() async {
+    let configuration = motionPipelineConfiguration()
     let surface = CanvasSurfaceID.allCases[0]
     let recorder = HostMediaLatencyRecorder()
     let log = MotionEncodedFrameLog()
@@ -292,4 +299,174 @@ private func expectAPipelineSendsAMovingPictureSmallerAndTheSettledOneWhole() as
     try? await Task.sleep(nanoseconds: 800_000_000)
     expect(log.all.count == afterStop, "a stopped pipeline sends no settled picture")
     print("PASS: a moving picture goes out at the motion size, from a key frame, and the settled one goes out whole a settle delay after the screen stops")
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private struct OpenMotionStream {
+    let pipeline: HostMediaPipeline
+    let source: MotionScriptedFrameSource
+    let log: MotionEncodedFrameLog
+    let movingWidth: Int32
+
+    /// One frame every 60th of a second from `frame`, paced on a fixed
+    /// schedule so the time spent building a large frame is not added to it.
+    func play(frames count: Int, _ frame: (Int) -> NV12TestImage) async {
+        let start = Date()
+        for index in 0..<count {
+            source.frameHandler(frame(index).makeCapturedFrame(presentationNanoseconds: MonotonicClock.nowNanoseconds()))
+            let wait = start.addingTimeInterval(Double(index + 1) / 60).timeIntervalSinceNow
+            if wait > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            }
+        }
+    }
+
+    var hasSentMovingPicture: Bool {
+        log.all.contains { $0.width == movingWidth }
+    }
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private func openMotionStream() async -> OpenMotionStream? {
+    let configuration = motionPipelineConfiguration()
+    guard let moving = configuration.motionConfiguration else {
+        expect(false, "the stream these tests run is large enough to have a motion size")
+        return nil
+    }
+    let log = MotionEncodedFrameLog()
+    var source: MotionScriptedFrameSource?
+    let pipeline: HostMediaPipeline
+    do {
+        pipeline = try await HostMediaPipeline(
+            surface: CanvasSurfaceID.allCases[0],
+            configuration: configuration,
+            latencyRecorder: HostMediaLatencyRecorder(),
+            sessionAdmissionGate: SharedEncodeAdmissionGate<CMSampleBuffer>(
+                capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity
+            ),
+            frameSourceFactory: { _, _, _, frameHandler in
+                let made = MotionScriptedFrameSource(frameHandler: frameHandler)
+                source = made
+                return made
+            },
+            encodedFrameHandler: { sampleBuffer in
+                log.record(sampleBuffer)
+                return true
+            }
+        )
+    } catch {
+        print("SKIP: this machine has no hardware H.264 encoder, so there is no moving picture to encode")
+        return nil
+    }
+    try? await pipeline.start()
+    return OpenMotionStream(
+        pipeline: pipeline,
+        source: source!,
+        log: log,
+        movingWidth: Int32(moving.encodeWidth)
+    )
+}
+
+/// What capture reports for a real display: dirty rects that cover the whole
+/// frame on every frame, whether or not a pixel changed. Only the pixels say
+/// how much of the screen moved.
+@available(macOS 13.0, *)
+@MainActor
+private func expectNoMovingPicture(
+    _ what: String,
+    width: Int = 1773,
+    height: Int = 997,
+    viewerScrolledFirst: Bool = false,
+    frames count: Int,
+    _ frame: (_ page: NV12TestImage, _ index: Int) -> NV12TestImage
+) async {
+    guard let stream = await openMotionStream() else { return }
+    var page = NV12TestImage(width: width, height: height)
+    page.drawText(in: CGRect(x: 0, y: 0, width: width, height: height))
+    stream.source.frameHandler(page.makeCapturedFrame(presentationNanoseconds: MonotonicClock.nowNanoseconds()))
+    await waitForFrames(stream.log, count: 1, seconds: 3)
+    if viewerScrolledFirst {
+        stream.pipeline.viewerInteracted()
+    }
+    await stream.play(frames: count) { frame(page, $0) }
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    expect(
+        stream.log.all.count > 1 && !stream.hasSentMovingPicture && stream.pipeline.encodingStreamScale == nil,
+        "\(what) never reaches the moving encoder, got \(stream.log.all.filter { $0.width == stream.movingWidth }.count) moving frames of \(stream.log.all.count)"
+    )
+    try? await stream.pipeline.stop()
+    print("PASS: \(what) never reaches the moving encoder")
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private func expectASmallChangeNeverBlursTheWholeFrame() async {
+    await expectNoMovingPicture(
+        "a second of frames whose dirty rects cover the screen and whose pixels are the same",
+        frames: 60
+    ) { page, _ in page }
+
+    await expectNoMovingPicture("a caret that blinks every half second for three seconds", frames: 180) { page, index in
+        var frame = page
+        if (index / 30) % 2 == 0 {
+            frame.fill(CGRect(x: 500, y: 400, width: 2, height: 40), with: 0)
+        }
+        return frame
+    }
+
+    await expectNoMovingPicture("a cursor sprite that moves 10 pixels a frame for two seconds", frames: 120) { page, index in
+        var frame = page
+        frame.fill(CGRect(x: 100 + index * 10, y: 300, width: 32, height: 32), with: 255)
+        return frame
+    }
+
+    await expectNoMovingPicture(
+        "a change to a small part of the screen right after a viewer scroll",
+        viewerScrolledFirst: true,
+        frames: 3
+    ) { page, index in
+        var frame = page
+        frame.drawText(in: CGRect(x: 800, y: 500, width: 100, height: 100), scrolledBy: (index + 1) * 20)
+        return frame
+    }
+
+    await expectNoMovingPicture(
+        "a 200 by 200 region that changes every frame for two seconds on a 5120 by 2880 frame",
+        width: 5120,
+        height: 2880,
+        frames: 120
+    ) { page, index in
+        var frame = page
+        frame.drawText(in: CGRect(x: 2000, y: 1000, width: 200, height: 200), scrolledBy: index * 7)
+        return frame
+    }
+}
+
+@available(macOS 13.0, *)
+@MainActor
+private func expectAScrollOfRealPixelsStillReachesTheMovingEncoder() async {
+    guard let stream = await openMotionStream() else { return }
+    let width = 1773
+    let height = 997
+    var page = NV12TestImage(width: width, height: height)
+    page.drawText(in: CGRect(x: 0, y: 0, width: width, height: height))
+    stream.source.frameHandler(page.makeCapturedFrame(presentationNanoseconds: MonotonicClock.nowNanoseconds()))
+    await waitForFrames(stream.log, count: 1, seconds: 3)
+    await stream.play(frames: 16) { index in
+        var frame = page
+        frame.drawText(in: CGRect(x: 0, y: 0, width: width, height: height), scrolledBy: (index + 1) * 12)
+        return frame
+    }
+    let deadline = Date().addingTimeInterval(1)
+    while !stream.hasSentMovingPicture, Date() < deadline {
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+    expect(
+        stream.hasSentMovingPicture,
+        "pixels that really change across the screen reach the moving encoder, got \(stream.log.all.count) frames, none moving"
+    )
+    try? await stream.pipeline.stop()
+    print("PASS: pixels that really change across the screen reach the moving encoder")
 }

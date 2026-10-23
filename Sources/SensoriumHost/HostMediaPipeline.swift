@@ -251,6 +251,9 @@ public final class HostMediaPipeline {
         self.configuration = configuration
         self.surface = surface
         self.latencyRecorder = latencyRecorder
+        // Measured from the pixels: on a real display capture's dirty rects
+        // can cover the whole frame while nothing moves.
+        let changeSampler = movingEncoder == nil ? nil : FrameChangeSampler()
         capture = try frameSourceFactory(
             configuration,
             { delivery in
@@ -261,7 +264,9 @@ public final class HostMediaPipeline {
             lastCapturedFrame.record(sampleBuffer)
             // Before admission, so the change that shows motion is itself
             // encoded as the moving picture.
-            motion.screenChanged(changedFraction: StreamMotionEncoder.changedFraction(of: sampleBuffer))
+            if let changeSampler {
+                motion.screenChanged(changedFraction: changeSampler.changedFraction(of: sampleBuffer))
+            }
             if let latencyRecorder, let presentationTime = CMSampleBufferPresentationTiming.nanoseconds(sampleBuffer) {
                 latencyRecorder.recordCapture(
                     surface: surface,

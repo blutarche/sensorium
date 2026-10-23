@@ -11,7 +11,9 @@ once it reaches 1.0.
 ### Changed
 
 - A large picture is sent smaller while you scroll or drag, and sharp again
-  half a second after it stops moving, so scrolling keeps up.
+  half a second after it stops moving, so scrolling keeps up. The host
+  judges motion from the pixels that changed, so a blinking caret, the
+  pointer or a small animation leaves the picture sharp.
 - The host now captures the screen in the colour format its video
   encoder takes directly. The encoder no longer converts every frame
   itself, which saves about 2 ms per frame on a full-size display. The
