@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreMedia
 import CoreVideo
 import ScreenCaptureKit
 import SensoriumHost
@@ -26,6 +27,12 @@ func runCaptureStreamColorTests() async {
     expect(
         configuration.colorSpaceName == nil,
         "capture keeps the display's own colour space, so the red, green and blue handed to the matrix are the ones a packed capture carried"
+    )
+
+    let primingFrame = HostMediaPipeline.blankFrame(width: 64, height: 32)
+    expect(
+        primingFrame.flatMap(CMSampleBufferGetImageBuffer).map(CVPixelBufferGetPixelFormatType) == configuration.pixelFormat,
+        "the motion encoder is primed with a frame in the format capture delivers, so priming warms the path real frames take"
     )
 
     print("PASS: capture asks for video-range 4:2:0 with the high-definition matrix and leaves the colour space alone")

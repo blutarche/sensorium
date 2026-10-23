@@ -382,7 +382,7 @@ public final class HostMediaPipeline {
         admissionGate.admit(resent)
     }
 
-    /// `StreamMotionEncoder.prime`, with a blank frame the size capture
+    /// `StreamMotionEncoder.prime`, with a blank frame the size and format capture
     /// delivers, so the scaling in front of the moving encoder runs too. Off
     /// the main actor, since priming waits on VideoToolbox.
     nonisolated private static func prime(_ motion: StreamMotionEncoder, width: Int, height: Int) async {
@@ -396,14 +396,14 @@ public final class HostMediaPipeline {
         }
     }
 
-    nonisolated private static func blankFrame(width: Int, height: Int) -> CMSampleBuffer? {
+    nonisolated package static func blankFrame(width: Int, height: Int) -> CMSampleBuffer? {
         var pixelBuffer: CVPixelBuffer?
         let attributes: [CFString: Any] = [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary]
         guard CVPixelBufferCreate(
             kCFAllocatorDefault,
             width,
             height,
-            kCVPixelFormatType_32BGRA,
+            ScreenCaptureSession.capturePixelFormat,
             attributes as CFDictionary,
             &pixelBuffer
         ) == kCVReturnSuccess, let pixelBuffer else {

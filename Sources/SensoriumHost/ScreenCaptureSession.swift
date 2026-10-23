@@ -241,6 +241,10 @@ public final class ScreenCaptureSession: NSObject, SCStreamOutput {
         super.init()
     }
 
+    /// The pixel format every captured frame arrives in. Anything else fed to
+    /// the encoder, such as the frame that primes it, uses it too.
+    nonisolated package static let capturePixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+
     /// The one place an `SCStreamConfiguration` is built, so every field this
     /// capture depends on is chosen in exactly one place.
     nonisolated package static func streamConfiguration(
@@ -261,7 +265,7 @@ public final class ScreenCaptureSession: NSObject, SCStreamOutput {
         // converted with another matrix would shift hues with nothing in the
         // stream to say so. `colorSpaceName` stays unset, so the display's own
         // colour space is kept, as it was for a packed capture.
-        streamConfiguration.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        streamConfiguration.pixelFormat = capturePixelFormat
         streamConfiguration.colorMatrix = CGDisplayStream.yCbCrMatrix_ITU_R_709_2
         streamConfiguration.showsCursor = CaptureCursorPolicy.showsCursor(for: captureTarget)
         streamConfiguration.capturesAudio = false
