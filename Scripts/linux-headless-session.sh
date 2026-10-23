@@ -82,7 +82,9 @@ if [ "${1-}" = "--inner" ]; then
         sleep 1
         waited=$((waited + 1))
     done
+    terminated_by_harness=0
     if kill -0 "$command_pid" 2>/dev/null; then
+        terminated_by_harness=1
         kill -TERM "$command_pid" 2>/dev/null
         for _ in $(seq 1 10); do
             kill -0 "$command_pid" 2>/dev/null || break
@@ -92,7 +94,12 @@ if [ "${1-}" = "--inner" ]; then
             kill -KILL "$command_pid" 2>/dev/null
         fi
     fi
-    wait "$command_pid" 2>/dev/null
+    final_status=0
+    wait "$command_pid" 2>/dev/null || final_status=$?
+    if [ -z "$command_exit_status" ] && [ "$terminated_by_harness" = 0 ] && [ "$final_status" -ne 0 ]; then
+        echo "harness: command exited with status $final_status after the screenshot" >&2
+        exit_status=1
+    fi
     echo "harness: the command ended"
     echo "harness: exit status $exit_status" >>"$SENSORIUM_HARNESS_LOG"
     exit "$exit_status"
@@ -140,5 +147,5 @@ inner_command="$(printf '%q' "$self") --inner"
 # A nested compositor of its own, never the one the person is looking at.
 exec env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
     dbus-run-session -- \
-    kwin_wayland --virtual --width "$width" --height "$height" --scale "$scale" \
+    kwin_wayland --virtual --socket "sensorium-harness-$$" --width "$width" --height "$height" --scale "$scale" \
     --no-lockscreen --exit-with-session "$inner_command"

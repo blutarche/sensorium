@@ -29,6 +29,7 @@ enum ViewVerbs {
         let capturesPointer = arguments.contains("--capture")
         let sharesClipboard = arguments.contains("--clipboard")
         let clipboardRoundtrip = arguments.contains("--clipboard-roundtrip")
+        let diagnosticsWheel = arguments.contains("--diagnostics-wheel")
         // What the viewer's own `--trace` asks of a session window: say what
         // the first real draw found, for a run diagnosing a picture that is
         // not on screen.
@@ -77,7 +78,7 @@ enum ViewVerbs {
                 )
             }
         case "view-selftest":
-            takeOverTheProcess { await selftest(clipboardRoundtrip: clipboardRoundtrip) }
+            takeOverTheProcess { await selftest(clipboardRoundtrip: clipboardRoundtrip, diagnosticsWheel: diagnosticsWheel) }
         default:
             return
         }
@@ -307,7 +308,7 @@ enum ViewVerbs {
     /// connection, a configured surface, an EGL context, the software upload
     /// and the colour conversion.
     @MainActor
-    private static func selftest(clipboardRoundtrip: Bool) async -> Int32 {
+    private static func selftest(clipboardRoundtrip: Bool, diagnosticsWheel: Bool) async -> Int32 {
         let window: WaylandSessionWindow
         do {
             window = try WaylandSessionWindow(
@@ -331,7 +332,27 @@ enum ViewVerbs {
         let viewport = window.canvasObserver()
         await viewport.canvasDidBecomeReady()
         await viewport.presentDecodedFrame(frame)
-        try? await Task.sleep(for: .seconds(3))
+        if diagnosticsWheel {
+            window.performMenuCommand(.zoom)
+            try? await Task.sleep(for: .milliseconds(300))
+            await window.show()
+            var state = ViewerSessionStateMachine(hostName: "Workstation")
+            window.apply(status: state.handle(.canvasReady))
+            window.updateSessionHUD(SessionHUDSnapshot(
+                surfaceID: 0,
+                availability: .unavailable,
+                clientMetrics: SessionMetrics(),
+                stream: ClientStreamReading(pixelWidth: frame.width, pixelHeight: frame.height, bitsPerSecond: nil),
+                requestedStreamScale: 1,
+                streamScalePreference: .automatic,
+                decoder: .hardwareAccelerated,
+                hostName: "Workstation",
+                hostAddress: "mini.tail1234.ts.net:7777"
+            ))
+            window.performMenuCommand(.toggleTelemetryOverlay)
+            say("diagnostics-wheel: ready")
+        }
+        try? await Task.sleep(for: .seconds(diagnosticsWheel ? 30 : 3))
         say("Self-check drew \(frame.width)x\(frame.height) into \(size.width)x\(size.height). \(summary(of: window))")
         let status = clipboardRoundtrip ? await runClipboardRoundtrip(window: window) : 0
         window.close()
