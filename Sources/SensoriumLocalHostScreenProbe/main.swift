@@ -224,91 +224,19 @@ struct SensoriumLocalHostScreenProbe {
 
         let runner = ClientSessionRunner(connection: connection, session: session, window: window)
 
-        // Viewer-driven mode-change state, fed by the runner's own callbacks
-        // so the exchange is read exactly as a real viewer would see it --
-        // never by asking the host or CoreGraphics directly what it just did.
-        var offeredModes: [HostScreenModeEntry] = []
-        var offeredCurrentModeID: String?
-        var modeApplied: (geometry: SessionSurfaceGeometry, currentModeID: String)?
-        var modeRefused: String?
-        runner.onHostScreenModeList = { modes, currentModeID in
-            offeredModes = modes
-            offeredCurrentModeID = currentModeID
-        }
-        runner.onHostScreenModeApplied = { geometry, currentModeID in
-            modeApplied = (geometry, currentModeID)
-        }
-        runner.onHostScreenModeRefused = { reason in
-            modeRefused = reason
-        }
+        let modeRoundTrip = HostScreenModeRoundTrip(display: display)
+        modeRoundTrip.observe(runner)
 
         try runner.start()
         print("host_screen_viewer_started=yes")
 
-        // The mode this display was on before any of this touched it, held
-        // as the live `CGDisplayMode` object itself, not just a description
-        // of it, because the probe-side fallback restore below needs to hand
-        // CoreGraphics that exact object, never one re-derived from a
-        // description of it.
-        let originalMode = CGDisplayCopyDisplayMode(display.id)
-        let originalModeSnapshot = originalMode.map(DisplayModeSnapshot.init)
-        print("mode_before=\(originalModeSnapshot?.line ?? "unknown")")
-
-        var modeChangeError: Error?
-        var modeChangeWasSkipped = false
-        if await pollUntil(seconds: 10, condition: { !offeredModes.isEmpty }) == false {
-            print("mode_requested=none")
-            print("mode_applied=no")
-            modeChangeError = HostScreenProbeError.modeListNeverArrived
-        } else if await pollFrames(atLeast: 1, within: 10, runner: runner) == false {
-            print("mode_requested=none")
-            print("mode_applied=no")
-            modeChangeError = HostScreenProbeError.noPresentedFrames
-        } else if let target = Self.largestOtherHiDPIMode(in: offeredModes, excluding: offeredCurrentModeID) {
-            print("mode_requested=\(target.modeID)")
-            let framesBeforeRequest = await presentedFrameCount(runner)
-            await runner.requestHostScreenMode(target.modeID)
-            let arrived = await pollUntil(seconds: 15, condition: { modeApplied != nil || modeRefused != nil })
-            if !arrived {
-                print("mode_applied=no")
-                modeChangeError = HostScreenProbeError.modeChangeTimedOut
-            } else if let modeRefused {
-                print("mode_applied=no")
-                modeChangeError = HostScreenProbeError.modeChangeRefused(modeRefused)
-            } else {
-                print("mode_applied=yes")
-                // Presented frames must resume quickly, not merely
-                // eventually: a host that keeps the old capture's packet
-                // sequencer picks back up within a frame or two, while one
-                // that restarted it at zero is silently discarded by the
-                // viewer's own `VideoFrameIngress` until the new count climbs
-                // back past the old one, which can take minutes at a low
-                // frame rate.
-                if let resumedWithin = await pollFramesElapsed(
-                    atLeast: framesBeforeRequest + 5, within: 3, runner: runner
-                ) {
-                    print(String(format: "mode_frames_resumed_within=%.1f", resumedWithin))
-                } else {
-                    modeChangeError = HostScreenProbeError.framesDidNotResumeAfterModeChange
-                }
-                let pixelMatched = await pollUntil(seconds: 5, condition: {
-                    guard let mode = CGDisplayCopyDisplayMode(display.id) else { return false }
-                    return mode.pixelWidth == target.pixelWidth && mode.pixelHeight == target.pixelHeight
-                })
-                if !pixelMatched, modeChangeError == nil {
-                    modeChangeError = HostScreenProbeError.displayModeDidNotMatchRequest
-                }
-            }
-        } else {
-            print("mode_requested=none")
-            print("mode_applied=skipped-single-mode")
-            modeChangeWasSkipped = true
-        }
+        await modeRoundTrip.run(runner: runner, frameCount: { await presentedFrameCount(runner) })
 
         // A mode change above replaces both the geometry and the display's
         // own bounds; the session-start `geometry` and `display` snapshot
         // are stale from that point on, exactly as they would be for a real
         // viewer, which is why `onHostScreenModeApplied` re-reads both too.
+        let modeApplied = modeRoundTrip.applied
         let currentGeometry = modeApplied?.geometry ?? geometry
         let currentDisplay = modeApplied != nil
             ? (DisplayInventory.active().first { $0.id == display.id } ?? display)
@@ -415,32 +343,7 @@ struct SensoriumLocalHostScreenProbe {
         await session.disconnect(reason: "host-screen-probe-complete")
         target.close()
 
-        // The one unacceptable outcome on a real display: leaving it on a
-        // mode nobody asked to keep. Checked after the session has ended, as
-        // the design requires ("restored when the session ends"), and polled
-        // because that restoration can be asynchronous.
-        if !modeChangeWasSkipped {
-            let matchesOriginal = { () -> Bool in
-                guard let originalModeSnapshot else { return true }
-                guard let mode = CGDisplayCopyDisplayMode(display.id) else { return false }
-                return DisplayModeSnapshot(mode) == originalModeSnapshot
-            }
-            if await pollUntil(seconds: 10, condition: matchesOriginal) {
-                print("mode_restored=yes")
-                print("mode_restored_by=host")
-            } else if let originalMode, probeRestoreMode(originalMode, on: display.id) {
-                let restoredByProbe = await pollUntil(seconds: 5, condition: matchesOriginal)
-                print("mode_restored=\(restoredByProbe ? "yes" : "no")")
-                print("mode_restored_by=probe")
-                if !restoredByProbe {
-                    modeChangeError = modeChangeError ?? HostScreenProbeError.displayNotRestored
-                }
-            } else {
-                print("mode_restored=no")
-                print("mode_restored_by=probe")
-                modeChangeError = modeChangeError ?? HostScreenProbeError.displayNotRestored
-            }
-        }
+        await modeRoundTrip.verifyRestored()
 
         guard presented > 0 else {
             throw HostScreenProbeError.noPresentedFrames
@@ -451,8 +354,149 @@ struct SensoriumLocalHostScreenProbe {
         guard typed else {
             throw HostScreenProbeError.textNeverTyped
         }
-        if let modeChangeError {
+        if let modeChangeError = modeRoundTrip.error {
             throw modeChangeError
+        }
+    }
+
+    /// The viewer-driven display-mode round trip against the real
+    /// `CoreGraphicsHostScreenModeController`, shared by `enter` and
+    /// `lock-typing`: a mode change requested mid-session, applied without
+    /// interrupting the picture, and the mode this display had before always
+    /// put back. It reads the exchange from the runner's own callbacks, exactly
+    /// as a real viewer would, never by asking the host what it just did.
+    ///
+    /// Frame progress is supplied by the caller. `enter` counts presented
+    /// frames; `lock-typing` counts decoded ones, because the lock screen
+    /// covers the probe's own window and nothing is presented there.
+    @MainActor
+    private final class HostScreenModeRoundTrip {
+        private let display: DisplaySnapshot
+        private var offeredModes: [HostScreenModeEntry] = []
+        private var offeredCurrentModeID: String?
+        private var modeRefused: String?
+        private var originalMode: CGDisplayMode?
+        private var originalModeSnapshot: DisplayModeSnapshot?
+        private var wasSkipped = false
+
+        /// The geometry and mode the host reported when it applied the change.
+        private(set) var applied: (geometry: SessionSurfaceGeometry, currentModeID: String)?
+        private(set) var error: Error?
+
+        init(display: DisplaySnapshot) {
+            self.display = display
+        }
+
+        /// Must be called before the runner starts, so the mode list that
+        /// arrives with the session is not missed.
+        func observe(_ runner: ClientSessionRunner) {
+            runner.onHostScreenModeList = { [self] modes, currentModeID in
+                offeredModes = modes
+                offeredCurrentModeID = currentModeID
+            }
+            runner.onHostScreenModeApplied = { [self] geometry, currentModeID in
+                applied = (geometry, currentModeID)
+            }
+            runner.onHostScreenModeRefused = { [self] reason in
+                modeRefused = reason
+            }
+        }
+
+        func run(runner: ClientSessionRunner, frameCount: () async -> Int) async {
+            // The mode this display was on before any of this touched it, held
+            // as the live `CGDisplayMode` object itself, not just a description
+            // of it, because the probe-side fallback restore below needs to hand
+            // CoreGraphics that exact object, never one re-derived from a
+            // description of it.
+            originalMode = CGDisplayCopyDisplayMode(display.id)
+            originalModeSnapshot = originalMode.map(DisplayModeSnapshot.init)
+            print("mode_before=\(originalModeSnapshot?.line ?? "unknown")")
+
+            let poll = SensoriumLocalHostScreenProbe.pollUntil
+            if await poll(10, { !offeredModes.isEmpty }) == false {
+                print("mode_requested=none")
+                print("mode_applied=no")
+                error = HostScreenProbeError.modeListNeverArrived
+            } else if await SensoriumLocalHostScreenProbe.pollFrames(
+                atLeast: 1, within: 10, frameCount: frameCount
+            ) == false {
+                print("mode_requested=none")
+                print("mode_applied=no")
+                error = HostScreenProbeError.noPresentedFrames
+            } else if let target = SensoriumLocalHostScreenProbe.largestOtherHiDPIMode(
+                in: offeredModes, excluding: offeredCurrentModeID
+            ) {
+                print("mode_requested=\(target.modeID)")
+                let framesBeforeRequest = await frameCount()
+                await runner.requestHostScreenMode(target.modeID)
+                let arrived = await poll(15, { applied != nil || modeRefused != nil })
+                if !arrived {
+                    print("mode_applied=no")
+                    error = HostScreenProbeError.modeChangeTimedOut
+                } else if let modeRefused {
+                    print("mode_applied=no")
+                    error = HostScreenProbeError.modeChangeRefused(modeRefused)
+                } else {
+                    print("mode_applied=yes")
+                    // Frames must resume quickly, not merely eventually: a host
+                    // that keeps the old capture's packet sequencer picks back
+                    // up within a frame or two, while one that restarted it at
+                    // zero is silently discarded by the viewer's own
+                    // `VideoFrameIngress` until the new count climbs back past
+                    // the old one, which can take minutes at a low frame rate.
+                    if let resumedWithin = await SensoriumLocalHostScreenProbe.pollFramesElapsed(
+                        atLeast: framesBeforeRequest + 5, within: 3, frameCount: frameCount
+                    ) {
+                        print(String(format: "mode_frames_resumed_within=%.1f", resumedWithin))
+                    } else {
+                        error = HostScreenProbeError.framesDidNotResumeAfterModeChange
+                    }
+                    let displayID = display.id
+                    let pixelMatched = await poll(5, {
+                        guard let mode = CGDisplayCopyDisplayMode(displayID) else { return false }
+                        return mode.pixelWidth == target.pixelWidth && mode.pixelHeight == target.pixelHeight
+                    })
+                    if !pixelMatched, error == nil {
+                        error = HostScreenProbeError.displayModeDidNotMatchRequest
+                    }
+                }
+            } else {
+                print("mode_requested=none")
+                print("mode_applied=skipped-single-mode")
+                wasSkipped = true
+            }
+        }
+
+        /// The one unacceptable outcome on a real display: leaving it on a
+        /// mode nobody asked to keep. Checked after the session has ended, as
+        /// the design requires ("restored when the session ends"), and polled
+        /// because that restoration can be asynchronous.
+        func verifyRestored() async {
+            guard !wasSkipped else { return }
+            let displayID = display.id
+            let originalModeSnapshot = originalModeSnapshot
+            let matchesOriginal = { () -> Bool in
+                guard let originalModeSnapshot else { return true }
+                guard let mode = CGDisplayCopyDisplayMode(displayID) else { return false }
+                return DisplayModeSnapshot(mode) == originalModeSnapshot
+            }
+            let poll = SensoriumLocalHostScreenProbe.pollUntil
+            if await poll(10, matchesOriginal) {
+                print("mode_restored=yes")
+                print("mode_restored_by=host")
+            } else if let originalMode,
+                      SensoriumLocalHostScreenProbe.probeRestoreMode(originalMode, on: displayID) {
+                let restoredByProbe = await poll(5, matchesOriginal)
+                print("mode_restored=\(restoredByProbe ? "yes" : "no")")
+                print("mode_restored_by=probe")
+                if !restoredByProbe {
+                    error = error ?? HostScreenProbeError.displayNotRestored
+                }
+            } else {
+                print("mode_restored=no")
+                print("mode_restored_by=probe")
+                error = error ?? HostScreenProbeError.displayNotRestored
+            }
         }
     }
 
@@ -489,8 +533,10 @@ struct SensoriumLocalHostScreenProbe {
     /// compares the lower-centre of the streamed frame before and after: the
     /// lock screen centres its password field horizontally in the lower part
     /// of the display, and typing changes it. It empties the field before
-    /// typing and again after, and fails if the field is not left empty. The
-    /// machine is left locked.
+    /// typing and again after, and fails if the field is not left empty. It
+    /// then runs the display-mode round trip on the locked display and checks
+    /// the display is back on its own mode after disconnecting. The machine is
+    /// left locked.
     private static func lockTyping(host: String, rawPort: String, shotDirectory: String) async throws {
         let port = try endpointPort(rawPort)
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
@@ -526,6 +572,8 @@ struct SensoriumLocalHostScreenProbe {
 
         let runner = ClientSessionRunner(connection: connection, session: session, window: window)
         let latest = LatestDecodedFrame()
+        let modeRoundTrip = HostScreenModeRoundTrip(display: display)
+        modeRoundTrip.observe(runner)
         try runner.start(onDecodedFrame: { frame in latest.set(frame.pixelBuffer) })
         // Decoded, not presented: a locked host's lock screen covers this
         // probe's own window on the same machine, so nothing is ever presented.
@@ -595,10 +643,16 @@ struct SensoriumLocalHostScreenProbe {
         _ = await router.route(.key(keyCode: escape, isDown: true, modifiers: []))
         _ = await router.route(.key(keyCode: escape, isDown: false, modifiers: []))
         try await Task.sleep(for: .seconds(1))
+
+        // Decoded frames, for the same reason the first frame above is: the
+        // lock screen covers this probe's own window, so none is presented.
+        await modeRoundTrip.run(runner: runner, frameCount: { latest.count })
         runner.stop()
         await session.disconnect(reason: "lock-typing-probe-complete")
+        await modeRoundTrip.verifyRestored()
         if !changed { throw HostScreenProbeError.lockFieldUnchanged }
         if !cleared { throw HostScreenProbeError.lockFieldNotCleared }
+        if let modeChangeError = modeRoundTrip.error { throw modeChangeError }
     }
 
     private static func pressBackspace(times: Int, through router: CanvasSurfaceEventRouter) async throws {
@@ -630,24 +684,28 @@ struct SensoriumLocalHostScreenProbe {
         await runner.latency.metrics().samples(for: .present).count
     }
 
-    private static func pollFrames(atLeast minimum: Int, within seconds: Int, runner: ClientSessionRunner) async -> Bool {
+    private static func pollFrames(
+        atLeast minimum: Int, within seconds: Int, frameCount: () async -> Int
+    ) async -> Bool {
         for _ in 0..<(seconds * 10) {
-            if await presentedFrameCount(runner) >= minimum { return true }
+            if await frameCount() >= minimum { return true }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return await presentedFrameCount(runner) >= minimum
+        return await frameCount() >= minimum
     }
 
     /// `pollFrames` without the elapsed time it already measures internally
     /// but never reports -- used where how quickly frames resumed is itself
     /// the thing under test, not just whether they eventually did.
-    private static func pollFramesElapsed(atLeast minimum: Int, within seconds: Int, runner: ClientSessionRunner) async -> Double? {
+    private static func pollFramesElapsed(
+        atLeast minimum: Int, within seconds: Int, frameCount: () async -> Int
+    ) async -> Double? {
         let startedAt = Date()
         for _ in 0..<(seconds * 10) {
-            if await presentedFrameCount(runner) >= minimum { return Date().timeIntervalSince(startedAt) }
+            if await frameCount() >= minimum { return Date().timeIntervalSince(startedAt) }
             try? await Task.sleep(for: .milliseconds(100))
         }
-        return await presentedFrameCount(runner) >= minimum ? Date().timeIntervalSince(startedAt) : nil
+        return await frameCount() >= minimum ? Date().timeIntervalSince(startedAt) : nil
     }
 
     /// The last-resort restore this rig owns, used only when the host's own
@@ -863,16 +921,24 @@ private enum HostScreenProbeError: Error {
     case lockFieldNotCleared
 }
 
-/// The newest decoded frame, written from the runner's decode callback and
-/// read from the probe's task.
+/// The newest decoded frame and how many have been decoded, written from the
+/// runner's decode callback and read from the probe's task.
 private final class LatestDecodedFrame: @unchecked Sendable {
     private let lock = NSLock()
     private var buffer: CVPixelBuffer?
+    private var decodedCount = 0
 
     func set(_ newBuffer: CVPixelBuffer) {
         lock.lock()
         buffer = newBuffer
+        decodedCount += 1
         lock.unlock()
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return decodedCount
     }
 
     func get() -> CVPixelBuffer? {

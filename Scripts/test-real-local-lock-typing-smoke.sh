@@ -32,6 +32,21 @@ grep -F 'left locked' "$SMOKE" >/dev/null
 # It passes only when the probe left the password field empty.
 grep -F 'lock_typing_field_cleared=yes' "$SMOKE" >/dev/null
 
+# It also proves the viewer-driven display-mode round trip on the locked
+# machine: the mode change applied (or the display offers only one mode), the
+# display came back to the mode it had, and the display inventory is unchanged
+# once the host is stopped.
+grep -F 'mode_applied' "$SMOKE" >/dev/null
+grep -F 'mode_restored' "$SMOKE" >/dev/null
+grep -F 'the display mode change did not apply' "$SMOKE" >/dev/null
+grep -F 'the display was not restored to the mode it was on before' "$SMOKE" >/dev/null
+grep -F 'Scripts/display_inventory.swift' "$SMOKE" >/dev/null
+grep -F 'Scripts/compare-display-inventory.py' "$SMOKE" >/dev/null
+grep -F 'the display inventory changed during teardown' "$SMOKE" >/dev/null
+last_stop_line="$(grep -n '^stop_host$' "$SMOKE" | tail -n 1 | cut -d: -f1)"
+post_inventory_line="$(grep -nF 'display-inventory-post.json' "$SMOKE" | head -n 1 | cut -d: -f1)"
+[ "$last_stop_line" -lt "$post_inventory_line" ]
+
 # Throwaway state, never the real Application Support.
 grep -F 'STATE="$ROOT/.build/real-local-lock-typing-smoke"' "$SMOKE" >/dev/null
 grep -F 'HOST_HOME="$STATE/host"' "$SMOKE" >/dev/null

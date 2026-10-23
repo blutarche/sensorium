@@ -4,8 +4,13 @@
 # unlocked. The viewer connects to the host screen, locks the machine with the
 # lock shortcut if it is not locked already, types five letters (never Return)
 # with no click first, and compares the lower centre of the streamed frame
-# before and after. It empties the field before typing and again after. The
-# field changing, and being left empty, is the pass condition.
+# before and after. It empties the field before typing and again after. It
+# then asks the host for a different display mode through the viewer's own
+# mode request, checks the picture resumes, disconnects, and checks the display
+# is back on the mode it had. The pass condition is the field changing, the
+# field being left empty, the mode change applying (a display offering one mode
+# reports skipped-single-mode, which is not a failure), the mode being
+# restored, and the display inventory being unchanged once the host stops.
 #
 # This locks the machine and leaves it locked: the person at it unlocks it.
 # It therefore refuses to run unless SENSORIUM_ALLOW_LOCK=1 is set.
@@ -108,6 +113,9 @@ test -n "$ADDRESS"
 rm -rf "$STATE"
 mkdir -p "$HOST_HOME" "$CLIENT_HOME" "$SHOT_DIR"
 
+# The displays as they stand before anything runs, to compare once the host stops.
+swift Scripts/display_inventory.swift > "$STATE/display-inventory-pre.json"
+
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args pair "$ADDRESS" 7783 --transport tcp-local-verification &
 HOST_PID=$!
 wait_for_text 'Pairing code:' "$HOST_LOG" 10 || fail "timed out waiting for 'Pairing code:' in host log"
@@ -136,7 +144,22 @@ probe_status=$?
 set -e
 
 stop_host
-if contains_text 'lock_typing_field_changed=yes' "$PROBE_LOG" && contains_text 'lock_typing_field_cleared=yes' "$PROBE_LOG" && [ "$probe_status" = 0 ]; then
+swift Scripts/display_inventory.swift > "$STATE/display-inventory-post.json"
+
+# Mode failures are judged from the probe's own lines, and each gets its own
+# message so a bad mode change is never reported as a typing failure.
+mode_applied="$(python3 -c 'import re,sys; match=re.search(r"mode_applied=(\S+)", open(sys.argv[1], errors="replace").read()); print(match.group(1) if match else "no")' "$PROBE_LOG")"
+mode_restored="$(python3 -c 'import re,sys; match=re.search(r"mode_restored=(\S+)", open(sys.argv[1], errors="replace").read()); print(match.group(1) if match else "no")' "$PROBE_LOG")"
+# A display offering one mode has nothing to restore, so the probe prints no
+# mode_restored line for it.
+if [ "$mode_applied" = skipped-single-mode ] && ! contains_text 'mode_restored=' "$PROBE_LOG"; then
+  mode_restored=skipped-single-mode
+fi
+
+if contains_text 'lock_typing_field_changed=yes' "$PROBE_LOG" && contains_text 'lock_typing_field_cleared=yes' "$PROBE_LOG" \
+  && [ "$mode_applied" != no ] && [ "$mode_restored" != no ] && [ "$probe_status" = 0 ]; then
+  python3 Scripts/compare-display-inventory.py "$STATE/display-inventory-pre.json" "$STATE/display-inventory-post.json" \
+    || fail "the display inventory changed during teardown"
   trap - ERR
   printf 'PASS: real local lock typing smoke\n'
   echo "  screenshots: $SHOT_DIR"
@@ -148,5 +171,11 @@ if contains_text 'lock_typing_field_changed=no' "$PROBE_LOG"; then
 fi
 if contains_text 'lock_typing_field_cleared=no' "$PROBE_LOG"; then
   fail "the typed letters were not deleted from the lock screen password field (see lock-after-clearing.png in $SHOT_DIR)"
+fi
+if contains_text 'lock_typing_field_changed=yes' "$PROBE_LOG" && [ "$mode_applied" = no ]; then
+  fail "the display mode change did not apply cleanly (mode_applied=$mode_applied)"
+fi
+if contains_text 'lock_typing_field_changed=yes' "$PROBE_LOG" && [ "$mode_restored" = no ]; then
+  fail "the display was not restored to the mode it was on before (mode_restored=$mode_restored)"
 fi
 fail "the lock-typing probe stopped before it could judge the password field (status $probe_status)"
