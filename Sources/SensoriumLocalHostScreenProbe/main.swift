@@ -33,6 +33,16 @@ import SensoriumHost
 /// into a real display, and what lands there is read back from AppKit and from
 /// `NSEvent.mouseLocation` -- this process's own view of the machine, not any
 /// bookkeeping the session kept.
+///
+/// Before the display-mode round trip, `enter` also proves motion-time
+/// resolution: a large window of dense, scrollable content stands on the armed
+/// display, the viewer scrolls it for a moment, and the sizes of the decoded
+/// frames are judged by `StreamMotionProof` -- the motion size while the scroll
+/// runs, the full size soon after it stops, and the full size from then on. It
+/// prints the verdict as `motion_check=` and leaves failing the run to
+/// `Scripts/run-real-local-host-screen-smoke.sh`, which reports each failure
+/// on its own. It runs ahead of the mode round trip so the stream is measured
+/// on the display's own mode, the one the person at this machine really uses.
 @main
 @MainActor
 struct SensoriumLocalHostScreenProbe {
@@ -227,8 +237,17 @@ struct SensoriumLocalHostScreenProbe {
         let modeRoundTrip = HostScreenModeRoundTrip(display: display)
         modeRoundTrip.observe(runner)
 
-        try runner.start()
+        let decodedSizes = DecodedFrameSizes()
+        try runner.start(onDecodedFrame: { frame in decodedSizes.record(width: frame.width, height: frame.height) })
         print("host_screen_viewer_started=yes")
+
+        try await proveMotionResolution(
+            session: session,
+            geometry: geometry,
+            display: display,
+            screen: screen,
+            decodedSizes: decodedSizes
+        )
 
         await modeRoundTrip.run(runner: runner, frameCount: { await presentedFrameCount(runner) })
 
@@ -497,6 +516,112 @@ struct SensoriumLocalHostScreenProbe {
                 print("mode_restored_by=probe")
                 error = error ?? HostScreenProbeError.displayNotRestored
             }
+        }
+    }
+
+    /// How many scroll events the motion proof sends, and how far apart. A steady
+    /// 60 a second is what a held trackpad flick looks like to the host. The
+    /// step is not a multiple of the content's row height, so no two rows of
+    /// the picture line up with the rows they replace.
+    private static let motionScrollEventCount = 90
+    private static let motionScrollInterval = 1.0 / 60
+    private static let motionScrollStepPoints = 30.0
+    /// How long the picture is left alone before its full size is read, and
+    /// how long it is watched after the scroll stops. The host settles 0.5 s
+    /// after the last change, so the first outlasts the picture opening and
+    /// the second is several times the time `StreamMotionProof` allows.
+    private static let motionQuietSeconds = 3.0
+
+    /// Scrolls a large window of dense content standing on the armed display
+    /// through the viewer's own input path, and judges the decoded frame sizes
+    /// it saw. The window covers most of the display so that a scroll changes
+    /// most of the picture, which is what the host reads as motion.
+    private static func proveMotionResolution(
+        session: ClientSessionController,
+        geometry: SessionSurfaceGeometry,
+        display: DisplaySnapshot,
+        screen: NSScreen,
+        decodedSizes: DecodedFrameSizes
+    ) async throws {
+        let scrollWindow = ScrollTargetWindow(screen: screen)
+        scrollWindow.show()
+        defer { scrollWindow.close() }
+        guard let standingOn = activeDisplay(containing: scrollWindow.centreInGlobalDisplaySpace()),
+              standingOn.id == display.id else {
+            throw HostScreenProbeError.windowNotOnArmedDisplay
+        }
+
+        let viewport = ClientViewportController(
+            mapper: VirtualCanvasInputMapper(
+                logicalWidth: Double(geometry.logicalWidth),
+                logicalHeight: Double(geometry.logicalHeight)
+            ),
+            pointerSink: session
+        )
+        let router = CanvasSurfaceEventRouter(viewport: viewport)
+        _ = await router.route(.boundsChanged(width: Double(geometry.logicalWidth), height: Double(geometry.logicalHeight)))
+        await viewport.canvasDidBecomeReady()
+
+        // Request a known full size and verify it arrives; the host may
+        // still clamp the request to its measured fidelity ceiling.
+        let requestedScale = StreamScalePolicy.maximumScale
+        try await session.sendStreamScalePreference(.fixed(requestedScale))
+        let settledConfiguration = HostScreenEncoderSizing.resolve(for: geometry).configuration.scaled(
+            toStreamScale: min(requestedScale, HostScreenEncoderSizing.maximumStreamScale(for: geometry))
+        )
+        let fullSize = StreamMotionProof.FrameSize(
+            width: settledConfiguration.encodeWidth,
+            height: settledConfiguration.encodeHeight
+        )
+        guard await pollUntil(seconds: 10, condition: {
+            guard let latest = decodedSizes.latest else { return false }
+            return latest.width == fullSize.width && latest.height == fullSize.height
+        }) else {
+            throw HostScreenProbeError.noPresentedFrames
+        }
+        try await Task.sleep(for: .seconds(motionQuietSeconds))
+
+        let local = displayLocalPoint(scrollWindow.centreInScreenSpace(), on: display)
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        var lastScrollAt = startedAt
+        for index in 0..<motionScrollEventCount {
+            let wait = startedAt + Double(index) * motionScrollInterval - ProcessInfo.processInfo.systemUptime
+            if wait > 0 {
+                try await Task.sleep(for: .seconds(wait))
+            }
+            let delivery = await router.route(.scrolled(
+                deltaX: 0,
+                deltaY: -motionScrollStepPoints,
+                x: local.x,
+                y: Double(geometry.logicalHeight) - local.y,
+                phase: nil,
+                momentumPhase: nil
+            ))
+            guard case .delivered = delivery else {
+                print("motion_scroll_route=\(describe(delivery))")
+                throw HostScreenProbeError.pointerNotDelivered
+            }
+            lastScrollAt = ProcessInfo.processInfo.systemUptime
+        }
+        try await Task.sleep(for: .seconds(motionQuietSeconds))
+
+        let frames = decodedSizes.frames(since: startedAt).map { arrival in
+            StreamMotionProof.Frame(
+                milliseconds: Int(((arrival.uptime - startedAt) * 1000).rounded()),
+                size: StreamMotionProof.FrameSize(width: arrival.width, height: arrival.height)
+            )
+        }
+        try await session.sendStreamScalePreference(.automatic)
+        let proof = StreamMotionProof.judge(
+            fullSize: fullSize,
+            expectedMotionSize: settledConfiguration.motionConfiguration.map {
+                StreamMotionProof.FrameSize(width: $0.encodeWidth, height: $0.encodeHeight)
+            },
+            frames: frames,
+            lastScrollMilliseconds: Int(((lastScrollAt - startedAt) * 1000).rounded())
+        )
+        for line in proof.lines {
+            print(line)
         }
     }
 
@@ -889,6 +1014,127 @@ private final class TargetWindow {
 
     func close() {
         window.orderOut(nil)
+    }
+}
+
+/// A large window of dense, text-like content standing on the armed display,
+/// opened to the middle of a very tall document so a scroll in either
+/// direction moves it. Drawn as rows of words rather than glyphs: every row
+/// differs from its neighbours, so a scroll changes nearly every pixel it
+/// covers, as scrolling a page of text does.
+@MainActor
+private final class ScrollTargetWindow {
+    private static let rowCount = 4000
+
+    private let window: NSWindow
+
+    init(screen: NSScreen) {
+        let visible = screen.visibleFrame
+        let frame = visible.insetBy(dx: visible.width * 0.1, dy: visible.height * 0.1)
+        window = NSWindow(
+            contentRect: frame,
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+        window.title = "Sensorium host screen probe scroll target"
+        window.level = .floating
+        let scrollView = NSScrollView(frame: NSRect(origin: .zero, size: window.contentLayoutRect.size))
+        scrollView.hasVerticalScroller = false
+        scrollView.verticalScrollElasticity = .none
+        scrollView.autoresizingMask = [.width, .height]
+        let document = DenseRowsView(
+            frame: NSRect(
+                x: 0,
+                y: 0,
+                width: scrollView.contentSize.width,
+                height: CGFloat(Self.rowCount) * DenseRowsView.rowHeight
+            )
+        )
+        scrollView.documentView = document
+        window.contentView = scrollView
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: document.frame.height / 2))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    func show() {
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    /// The window's centre, in AppKit's own screen space.
+    func centreInScreenSpace() -> CGPoint {
+        CGPoint(x: window.frame.midX, y: window.frame.midY)
+    }
+
+    /// The window's centre where a display's own bounds can be asked about it.
+    func centreInGlobalDisplaySpace() -> CGPoint {
+        let flipHeight = NSScreen.screens.first?.frame.maxY ?? 0
+        return CGPoint(x: window.frame.midX, y: flipHeight - window.frame.midY)
+    }
+
+    func close() {
+        window.orderOut(nil)
+    }
+}
+
+private final class DenseRowsView: NSView {
+    static let rowHeight: CGFloat = 12
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        dirtyRect.fill()
+        NSColor.black.setFill()
+        let firstRow = max(0, Int(dirtyRect.minY / Self.rowHeight))
+        let lastRow = Int(dirtyRect.maxY / Self.rowHeight)
+        guard firstRow <= lastRow else { return }
+        for row in firstRow...lastRow {
+            // A different word layout for every row, the same one every time
+            // the row is drawn.
+            var state = UInt64(row) &* 0x9E37_79B9_7F4A_7C15 | 1
+            var x: CGFloat = 8
+            while x < bounds.width - 8 {
+                state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+                let word = CGFloat(12 + (state >> 33) % 60)
+                NSRect(x: x, y: CGFloat(row) * Self.rowHeight + 3, width: word, height: 6).fill()
+                x += word + 6
+            }
+        }
+    }
+}
+
+/// The size of every frame the viewer decoded and when, written from the
+/// runner's decode callback and read from the probe's task.
+private final class DecodedFrameSizes: @unchecked Sendable {
+    struct Arrival {
+        let uptime: Double
+        let width: Int
+        let height: Int
+    }
+
+    private let lock = NSLock()
+    private var arrivals: [Arrival] = []
+
+    func record(width: Int, height: Int) {
+        let arrival = Arrival(uptime: ProcessInfo.processInfo.systemUptime, width: width, height: height)
+        lock.lock()
+        arrivals.append(arrival)
+        lock.unlock()
+    }
+
+    var latest: Arrival? {
+        lock.lock()
+        defer { lock.unlock() }
+        return arrivals.last
+    }
+
+    func frames(since uptime: Double) -> [Arrival] {
+        lock.lock()
+        defer { lock.unlock() }
+        return arrivals.filter { $0.uptime >= uptime }
     }
 }
 

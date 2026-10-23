@@ -54,6 +54,29 @@ grep -F 'mode_restored_by=' "$SMOKE" >/dev/null
 grep -F 'wait_for_text '"'"'mode_restored='"'"'' "$SMOKE" >/dev/null
 grep -F 'mode_applied != "no" and mode_restored != "no"' "$SMOKE" >/dev/null
 
+# Motion-time resolution is proved on the real display, and each way it can go
+# wrong is reported on its own: no smaller frames while scrolling, no return to
+# full size, a smaller frame after settling, a late return, and no verdict at
+# all. A stream with no motion size is skipped, not failed.
+grep -F 'motion_full_size=' "$SMOKE" >/dev/null
+grep -F 'motion_scroll_size=' "$SMOKE" >/dev/null
+grep -F 'motion_settled_after_ms=' "$SMOKE" >/dev/null
+grep -F 'motion_still_stays_full=' "$SMOKE" >/dev/null
+grep -F 'motion_check=' "$SMOKE" >/dev/null
+grep -F 'pass | skipped-no-motion-size)' "$SMOKE" >/dev/null
+grep -F 'wait_for_text '"'"'motion_check='"'"'' "$SMOKE" >/dev/null
+grep -F 'the host kept sending full-size frames while the viewer scrolled' "$SMOKE" >/dev/null
+grep -F 'the picture never returned to full size after the scroll stopped' "$SMOKE" >/dev/null
+grep -F 'the picture dropped below full size again after settling' "$SMOKE" >/dev/null
+grep -F 'the scroll did not produce the configured motion resolution' "$SMOKE" >/dev/null
+grep -F 'the picture returned to full size too long after the scroll stopped' "$SMOKE" >/dev/null
+grep -F 'the probe printed no motion verdict' "$SMOKE" >/dev/null
+# The motion verdict is judged before the display mode round trip begins, in
+# the same order the probe runs them.
+motion_line="$(grep -nF "wait_for_text 'motion_check='" "$SMOKE" | head -n 1 | cut -d: -f1)"
+mode_line="$(grep -nF "wait_for_text 'mode_restored='" "$SMOKE" | head -n 1 | cut -d: -f1)"
+[ "$motion_line" -lt "$mode_line" ]
+
 # A person at this machine is asked before their screen is shared, and nobody can
 # answer that on their behalf: the rig waits for the machine to be left alone
 # and reports BLOCKED rather than leaving an unanswerable prompt on a real
@@ -88,5 +111,75 @@ fi
 # Throwaway state must never alias the real Application Support or the installed
 # host's port.
 sh "$ROOT/Scripts/assert-smoke-isolated.sh" "$SMOKE"
+
+python3 - "$SMOKE" <<'PYHOST'
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+
+source = Path(sys.argv[1]).read_text()
+def function(name):
+    start = source.index(name + "() {")
+    return source[start:source.index("\n}\n", start) + 3]
+
+def run(body, **fixture):
+    environment = {"PATH": "/usr/bin:/bin", **fixture}
+    return subprocess.run(["sh", "-c", body], env=environment, text=True, capture_output=True)
+
+assert "pgrep" not in source
+assert source.count("require_verification_port_available 7783 ||") == 2
+expected = "/fixture/Artifacts/Sensorium/Sensorium Host.app/Contents/MacOS/SensoriumHost"
+resolver = function("resolve_host_listener_pid")
+stop = function("stop_host")
+mocks = r'''
+lsof() { printf '%s\n' "$FIXTURE_PIDS"; }
+ps() { printf '%s\n' "$FIXTURE_EXECUTABLE"; }
+kill() { printf 'kill:%s\n' "$*"; return "${FIXTURE_KILL_STATUS:-0}"; }
+wait() { printf 'wait:%s\n' "$*"; }
+'''
+for pids, executable, accepted in [
+    ("", expected, False), ("123\n456", expected, False),
+    ("123", "/Applications/Sensorium Host.app/Contents/MacOS/SensoriumHost", False),
+    ("123", expected, True),
+]:
+    result = run(resolver + mocks + '\nresolve_host_listener_pid 7783 "$HOST_EXECUTABLE"',
+                 FIXTURE_PIDS=pids, FIXTURE_EXECUTABLE=executable, HOST_EXECUTABLE=expected)
+    assert (result.returncode == 0) == accepted, result
+    if accepted:
+        assert result.stdout.strip() == "123", result
+for pid, pids, executable, accepted in [
+    ("123", "", expected, True), ("", "123", expected, True),
+    ("", "", expected, False), ("123", "", "/other/SensoriumHost", False),
+]:
+    result = run(resolver + "\n" + stop + mocks + '\nstop_host',
+                 HOST_PID=pid, LAUNCHER_PID="456", HOST_EXECUTABLE=expected,
+                 FIXTURE_PIDS=pids, FIXTURE_EXECUTABLE=executable)
+    assert (result.returncode == 0) == accepted, result
+    assert result.stdout.splitlines() == (["kill:-TERM 123", "wait:456"] if accepted else []), result
+result = run(resolver + "\n" + stop + mocks + '\nstop_host', HOST_PID="123", LAUNCHER_PID="456",
+             HOST_EXECUTABLE=expected, FIXTURE_PIDS="", FIXTURE_EXECUTABLE=expected, FIXTURE_KILL_STATUS="1")
+assert result.returncode != 0 and result.stdout.splitlines() == ["kill:-TERM 123"], result
+for status, accepted in [(0, False), (1, True), (127, False)]:
+    result = run(function("require_verification_port_available") + '\nlsof() { return "$FIXTURE_STATUS"; }\nrequire_verification_port_available 7783',
+                 FIXTURE_STATUS=str(status))
+    assert (result.returncode == 0) == accepted, result
+with tempfile.TemporaryDirectory() as directory:
+    root = Path(directory).resolve() / "repo"
+    bundle = root / "Artifacts/Sensorium/Sensorium Host.app"
+    result = run(function("validate_host_executable") + '\nvalidate_host_executable "$FIXTURE_ROOT" "$FIXTURE_APP"',
+                 FIXTURE_ROOT=str(root), FIXTURE_APP=str(bundle))
+    assert result.returncode == 0 and result.stdout.strip() == str(bundle / "Contents/MacOS/SensoriumHost"), result
+    result = run(function("validate_host_executable") + '\nvalidate_host_executable "$FIXTURE_ROOT" "$FIXTURE_APP"',
+                 FIXTURE_ROOT=str(root), FIXTURE_APP=str(root / "Other.app"))
+    assert result.returncode != 0, result
+    bundle.mkdir(parents=True)
+    (bundle / "Contents/MacOS").mkdir(parents=True)
+    (bundle / "Contents/MacOS/SensoriumHost").symlink_to(Path(directory) / "outside-host")
+    result = run(function("validate_host_executable") + '\nvalidate_host_executable "$FIXTURE_ROOT" "$FIXTURE_APP"',
+                 FIXTURE_ROOT=str(root), FIXTURE_APP=str(bundle))
+    assert result.returncode != 0, result
+print("PASS: host-screen isolation fixtures enforce exact listener/executable, safe cleanup, vacant ports and fixed bundle")
+PYHOST
 
 printf 'PASS: real local host screen smoke harness contract\n'
