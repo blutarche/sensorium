@@ -35,7 +35,54 @@ PY
 done
 ls -1 "$EVIDENCE"
 
-leftover="$(ps -axo pid=,etime=,command= | grep -F "$ROOT/" | grep -i sensorium | grep -v grep | grep -v keep-smoke-evidence)"
+leftover="$(python3 - "$ROOT" <<'PYPROCESSES'
+from pathlib import Path
+import subprocess
+import sys
+
+PRODUCTS = {
+    "SensoriumHost", "sensoriumd", "Sensorium", "SensoriumViewerProbe",
+    "SensoriumLocalWorkspaceInputProbe", "SensoriumLocalHostScreenProbe",
+    "SensoriumBenchHost", "SensoriumCanvasExerciser", "SensoriumQuicProbe",
+    "SensoriumVirtualDisplayPreflight",
+}
+
+def repo_product_processes(rows, root, cwd_for_pid):
+    root = Path(root).resolve()
+    allowed_roots = [root / ".build", root / "Artifacts"]
+    matches = []
+    for row in rows.splitlines():
+        fields = row.strip().split(maxsplit=2)
+        if len(fields) != 3 or not fields[0].isdigit():
+            continue
+        pid, elapsed, executable = fields
+        path = Path(executable)
+        if path.name not in PRODUCTS:
+            continue
+        if not path.is_absolute():
+            if not path.parts or path.parts[0] not in {".build", "Artifacts"}:
+                continue
+            cwd = cwd_for_pid(pid)
+            if not cwd:
+                continue
+            path = Path(cwd) / path
+        if ".." in path.parts or not any(path.is_relative_to(parent) for parent in allowed_roots):
+            continue
+        path = path.resolve()
+        if any(path.is_relative_to(parent) for parent in allowed_roots):
+            matches.append(f"{pid} {elapsed} {path}")
+    return matches
+
+def process_cwd(pid):
+    result = subprocess.run(["lsof", "-a", "-p", pid, "-d", "cwd", "-Fn"],
+                            text=True, capture_output=True)
+    return next((line[1:] for line in result.stdout.splitlines() if line.startswith("n")), None)
+
+if __name__ == "__main__":
+    rows = subprocess.check_output(["ps", "-ww", "-axo", "pid=,etime=,comm="], text=True)
+    print("\n".join(repo_product_processes(rows, sys.argv[1], process_cwd)))
+PYPROCESSES
+)" || exit 1
 if [ -n "$leftover" ]; then
   echo "STILL RUNNING (stop only the pid this run started, with kill -TERM):"
   printf '%s\n' "$leftover" | sed -E 's/[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/<addr>/g'

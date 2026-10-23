@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 
 python3 Scripts/audit-public-repo.py
 python3 Scripts/test-audit-public-repo.py
+python3 Scripts/test-keep-smoke-evidence-processes.py
 python3 Scripts/test-classify-host-permission-blocker.py
 python3 Scripts/test-classify-workspace-focus-blocker.py
 python3 Scripts/test-compare-display-inventory.py
