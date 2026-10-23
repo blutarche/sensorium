@@ -879,7 +879,8 @@ struct SensoriumLocalHostScreenProbe {
     /// re-checks that its window really stands here before measuring anything
     /// against it.
     private static func targetDisplay() -> DisplaySnapshot? {
-        let displays = DisplayInventory.active()
+        let active = DisplayInventory.active()
+        let displays = active.isEmpty ? DisplayInventory.online() : active
         return displays.first { $0.main } ?? displays.first
     }
 

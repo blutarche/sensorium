@@ -204,4 +204,6 @@ assert result.returncode == 0 and "UNEXPECTED_FAILURE" not in result.stderr, res
 print("PASS: expected idle blocker retains status 3 without the unexpected-failure trap")
 PYIDLE
 
+sh "$ROOT/Scripts/test-host-screen-probe-display-selection.sh"
+
 printf 'PASS: real local host screen smoke harness contract\n'
