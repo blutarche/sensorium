@@ -138,7 +138,7 @@ enum SessionChromePainter {
             x: bounds.x + inset + dotSize + tightGap,
             y: eyebrowY,
             pointSize: eyebrowSize,
-            color: ViewerPalette.muted2,
+            color: ViewerPalette.muted,
             mono: true,
             weight: eyebrowWeight,
             tracking: eyebrowTracking
@@ -410,7 +410,7 @@ enum SessionChromePainter {
                     x: bounds.x + gap,
                     y: y,
                     pointSize: eyebrowSize,
-                    color: ViewerPalette.muted2,
+                    color: ViewerPalette.muted,
                     mono: true,
                     weight: eyebrowWeight,
                     tracking: eyebrowTracking
@@ -469,7 +469,7 @@ enum SessionChromePainter {
             x: x,
             y: cursor,
             pointSize: titleSize,
-            color: ViewerPalette.muted2,
+            color: ViewerPalette.muted,
             mono: true,
             weight: eyebrowWeight,
             tracking: Double(ViewerChromeMetrics.Tracking.widest) * titleSize
@@ -524,7 +524,7 @@ enum SessionChromePainter {
                     x: x + layout.noteIndent,
                     y: cursor + rowGap,
                     pointSize: rowSize,
-                    color: ViewerPalette.muted2,
+                    color: ViewerPalette.muted,
                     weight: hudNoteWeight,
                     maxWidth: layout.noteWidth
                 )
@@ -555,7 +555,7 @@ enum SessionChromePainter {
                 x: x,
                 y: cursor,
                 pointSize: rowSize,
-                color: ViewerPalette.muted2,
+                color: ViewerPalette.muted,
                 weight: hudNoteWeight,
                 maxWidth: width
             ) + rowGap

@@ -979,7 +979,80 @@ func testSessionCompositeStackingTests() {
     expect(matches(pngPixel(at: lostURL, x: 898, y: 2), ViewerPalette.chromeBg2), "the scrim leaves the menu bar undimmed")
     print("PASS: the scrim dims the HUD and leaves the menu bar above it, and the HUD sits below the bar")
 }
+
+/// The largest red byte, as 0...1, of any pixel in the PNG at least `margin`
+/// pixels inside every edge and with `x >= minX` and `y` within `rows`. Text
+/// anti-aliasing only ever blends the text colour toward the fill, so the
+/// brightest pixel of a run of text is bounded by the colour it was drawn in.
+private func brightestRed(at url: URL, margin: Int = 4, minX: Int = 0, rows: ClosedRange<Int>? = nil) -> Double {
+    guard let surface = cairo_image_surface_create_from_png(url.path),
+          cairo_surface_status(surface) == CAIRO_STATUS_SUCCESS else {
+        return 0
+    }
+    defer { cairo_surface_destroy(surface) }
+    cairo_surface_flush(surface)
+    guard let data = cairo_image_surface_get_data(surface) else { return 0 }
+    let stride = Int(cairo_image_surface_get_stride(surface))
+    let width = Int(cairo_image_surface_get_width(surface))
+    let height = Int(cairo_image_surface_get_height(surface))
+    var brightest = 0.0
+    for y in margin..<max(margin, height - margin) where rows?.contains(y) ?? true {
+        for x in max(margin, minX)..<max(margin, width - margin) {
+            brightest = max(brightest, Double(data[y * stride + x * 4 + 2]) / 255)
+        }
+    }
+    return brightest
+}
+
+/// Text the person has to read is `muted`, never `muted2`: that token is under
+/// 4.5:1 on these panels' fills. Each case draws one kind of text alone on its
+/// panel, so the brightest pixel is that text's own colour.
+@MainActor
+func testSessionChromeSecondaryTextIsReadableTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-chrome-muted-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    func render(_ overlay: SessionChromeRenderPreview.Overlay, name: String) -> URL {
+        let url = directory.appendingPathComponent(name)
+        expect(SessionChromeRenderPreview.renderOverlay(overlay, scale: 2, to: url), "\(name) renders")
+        return url
+    }
+
+    // Empty labels and values draw nothing, leaving the title or note alone.
+    let bareSection = SessionHUDSection(title: "", rows: [])
+    let hudCases: [(String, [SessionHUDBlock])] = [
+        ("a block title", [.columns(title: "Latency", bareSection, bareSection)]),
+        ("a section title", [.section(SessionHUDSection(title: "Session", rows: []))]),
+        ("a section note", [.section(SessionHUDSection(title: "", note: "Held while the link is down.", rows: []))]),
+        ("a row note", [.section(SessionHUDSection(
+            title: "", rows: [SessionHUDRow(label: "", value: "", note: "Connected to the host.")]
+        ))])
+    ]
+    let readable = ViewerPalette.muted.red
+    for (index, (name, blocks)) in hudCases.enumerated() {
+        let url = render(.diagnostics(blocks: blocks, isFlagged: false), name: "hud-\(index).png")
+        let brightest = brightestRed(at: url)
+        expect(brightest > readable - 0.05, "\(name) is drawn in muted, got a brightest red of \(brightest)")
+    }
+
+    // The eyebrow is the only text in the panel's first row, right of the tone dot.
+    let machine = ViewerSessionStateMachine(hostName: "Studio")
+    let status = render(.statusPanel(machine.status), name: "status.png")
+    let inset = Int(ViewerStatusPanelMetrics.panelInset) * 2
+    let dotEnd = inset + Int(ViewerStatusPanelMetrics.dotSize + 4) * 2
+    let eyebrowRows = inset...(inset + 16 * 2)
+    let eyebrow = brightestRed(at: status, margin: 0, minX: dotEnd, rows: eyebrowRows)
+    expect(eyebrow > readable - 0.05, "the status eyebrow is drawn in muted, got a brightest red of \(eyebrow)")
+
+    print("PASS: eyebrows, section titles and notes are drawn in muted, not the under-contrast muted2")
+}
+
 #else
+@MainActor
+func testSessionChromeSecondaryTextIsReadableTests() {}
 @MainActor
 func testSessionChromePainterPixelTests() {}
 @MainActor
