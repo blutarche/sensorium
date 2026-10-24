@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 
 /// What the empty Paired machines section tells the person to do. It depends
-/// on what the window offers beside it: a code already on screen is typed,
-/// not shown again, and a host that cannot offer a code yet has nothing to
-/// show.
+/// on what the window offers beside it: a code already on screen carries its
+/// own instruction, so this line says what follows it, and a host that cannot
+/// offer a code yet has nothing to show.
 package enum PairedMachinesEmptyState {
     case codeShowing
     case canShowCode
@@ -13,7 +13,7 @@ package enum PairedMachinesEmptyState {
     package var subtext: String {
         switch self {
         case .codeShowing:
-            return "Type the code above on the machine you are pairing."
+            return "The machine appears here once the code is typed on it."
         case .canShowCode:
             return "Show a pairing code, then type it on the machine you are pairing."
         case .cannotPairYet:

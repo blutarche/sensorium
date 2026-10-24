@@ -71,7 +71,7 @@ func runHostPairedMachinesEmptyStateTests() async {
             return field("emptySubtext", of: section, as: NSTextField.self).stringValue
         }
         let canPair = "Show a\u{00A0}pairing code, then type it on the machine you are\u{00A0}pairing."
-        let codeShowing = "Type the code above on the machine you are\u{00A0}pairing."
+        let codeShowing = "The machine appears here once the code is typed on\u{00A0}it."
         let notReady = "Machines appear here once they\u{00A0}pair."
 
         let ready = controller()
@@ -92,7 +92,7 @@ func runHostPairedMachinesEmptyStateTests() async {
             now: { clock }
         )
         showing.updatePairedMachines([])
-        expect(subtext(of: showing) == codeShowing, "a code is on screen: the line says to type it -- got \(subtext(of: showing).debugDescription)")
+        expect(subtext(of: showing) == codeShowing, "a code is on screen: the line says what typing it does, not the card's instruction again -- got \(subtext(of: showing).debugDescription)")
 
         clock = issued.addingTimeInterval(61)
         CanvasHostTestHooks.fireHostSetupWindowPairingTick(showing)
