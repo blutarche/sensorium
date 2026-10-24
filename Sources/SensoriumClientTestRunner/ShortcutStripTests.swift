@@ -832,6 +832,67 @@ func testShortcutStripPinButtonAppearanceTests() {
     print("PASS: the pin button sits in its own cluster right of the action buttons, and its tooltip tracks its state")
 }
 
+/// The question the strip asks before it locks the far machine: the way out
+/// comes first, and the one action that goes ahead is the filled, default one.
+@MainActor
+func testShortcutStripConfirmationOrderAndDefaultTests() {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
+    container.addSubview(strip)
+    NSLayoutConstraint.activate([
+        strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        strip.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        strip.topAnchor.constraint(equalTo: container.topAnchor)
+    ])
+    strip.phaseChanged(.live)
+    strip.toggleRequested()
+    container.layoutSubtreeIfNeeded()
+
+    guard let lockShortcut = collectButtonsWithToolTipPrefix("Sends Control-Command-Q")(strip).first else {
+        expect(false, "the strip has a Lock Screen button")
+        return
+    }
+    lockShortcut.performClick(nil)
+    container.layoutSubtreeIfNeeded()
+
+    func titled(_ title: String) -> NSButton? {
+        func find(_ view: NSView) -> NSButton? {
+            if let button = view as? NSButton, button.attributedTitle.string == title {
+                return button
+            }
+            for subview in view.subviews {
+                if let found = find(subview) { return found }
+            }
+            return nil
+        }
+        return find(strip)
+    }
+    guard let cancel = titled("Cancel"), let lock = titled("Lock") else {
+        expect(false, "the question offers Cancel and Lock")
+        return
+    }
+    expect(
+        strip.convert(cancel.bounds, from: cancel).maxX <= strip.convert(lock.bounds, from: lock).minX,
+        "Cancel sits left of the action that goes ahead"
+    )
+    expect(
+        lock.layer?.backgroundColor == ViewerDesign.accent.cgColor,
+        "the action that goes ahead is filled with the accent, as the default button on every other step is"
+    )
+    expect(
+        lock.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+            == ViewerDesign.chromeBg.nsColor,
+        "its label is the dark ink every accent-filled button uses"
+    )
+    expect(
+        cancel.layer?.backgroundColor == ViewerDesign.bg4.cgColor,
+        "Cancel keeps the quiet, unfilled look"
+    )
+    expect(!lock.acceptsFirstResponder, "the default styling does not take Return away from the far machine")
+
+    print("PASS: the strip's question puts Cancel first and styles the action that goes ahead as the default")
+}
+
 @MainActor
 private func collectButtonsWithToolTipPrefix(_ prefix: String) -> (NSView) -> [NSButton] {
     func collect(_ view: NSView) -> [NSButton] {

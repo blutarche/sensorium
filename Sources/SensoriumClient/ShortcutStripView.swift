@@ -38,8 +38,8 @@ public final class ShortcutStripView: NSView {
     private let clusterRow = NSStackView()
     private let confirmRow = NSStackView()
     private let question = NSTextField(labelWithString: "")
-    private let confirmButton = ShortcutStripButton(title: "")
-    private let cancelButton = ShortcutStripButton(title: "Cancel")
+    private let confirmButton = ShortcutStripButton(title: "", isDefault: true)
+    private let cancelButton = ShortcutStripButton(title: "Cancel", isDefault: false)
     private let handle = ShortcutStripHandle()
     private let pinButton: ShortcutStripIconButton
     private var barTop: NSLayoutConstraint!
@@ -137,7 +137,7 @@ public final class ShortcutStripView: NSView {
         confirmRow.orientation = .horizontal
         confirmRow.alignment = .centerY
         confirmRow.spacing = ViewerDesign.Space.xs
-        confirmRow.setViews([question, confirmButton, cancelButton], in: .leading)
+        confirmRow.setViews([question, cancelButton, confirmButton], in: .leading)
         confirmRow.isHidden = true
         bar.addSubview(confirmRow)
 
@@ -516,8 +516,13 @@ private final class ShortcutStripHandle: NSView {
 @MainActor
 private final class ShortcutStripButton: NSButton {
     var onPress: (() -> Void)?
+    /// The action that goes ahead, filled with the accent the way the default
+    /// button on every other step is. Still never first responder: Return
+    /// belongs to the far machine, so this is a look and not a key equivalent.
+    private let isDefault: Bool
 
-    init(title: String) {
+    init(title: String, isDefault: Bool) {
+        self.isDefault = isDefault
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         isBordered = false
@@ -526,7 +531,7 @@ private final class ShortcutStripButton: NSButton {
         refusesFirstResponder = true
         wantsLayer = true
         layer?.cornerRadius = ViewerDesign.Radius.base
-        layer?.backgroundColor = ViewerDesign.bg4.cgColor
+        layer?.backgroundColor = (isDefault ? ViewerDesign.accent : ViewerDesign.bg4).cgColor
         target = self
         action = #selector(fire)
         setLabel(title)
@@ -542,8 +547,8 @@ private final class ShortcutStripButton: NSButton {
         attributedTitle = NSAttributedString(
             string: text,
             attributes: [
-                .font: ViewerDesign.font(mono: false, size: 12),
-                .foregroundColor: ViewerDesign.ink.nsColor
+                .font: ViewerDesign.font(mono: false, size: 12, weight: isDefault ? .medium : .regular),
+                .foregroundColor: (isDefault ? ViewerDesign.chromeBg : ViewerDesign.ink).nsColor
             ]
         )
         invalidateIntrinsicContentSize()
