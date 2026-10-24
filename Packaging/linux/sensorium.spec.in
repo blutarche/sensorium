@@ -58,7 +58,7 @@ viewer; the machine being worked on runs macOS.
 # rpmbuild sets CC to gcc, but SwiftPM's C targets require Clang's module-map
 # flags. Let the Swift toolchain choose its bundled compiler.
 unset CC CXX
-swift build -c release --product Sensorium
+swift build -c release --product Sensorium -Xcc '-DSENSORIUM_BUILD_VERSION="%{version}"'
 
 %install
 install -D -p -m 0755 .build/release/Sensorium %{buildroot}%{_bindir}/Sensorium

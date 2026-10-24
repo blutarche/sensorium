@@ -50,7 +50,8 @@ func testGtkViewerMenuBarKeyChordsTests() {
     let cases: [(guint, GdkModifierType, ViewerMenuCommand?, String)] = [
         (guint(GDK_KEY_q), control, .quit, "Ctrl-Q quits"),
         (guint(GDK_KEY_Q), control, .quit, "Ctrl-Q quits with Caps Lock on"),
-        (guint(GDK_KEY_1), control, .showYourMachines, "Ctrl-1 shows Your Machines"),
+        (guint(GDK_KEY_1), GdkModifierType(control.rawValue | GDK_ALT_MASK.rawValue | GDK_SUPER_MASK.rawValue), .showYourMachines, "Ctrl-Alt-Super-1 shows Your Machines"),
+        (guint(GDK_KEY_1), control, nil, "Ctrl-1 remains available to the host"),
         (guint(GDK_KEY_q), GdkModifierType(0), nil, "Q alone is typing"),
         (guint(GDK_KEY_q), GdkModifierType(control.rawValue | shift.rawValue), nil, "Ctrl-Shift-Q is no item's chord"),
         (guint(GDK_KEY_c), control, nil, "Ctrl-C stays with the focused field"),

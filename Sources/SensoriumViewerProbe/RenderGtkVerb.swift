@@ -105,7 +105,18 @@ enum RenderGtkVerb {
     /// hands back the toplevel to draw and how to take it away again.
     private struct Fixture {
         let name: String
+        let usesNativeDialogStyle: Bool
         let show: @MainActor () async -> (window: UnsafeMutableRawPointer, dismiss: @MainActor () -> Void)?
+
+        init(
+            name: String,
+            usesNativeDialogStyle: Bool = false,
+            show: @escaping @MainActor () async -> (window: UnsafeMutableRawPointer, dismiss: @MainActor () -> Void)?
+        ) {
+            self.name = name
+            self.usesNativeDialogStyle = usesNativeDialogStyle
+            self.show = show
+        }
     }
 
     /// Kept alive until every fixture has been drawn: a window's own
@@ -135,6 +146,33 @@ enum RenderGtkVerb {
 
     private static var fixtures: [Fixture] {
         [
+            Fixture(name: "viewer-about", usesNativeDialogStyle: true) {
+                let parent = GtkYourMachinesWindow(store: InMemorySavedHostStore(hosts: []))
+                retained.append(parent)
+                parent.show()
+                await pause(milliseconds: 200)
+                let before = Set(visibleToplevels())
+                guard parent.menuBar.activate(title: "About Sensorium") else {
+                    parent.hide()
+                    return nil
+                }
+                await pause(milliseconds: 200)
+                guard let dialog = visibleToplevels().first(where: { !before.contains($0) }) else {
+                    parent.hide()
+                    return nil
+                }
+                let version = gtk_about_dialog_get_version(OpaquePointer(dialog)).map { String(cString: $0) }
+                guard version == ViewerRelease.version else {
+                    say("FAILED viewer-about: version \(String(describing: version)) differs from build \(ViewerRelease.version)")
+                    gtk_window_destroy(sensorium_gtk_window(dialog))
+                    parent.hide()
+                    return nil
+                }
+                return (dialog, {
+                    gtk_window_destroy(sensorium_gtk_window(dialog))
+                    parent.hide()
+                })
+            },
             machines("viewer-machines-1-empty", hosts: []),
             machines("viewer-machines-2-list", hosts: [miniHost, studioHost], withTailnet: true),
             machines("viewer-machines-3-connecting", hosts: [miniHost, studioHost], withTailnet: true) { window in
@@ -228,13 +266,13 @@ enum RenderGtkVerb {
             // As it opens, then after one Tab: what a Tab press does, moving
             // focus to the next control and turning on the focus GTK draws
             // only once a key has been pressed.
-            if !write(shown.window, name: fixture.name, into: directory) {
+            if !write(shown.window, name: fixture.name, into: directory, checksAppStyle: !fixture.usesNativeDialogStyle) {
                 failures += 1
             }
             gtk_window_set_focus_visible(sensorium_gtk_window(shown.window), 1)
             _ = gtk_widget_child_focus(sensorium_gtk_widget(shown.window), GTK_DIR_TAB_FORWARD)
             await pause(milliseconds: 300)
-            if !write(shown.window, name: fixture.name + "-tab", into: directory) {
+            if !write(shown.window, name: fixture.name + "-tab", into: directory, checksAppStyle: !fixture.usesNativeDialogStyle) {
                 failures += 1
             }
             shown.dismiss()
@@ -245,7 +283,9 @@ enum RenderGtkVerb {
     /// Draws `window` to `<name>@<scale>x.png` and checks its corner is the
     /// window background -- a corner in any other colour is a theme surface
     /// showing through. A window with a menu bar is checked just under it.
-    private static func write(_ window: UnsafeMutableRawPointer, name: String, into directory: URL) -> Bool {
+    private static func write(
+        _ window: UnsafeMutableRawPointer, name: String, into directory: URL, checksAppStyle: Bool
+    ) -> Bool {
         let staging = directory.appendingPathComponent("\(name).staging.png").path
         let scale = sensorium_window_content_write_png(window, staging)
         guard scale > 0 else {
@@ -264,12 +304,12 @@ enum RenderGtkVerb {
         let cornerY = hasMenuBar ? Int32((Double(ViewerChromeMetrics.MenuBar.height) + 1) * scale) : 1
         let corner = sensorium_png_pixel(path, 1, cornerY)
         let background = Int64(hexValue(ViewerPalette.chromeBg))
-        if corner != background {
+        if checksAppStyle, corner != background {
             say("FAILED \(name): the corner is \(String(format: "#%06X", corner)), not the window background")
             return false
         }
         say("wrote \(path), focus on \(focusDescription(window))")
-        if let wrong = focusMacOSWouldNotGive(window) {
+        if checksAppStyle, let wrong = focusMacOSWouldNotGive(window) {
             say("FAILED \(name): focus is on \(wrong)")
             return false
         }

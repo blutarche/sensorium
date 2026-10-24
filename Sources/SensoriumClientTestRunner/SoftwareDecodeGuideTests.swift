@@ -27,16 +27,16 @@ private func decoderRow(_ decoder: DecoderHardwareAccelerationStatus?, guide: St
     return sections.flatMap(\.rows).first { $0.label == "DECODER" }
 }
 
-/// The running build names its own release, so the guide it links to is the
-/// one that shipped with it. The `VERSION` file is what packaging stamps into
-/// both platforms' bundles; the constant has to agree with it.
+/// A packaged build links to its release; an unpackaged development build
+/// links to the default branch.
 func testViewerReleaseMatchesVersionFileTests() {
     let versionFile = (try? String(contentsOf: repositoryRoot.appendingPathComponent("VERSION"), encoding: .utf8))?
         .trimmingCharacters(in: .whitespacesAndNewlines)
-    expect(versionFile == ViewerRelease.version, "ViewerRelease.version matches VERSION, got \(ViewerRelease.version)")
+    expect(ViewerRelease.version == "development" || versionFile == ViewerRelease.version, "the packaged version matches VERSION, got \(ViewerRelease.version)")
+    let reference = ViewerRelease.version == "development" ? "main" : "v" + (versionFile ?? "")
     expect(
         ViewerRelease.fasterVideoGuide
-            == "https://github.com/blutarche/sensorium/blob/v\(versionFile ?? "")/docs/install.md#faster-video-on-fedora",
+            == "https://github.com/blutarche/sensorium/blob/\(reference)/docs/install.md#faster-video-on-fedora",
         "the guide link names this release's tag, got \(ViewerRelease.fasterVideoGuide)"
     )
     let installGuide = (try? String(
@@ -54,7 +54,7 @@ func testViewerReleaseMatchesVersionFileTests() {
     #else
     expect(ViewerRelease.platformSoftwareDecodeGuide == nil, "the macOS viewer offers no Fedora guide")
     #endif
-    print("PASS: the viewer's release and guide link follow the VERSION file")
+    print("PASS: the viewer links to its packaged release or development documentation")
 }
 
 /// A viewer decoding on the CPU says so on the DECODER row and links to the

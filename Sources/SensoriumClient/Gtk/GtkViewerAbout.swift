@@ -11,6 +11,7 @@ enum GtkViewerAbout {
         let dialog = gtk_about_dialog_new()
         let about = OpaquePointer(dialog)
         gtk_about_dialog_set_program_name(about, ViewerApplicationIdentity.applicationName)
+        gtk_about_dialog_set_version(about, ViewerRelease.version)
         gtk_about_dialog_set_logo_icon_name(about, ViewerApplicationIdentity.applicationID)
         gtk_about_dialog_set_copyright(about, SensoriumCredit.copyrightLine)
         gtk_about_dialog_set_license_type(about, GTK_LICENSE_GPL_3_0)

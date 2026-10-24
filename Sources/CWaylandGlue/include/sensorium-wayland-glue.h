@@ -5,6 +5,8 @@
 
 struct wl_registry;
 
+const char *sensorium_build_version(void);
+
 // Binds one advertised global by the interface name the registry announced it
 // under.
 //

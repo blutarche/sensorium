@@ -65,6 +65,8 @@ func testGtkYourMachinesMenuCommandsTests() {
     let about = aboutDialog()
     expect(g_list_model_get_n_items(gtk_window_get_toplevels()) == before + 1 && about != nil, "About opens its own window")
     if let about {
+        let version = gtk_about_dialog_get_version(OpaquePointer(about)).map { String(cString: $0) }
+        expect(version == ViewerRelease.version, "About shows this build’s version, got \(String(describing: version))")
         let copyright = gtk_about_dialog_get_copyright(OpaquePointer(about)).map { String(cString: $0) }
         expect(copyright == SensoriumCredit.copyrightLine, "About credits \(SensoriumCredit.copyrightLine), got \(String(describing: copyright))")
         gtk_window_destroy(sensorium_gtk_window(about))

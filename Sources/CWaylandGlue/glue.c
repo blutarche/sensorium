@@ -1,5 +1,14 @@
 #include "sensorium-wayland-glue.h"
 
+#ifndef SENSORIUM_BUILD_VERSION
+#define SENSORIUM_BUILD_VERSION "development"
+#endif
+
+const char *sensorium_build_version(void)
+{
+    return SENSORIUM_BUILD_VERSION;
+}
+
 #if defined(__linux__)
 
 #include <string.h>
