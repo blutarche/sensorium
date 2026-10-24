@@ -1304,6 +1304,31 @@ MainActor.assumeIsolated {
         state: "YourMachinesWindowController with one machine whose name and address are longer than the row"
     )
 
+    let wrappedAddressHost = "kestrel-field-station-notebook-research-annex-building-two.tail1234.ts.net"
+    let wrappedAddress = machinesWindow(hosts: [SavedHost(
+        displayName: "Kestrel Field Station",
+        host: wrappedAddressHost,
+        port: 7777,
+        hostPublicKey: Data([5]),
+        tlsCertificateHash: Data([5, 5]),
+        lastConnectedAt: Date(timeIntervalSince1970: 400)
+    )])
+    wrappedAddress.loadTailnet = { .devices([TailnetDevicePickerRow(peer: TailnetPeer(
+        id: "5", displayName: "Kestrel Field Station", magicDNSName: wrappedAddressHost,
+        tailnetIPv4: "100.64.1.12", tailnetIPv6: nil, isOnline: true, isThisMachine: false
+    ))]) }
+    wrappedAddress.showAddAMachine()
+    pumpUntil(
+        { stored("reachability", of: wrappedAddress, as: [Data: Bool].self).isEmpty == false },
+        description: "the tailnet answer behind the wrapped row's online note"
+    )
+    wrappedAddress.showList()
+    write(
+        render(machinesContent(wrappedAddress)),
+        named: "viewer-machines-8-long-address.png",
+        state: "YourMachinesWindowController with one machine whose address wraps — the dot stays beside its first line"
+    )
+
     // The update line beneath the list, each text taken from the same
     // `ViewerUpdateLine.make` the running viewer calls.
     let runningVersion = UpdateVersion("0.4.0")!
