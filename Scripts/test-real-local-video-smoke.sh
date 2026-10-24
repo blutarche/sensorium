@@ -17,6 +17,9 @@ grep -F 'workspace_frame_presented=yes' "$SMOKE" >/dev/null
 grep -F 'compare-display-inventory.py' "$SMOKE" >/dev/null
 grep -F 'display-inventory-pre.json' "$SMOKE" >/dev/null
 grep -F 'display-inventory-post.json' "$SMOKE" >/dev/null
+# A failure the script has not turned into a diagnostic, such as the screen
+# locking mid-run, must still print one instead of exiting silently.
+grep -F 'trap report_unexpected_failure ERR' "$SMOKE" >/dev/null
 
 # A screen that is asleep or a session that is locked must fail fast, before
 # pairing or serving even start, with a BLOCKED line naming the remedy.

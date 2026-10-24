@@ -105,6 +105,17 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
+# Backstop for `set -e`: any command failure this script has not already
+# turned into an explicit diagnostic still prints one here before the shell
+# exits, instead of exiting silently.
+report_unexpected_failure() {
+  status=$?
+  echo "FAIL: run-real-local-video-smoke.sh exited unexpectedly (status $status)" >&2
+  echo "  host log: $HOST_LOG" >&2
+  echo "  probe log: $CLIENT_LOG" >&2
+}
+trap report_unexpected_failure ERR
+
 wait_for_pattern() {
   pattern="$1"
   file="$2"
