@@ -180,7 +180,7 @@ func runHostIdentityFailureTests() async {
     }
 
     do {
-        // Try again sits above the replace button
+        // Try Again sits above the replace button
         let ordinary = controller(status: HostOperatorStatus(connection: .notHosting, permissions: granted))
         expect(
             retryIdentityButton(in: ordinary).isHidden,
@@ -198,7 +198,7 @@ func runHostIdentityFailureTests() async {
         )
         expect(
             !replaceIdentityButton(in: identityBroken).isHidden,
-            "Make a new key stays on screen beside it, as the second thing to try"
+            "Make a New Key stays on screen beside it, as the second thing to try"
         )
         expect(
             replaceIdentityButton(in: identityBroken).isEnabled,
@@ -217,7 +217,7 @@ func runHostIdentityFailureTests() async {
     }
 }
 
-/// "Make a new key" on the host, driven against fakes: both identities are
+/// "Make a New Key" on the host, driven against fakes: both identities are
 /// replaced through the same seam, a store that throws is reported as a
 /// failure rather than mistaken for a fresh key, and a failure partway
 /// leaves both old files in place.
@@ -235,7 +235,7 @@ func runHostIdentityReplacementTests() {
         expect(device.storedCount == 1, "exactly one device key written for one press")
         expect(tls.storedCount == 1, "exactly one TLS identity written for one press")
 
-        print("PASS: the host's Make a new key writes a fresh device key and a fresh TLS identity for one press")
+        print("PASS: the host's Make a New Key writes a fresh device key and a fresh TLS identity for one press")
     }
 
     do {
