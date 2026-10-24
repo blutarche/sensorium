@@ -75,6 +75,46 @@ func testViewerStatusCopyTests() {
         "the control it sends the person to is never split, got \"\(gaveUpDetail)\""
     )
 
+    // One checklist for "this machine cannot be reached", whether the panel is
+    // still trying or has stopped.
+    let checklist = ViewerSessionFailureCopy.reachabilityChecklist(hostLabel: "Workstation")
+    expect(
+        unbound(checklist) == "Check that Workstation is awake, and that both machines are on the same network "
+            + "or have Tailscale connected",
+        "the checklist names the machine and the two things to check, got \"\(unbound(checklist))\""
+    )
+    expect(
+        gaveUpDetail.contains(checklist),
+        "the retry-stopped body carries the shared checklist, got \"\(gaveUpDetail)\""
+    )
+    let unreachablePanelLine = ViewerSessionFailureCopy.panelLine(for: .unreachable, hostLabel: "Workstation")
+    expect(
+        unbound(unreachablePanelLine) == "Could not reach Workstation. \(unbound(checklist)).",
+        "an unreachable attempt reads as one failure sentence then the shared checklist, got "
+            + "\"\(unbound(unreachablePanelLine))\""
+    )
+    expect(
+        !unreachablePanelLine.contains(".local") && !unreachablePanelLine.contains("Nothing answered"),
+        "the panel line drops the address and Sensorium Host tips the terminal line keeps"
+    )
+    expect(
+        ViewerSessionFailureCopy.panelLine(for: .unknown, hostLabel: "Workstation")
+            == ViewerSessionFailureCopy.line(for: .unknown, hostLabel: "Workstation"),
+        "every failure other than an unreachable one reads the same in the panel as anywhere else"
+    )
+    var retrying = ViewerSessionStateMachine(hostName: "Workstation")
+    retrying.handle(.connectStarted)
+    let retryingDetail = retrying.handle(.attemptFailed(reasonLine: unreachablePanelLine)).detail
+    expect(
+        unbound(retryingDetail) == "\(unbound(unreachablePanelLine)) Sensorium is trying again.",
+        "a failed first attempt shows the failure, then says Sensorium is trying again, got "
+            + "\"\(unbound(retryingDetail))\""
+    )
+    expect(
+        !retryingDetail.contains("Attempt 1 did not connect"),
+        "and no longer opens with the attempt count, got \"\(retryingDetail)\""
+    )
+
     var offered = ViewerSessionStateMachine(hostName: "Workstation")
     let offeredStatus = offered.handle(.hostScreenConnectEnded(reasonLine: "Nothing to share.", offersVirtualDisplay: true))
     expect(

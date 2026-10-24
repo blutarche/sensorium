@@ -145,6 +145,28 @@ public enum ViewerSessionFailureCopy {
         }
     }
 
+    /// What to check when a machine cannot be reached, without a final stop so
+    /// the panel can end it in whichever way suits the state it is showing.
+    public static func reachabilityChecklist(hostLabel: String) -> String {
+        let host = ViewerCopyWrapping.name(hostLabel)
+        return "Check that \(host) is awake, and that both machines are on the same network or have "
+            + "Tailscale connected"
+    }
+
+    /// One failed attempt as a connecting or reconnecting panel says it. An
+    /// unreachable machine gets the failure and the checklist the panel shows
+    /// when it stops retrying; the terminal's own line goes on to name the
+    /// address and the host app, which a panel with the person's own saved
+    /// machine in it has no need to repeat. Every other failure reads as it
+    /// does everywhere else.
+    public static func panelLine(for failure: ViewerSessionFailure, hostLabel: String) -> String {
+        guard case .unreachable = failure else {
+            return line(for: failure, hostLabel: hostLabel)
+        }
+        let host = ViewerCopyWrapping.name(hostLabel)
+        return "Could not reach \(host). \(reachabilityChecklist(hostLabel: hostLabel))."
+    }
+
     /// What the redial loop reports, in words. The driver hands over values,
     /// never sentences, so the host's name and the product's own verbs are
     /// chosen in exactly one place.

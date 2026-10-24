@@ -498,8 +498,8 @@ func testViewerUXFixTests() async {
                 "a failed first attempt stays on the connecting panel with its own buttons, got \(failed.phase) / \(failed.buttons.map(\.title))"
             )
             expect(
-                unbound(failed.detail).contains("Attempt 1") && unbound(failed.detail).contains("Nothing answered."),
-                "the connecting detail names the failed attempt and repeats why it failed, got \"\(failed.detail)\""
+                unbound(failed.detail) == "Nothing answered. Sensorium is trying again.",
+                "the connecting detail says why the attempt failed and that Sensorium is trying again, got \"\(failed.detail)\""
             )
 
             let retried = machine.handle(.connectStarted)

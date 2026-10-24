@@ -417,8 +417,11 @@ public final class ViewerApplication {
                                 session.reportUnverifiedHost(reasonLine: line, failure: .unverifiedHost)
                             }
                         } else if case let .attemptFailed(failure) = event {
+                            let panelLine = ViewerSessionFailureCopy.panelLine(
+                                for: failure, hostLabel: saved.displayName
+                            )
                             Task { @MainActor in
-                                session.reportAttemptFailed(reasonLine: line, failure: failure)
+                                session.reportAttemptFailed(reasonLine: panelLine, failure: failure)
                             }
                         }
                     }

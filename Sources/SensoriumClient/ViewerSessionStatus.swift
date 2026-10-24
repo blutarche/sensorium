@@ -193,7 +193,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     tone: .info,
                     eyebrow: "CONNECTING",
                     headline: "Connecting to \(hostName)…",
-                    detail: "Attempt \(attempt) did not connect. \(reasonLine)",
+                    detail: "\(reasonLine) Sensorium is trying again.",
                     buttons: Self.connectingButtons
                 )
             case .reconnecting:
@@ -270,8 +270,9 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "SESSION LOST",
                 headline: "Cannot reach \(hostName).",
-                detail: "Sensorium has stopped retrying. Check that \(hostName) is awake, and that both machines "
-                    + "are on the same network or have Tailscale connected, then choose \(Self.tryAgainName).",
+                detail: "Sensorium has stopped retrying. "
+                    + "\(ViewerSessionFailureCopy.reachabilityChecklist(hostLabel: hostName)), "
+                    + "then choose \(Self.tryAgainName).",
                 buttons: Self.recoveryButtons
             )
         case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay):
