@@ -24,6 +24,29 @@ public final class SessionHUDView: NSView {
 
     public static let panelWidth: CGFloat = 320
 
+    /// The scroll thumb is drawn here rather than by the scroll view, so its
+    /// place is stated once for both the drawing and the layout that keeps
+    /// content clear of it.
+    static let scrollThumbWidth: CGFloat = 3
+    static let scrollThumbTrailingInset: CGFloat = 4
+    public static var scrollThumbMinX: CGFloat { panelWidth - scrollThumbTrailingInset - scrollThumbWidth }
+
+    /// Clear space kept between the thumb and the frame of anything else on
+    /// the panel. A sparkline's stroke runs about 1 pt past its frame, and the
+    /// ink should still end 8 pt (16 px at 2x) short of the thumb.
+    static let scrollThumbClearance: CGFloat = 10
+
+    /// The right margin content stays out of, so nothing sits against the
+    /// thumb. It is wider than the left one, which has no thumb beside it.
+    public static var contentTrailingInset: CGFloat {
+        scrollThumbTrailingInset + scrollThumbWidth + scrollThumbClearance
+    }
+
+    /// What a row, note or sparkline has to lay out in.
+    static var contentWidth: CGFloat {
+        panelWidth - ViewerDesign.Space.sm - contentTrailingInset
+    }
+
     /// `TelemetryAttentionThreshold`'s verdict on the whole reading, carried
     /// by the panel's own border so a session going bad is visible to someone
     /// who has the panel open without reading every row.
@@ -71,7 +94,7 @@ public final class SessionHUDView: NSView {
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: inset),
-            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -inset),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -Self.contentTrailingInset),
             stack.topAnchor.constraint(equalTo: document.topAnchor, constant: inset),
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -inset)
         ])
@@ -110,9 +133,9 @@ public final class SessionHUDView: NSView {
         let thumbHeight = max(24, trackHeight * visible.height / document.bounds.height)
         let progress = visible.minY / (document.bounds.height - visible.height)
         let thumb = NSRect(
-            x: bounds.width - 7,
+            x: Self.scrollThumbMinX,
             y: ViewerDesign.Space.sm + (trackHeight - thumbHeight) * (1 - progress),
-            width: 3,
+            width: Self.scrollThumbWidth,
             height: min(trackHeight, thumbHeight)
         )
         ViewerDesign.muted.nsColor.setFill()
@@ -308,7 +331,7 @@ private final class SessionHUDSectionView: NSView {
         note.textColor = ViewerDesign.muted.nsColor
         note.maximumNumberOfLines = 3
         note.lineBreakMode = .byWordWrapping
-        note.preferredMaxLayoutWidth = SessionHUDView.panelWidth - ViewerDesign.Space.sm * 2
+        note.preferredMaxLayoutWidth = SessionHUDView.contentWidth
 
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.orientation = .vertical
@@ -401,7 +424,7 @@ private final class SessionHUDRowView: NSView {
         // Wraps inside whatever it is actually in: a column is under half the
         // panel, and a note measured against the full width silently
         // truncates there instead of wrapping.
-        let contentWidth = SessionHUDView.panelWidth - ViewerDesign.Space.sm * 2
+        let contentWidth = SessionHUDView.contentWidth
         let columnWidth = isNarrow ? (contentWidth - ViewerDesign.Space.md) / 2 : contentWidth
         note.preferredMaxLayoutWidth = columnWidth - ViewerDesign.Space.xs
         let labelWidth = isNarrow ? Self.narrowLabelColumnWidth : Self.labelColumnWidth

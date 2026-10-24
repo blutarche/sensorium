@@ -16,6 +16,7 @@ func runSessionHUDSparklineAndAddressTests() {
     sparklineLayoutHandlesAFlatSeries()
     sparklineLayoutScalesMinToMaxOldestFirst()
     sparklinesShareOneTrailingColumn()
+    scrollThumbStaysClearOfContent()
     print("PASS: the HUD names the host's address and maps its trends to sparkline points")
 }
 
@@ -170,11 +171,11 @@ private func sparklinesShareOneTrailingColumn() {
 
     let frames = sparklineFrames(in: container, convertingTo: container)
     expect(frames.count == 2, "VIDEO IN and FPS each show one sparkline, got \(frames.count)")
-    // The panel's own fixed width less its one inset: not just that the two
+    // The panel's own fixed width less its trailing margin: not just that the two
     // agree with each other, which a pair of rows that both happen to fall
     // short of the column would still satisfy, but that they land at the
     // column the panel actually reserves for one.
-    let expectedTrailingColumn = SessionHUDView.panelWidth - ViewerDesign.Space.sm
+    let expectedTrailingColumn = SessionHUDView.panelWidth - SessionHUDView.contentTrailingInset
     for frame in frames {
         expect(
             abs(frame.maxX - expectedTrailingColumn) < 0.5,
@@ -206,6 +207,108 @@ private func sparklinesShareOneTrailingColumn() {
     expect(
         expansion == .zero,
         "the address is not truncated behind an ellipsis, got expansion frame \(expansion) over bounds \(addressField.bounds)"
+    )
+}
+
+/// The always-visible scroll thumb sits in the panel's right margin, and a
+/// sparkline ends near the panel's trailing column. Judged on the drawn panel
+/// at the display's own scale: 16 px at 2x is 8 pt, the least that keeps the
+/// two from reading as one mark.
+@MainActor
+private func scrollThumbStaysClearOfContent() {
+    func panel(height: CGFloat) -> SessionHUDView {
+        let hud = SessionHUDView()
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: height))
+        container.addSubview(hud)
+        NSLayoutConstraint.activate([
+            hud.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hud.topAnchor.constraint(equalTo: container.topAnchor),
+            hud.heightAnchor.constraint(equalToConstant: height)
+        ])
+        hud.apply(telemetry: SessionHUDSnapshot(
+            surfaceID: 0,
+            availability: .fresh(SurfaceTelemetrySample(
+                surfaceID: 0,
+                capture: nil,
+                encode: nil,
+                send: nil,
+                framesPerSecond: 59,
+                encoderInputDropped: 0,
+                globalAdmissionDropped: 0,
+                sendQueueDropped: 0,
+                appliedStreamScale: 1.5,
+                sustainableScaleCeiling: 1.5
+            )),
+            clientMetrics: SessionMetrics(),
+            stream: ClientStreamReading(pixelWidth: 3840, pixelHeight: 2400, bitsPerSecond: 41_800_000),
+            requestedStreamScale: 2.0,
+            streamScalePreference: .automatic,
+            decoder: .hardwareAccelerated,
+            hostName: "Studio",
+            hostAddress: "mini.tail1234.ts.net:7777",
+            endToEndLatencyTrend: SessionHUDTrend(samples: [20, 22, 21]),
+            videoInBitrateTrend: SessionHUDTrend(samples: [40_000_000, 41_000_000, 42_000_000]),
+            fpsTrend: SessionHUDTrend(samples: [58, 59, 60])
+        ))
+        container.layoutSubtreeIfNeeded()
+        hud.layoutSubtreeIfNeeded()
+        hud.displayIfNeeded()
+        return hud
+    }
+
+    func drawn(_ hud: SessionHUDView) -> NSBitmapImageRep? {
+        guard let rep = hud.bitmapImageRepForCachingDisplay(in: hud.bounds) else { return nil }
+        hud.cacheDisplay(in: hud.bounds, to: rep)
+        return rep
+    }
+
+    // Short enough to scroll: the thumb is drawn, and the constant is where.
+    let short = panel(height: 400)
+    guard let shortRep = drawn(short) else {
+        expect(false, "the scrolling panel draws")
+        return
+    }
+    let scale = CGFloat(shortRep.pixelsWide) / short.bounds.width
+    let row = Int(20 * scale)
+    func brightness(_ rep: NSBitmapImageRep, _ x: Int, _ y: Int) -> CGFloat {
+        rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB)?.brightnessComponent ?? 0
+    }
+    let scanStart = Int((SessionHUDView.panelWidth - 24) * scale)
+    let scanEnd = Int((SessionHUDView.panelWidth - 2) * scale)
+    let fill = brightness(shortRep, scanStart, row)
+    var thumbMinX: CGFloat?
+    for x in scanStart..<scanEnd where brightness(shortRep, x, row) > fill + 0.15 {
+        thumbMinX = CGFloat(x) / scale
+        break
+    }
+    expect(
+        thumbMinX.map { abs($0 - SessionHUDView.scrollThumbMinX) <= 1 } == true,
+        "the scroll thumb is drawn at \(SessionHUDView.scrollThumbMinX), got \(String(describing: thumbMinX))"
+    )
+
+    // Tall enough to show every row, sparklines included, and so with no
+    // thumb: the nearest ink to where the thumb goes. A sparkline's stroke and
+    // a glyph both run a little past the frame that holds them, so this reads
+    // pixels rather than frames.
+    let tall = panel(height: 1600)
+    guard let tallRep = drawn(tall) else {
+        expect(false, "the full panel draws")
+        return
+    }
+    let thumbColumn = Int(SessionHUDView.scrollThumbMinX * scale)
+    var nearestInk = 0
+    for y in Int(6 * scale)..<(tallRep.pixelsHigh - Int(6 * scale)) {
+        for x in stride(from: thumbColumn - 1, to: Int(40 * scale), by: -1)
+        where abs(brightness(tallRep, x, y) - fill) > 0.02 {
+            nearestInk = max(nearestInk, x)
+            break
+        }
+    }
+    let gap = CGFloat(thumbColumn - nearestInk - 1) / scale
+    expect(
+        nearestInk > Int(200 * scale) && gap >= 8,
+        "ink ends \(gap) pt from the scroll thumb (nearest at \(CGFloat(nearestInk) / scale) pt), "
+            + "under the 8 pt (16 px at 2x) that keeps them apart"
     )
 }
 #endif

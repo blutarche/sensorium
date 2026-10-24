@@ -237,7 +237,7 @@ func testSessionHUDViewMatchesRowLayoutTests() {
         return
     }
     let inset = ViewerChromeMetrics.Space.sm
-    let columnWidth = Double(SessionHUDView.panelWidth - inset * 2)
+    let columnWidth = Double(SessionHUDView.panelWidth - inset - SessionHUDView.contentTrailingInset)
     let expected = SessionHUDRowLayout.layout(
         valueWidth: Double(value.intrinsicContentSize.width), columnWidth: columnWidth,
         isNarrow: false, showsSparkline: true
