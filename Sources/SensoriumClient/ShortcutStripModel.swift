@@ -37,9 +37,9 @@ public struct ShortcutStripModel: Equatable, Sendable {
     private var isOverHandle = false
     private var isOverStrip = false
     /// Set when the strip is closed deliberately while the pointer is still on
-    /// the handle, and cleared when the pointer leaves it. Without it, the
-    /// click that closes the strip is followed at once by a hover that opens
-    /// it again, and the strip cannot be closed by clicking at all.
+    /// the handle's spot, and cleared when the pointer leaves it. Without it,
+    /// the chord or Escape that closes the strip is followed at once by a
+    /// hover that opens it again.
     private var isHoverSuppressed = false
     /// When `tick(now:)` next has something to do. Public so a caller can wake
     /// exactly once at that moment rather than polling a live video window.
@@ -68,19 +68,19 @@ public struct ShortcutStripModel: Equatable, Sendable {
         visibility != .hidden
     }
 
-    /// The one mark a live session leaves on the picture. There is nothing to
-    /// send shortcuts to otherwise, so there is nothing to offer either.
+    /// Whether there is a session to send shortcuts to, and so a handle spot
+    /// at the top of the picture. The spot stays the pointer's way in whether
+    /// or not the handle is drawn on it.
     public var isHandleVisible: Bool {
         phase == .live
     }
 
-    /// Whether the hover handle pill itself draws. Hidden while a pinned
-    /// strip is shown -- pinning already found the strip without it, and a
-    /// hover target sitting uselessly atop an already-open strip is only
-    /// clutter -- and on the same terms as `isHandleVisible` otherwise, so an
-    /// unpinned session or a pinned one Escape just closed still gets it back.
+    /// Whether the handle pill itself draws. It is how a closed strip is
+    /// found, so it steps aside for as long as the strip is on screen, which
+    /// covers the spot it sat on: a tab drawn over the bar it opened is only
+    /// clutter. It is back once the strip has gone.
     public var showsHandle: Bool {
-        isHandleVisible && !(isPinned && isVisible)
+        isHandleVisible && !isVisible
     }
 
     /// Hovering the handle opens the strip at once. The handle is a visible
@@ -102,7 +102,8 @@ public struct ShortcutStripModel: Equatable, Sendable {
     }
 
     /// A click on the handle: the way in for a pointer that arrived by
-    /// clicking, and the way out for one that is already there.
+    /// clicking. The handle is not drawn over an open strip, so a click
+    /// there is one the strip itself takes.
     public mutating func handleClicked() {
         toggle()
     }

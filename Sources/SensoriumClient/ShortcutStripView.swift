@@ -141,8 +141,6 @@ public final class ShortcutStripView: NSView {
         confirmRow.isHidden = true
         bar.addSubview(confirmRow)
 
-        // Added last, so it stays visible over the bar it summoned: the click
-        // that opens the strip is also the click that closes it.
         handle.toolTip = "Shortcuts for \(hostName)"
         handle.onPress = { [weak self] in self?.handleClicked() }
         addSubview(handle)
@@ -242,7 +240,9 @@ public final class ShortcutStripView: NSView {
     public func pointerMoved(to pointInSuperview: NSPoint?) {
         let now = Self.now()
         let point = pointInSuperview.map { convert($0, from: superview) }
-        let overHandle = model.showsHandle && point.map { handle.frame.contains($0) } == true
+        // The handle's spot counts as the handle even while the open strip has
+        // hidden it, so a pointer resting there is not taken for one that left.
+        let overHandle = model.isHandleVisible && point.map { handle.frame.contains($0) } == true
         let overStrip = isBarOnScreen && point.map { bar.frame.contains($0) } == true
         model.pointerOverHandle(overHandle, now: now)
         model.pointerOverStrip(overStrip, now: now)

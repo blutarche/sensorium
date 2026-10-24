@@ -193,6 +193,7 @@ func testShortcutStripVisibilityTests() {
     // already the deliberate approach a delay would have been proving.
     model.pointerOverHandle(true, now: 0)
     expect(model.visibility == .shown, "hovering the handle opens the strip with no delay")
+    expect(!model.showsHandle, "the handle steps aside once the strip it opens is on screen")
 
     // Leaving hides it, but not instantly: a pointer that slips off the strip
     // on the way to a button must not have it vanish underneath.
@@ -201,10 +202,28 @@ func testShortcutStripVisibilityTests() {
     expect(model.visibility == .shown, "moving from the handle onto the strip keeps it open")
     model.pointerOverStrip(false, now: 2)
     expect(model.visibility == .hiding, "leaving the strip starts the hide")
+    expect(!model.showsHandle, "a strip still on screen while it hides has no handle over it")
     model.tick(now: 2 + hide - 0.01)
     expect(model.visibility == .hiding, "the strip stays up until the hide delay is up")
     model.tick(now: 2 + hide)
     expect(model.visibility == .hidden, "the strip closes a second after the pointer leaves")
+    expect(model.showsHandle, "and the handle is back the moment the strip is gone")
+
+    // A pointer resting on the spot the handle sat on has the strip under it
+    // now, and that is not a reason to close it.
+    var resting = ShortcutStripModel()
+    resting.phaseChanged(.live, now: 0)
+    resting.pointerOverHandle(true, now: 0)
+    resting.tick(now: hide + 0.1)
+    expect(
+        resting.visibility == .shown && !resting.showsHandle,
+        "a pointer that rests where the handle was keeps the strip open without it"
+    )
+    _ = resting.press(.lockScreen)
+    expect(
+        resting.visibility == .confirming(.lockScreen) && !resting.showsHandle,
+        "a question on the strip has no handle over it either"
+    )
 
     var returning = ShortcutStripModel()
     returning.phaseChanged(.live, now: 0)
@@ -384,9 +403,10 @@ func testShortcutStripPinTests() {
     pinned.togglePinRequested(now: 2)
     expect(!pinned.isPinned, "the same button unpins it")
     expect(pinned.visibility == .hiding, "unpin restores hover closing, and the pointer is already away")
-    expect(pinned.showsHandle, "and the handle pill is back now that the strip is no longer pinned")
+    expect(!pinned.showsHandle, "and the handle waits until the strip it sits over has gone")
     pinned.tick(now: 2 + hide)
     expect(pinned.visibility == .hidden, "and the ordinary hide delay runs its course from there")
+    expect(pinned.showsHandle, "the handle pill is back once the unpinned strip has closed")
 
     // The chord and Escape still reach a pinned strip -- only the pointer
     // leaving is ignored.
@@ -653,9 +673,23 @@ func testShortcutStripHandleTests() {
             "and takes none of the pointer's motion there"
         )
     }
+    expect(handle.isHidden, "the handle steps aside once the strip is open")
     expect(
-        strip.hitTest(point(centre, fromTop: 10)) === handle,
-        "the handle stays where it was, so the click that opened the strip closes it"
+        strip.hitTest(point(centre, fromTop: 10)) !== handle,
+        "so a click where it sat lands on the strip, not on a tab drawn over it"
+    )
+
+    // The pointer rests where the handle sat. The handle is gone, but the spot
+    // is still the one the pointer came in by: closing the strip with the chord
+    // must not have it reopen under a pointer that has not moved off the spot.
+    strip.pointerMoved(to: point(centre, fromTop: 10))
+    strip.toggleRequested()
+    container.layoutSubtreeIfNeeded()
+    strip.pointerMoved(to: point(centre, fromTop: 10))
+    container.layoutSubtreeIfNeeded()
+    expect(
+        strip.hitTest(point(centre, fromTop: 24)) == nil,
+        "a strip closed by the chord stays closed under a pointer still on the handle's spot"
     )
 
     // Nothing at all over a picture there is no session behind.
