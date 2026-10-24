@@ -58,17 +58,17 @@ viewer-machines-1-empty 920 336
 host-window-3-ready-no-machines-paired 720 990
 host-window-4-pairing-code-shown 720 1250
 viewer-add-1-picker 920 856
-viewer-add-2-code 920 534
-viewer-add-2b-code-typed-1 920 534
-viewer-add-2b-code-typed-2 920 534
-viewer-add-2b-code-typed-3 920 534
-viewer-add-2b-code-typed-4 920 534
-viewer-add-2b-code-typed-5 920 534
-viewer-add-2b-code-typed-6 920 534
+viewer-add-2-code 920 574
+viewer-add-2b-code-typed-1 920 574
+viewer-add-2b-code-typed-2 920 574
+viewer-add-2b-code-typed-3 920 574
+viewer-add-2b-code-typed-4 920 574
+viewer-add-2b-code-typed-5 920 574
+viewer-add-2b-code-typed-6 920 574
 viewer-shortcuts-1b-pinned 1920 1200
 host-screen-badge-1-expanded 604 180
 host-screen-presence-prompt-1-short 720 514
-host-window-12-last-session-clean-stop 720 1594
+host-window-12-last-session-clean-stop 720 1610
 SIZES
 
 python3 -I - "$WORK" <<'PY'

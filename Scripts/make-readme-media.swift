@@ -405,8 +405,8 @@ func windowCrop(_ name: String, height: Int) -> CGImage {
 let hostReady = windowCrop("host-window-3-ready-no-machines-paired", height: 322)
 let hostCode = windowCrop("host-window-4-pairing-code-shown", height: 484)
 let viewerPicker = windowCrop("viewer-add-1-picker", height: 484)
-let viewerCode = render("viewer-add-2-code")
-let viewerTyped = (1...6).map { render("viewer-add-2b-code-typed-\($0)") }
+let viewerCode = windowCrop("viewer-add-2-code", height: 548)
+let viewerTyped = (1...6).map { windowCrop("viewer-add-2b-code-typed-\($0)", height: 548) }
 
 /// Where a window of this render size rests: at 1.5x, centred in the stage.
 func restRect(_ image: CGImage) -> CGRect {
@@ -1044,7 +1044,7 @@ let codeRect = restRect(viewerCode)
 let showCodeTip = scenePoint(hostReadyRect, CGPoint(x: 400, y: 276))
 let addMachineTip = scenePoint(machinesRect, CGPoint(x: 190, y: 256))
 let workstationTip = scenePoint(pickerRect, CGPoint(x: 330, y: 290))
-let pairTip = scenePoint(codeRect, CGPoint(x: 290, y: 454))
+let pairTip = scenePoint(codeRect, CGPoint(x: 290, y: 494))
 
 func approach(_ tip: CGPoint) -> CGPoint { CGPoint(x: tip.x + 180, y: tip.y + 120) }
 
@@ -1335,7 +1335,7 @@ func writeAtTheHost(to url: URL) {
             // paired-machine list above.
             Placement(crop(
                 render("host-window-12-last-session-clean-stop"),
-                CGRect(x: 32, y: 906, width: 656, height: 206),
+                CGRect(x: 32, y: 922, width: 656, height: 206),
                 "the host window"
             )),
             true
