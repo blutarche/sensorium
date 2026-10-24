@@ -219,7 +219,7 @@ func testYourMachinesWindowTests() async {
         )
         controller.attemptFailed(reason: "no answer")
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying\u{00A0}again\u{2026}", in: content(of: controller)),
             "a failed attempt is reported on the row itself, address kept, reason appended and a retry named"
         )
 
@@ -761,7 +761,7 @@ func testYourMachinesWindowTests() async {
         )
         controller.attemptFailed(reason: "no answer")
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying\u{00A0}again\u{2026}", in: content(of: controller)),
             "and so is an attempt that failed, with the retry that follows it"
         )
         controller.stoppedTrying()

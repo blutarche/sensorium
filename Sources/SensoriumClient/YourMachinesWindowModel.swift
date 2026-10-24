@@ -74,7 +74,8 @@ public struct YourMachinesRow: Equatable, Sendable {
         case .stopping:
             status = "stopping\u{2026}"
         case let .failed(_, reason):
-            status = "\(reason), trying again\u{2026}"
+            // A wrapped line never strands "again…" on its own.
+            status = "\(reason), trying\u{00A0}again\u{2026}"
         case let .stopped(_, reason):
             status = reason
         }

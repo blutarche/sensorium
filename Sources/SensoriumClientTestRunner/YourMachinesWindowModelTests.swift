@@ -176,7 +176,7 @@ func testYourMachinesWindowModelTests() {
 
         model.attemptFailed(reason: "no answer")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying\u{00A0}again\u{2026}",
             "a failed attempt keeps the address, appends the reason and says another attempt is coming, "
                 + "got \(model.rows[0].detail)"
         )
@@ -240,7 +240,7 @@ func testYourMachinesWindowModelTests() {
         model.replaceHosts([mini, studio], reachability: [mini.hostPublicKey: true])
         expect(model.connectingHostPublicKey == mini.hostPublicKey, "the machine being dialled is still the one dialling")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying\u{00A0}again\u{2026}",
             "the attempt already out survives a re-read, got \(model.rows[0].detail)"
         )
         expect(
