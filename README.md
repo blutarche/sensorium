@@ -44,7 +44,7 @@ stay reachable with nobody in front of it.
 ## How it works
 
 1. Open **Sensorium Host** on the machine you want to reach. Grant the
-   permissions its window asks for. Click **Show pairing code**.
+   permissions its window asks for. Click **Show Pairing Code**.
 2. Open **Sensorium** on the other machine. Pick the host from your tailnet,
    or type its address, and enter the six digits.
 3. You are in. From then on, click the host in **Your Machines** to connect.

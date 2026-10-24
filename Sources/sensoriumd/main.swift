@@ -423,7 +423,7 @@ struct sensoriumd {
 
     /// Read from its own file exactly as `resolveIdentity` is. Both failures
     /// reach the window as the one identity problem, whose "Try again" and
-    /// "Make a new key" buttons cover this identity too.
+    /// "Make a New Key" buttons cover this identity too.
     private static func resolveTLSIdentity() -> HostTLSIdentity? {
         do {
             return try FileHostTLSIdentityStore(url: tlsIdentityFileURL(), commonName: "Sensorium Host").loadOrCreate()
@@ -1478,7 +1478,7 @@ struct sensoriumd {
                 alert.alertStyle = .warning
                 alert.messageText = copy.headline
                 alert.informativeText = copy.replaceConsequence
-                alert.addButton(withTitle: "Make a new key")
+                alert.addButton(withTitle: "Make a New Key")
                 alert.addButton(withTitle: "Cancel")
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
 
@@ -1498,7 +1498,7 @@ struct sensoriumd {
                     operatorBox.status.reportProblem("Sensorium Host could not replace this machine\u{2019}s TLS identity: \(reason).")
                 }
             },
-            // "Try again": repeats the read this process already made once,
+            // "Try Again": repeats the read this process already made once,
             // at launch or at the last press of this same button. The read
             // comes first, so a key still unreadable says so again rather
             // than reaching the canvas probe and reporting whatever that

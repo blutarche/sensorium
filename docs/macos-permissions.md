@@ -4,7 +4,7 @@
 
 Both apps keep a key that identifies the machine they run on, in `device-identity.json` under `~/Library/Application Support/Sensorium`. The host keeps a second key there, `host-tls-identity.json`, which holds the certificate the viewer pins when the two machines pair. Each file is readable by its owner only. macOS asks for no permission to read them, so a rebuild changes nothing about them.
 
-If a file cannot be read, the app shows its own window with **Try again** and **Make a new key**. Click **Try again** first. Only click **Make a new key** if the key is really lost, since it replaces the key and the two machines must pair again.
+If a file cannot be read, the app shows its own window with **Try Again** and **Make a New Key**. Click **Try Again** first. Only click **Make a New Key** if the key is really lost, since it replaces the key and the two machines must pair again.
 
 ## Host
 

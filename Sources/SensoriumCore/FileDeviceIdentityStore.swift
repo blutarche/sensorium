@@ -41,7 +41,7 @@ public final class FileDeviceIdentityStore: DeviceIdentityProviding, DeviceIdent
         return identity
     }
 
-    /// "Make a new key": every device this machine paired with knows the old
+    /// "Make a New Key": every device this machine paired with knows the old
     /// public key, so pairing has to be done again once this key is stored.
     public func makeReplacementIdentity() throws -> DeviceIdentity {
         try DeviceIdentity.generate()

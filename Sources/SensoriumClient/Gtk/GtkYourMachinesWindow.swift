@@ -32,7 +32,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
     private static let addressHintText = "Tailscale address, or a name like mini.local."
     private static let codeHintText =
-        "Shown by Sensorium Host on that machine under Show pairing code."
+        "Shown by Sensorium Host on that machine under Show Pairing Code."
 
     public var loadTailnet: (() async -> TailnetDevicePickerState)?
     public var sendPairIntent: ((ViewerPairingDevice) async -> ViewerPairIntentAttempt)?

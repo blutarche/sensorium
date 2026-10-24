@@ -91,7 +91,7 @@ func runHostConnectionAndPairingTests() async {
             "showing a pairing code must leave the connected machine on screen -- got \"\(presentation.headline)\""
         )
         expect(
-            presentation.eyebrow == "CONNECTED",
+            presentation.eyebrow == "SHARING PRIVATE DESKTOP",
             "showing a pairing code must not return the eyebrow to a waiting state -- got \"\(presentation.eyebrow)\""
         )
         expect(

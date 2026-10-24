@@ -879,6 +879,10 @@ func runLauncherDesignAndOperatorTests() async {
                 "the alert carries the System Settings pane that grants exactly that permission"
             )
             expect(
+                missingCapture.alerts.first?.windowButtonTitle == "Open Screen Recording Settings",
+                "the window's button is Title Case like every other button -- got: \(missingCapture.alerts.first?.windowButtonTitle ?? "nil")"
+            )
+            expect(
                 missingCapture.detail == "Kestrel Laptop Pro sees nothing until you allow Screen Recording for Sensorium Host in System Settings.",
                 "the canvas-mode privacy sentence -- \"a virtual display, not this machine's own screen\" -- is false and self-contradicting the moment nothing is actually visible at all; the status card itself now carries the Screen Recording sentence as one block, in place of that false claim -- got: \(missingCapture.detail)"
             )

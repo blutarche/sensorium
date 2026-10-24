@@ -11,7 +11,7 @@ required_readme = [
     "Fedora",
 ]
 required_install = [
-    "Show pairing code",
+    "Show Pairing Code",
     "Enter Address Manually",
     "## Linux",
 ]

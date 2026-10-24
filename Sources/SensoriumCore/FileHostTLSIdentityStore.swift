@@ -48,7 +48,7 @@ public final class FileHostTLSIdentityStore: HostTLSIdentityProviding, HostTLSId
         return identity
     }
 
-    /// "Make a new key": a viewer pinned the old certificate at pairing, so
+    /// "Make a New Key": a viewer pinned the old certificate at pairing, so
     /// pairing has to be done again once this one is stored.
     public func makeReplacementIdentity() throws -> HostTLSIdentity {
         try HostTLSIdentity.generate(commonName: commonName)

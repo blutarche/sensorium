@@ -108,7 +108,7 @@ public struct HostOperatorStatus: Equatable {
     /// Why hosting is not running, when the cause is specifically the key
     /// that identifies this machine -- kept apart from `problem` (a plain
     /// string) so the window can offer the two actions that fix it, "Try
-    /// again" and "Make a new key," without matching the string a bind
+    /// Again" and "Make a New Key," without matching the string a bind
     /// failure or a missing Tailscale connection also happens to set.
     /// Mutually exclusive with `problem` in practice: `reportProblem` and
     /// `reportIdentityProblem` each clear the other.
@@ -199,7 +199,7 @@ public struct HostOperatorPresentation: Equatable, Sendable {
     public let detailIsWarning: Bool
     /// Set only while `eyebrow`/`headline`/`detail` are this machine's own
     /// identity failure -- the one case `HostSetupWindowController` offers
-    /// its "Make a new key" button for.
+    /// its "Make a New Key" button for.
     public let identityProblem: HostIdentityFailureCopy?
 
     /// Gold for an eyebrow that says something needs action or failed --
@@ -284,7 +284,7 @@ extension HostOperatorStatus {
             detail = "Code accepted. \(deviceName) is connecting."
             indicator = .waiting
         case let .serving(peerName):
-            eyebrow = "CONNECTED"
+            eyebrow = "SHARING PRIVATE DESKTOP"
             headline = "Connected to \(peerName)"
             detail = "It sees and controls a private desktop, separate from this machine’s screens."
             indicator = .serving
@@ -330,7 +330,7 @@ extension HostOperatorStatus {
             }
             // An expired code leaves `code` `nil`, the same as never having
             // shown one -- the pairing-code section falls back to its own
-            // "Show pairing code" button rather than a second wording here.
+            // "Show Pairing Code" button rather than a second wording here.
             //
             // Naming who is asking is the whole point of showing the code
             // automatically instead of waiting for the operator to reveal it,
@@ -416,7 +416,7 @@ extension HostOperatorStatus {
             alerts.append(HostOperatorPermissionAlert(
                 kind: .screenRecording,
                 title: "Open Screen Recording Settings",
-                windowButtonTitle: "Open Screen Recording settings",
+                windowButtonTitle: "Open Screen Recording Settings",
                 // Names the consequence and where the permission lives, so
                 // the sentence stands alone on surfaces without the button.
                 detail: "No machine can see a screen until you allow Screen Recording for Sensorium Host in System Settings.",
@@ -427,7 +427,7 @@ extension HostOperatorStatus {
             alerts.append(HostOperatorPermissionAlert(
                 kind: .accessibility,
                 title: "Open Accessibility Settings",
-                windowButtonTitle: "Open Accessibility settings",
+                windowButtonTitle: "Open Accessibility Settings",
                 detail: "Until you allow Accessibility, your other machine cannot type or click.",
                 settingsURL: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
             ))

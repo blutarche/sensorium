@@ -9,7 +9,7 @@ public enum HostIdentityReplacementOutcome: Equatable, Sendable {
     case hostTLSIdentityFailed(String)
 }
 
-/// "Make a new key" on the host window: mints a fresh key for each of this
+/// "Make a New Key" on the host window: mints a fresh key for each of this
 /// machine's two identities, and writes neither file until both keys exist.
 /// A host carrying one new key and one old one is recognised by no paired
 /// viewer and repaired by no retry.
