@@ -392,7 +392,7 @@ MainActor.assumeIsolated {
 
     @MainActor func launcher() -> CanvasLauncherView {
         let view = CanvasLauncherView(frame: launcherFrame, canvas: placement)
-        view.hostName = "Kestrel Studio"
+        view.hostName = "Workstation"
         view.testAdoptCatalog(catalog)
         return view
     }
@@ -410,7 +410,8 @@ MainActor.assumeIsolated {
             hostName: view.hostName
         )
         stored("relay", of: view, as: LaunchStatusRelay.self).post(report)
-        pumpUntil({ label.stringValue == expected.text }, description: "the launch status relay")
+        let drawn = HostTextFlow.flow(expected.text, names: [view.hostName])
+        pumpUntil({ label.stringValue == drawn }, description: "the launch status relay")
     }
 
     hostPasses(
@@ -564,13 +565,26 @@ MainActor.assumeIsolated {
     ]
     for (prefix, description, status) in operatorStates {
         let panel = HostOperatorPanelView(frame: .zero)
+        panel.machineNames = status.namedMachines
         panel.presentation = status.presentation(now: issued)
-        write(
-            render(panel),
-            named: "\(prefix).png",
-            state: "HostOperatorPanelView — \(description); 288pt wide at its own fitting height,"
-                + " the size it hangs off the menu bar at; no stream pass, it never leaves the host"
+        // Inside a window that is never shown, the way a menu hosts it. A view
+        // with no window is colour-converted on its way into a bitmap, which
+        // darkens its thin glyphs below the colour they are set in.
+        let hosting = NSWindow(
+            contentRect: NSRect(origin: .zero, size: panel.frame.size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
         )
+        hosting.contentView = panel
+        withExtendedLifetime(hosting) {
+            write(
+                render(panel),
+                named: "\(prefix).png",
+                state: "HostOperatorPanelView — \(description); 288pt wide at its own fitting height,"
+                    + " the size it hangs off the menu bar at; no stream pass, it never leaves the host"
+            )
+        }
     }
 
     // The host window, like the panel above, never leaves the host and gets
@@ -731,13 +745,13 @@ MainActor.assumeIsolated {
         ),
         (
             "host-window-6-connected",
-            "a connected client, virtual display only, with the Stop button that ends the session immediately",
+            "a connected client, private desktop only, with the Stop button that ends the session immediately",
             HostOperatorStatus(connection: .serving(peerName: "Kestrel Laptop"), permissions: granted),
             twoPairedRows
         ),
         (
             "host-window-7-connected-host-screen",
-            "a connected client sharing this machine's own host screen, distinct eyebrow and detail from a virtual display",
+            "a connected client sharing this machine's own host screen, distinct eyebrow and detail from a private desktop",
             HostOperatorStatus(
                 connection: .servingHostScreen(peerName: "Kestrel Laptop", displayLabel: "Built-in Display"),
                 permissions: granted
@@ -751,12 +765,6 @@ MainActor.assumeIsolated {
                 connection: .hosting(address: "203.0.113.42"),
                 permissions: HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .granted)
             ),
-            noRows
-        ),
-        (
-            "host-window-9-paired-machines-none",
-            "ready, with the Paired machines section showing its own empty state",
-            HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             noRows
         ),
         (
@@ -853,8 +861,8 @@ MainActor.assumeIsolated {
         write(
             render(hostWindowContent(controller)),
             named: "host-window-15-identity-needs-replacing.png",
-            state: "HostSetupWindowController — Sensorium Host cannot read its own key, showing the Make a new"
-                + " key button; 360pt wide at the height its content"
+            state: "HostSetupWindowController — Sensorium Host cannot read its own key, showing the Make a New"
+                + " Key button; 360pt wide at the height its content"
                 + " needs; no stream pass, it never leaves the host"
         )
     }
@@ -892,6 +900,22 @@ MainActor.assumeIsolated {
             named: "\(prefix).png",
             state: "HostSetupWindowController — \(description); 360pt wide at the height its content needs;"
                 + " no stream pass, it never leaves the host"
+        )
+    }
+
+    // Distinct from host-window-3, which is a machine that has never run a
+    // session: here the last machine was removed, and the record of its
+    // session stays beneath the empty list.
+    do {
+        let controller = hostWindow(status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted))
+        controller.updatePairedMachines(noRows)
+        controller.updateLastHostScreenSession(lastSessionStates[0].2)
+        write(
+            render(hostWindowContent(controller)),
+            named: "host-window-9-paired-machines-none.png",
+            state: "HostSetupWindowController — ready, the Paired machines section showing its empty state after its"
+                + " last machine was removed, the last host-screen session still recorded beneath it; 360pt wide at"
+                + " the height its content needs; no stream pass, it never leaves the host"
         )
     }
 
@@ -955,24 +979,43 @@ MainActor.assumeIsolated {
     }
 
     // A paired machine's Rename sheet, drawn where macOS drops a sheet: centred
-    // at the top of the host window's content, over the paired list.
+    // at the top of the host window's content, over the paired list. The
+    // sheet is as deep as the host gives it (`renameSheetHeight`), so its
+    // bottom edge falls between two rows, and the window behind wears the
+    // same scrim the host lays over it.
     do {
         let controller = hostWindow(status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted))
         controller.updatePairedMachines(twoPairedRows)
         let windowImage = render(hostWindowContent(controller))
-        let sheet = PairedMachineRenameView(currentName: "Kestrel Laptop", onRename: { _ in }, onCancel: {})
+        let sheet = PairedMachineRenameView(
+            currentName: "Kestrel Laptop",
+            minimumHeight: controller.renameSheetHeight(atLeast: PairedMachineRenameView.naturalHeight),
+            onRename: { _ in },
+            onCancel: {}
+        )
         sheet.frame = NSRect(origin: .zero, size: sheet.fittingSize)
         let sheetImage = render(sheet)
+        let dimmedWindow = bitmapContext(width: windowImage.width, height: windowImage.height)
+        let windowFrame = CGRect(x: 0, y: 0, width: windowImage.width, height: windowImage.height)
+        dimmedWindow.draw(windowImage, in: windowFrame)
+        dimmedWindow.setFillColor(
+            CanvasDesign.chromeBg.nsColor.withAlphaComponent(PairedMachineSheetScrim.opacity).cgColor
+        )
+        dimmedWindow.fill(windowFrame)
+        guard let behind = dimmedWindow.makeImage() else {
+            fail("dimming the host window produced no image")
+        }
         write(
-            place(sheetImage, over: windowImage, in: CGRect(
+            place(sheetImage, over: behind, in: CGRect(
                 x: (windowImage.width - sheetImage.width) / 2,
                 y: windowImage.height - sheetImage.height,
                 width: sheetImage.width,
                 height: sheetImage.height
             )),
             named: "host-rename-sheet.png",
-            state: "HostSetupWindowController with PairedMachineRenameView over it — Rename on the first paired"
-                + " machine, the field holding its current name; no stream pass, it never leaves the host"
+            state: "HostSetupWindowController dimmed by its sheet scrim, with PairedMachineRenameView over it — Rename on"
+                + " the first paired machine, the field holding its current name, the sheet's bottom edge between"
+                + " two rows; no stream pass, it never leaves the host"
         )
     }
 
@@ -1050,7 +1093,7 @@ MainActor.assumeIsolated {
         ),
         (
             "host-screen-presence-prompt-2-long-device-name",
-            "Alex Kestrel-Whitfield\u{2019}s Sixteen-Inch Laptop (2024, Space Black)",
+            "Kestrel Field Station Sixteen-Inch Laptop (2024)",
             "Built-in Display",
             "a device name long enough to test the headline's own three-line wrap"
         ),
