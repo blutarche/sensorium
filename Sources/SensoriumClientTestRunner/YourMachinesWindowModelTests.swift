@@ -79,8 +79,8 @@ func testYourMachinesWindowModelTests() {
         // it follows the same restraint: none where nothing is known.
         let unknown = YourMachinesWindowModel(hosts: [mini])
         expect(
-            unknown.rows[0].detail == "mini.tail1234.ts.net",
-            "with nothing known, the line under the name is the address alone, got \(unknown.rows[0].detail)"
+            unknown.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}status unknown",
+            "with nothing known, the line under the name says so after the address, got \(unknown.rows[0].detail)"
         )
         expect(unknown.rows[0].dot == nil, "and there is nothing to draw a dot for, got \(String(describing: unknown.rows[0].dot))")
 
@@ -168,19 +168,23 @@ func testYourMachinesWindowModelTests() {
         )
         expect(model.rows[0].dot == .activity, "a connecting row shows the pulsing dot")
         expect(model.rows[0].offersCancel, "a connecting row offers Cancel")
-        expect(model.rows[1].detail == "100.64.1.7", "every other row is unchanged, got \(model.rows[1].detail)")
+        expect(
+            model.rows[1].detail == "100.64.1.7 \u{2014}\u{00A0}status unknown",
+            "every other row is unchanged, got \(model.rows[1].detail)"
+        )
         expect(model.rows[1].dot != .activity, "an idle row shows no pulsing dot")
 
         model.attemptFailed(reason: "no answer")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer",
-            "a failed attempt keeps the address and appends the reason, got \(model.rows[0].detail)"
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}",
+            "a failed attempt keeps the address, appends the reason and says another attempt is coming, "
+                + "got \(model.rows[0].detail)"
         )
         expect(
             model.rows[0].activity == .failed(attempt: 1, reason: "no answer"),
             "the attempt number is still tracked, even though the row no longer prints it, got \(model.rows[0].activity)"
         )
-        expect(model.rows[0].dot == .offline, "a failed attempt is marked like a machine that cannot be reached")
+        expect(model.rows[0].dot == .activity, "a failed attempt that will be retried keeps the pulsing dot")
         expect(model.rows[0].offersCancel, "a failed attempt is still being retried, so Cancel stays")
 
         model.connectStarted(hostPublicKey: mini.hostPublicKey)
@@ -197,8 +201,8 @@ func testYourMachinesWindowModelTests() {
         model.stoppedConnecting()
         expect(model.connectingHostPublicKey == nil, "cancelling leaves nothing dialling")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net",
-            "a cancelled row goes back to its address, got \(model.rows[0].detail)"
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}status unknown",
+            "a cancelled row goes back to its address and an unknown status, got \(model.rows[0].detail)"
         )
 
         print("PASS: a connecting row reports each attempt in place of its address, and cancels back to it")
@@ -236,7 +240,7 @@ func testYourMachinesWindowModelTests() {
         model.replaceHosts([mini, studio], reachability: [mini.hostPublicKey: true])
         expect(model.connectingHostPublicKey == mini.hostPublicKey, "the machine being dialled is still the one dialling")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}",
             "the attempt already out survives a re-read, got \(model.rows[0].detail)"
         )
         expect(
@@ -270,8 +274,9 @@ func testYourMachinesWindowModelTests() {
         model.stoppedTrying()
         expect(
             model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer",
-            "giving up keeps the reason on the row, got \(model.rows[0].detail)"
+            "giving up keeps the reason on the row, and stops saying it is trying again, got \(model.rows[0].detail)"
         )
+        expect(model.rows[0].dot == .offline, "and the row is marked like a machine that cannot be reached")
         expect(!model.rows[0].offersCancel, "there is nothing left to cancel once the retries have stopped")
         expect(model.connectingHostPublicKey == nil, "and nothing is dialling")
         expect(
@@ -289,7 +294,7 @@ func testYourMachinesWindowModelTests() {
         // keep, so the row goes back to saying where that machine is.
         model.stoppedTrying()
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}status unknown",
             "a run that stopped with nothing to report leaves the address, got \(model.rows[0].detail)"
         )
 
@@ -350,7 +355,7 @@ func testYourMachinesWindowModelTests() {
 
         model.stoppedConnecting()
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}status unknown",
             "when it ends the row goes back to where that machine is, got \(model.rows[0].detail)"
         )
         expect(model.connectingHostPublicKey == nil, "and nothing is dialling")

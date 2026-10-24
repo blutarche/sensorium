@@ -179,8 +179,8 @@ func testYourMachinesWindowTests() async {
         expect(hasLabel("Loft", in: content(of: listed)), "each saved machine gets a row named after it")
         expect(hasLabel("Studio", in: content(of: listed)), "including the second one")
         expect(
-            hasLabel("mini.tail1234.ts.net", in: content(of: listed)),
-            "the line under each name is where that machine is"
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}status unknown", in: content(of: listed)),
+            "the line under each name is where that machine is, and says when that is not known"
         )
         expect(
             !hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: listed)),
@@ -219,8 +219,8 @@ func testYourMachinesWindowTests() async {
         )
         controller.attemptFailed(reason: "no answer")
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer", in: content(of: controller)),
-            "a failed attempt is reported on the row itself, address kept and reason appended"
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}", in: content(of: controller)),
+            "a failed attempt is reported on the row itself, address kept, reason appended and a retry named"
         )
 
         guard let cancel = button(titled: "Cancel", in: content(of: controller)) else {
@@ -242,7 +242,7 @@ func testYourMachinesWindowTests() async {
         )
         controller.stoppedConnecting(hostPublicKey: mini.hostPublicKey)
         expect(
-            hasLabel("mini.tail1234.ts.net", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}status unknown", in: content(of: controller)),
             "after which the row goes back to saying where that machine is"
         )
 
@@ -711,8 +711,8 @@ func testYourMachinesWindowTests() async {
         )
         controller.attemptFailed(reason: "no answer")
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer", in: content(of: controller)),
-            "and so is an attempt that failed"
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer, trying again\u{2026}", in: content(of: controller)),
+            "and so is an attempt that failed, with the retry that follows it"
         )
         controller.stoppedTrying()
         expect(
@@ -727,7 +727,7 @@ func testYourMachinesWindowTests() async {
         controller.hide()
         expect(!controller.isVisible, "a session that went live leaves this window off screen")
         expect(
-            hasLabel("mini.tail1234.ts.net", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}status unknown", in: content(of: controller)),
             "and the row it dialled is back to saying where that machine is"
         )
 

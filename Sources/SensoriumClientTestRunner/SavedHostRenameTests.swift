@@ -139,7 +139,10 @@ func testSavedHostRenameTests() {
     do {
         let model = YourMachinesWindowModel(hosts: [machine("Loft").withCustomName("Studio")])
         expect(model.rows.first?.name == "Studio", "the row shows the custom name")
-        expect(model.rows.first?.detail == "mini.tail1234.ts.net", "and the line under it still shows the address")
+        expect(
+            model.rows.first?.detail == "mini.tail1234.ts.net \u{2014}\u{00A0}status unknown",
+            "and the line under it still shows the address"
+        )
         expect(YourMachinesWindowModel.renameTitle == "Rename\u{2026}", "the menu item is Rename\u{2026}")
         expect(YourMachinesWindowModel.renameConfirmTitle == "Rename", "the confirm button is Rename")
         print("PASS: the row shows the custom name over the address")

@@ -53,12 +53,13 @@ public struct YourMachinesRow: Equatable, Sendable {
     /// after -- `dot` carries a pulsing marker alongside it rather than
     /// replacing the words a second time. A failed or stopped attempt also
     /// keeps the address and appends a short reason -- the full explanation
-    /// belongs to the status panel, not this row. A long reason wraps, and
-    /// the row grows with it rather than truncating what went wrong.
+    /// belongs to the status panel, not this row; a failed one adds that
+    /// another attempt is coming. A long reason wraps, and the row grows with
+    /// it rather than truncating what went wrong.
     ///
     /// A machine paired without a name is titled by its address, so its line
-    /// is the status alone, and says the status is unknown when there is none,
-    /// so every row has the same two lines and the same height.
+    /// is the status alone. Either way a row says its status is unknown when
+    /// there is none, so every row has a state word and the same height.
     public var detail: String {
         let status: String?
         switch activity {
@@ -72,14 +73,17 @@ public struct YourMachinesRow: Equatable, Sendable {
             status = "connecting\u{2026}"
         case .stopping:
             status = "stopping\u{2026}"
-        case let .failed(_, reason), let .stopped(_, reason):
+        case let .failed(_, reason):
+            status = "\(reason), trying again\u{2026}"
+        case let .stopped(_, reason):
             status = reason
         }
+        let shown = status ?? "status unknown"
         if name == address {
-            return status ?? "status unknown"
+            return shown
         }
         // A line that wraps breaks before the dash, never between it and the status.
-        return status.map { "\(address) \u{2014}\u{00A0}\($0)" } ?? address
+        return "\(address) \u{2014}\u{00A0}\(shown)"
     }
 
     /// The dot beside the detail line. `offline` stands for a machine that
@@ -87,9 +91,9 @@ public struct YourMachinesRow: Equatable, Sendable {
     /// attempt did. `nil` is a machine nothing is known about, the same
     /// restraint that keeps an unmentioned machine from being called offline;
     /// the row still draws a dot there, a neutral one, so every address
-    /// starts at the same place. A connecting or stopping attempt draws the
-    /// one dot that pulses, in place of the words this line no longer needs
-    /// to carry alone.
+    /// starts at the same place. A connecting or stopping attempt, or a
+    /// failed one that will be retried, draws the one dot that pulses, in
+    /// place of the words this line no longer needs to carry alone.
     public enum RowDot: Equatable, Sendable {
         case online
         case offline
@@ -104,9 +108,9 @@ public struct YourMachinesRow: Equatable, Sendable {
             case .some(true): return .online
             case .some(false): return .offline
             }
-        case .connecting, .stopping:
+        case .connecting, .stopping, .failed:
             return .activity
-        case .failed, .stopped:
+        case .stopped:
             return .offline
         }
     }
