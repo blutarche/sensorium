@@ -85,8 +85,7 @@ func testTailnetDevicePickerTests() async {
         )
         expect(
             TailnetDevicePickerFetchError.tailscaledUnreachable.reason
-                == "Tailscale doesn\u{2019}t seem to be running on this machine. Make sure Tailscale says "
-                    + "Connected, then choose Look Again.",
+                == "Tailscale is not running. Make sure Tailscale says Connected, then choose Look Again.",
             "this reason draws regardless of whether the Tailscale app was found -- it must not name an "
                 + "action (\u{201C}Open the Tailscale app\u{201D}) that only one of those two draws a button "
                 + "for -- got: \(TailnetDevicePickerFetchError.tailscaledUnreachable.reason)"
@@ -94,12 +93,27 @@ func testTailnetDevicePickerTests() async {
 
         expect(
             TailnetDevicePickerFetchError.tailscaleNotInstalled.reason
-                == "Tailscale doesn\u{2019}t seem to be installed on this machine. Install Tailscale and sign in, "
-                    + "then choose Look Again.",
-            "the not-installed reason says install, never \u{201C}open the Tailscale app,\u{201D} since there is "
+                == "Tailscale is not installed. Install Tailscale and sign in, then choose Look Again.",
+            "the not-installed reason states the fact plainly and says install, never \u{201C}open the Tailscale app,\u{201D} since there is "
                 + "no app on this machine to open -- got: \(TailnetDevicePickerFetchError.tailscaleNotInstalled.reason)"
         )
 
+        // Only a machine with no Tailscale at all is offered the download.
+        let notInstalledState = TailnetDevicePickerState.from(.failure(.tailscaleNotInstalled))
+        expect(
+            notInstalledState.isTailscaleNotInstalled
+                && TailnetDevicePickerState.from(
+                    .failure(.tailscaleNotInstalled), installHint: TailnetDevicePickerFetchError.linuxInstallHint
+                ).isTailscaleNotInstalled,
+            "a missing Tailscale is told apart from the others, whichever platform's install hint follows it"
+        )
+        expect(
+            !unreachable.isTailscaleNotInstalled
+                && !TailnetDevicePickerState.from(.failure(.malformedStatus)).isTailscaleNotInstalled
+                && !TailnetDevicePickerState.loading.isTailscaleNotInstalled
+                && !TailnetDevicePickerState.noOtherDevices.isTailscaleNotInstalled,
+            "a Tailscale that is installed but not answering, an unreadable answer and every other state are not"
+        )
         expect(
             TailnetDevicePickerState.loading.showsActivityDot,
             "the loading line's dot pulses while the fetch is in flight"
@@ -138,7 +152,7 @@ func testTailnetDevicePickerTests() async {
             func statusJSON() async throws -> Data { throw LocalTailscaleStatusProviderError.tailscaleNotFound }
         }
         guard case let .unreachable(reason) = await TailnetDevicePickerLoader(provider: NotInstalledProvider()).load(),
-              reason.contains("Tailscale doesn\u{2019}t seem to be installed") else {
+              reason.contains("Tailscale is not installed") else {
             print("FAIL: no candidate path existing reads as unreachable with the not-installed reason, "
                 + "distinct from tailscaled simply not running")
             Foundation.exit(1)
@@ -148,7 +162,7 @@ func testTailnetDevicePickerTests() async {
             func statusJSON() async throws -> Data { throw LocalTailscaleStatusProviderError.processFailed(exitCode: 1) }
         }
         guard case let .unreachable(reason) = await TailnetDevicePickerLoader(provider: NotRunningProvider()).load(),
-              reason.contains("Tailscale doesn\u{2019}t seem to be running") else {
+              reason.contains("Tailscale is not running") else {
             print("FAIL: a binary that exists but fails to answer reads as unreachable with the tailscaled reason")
             Foundation.exit(1)
         }

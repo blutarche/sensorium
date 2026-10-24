@@ -142,6 +142,8 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     private static let windowWidth: CGFloat = 460
     private static let contentWidth = windowWidth - ViewerDesign.Space.xl * 2
 
+    private static let tailscaleDownloadURL = URL(string: "https://tailscale.com/download")!
+
     private static let addressHintText = "Tailscale address, or a name like mini.local."
     private static let codeHintText =
         "Shown by Sensorium Host on that machine under Show Pairing Code."
@@ -465,6 +467,17 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         )
     }
 
+    /// What is empty, in the ink a heading has but at the size of the line
+    /// that follows it, so the pair reads as one block under the step's own heading.
+    private func emptyHeading(_ text: String) -> NSTextField {
+        ViewerFormControls.label(
+            text,
+            font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
+            color: ViewerDesign.ink,
+            width: Self.contentWidth
+        )
+    }
+
     private func sentence(_ text: String, color: ViewerColor = ViewerDesign.muted) -> NSTextField {
         ViewerFormControls.label(
             text,
@@ -721,12 +734,17 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         // Sensorium Host -- there is no way to tell those apart without a port
         // probe this app does not do, and an implied filter it cannot back up
         // is worse than an honest, unfiltered list.
-        var views: [NSView] = [
-            heading("Add a machine"),
-            sentence(
+        var views: [NSView] = [heading("Add a machine")]
+        // Said only where a list is coming or shown. Over an error or an empty
+        // tailnet it would promise machines the next line says are not there.
+        switch pickerState {
+        case .loading, .devices:
+            views.append(sentence(
                 "Every other machine on your tailnet appears here, whether or not Sensorium Host is running on it."
-            )
-        ]
+            ))
+        case .unreachable, .noOtherDevices:
+            break
+        }
 
         switch pickerState {
         case .loading:
@@ -747,15 +765,22 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
                 button.action = #selector(lookAgain)
                 views.append(leadingRow([button]))
                 views.append(leadingRow([open]))
+            } else if pickerState.isTailscaleNotInstalled {
+                // Nothing on this machine to open, so the way on is the page
+                // Tailscale publishes, the same one the host's setup offers.
+                tailscaleActionURL = Self.tailscaleDownloadURL
+                let download = ViewerFormControls.linkButton("Download Tailscale", symbol: "arrow.down.circle")
+                download.target = self
+                download.action = #selector(openTailscale)
+                views.append(lookAgainLink())
+                views.append(leadingRow([download]))
             } else {
                 tailscaleActionURL = nil
                 views.append(lookAgainLink())
             }
         case .noOtherDevices:
-            views.append(sentence(
-                "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
-                    + "on, then choose Look Again."
-            ))
+            views.append(emptyHeading("Nothing else is on your tailnet yet."))
+            views.append(sentence("Sign in to Tailscale on the machine you want to work on, then choose Look Again."))
             views.append(lookAgainLink())
         case let .devices(rows):
             let list = column([], spacing: ViewerDesign.Space.xs)

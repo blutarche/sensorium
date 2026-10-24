@@ -50,6 +50,15 @@ public enum TailnetDevicePickerState: Equatable, Sendable {
     /// longer waiting on anything.
     public var showsActivityDot: Bool { self == .loading }
 
+    /// Whether the failure is that Tailscale is not on this machine at all,
+    /// the one answer that has a download to offer. Read from the words the
+    /// state already carries, so a platform that builds its own states keeps
+    /// compiling; `TailnetDevicePickerFetchError` writes every reason.
+    public var isTailscaleNotInstalled: Bool {
+        guard case let .unreachable(reason) = self else { return false }
+        return reason.hasPrefix(TailnetDevicePickerFetchError.notInstalledFact)
+    }
+
     public static func from(
         _ result: Result<TailnetDirectorySnapshot, TailnetDevicePickerFetchError>,
         installHint: String = TailnetDevicePickerFetchError.defaultInstallHint
@@ -80,6 +89,10 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
     /// read at all (`TailnetDirectoryError`), or the read itself failed.
     case malformedStatus
 
+    /// What is wrong, stated as a fact and leading its reason.
+    static let notRunningFact = "Tailscale is not running."
+    static let notInstalledFact = "Tailscale is not installed."
+
     /// How a machine with a Tailscale application of its own says to get it.
     public static let defaultInstallHint = "Install Tailscale and sign in, then choose Look Again."
     /// How a machine where Tailscale is a daemon and nothing else says it.
@@ -97,10 +110,9 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
     public func reason(installHint: String) -> String {
         switch self {
         case .tailscaledUnreachable:
-            return "Tailscale doesn\u{2019}t seem to be running on this machine. "
-                + "Make sure Tailscale says Connected, then choose Look Again."
+            return Self.notRunningFact + " Make sure Tailscale says Connected, then choose Look Again."
         case .tailscaleNotInstalled:
-            return "Tailscale doesn\u{2019}t seem to be installed on this machine. " + installHint
+            return Self.notInstalledFact + " " + installHint
         case .malformedStatus:
             return "Tailscale answered with something this app could not read. "
                 + "Try again, or enter the other machine\u{2019}s address by hand."

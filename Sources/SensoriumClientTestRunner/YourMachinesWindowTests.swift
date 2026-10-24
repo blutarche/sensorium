@@ -648,6 +648,7 @@ func testYourMachinesWindowTests() async {
         // host's setup window is verified with.
         let fakeAppURL = URL(fileURLWithPath: "/Applications/Tailscale.app")
         let unreachableReason = TailnetDevicePickerFetchError.tailscaledUnreachable.reason
+        let subtext = "Every other machine on your tailnet appears here, whether or not Sensorium Host is running on it."
 
         let notInstalled = YourMachinesWindowController(
             store: InMemorySavedHostStore(), tailscaleAppURLLookup: { nil }, onOpenTailscaleApp: { _ in }
@@ -656,6 +657,39 @@ func testYourMachinesWindowTests() async {
         expect(
             button(titled: "Open Tailscale", in: content(of: notInstalled)) == nil,
             "with Tailscale not installed, offering to open it would only lead nowhere, so the button is absent"
+        )
+        expect(
+            button(titled: "Download Tailscale", in: content(of: notInstalled)) == nil,
+            "a Tailscale that is not running is not a Tailscale that needs downloading"
+        )
+        expect(
+            !hasLabel(subtext, in: content(of: notInstalled)),
+            "an error state does not repeat the sentence about what the list will show"
+        )
+
+        var downloadedURL: URL?
+        let missing = YourMachinesWindowController(
+            store: InMemorySavedHostStore(), tailscaleAppURLLookup: { nil }, onOpenTailscaleApp: { downloadedURL = $0 }
+        )
+        missing.apply(deviceList: .unreachable(reason: TailnetDevicePickerFetchError.tailscaleNotInstalled.reason))
+        guard let download = button(titled: "Download Tailscale", in: content(of: missing)) else {
+            print("FAIL: with no Tailscale on this machine the add step must offer to download it")
+            Foundation.exit(1)
+        }
+        tap(download)
+        expect(
+            downloadedURL == URL(string: "https://tailscale.com/download"),
+            "Download Tailscale opens Tailscale's download page, the same one the host offers, got "
+                + "\(String(describing: downloadedURL))"
+        )
+        expect(
+            button(titled: "Look Again", in: content(of: missing)) != nil
+                && button(titled: "Open Tailscale", in: content(of: missing)) == nil,
+            "and sits with Look Again, with nothing to open"
+        )
+        expect(
+            !hasLabel(subtext, in: content(of: missing)),
+            "the not-installed state hides the list sentence as well"
         )
 
         var openedURL: URL?
@@ -679,12 +713,19 @@ func testYourMachinesWindowTests() async {
             "an empty tailnet is answered fine, not a reason to suggest opening Tailscale"
         )
         expect(
+            hasLabel("Nothing else is on your tailnet yet.", in: content(of: emptyTailnet)),
+            "an empty tailnet says what is empty in a heading of its own"
+        )
+        expect(
             hasLabel(
-                "Nothing else is on your tailnet yet. Sign in to Tailscale on the machine you want to work "
-                    + "on, then choose Look Again.",
+                "Sign in to Tailscale on the machine you want to work on, then choose Look Again.",
                 in: content(of: emptyTailnet)
             ),
-            "an empty tailnet points at the actual fix -- getting the other machine onto the tailnet"
+            "and the line under it points at the actual fix -- getting the other machine onto the tailnet"
+        )
+        expect(
+            !hasLabel(subtext, in: content(of: emptyTailnet)),
+            "with no sentence about what the list will show above an empty one"
         )
 
         let loading = YourMachinesWindowController(store: InMemorySavedHostStore())
