@@ -1156,7 +1156,7 @@ final class ViewerSessionStatusOverlay: NSView {
 
         eyebrow.translatesAutoresizingMaskIntoConstraints = false
         eyebrow.font = ViewerDesign.font(mono: true, size: 12, weight: .medium)
-        eyebrow.textColor = ViewerDesign.muted2.nsColor
+        eyebrow.textColor = ViewerDesign.muted.nsColor
         panel.addSubview(eyebrow)
 
         headline.translatesAutoresizingMaskIntoConstraints = false
@@ -1267,7 +1267,7 @@ final class ViewerSessionStatusOverlay: NSView {
             string: status.eyebrow,
             attributes: [
                 .font: ViewerDesign.font(mono: true, size: 12, weight: .medium),
-                .foregroundColor: ViewerDesign.muted2.nsColor,
+                .foregroundColor: ViewerDesign.muted.nsColor,
                 .kern: ViewerDesign.kern(ViewerDesign.Tracking.widest, size: 12)
             ]
         )

@@ -268,7 +268,7 @@ private enum SessionHUDEyebrow {
             string: text,
             attributes: [
                 .font: ViewerDesign.font(mono: true, size: size, weight: .medium),
-                .foregroundColor: ViewerDesign.muted2.nsColor,
+                .foregroundColor: ViewerDesign.muted.nsColor,
                 .kern: ViewerDesign.kern(ViewerDesign.Tracking.widest, size: size)
             ]
         )
@@ -305,7 +305,7 @@ private final class SessionHUDSectionView: NSView {
         title.translatesAutoresizingMaskIntoConstraints = false
         note.translatesAutoresizingMaskIntoConstraints = false
         note.font = ViewerDesign.font(mono: false, size: 11)
-        note.textColor = ViewerDesign.muted2.nsColor
+        note.textColor = ViewerDesign.muted.nsColor
         note.maximumNumberOfLines = 3
         note.lineBreakMode = .byWordWrapping
         note.preferredMaxLayoutWidth = SessionHUDView.panelWidth - ViewerDesign.Space.sm * 2
@@ -395,7 +395,7 @@ private final class SessionHUDRowView: NSView {
         // Subordinate to the value it qualifies, by weight and by indent: it
         // is a disclosure about that number, not another reading.
         note.font = ViewerDesign.font(mono: false, size: 11)
-        note.textColor = ViewerDesign.muted2.nsColor
+        note.textColor = ViewerDesign.muted.nsColor
         note.maximumNumberOfLines = 3
         note.lineBreakMode = .byWordWrapping
         // Wraps inside whatever it is actually in: a column is under half the

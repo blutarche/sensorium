@@ -21,5 +21,26 @@ package enum ViewerClientTestHooks {
         }
         return (overlay.preferredFocus as? NSButton)?.title
     }
+
+    /// A real `ViewerSessionStatusOverlay` showing `status`, laid out in a
+    /// view of `size`, with the label that draws its eyebrow, so a test can
+    /// judge the pixels the overlay draws.
+    @MainActor
+    package static func statusOverlay(
+        showing status: ViewerSessionStatus, size: NSSize
+    ) -> (overlay: NSView, eyebrow: NSTextField)? {
+        let overlay = ViewerSessionStatusOverlay()
+        overlay.frame = NSRect(origin: .zero, size: size)
+        overlay.apply(status)
+        overlay.layoutSubtreeIfNeeded()
+        func eyebrowLabel(in view: NSView) -> NSTextField? {
+            for subview in view.subviews {
+                if let field = subview as? NSTextField, field.stringValue == status.eyebrow { return field }
+                if let found = eyebrowLabel(in: subview) { return found }
+            }
+            return nil
+        }
+        return eyebrowLabel(in: overlay).map { (overlay, $0) }
+    }
 }
 #endif
