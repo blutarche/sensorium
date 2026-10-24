@@ -112,9 +112,16 @@ func runHostPairedMachineRowLayoutTests() async {
             "while a pairing finishes the section is empty -- heading hidden \(heading.isHidden), "
                 + "subtext hidden \(subtext.isHidden), eyebrow hidden \(eyebrow.isHidden)"
         )
+        // With nothing in it the section also takes no room, so the window's
+        // section gap is not paid twice around it.
+        expect(section.isHidden, "a section with nothing to show is hidden, not an empty view between two gaps")
+        host.updateLastHostScreenSession("Kestrel Laptop used Built-in Display from 15 Nov 2023, 05:13 to 05:43.")
+        expect(!section.isHidden, "a last session to show brings the section back")
+        host.updateLastHostScreenSession(nil)
+        expect(section.isHidden, "and taking it away hides the section again")
         host.update(HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted))
         expect(
-            !heading.isHidden && !subtext.isHidden && !eyebrow.isHidden,
+            !section.isHidden && !heading.isHidden && !subtext.isHidden && !eyebrow.isHidden,
             "once the pairing has ended with no machine paired, the empty state and its heading are back"
         )
         print("PASS: the empty state stays hidden only while a pairing finishes")

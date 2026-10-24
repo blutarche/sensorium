@@ -151,8 +151,8 @@ final class PairedMachinesView: NSView {
             rowsStack.addArrangedSubview(rowView)
             rowView.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
         }
-        showEmptyState()
         rowsStack.isHidden = rows.isEmpty
+        showEmptyState()
         pairedNames = rows.map(\.deviceName)
         showLastSession()
     }
@@ -184,6 +184,13 @@ final class PairedMachinesView: NSView {
         emptyHeading.isHidden = !shown
         emptySubtext.isHidden = !shown
         eyebrow.isHidden = rowViews.isEmpty && !emptyState.showsLines
+        hideWhenNothingShows()
+    }
+
+    /// A section with nothing to show takes no room, so the window's gap
+    /// around it is not paid twice.
+    private func hideWhenNothingShows() {
+        isHidden = stack.arrangedSubviews.allSatisfy(\.isHidden)
     }
 
     /// `nil` when host screen has never run on this machine.
@@ -206,6 +213,7 @@ final class PairedMachinesView: NSView {
         } ?? ""
         lastSessionEyebrow.isHidden = lastSessionLine == nil
         lastSessionCard.isHidden = lastSessionLine == nil
+        hideWhenNothingShows()
     }
 
     fileprivate static func label(_ text: String = "", color: DesignColor = CanvasDesign.ink) -> NSTextField {
