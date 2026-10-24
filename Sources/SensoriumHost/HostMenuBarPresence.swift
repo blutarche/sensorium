@@ -66,6 +66,8 @@ public final class HostMenuBarPresence: NSObject {
         self.onCheckForUpdates = onCheckForUpdates
         self.quit = quit
         self.activate = activate
+        super.init()
+        panel.onOpenSettings = { [weak self] url in self?.openSettings(url) }
     }
 
     /// Visible whenever anything is armed, independent of whether a
@@ -319,11 +321,23 @@ public final class HostMenuBarPresence: NSObject {
 /// Drawn rather than laid out in subviews because every line of it is text on
 /// a flat surface — see `docs/design-system.md`, which forbids the elevation a
 /// stack of AppKit controls would bring with it, and forbids the semantic
-/// colours those controls would default to.
+/// colours those controls would default to. The one exception is the button
+/// that opens Screen Recording settings, flat and filled like the window's own.
 @MainActor
 final class HostOperatorPanelView: NSView {
-    private static let width: CGFloat = 288
+    private static let menuWidth: CGFloat = 288
     private static let inset = CanvasDesign.Space.md
+
+    /// The width the card is laid out at. The menu hangs it at its own
+    /// width; a window that stretches it wider sets this to match, so the
+    /// text keeps the same inset on both sides.
+    var layoutWidth: CGFloat = HostOperatorPanelView.menuWidth {
+        didSet {
+            if layoutWidth != oldValue {
+                refit()
+            }
+        }
+    }
     /// The code box's own internal padding -- top, around the digits, and
     /// bottom, around the countdown -- the same `Space.md` `PairingCodeView`
     /// (the Host Setup window's own code box) uses for the same purpose.
@@ -331,12 +345,9 @@ final class HostOperatorPanelView: NSView {
 
     var presentation: HostOperatorPresentation? {
         didSet {
-            guard presentation != oldValue else {
-                return
+            if presentation != oldValue {
+                refit()
             }
-            invalidateIntrinsicContentSize()
-            frame = NSRect(origin: frame.origin, size: fittingSize)
-            needsDisplay = true
         }
     }
 
@@ -344,12 +355,9 @@ final class HostOperatorPanelView: NSView {
     /// stays whole on a line when it fits; see `HostTextFlow`.
     var machineNames: [String] = [] {
         didSet {
-            guard machineNames != oldValue else {
-                return
+            if machineNames != oldValue {
+                refit()
             }
-            invalidateIntrinsicContentSize()
-            frame = NSRect(origin: frame.origin, size: fittingSize)
-            needsDisplay = true
         }
     }
 
@@ -358,10 +366,82 @@ final class HostOperatorPanelView: NSView {
     /// window's own full width.
     var showsPairingCode = true
 
+    /// `true` puts a button that opens the Screen Recording settings in the
+    /// card while that permission is missing. `HostSetupWindowController`
+    /// sets it `false` and offers the same button below the card.
+    var showsPermissionAction = true {
+        didSet {
+            if showsPermissionAction != oldValue {
+                refit()
+            }
+        }
+    }
+
+    /// Called with the settings pane to open when the card's button is pressed.
+    var onOpenSettings: ((String) -> Void)?
+
+    private let permissionButton = NSButton()
+    private static let permissionButtonHeight: CGFloat = 32
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        permissionButton.isBordered = false
+        permissionButton.wantsLayer = true
+        permissionButton.layer?.cornerRadius = CanvasDesign.Radius.base
+        permissionButton.layer?.backgroundColor = CanvasDesign.warn.cgColor
+        permissionButton.target = self
+        permissionButton.action = #selector(permissionTapped)
+        permissionButton.isHidden = true
+        addSubview(permissionButton)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    private func refit() {
+        invalidateIntrinsicContentSize()
+        frame = NSRect(origin: frame.origin, size: fittingSize)
+        needsDisplay = true
+        placePermissionButton()
+    }
+
+    override func layout() {
+        super.layout()
+        placePermissionButton()
+    }
+
+    private func placePermissionButton() {
+        guard let action = panelLayout().permissionAction else {
+            permissionButton.isHidden = true
+            return
+        }
+        permissionButton.isHidden = false
+        permissionButton.frame = action.frame
+        permissionButton.attributedTitle = NSAttributedString(
+            string: action.alert.title,
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 13, weight: .medium),
+                .foregroundColor: CanvasDesign.chromeBg.nsColor
+            ]
+        )
+        permissionButton.identifier = NSUserInterfaceItemIdentifier(action.alert.settingsURL)
+    }
+
+    @objc private func permissionTapped() {
+        guard let url = permissionButton.identifier?.rawValue else {
+            return
+        }
+        // A control in a menu's custom view does not close the menu itself.
+        enclosingMenuItem?.menu?.cancelTracking()
+        onOpenSettings?(url)
+    }
+
     override var isFlipped: Bool { true }
 
     override var fittingSize: NSSize {
-        NSSize(width: Self.width, height: panelLayout().height)
+        NSSize(width: layoutWidth, height: panelLayout().height)
     }
 
     override var intrinsicContentSize: NSSize { fittingSize }
@@ -389,6 +469,7 @@ final class HostOperatorPanelView: NSView {
     private struct Layout {
         var texts: [(text: NSAttributedString, frame: NSRect)] = []
         var codeBox: NSRect?
+        var permissionAction: (alert: HostOperatorPermissionAlert, frame: NSRect)?
         var height: CGFloat = 0
     }
 
@@ -400,12 +481,17 @@ final class HostOperatorPanelView: NSView {
         panelLayout().texts.map(\.text)
     }
 
+    /// Where each of those texts is drawn, in this view's own coordinates.
+    func testLayoutFrames() -> [NSRect] {
+        panelLayout().texts.map(\.frame)
+    }
+
     private func panelLayout() -> Layout {
         var layout = Layout()
         guard let presentation else {
             return layout
         }
-        let contentWidth = Self.width - Self.inset * 2
+        let contentWidth = layoutWidth - Self.inset * 2
         var y = Self.inset
 
         func place(_ text: NSAttributedString, gapAbove: CGFloat = 0) {
@@ -428,6 +514,21 @@ final class HostOperatorPanelView: NSView {
                     width: contentWidth
                 )
             )
+        }
+
+        /// The Screen Recording button, once, under whatever text says the
+        /// permission is missing.
+        func placePermissionAction() {
+            guard showsPermissionAction, layout.permissionAction == nil,
+                  let alert = presentation.alerts.first(where: { $0.kind == .screenRecording }) else {
+                return
+            }
+            y += CanvasDesign.Space.md
+            layout.permissionAction = (
+                alert,
+                NSRect(x: Self.inset, y: y, width: contentWidth, height: Self.permissionButtonHeight)
+            )
+            y += Self.permissionButtonHeight
         }
 
         place(CanvasDesign.eyebrow(presentation.eyebrow, color: presentation.eyebrowColor))
@@ -558,6 +659,9 @@ final class HostOperatorPanelView: NSView {
             }
             y = box.maxY
         }
+        if presentation.screenRecordingReplacesStatusCard {
+            placePermissionAction()
+        }
 
         // Screen Recording's own alert is skipped here exactly when the
         // status card above already says so -- repeating it in a second
@@ -582,6 +686,9 @@ final class HostOperatorPanelView: NSView {
                 ),
                 gapAbove: CanvasDesign.Space.xxs
             )
+            if alert.kind == .screenRecording {
+                placePermissionAction()
+            }
         }
 
         layout.height = y + Self.inset

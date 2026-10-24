@@ -244,6 +244,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         // The code is drawn at the window's full width, outside the status
         // card.
         panel.showsPairingCode = false
+        panel.showsPermissionAction = false
+        panel.layoutWidth = Self.contentWidth
 
         stopButton.isBordered = false
         stopButton.wantsLayer = true

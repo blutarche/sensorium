@@ -110,6 +110,7 @@ struct SensoriumHostTestRunner {
             { await runHostSetupPairingCodeViewTests() },
             { await runHostSetupPairingCountdownTickTests() },
             { await runHostSetupSectionOrderTests() },
+            { await runHostStatusCardTests() },
             { await runHostTextFlowTests() },
             { await runHostPairedMachinesEmptyStateTests() },
             { await runHostMenuBarStopMenuItemTests() },

@@ -172,6 +172,17 @@ package enum CanvasHostTestHooks {
         return view.testLayoutTexts()
     }
 
+    /// The status card the Host Setup window draws: the width Auto Layout
+    /// gave it, and the frame of every text inside it.
+    @MainActor
+    package static func hostSetupStatusCard(_ controller: HostSetupWindowController) -> (width: CGFloat, textFrames: [NSRect]) {
+        guard let panel = Mirror(reflecting: controller).children.first(where: { $0.label == "panel" })?.value as? HostOperatorPanelView else {
+            fatalError("HostSetupWindowController no longer has a stored property named panel")
+        }
+        panel.superview?.layoutSubtreeIfNeeded()
+        return (panel.bounds.width, panel.testLayoutFrames())
+    }
+
     /// The menu-bar panel drawn into a bitmap from inside a window that is
     /// never shown, the way a menu hosts it, for judging the pixels a person
     /// would see. A view with no window is colour-converted on the way into a
