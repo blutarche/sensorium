@@ -722,7 +722,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         // probe this app does not do, and an implied filter it cannot back up
         // is worse than an honest, unfiltered list.
         var views: [NSView] = [
-            heading("Add a Machine"),
+            heading("Add a machine"),
             sentence(
                 "Every other machine on your tailnet appears here, whether or not Sensorium Host is running on it."
             )
@@ -866,8 +866,8 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
         var views: [NSView] = [
             heading(
-                device.map { "Type the Code Shown on \($0.label)" }
-                    ?? "Type the Code Shown on That Machine"
+                device.map { "Type the code shown on \($0.label)" }
+                    ?? "Type the code shown on that machine"
             )
         ]
         if isPairingAgain {

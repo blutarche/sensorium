@@ -42,8 +42,12 @@ func testYourMachinesWindowModelTests() {
             "the rows are drawn in the order the store handed them over, got \(listed.rows.map(\.name))"
         )
         expect(
-            YourMachinesWindowModel.heading == "Your Machines",
-            "the heading is the window's own title, got \(YourMachinesWindowModel.heading)"
+            YourMachinesWindowModel.heading == "Your machines",
+            "the heading is the window's own title, in sentence case, got \(YourMachinesWindowModel.heading)"
+        )
+        expect(
+            YourMachinesWindowModel.renameHeading == "Rename this machine",
+            "the rename step's heading is a sentence, got \(YourMachinesWindowModel.renameHeading)"
         )
 
         expect(

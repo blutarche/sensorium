@@ -161,7 +161,7 @@ func testYourMachinesWindowTests() async {
         // so in one sentence and offers the one thing to do; with
         // machines saved it draws a row each and no eyebrow above them.
         let empty = YourMachinesWindowController(store: InMemorySavedHostStore())
-        expect(hasLabel("Your Machines", in: content(of: empty)), "the window's heading names the window")
+        expect(hasLabel("Your machines", in: content(of: empty)), "the window's heading names the window")
         expect(
             hasLabel("No machine is paired with this one yet.", in: content(of: empty)),
             "the empty state says what is empty"
@@ -380,7 +380,7 @@ func testYourMachinesWindowTests() async {
                 tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: true, isThisMachine: false
             ))
         ]))
-        expect(hasLabel("Add a Machine", in: content(of: controller)), "the add step names itself in a heading")
+        expect(hasLabel("Add a machine", in: content(of: controller)), "the add step names itself in a heading")
         expect(
             hasLabel(
                 "Every other machine on your tailnet appears here, whether or not Sensorium Host is running on it.",
@@ -393,18 +393,18 @@ func testYourMachinesWindowTests() async {
             "typing an address by hand is one click away, and never the first thing shown"
         )
         expect(button(titled: "Look Again", in: content(of: controller)) != nil, "a device list can be re-checked")
-        expect(!hasLabel("Your Machines", in: content(of: controller)), "the list is replaced, not stacked beside")
+        expect(!hasLabel("Your machines", in: content(of: controller)), "the list is replaced, not stacked beside")
 
         guard let back = button(titled: "Back", in: content(of: controller)) else {
             print("FAIL: the add step offers no way back to Your machines")
             Foundation.exit(1)
         }
         tap(back)
-        expect(hasLabel("Your Machines", in: content(of: controller)), "Back returns to the list")
+        expect(hasLabel("Your machines", in: content(of: controller)), "Back returns to the list")
 
         controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
         expect(
-            hasLabel("Type the Code Shown on Studio", in: content(of: controller)),
+            hasLabel("Type the code shown on Studio", in: content(of: controller)),
             "the code step names the machine the code is on"
         )
         expect(
@@ -603,7 +603,7 @@ func testYourMachinesWindowTests() async {
             store.loadAll().map(\.displayName) == ["Studio"],
             "the newly paired machine is saved, got \(store.loadAll().map(\.displayName))"
         )
-        expect(hasLabel("Your Machines", in: content(of: controller)), "and the window is back on the list")
+        expect(hasLabel("Your machines", in: content(of: controller)), "and the window is back on the list")
         expect(connected == ["Studio"], "which then connects to it without a second click, got \(connected)")
 
         print("PASS: pairing saves the machine, returns to the list, and connects to it")
@@ -733,7 +733,7 @@ func testYourMachinesWindowTests() async {
 
         controller.beginPairAgain(with: studio)
         expect(
-            hasLabel("Type the Code Shown on Studio", in: content(of: controller)),
+            hasLabel("Type the code shown on Studio", in: content(of: controller)),
             "the overlay's Pair again opens this window on that machine's code step"
         )
         controller.showList()

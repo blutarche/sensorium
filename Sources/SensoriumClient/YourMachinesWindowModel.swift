@@ -138,14 +138,14 @@ public enum YourMachinesClickOutcome: Equatable, Sendable {
 /// attempt that has failed but not yet been retried -- is verified without
 /// AppKit.
 public struct YourMachinesWindowModel: Equatable, Sendable {
-    public static let heading = "Your Machines"
+    public static let heading = "Your machines"
     /// An empty state says what is empty; the button beside it says what to
     /// do about it, so this sentence does not have to.
     public static let emptySentence = "No machine is paired with this one yet."
     public static let addTitle = "Add a Machine"
     /// A row's own menu item, above Forget, and the words of the step it opens.
     public static let renameTitle = "Rename\u{2026}"
-    public static let renameHeading = "Rename This Machine"
+    public static let renameHeading = "Rename this machine"
     public static let renameHint = "The name is kept on this machine only. Leave it empty to use the original."
     public static let renameConfirmTitle = "Rename"
     public static let renameCancelTitle = "Cancel"
