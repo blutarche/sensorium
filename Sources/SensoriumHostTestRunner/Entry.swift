@@ -123,6 +123,7 @@ struct SensoriumHostTestRunner {
             { await runHostMenuPanelEyebrowContrastTests() },
             { await runPairedMachinesSharingToggleTests() },
             { await runPairedMachinesCardInsetTests() },
+            { await runHostPairedMachineRowLayoutTests() },
             { await runPairedMachineRenameTests() },
             { await runHostRenameSheetPlacementTests() },
             { await runApprovedDeviceStoreSafetyTests() },

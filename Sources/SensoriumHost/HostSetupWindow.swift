@@ -565,6 +565,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
         if presentation.pairingCode != nil {
             pairedMachines.setEmptyState(.codeShowing)
+        } else if case .pairingApproved = status.connection {
+            pairedMachines.setEmptyState(.pairingFinishing)
         } else {
             pairedMachines.setEmptyState(canReveal ? .canShowCode : .cannotPairYet)
         }

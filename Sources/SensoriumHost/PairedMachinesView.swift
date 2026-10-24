@@ -4,11 +4,14 @@ import Foundation
 /// What the empty Paired machines section tells the person to do. It depends
 /// on what the window offers beside it: a code already on screen carries its
 /// own instruction, so this line says what follows it, and a host that cannot
-/// offer a code yet has nothing to show.
+/// offer a code yet has nothing to show. While a pairing finishes, the status
+/// card already says what is happening, so the section says nothing, its
+/// heading included.
 package enum PairedMachinesEmptyState {
     case codeShowing
     case canShowCode
     case cannotPairYet
+    case pairingFinishing
 
     package var subtext: String {
         switch self {
@@ -18,7 +21,13 @@ package enum PairedMachinesEmptyState {
             return "Show a pairing code, then type it on the machine you are pairing."
         case .cannotPairYet:
             return "Machines appear here once they pair."
+        case .pairingFinishing:
+            return ""
         }
+    }
+
+    package var showsLines: Bool {
+        self != .pairingFinishing
     }
 }
 
@@ -42,6 +51,7 @@ final class PairedMachinesView: NSView {
     private let stack = NSStackView()
     private let rowsStack = NSStackView()
     private var rowViews: [PairedMachineRowView] = []
+    private var emptyState = PairedMachinesEmptyState.canShowCode
     private var pairedNames: [String] = []
     private var lastSessionLine: String?
 
@@ -101,7 +111,8 @@ final class PairedMachinesView: NSView {
         lastSessionCard.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         stack.setCustomSpacing(CanvasDesign.Space.xs, after: eyebrow)
         stack.setCustomSpacing(CanvasDesign.Space.xxs, after: emptyHeading)
-        stack.setCustomSpacing(CanvasDesign.Space.sm, after: rowsStack)
+        stack.setCustomSpacing(CanvasDesign.Space.lg, after: emptySubtext)
+        stack.setCustomSpacing(CanvasDesign.Space.lg, after: rowsStack)
         stack.setCustomSpacing(CanvasDesign.Space.xs, after: lastSessionEyebrow)
 
         lastSessionEyebrow.isHidden = true
@@ -138,8 +149,7 @@ final class PairedMachinesView: NSView {
             rowsStack.addArrangedSubview(rowView)
             rowView.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
         }
-        emptyHeading.isHidden = !rows.isEmpty
-        emptySubtext.isHidden = !rows.isEmpty
+        showEmptyState()
         rowsStack.isHidden = rows.isEmpty
         pairedNames = rows.map(\.deviceName)
         showLastSession()
@@ -162,7 +172,16 @@ final class PairedMachinesView: NSView {
     }
 
     func setEmptyState(_ state: PairedMachinesEmptyState) {
+        emptyState = state
         emptySubtext.stringValue = HostTextFlow.flow(state.subtext)
+        showEmptyState()
+    }
+
+    private func showEmptyState() {
+        let shown = rowViews.isEmpty && emptyState.showsLines
+        emptyHeading.isHidden = !shown
+        emptySubtext.isHidden = !shown
+        eyebrow.isHidden = rowViews.isEmpty && !emptyState.showsLines
     }
 
     /// `nil` when host screen has never run on this machine.
@@ -263,7 +282,7 @@ final class HostScreenSharingToggleControl: NSControl {
 private final class PairedMachineRowView: NSView {
     private let nameLabel = PairedMachinesView.label()
     private let toggle: HostScreenSharingToggleControl
-    private let toggleLabel = PairedMachinesView.label("Share host screen", color: CanvasDesign.muted)
+    private let toggleLabel = PairedMachinesView.label("Share host screen")
     /// Visible only while this row is sharing -- the setting only means
     /// anything for a machine whose session could prompt at all.
     private let askFirstCheckbox = NSButton(
@@ -309,10 +328,9 @@ private final class PairedMachineRowView: NSView {
 
         // The name, Rename and Remove share one line -- Remove pinned to the
         // row's trailing edge with Rename just before it, the name taking
-        // whatever is left and wrapping before it ever runs under a button. Top-aligned, not centred:
-        // a long name can wrap to a second line the button never grows to
-        // match, and centring would then drift the button off the name's
-        // own first line.
+        // whatever is left and wrapping before it ever runs under a button.
+        // The name is centred on the buttons; the row is as tall as the
+        // taller of the two, held to it by the weaker equalities below.
         let nameRow = NSView()
         nameRow.translatesAutoresizingMaskIntoConstraints = false
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -321,17 +339,34 @@ private final class PairedMachineRowView: NSView {
         nameRow.addSubview(removeButton)
         NSLayoutConstraint.activate([
             nameLabel.leadingAnchor.constraint(equalTo: nameRow.leadingAnchor),
-            nameLabel.topAnchor.constraint(equalTo: nameRow.topAnchor),
+            nameLabel.centerYAnchor.constraint(equalTo: renameButton.centerYAnchor),
             nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: renameButton.leadingAnchor, constant: -CanvasDesign.Space.sm),
             renameButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -CanvasDesign.Space.xs),
-            renameButton.topAnchor.constraint(equalTo: nameRow.topAnchor),
+            renameButton.centerYAnchor.constraint(equalTo: removeButton.centerYAnchor),
             removeButton.trailingAnchor.constraint(equalTo: nameRow.trailingAnchor),
-            removeButton.topAnchor.constraint(equalTo: nameRow.topAnchor),
+            nameRow.topAnchor.constraint(lessThanOrEqualTo: nameLabel.topAnchor),
+            nameRow.topAnchor.constraint(lessThanOrEqualTo: removeButton.topAnchor),
             nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: nameLabel.bottomAnchor),
             nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: removeButton.bottomAnchor)
         ])
+        for anchor in [
+            nameRow.topAnchor.constraint(equalTo: nameLabel.topAnchor),
+            nameRow.topAnchor.constraint(equalTo: removeButton.topAnchor),
+            nameRow.bottomAnchor.constraint(equalTo: nameLabel.bottomAnchor),
+            nameRow.bottomAnchor.constraint(equalTo: removeButton.bottomAnchor)
+        ] {
+            anchor.priority = .defaultLow
+            anchor.isActive = true
+        }
 
         askFirstCheckbox.font = CanvasDesign.font(.primary, size: 12)
+        (askFirstCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
+            string: HostScreenArmingPresentation.asksWhenInUseLabel,
+            attributes: [
+                .font: CanvasDesign.font(.primary, size: 12),
+                .foregroundColor: CanvasDesign.ink.nsColor
+            ]
+        )
         askFirstCheckbox.target = self
         askFirstCheckbox.action = #selector(askFirstToggled)
 
