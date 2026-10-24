@@ -163,8 +163,8 @@ func testYourMachinesWindowTests() async {
         let empty = YourMachinesWindowController(store: InMemorySavedHostStore())
         expect(hasLabel("Your machines", in: content(of: empty)), "the window's heading names the window")
         expect(
-            hasLabel("No machine is paired with this one yet.", in: content(of: empty)),
-            "the empty state says what is empty"
+            hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: empty)),
+            "the empty state says what is empty and what to do about it"
         )
         expect(
             button(titled: "Add a Machine", in: content(of: empty)) != nil,
@@ -183,7 +183,7 @@ func testYourMachinesWindowTests() async {
             "the line under each name is where that machine is"
         )
         expect(
-            !hasLabel("No machine is paired with this one yet.", in: content(of: listed)),
+            !hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: listed)),
             "the empty sentence is gone once there is a list"
         )
         expect(

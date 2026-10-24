@@ -19,8 +19,8 @@ func testTailnetDevicePickerTests() async {
         )
         let onlineRow = TailnetDevicePickerRow(peer: online)
         expect(
-            onlineRow.title == "Studio" && onlineRow.subtitle == "mini.tail1234.ts.net",
-            "an online device shows its name and MagicDNS name with no extra note"
+            onlineRow.title == "Studio" && onlineRow.subtitle == "mini.tail1234.ts.net \u{2014} online",
+            "an online device shows its name and MagicDNS name and says it is online, got \(onlineRow.subtitle)"
         )
 
         let offline = TailnetPeer(

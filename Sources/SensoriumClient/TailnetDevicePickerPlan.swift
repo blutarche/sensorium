@@ -15,10 +15,10 @@ public struct TailnetDevicePickerRow: Equatable, Sendable {
         self.title = peer.displayName
         // The address a person would otherwise have had to type by hand --
         // named here so a device they do not recognise by name is still
-        // identifiable, and reachable devices tell offline ones apart at a
-        // glance without a second line of copy.
+        // identifiable, and the state beside it tells reachable devices from
+        // offline ones at a glance without a second line of copy.
         let address = peer.magicDNSName ?? peer.tailnetIPv4 ?? peer.tailnetIPv6 ?? ""
-        self.subtitle = peer.isOnline ? address : "\(address) \u{2014} offline"
+        self.subtitle = "\(address) \u{2014} \(peer.isOnline ? "online" : "offline")"
     }
 }
 

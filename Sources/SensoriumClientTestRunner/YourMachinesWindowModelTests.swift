@@ -29,8 +29,18 @@ func testYourMachinesWindowModelTests() {
         let empty = YourMachinesWindowModel(hosts: [])
         expect(empty.isEmpty, "no saved machines means the empty state")
         expect(
-            YourMachinesWindowModel.emptySentence == "No machine is paired with this one yet.",
-            "the empty state says what is empty in one plain sentence, got \(YourMachinesWindowModel.emptySentence)"
+            unbound(YourMachinesWindowModel.emptySentence)
+                == "No machine is paired with this one yet. Choose Add a Machine to pair with one.",
+            "the empty state says what is empty and what to do about it, got \(YourMachinesWindowModel.emptySentence)"
+        )
+        expect(
+            YourMachinesWindowModel.emptySentence.contains("Add\u{00A0}a\u{00A0}Machine")
+                && YourMachinesWindowModel.emptySentence.hasSuffix("pair\u{00A0}with\u{00A0}one."),
+            "the button's name stays whole and the sentence does not strand its last word"
+        )
+        expect(
+            YourMachinesWindowModel.renameHint.hasSuffix("use\u{00A0}the\u{00A0}original."),
+            "the rename hint does not strand \"original.\" on a line of its own, got \(YourMachinesWindowModel.renameHint)"
         )
         expect(empty.addIsPrimary, "with nothing paired, adding a machine is the accent")
 
@@ -110,11 +120,15 @@ func testYourMachinesWindowModelTests() {
 
     do {
         // A machine paired without a name is titled by its address, so the
-        // line under it does not say the address a second time.
+        // line under it does not say the address a second time. It still has
+        // that line, so its row is as tall as its siblings'.
         let unnamed = savedMachineRow("100.64.1.9", key: 4, host: "100.64.1.9")
         let unknown = YourMachinesWindowModel(hosts: [unnamed])
         expect(unknown.rows[0].name == "100.64.1.9", "an unnamed machine is titled by its address, got \(unknown.rows[0].name)")
-        expect(unknown.rows[0].detail.isEmpty, "with nothing known, it has no line under the title, got \(unknown.rows[0].detail)")
+        expect(
+            unknown.rows[0].detail == "status unknown",
+            "with nothing known, the line under the title says so, got \(unknown.rows[0].detail)"
+        )
 
         let online = YourMachinesWindowModel(hosts: [unnamed], reachability: [unnamed.hostPublicKey: true])
         expect(online.rows[0].detail == "online", "its line is the status alone, got \(online.rows[0].detail)")

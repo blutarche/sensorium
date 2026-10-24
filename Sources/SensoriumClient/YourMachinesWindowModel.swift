@@ -57,7 +57,8 @@ public struct YourMachinesRow: Equatable, Sendable {
     /// the row grows with it rather than truncating what went wrong.
     ///
     /// A machine paired without a name is titled by its address, so its line
-    /// is the status alone, and empty when there is none.
+    /// is the status alone, and says the status is unknown when there is none,
+    /// so every row has the same two lines and the same height.
     public var detail: String {
         let status: String?
         switch activity {
@@ -75,7 +76,7 @@ public struct YourMachinesRow: Equatable, Sendable {
             status = reason
         }
         if name == address {
-            return status ?? ""
+            return status ?? "status unknown"
         }
         // A line that wraps breaks before the dash, never between it and the status.
         return status.map { "\(address) \u{2014}\u{00A0}\($0)" } ?? address
@@ -140,14 +141,17 @@ public enum YourMachinesClickOutcome: Equatable, Sendable {
 /// AppKit.
 public struct YourMachinesWindowModel: Equatable, Sendable {
     public static let heading = "Your machines"
-    /// An empty state says what is empty; the button beside it says what to
-    /// do about it, so this sentence does not have to.
-    public static let emptySentence = "No machine is paired with this one yet."
+    /// What is empty, and the one thing to do about it.
+    public static let emptySentence = ViewerCopyWrapping.keepingTailTogether(
+        "No machine is paired with this one yet. Choose \(ViewerCopyWrapping.control(addTitle)) to pair with one."
+    )
     public static let addTitle = "Add a Machine"
     /// A row's own menu item, above Forget, and the words of the step it opens.
     public static let renameTitle = "Rename\u{2026}"
     public static let renameHeading = "Rename this machine"
-    public static let renameHint = "The name is kept on this machine only. Leave it empty to use the original."
+    public static let renameHint = ViewerCopyWrapping.keepingTailTogether(
+        "The name is kept on this machine only. Leave it empty to use the original."
+    )
     public static let renameConfirmTitle = "Rename"
     public static let renameCancelTitle = "Cancel"
 
