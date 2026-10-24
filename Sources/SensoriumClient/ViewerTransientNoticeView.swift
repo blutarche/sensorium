@@ -33,7 +33,7 @@ public final class ViewerTransientNoticeView: NSView {
         // so a sentence that wraps to a fourth line costs nothing -- a cap
         // here would cut off the remedy, which is the sentence's last line.
         label.maximumNumberOfLines = 0
-        label.preferredMaxLayoutWidth = 360
+        label.preferredMaxLayoutWidth = ViewerChromeMetrics.Notice.maxTextWidth
         label.translatesAutoresizingMaskIntoConstraints = false
 
         dismissButton.isBordered = false
@@ -58,6 +58,9 @@ public final class ViewerTransientNoticeView: NSView {
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             label.topAnchor.constraint(equalTo: topAnchor, constant: inset),
             label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset),
+            // Every notice is the same width, short or long, so the dismiss
+            // control sits where the eye already is the next time one shows.
+            label.widthAnchor.constraint(equalToConstant: ViewerChromeMetrics.Notice.maxTextWidth),
             dismissButton.leadingAnchor.constraint(equalTo: label.trailingAnchor, constant: ViewerDesign.Space.xs),
             dismissButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
             dismissButton.centerYAnchor.constraint(equalTo: label.centerYAnchor),

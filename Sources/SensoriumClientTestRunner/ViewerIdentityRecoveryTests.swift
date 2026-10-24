@@ -111,13 +111,13 @@ func testViewerIdentityRecoveryTests() async {
         // sentence case; nothing else in it does. Two facts a person needs
         // before tapping: what breaks (the key itself) and what to do about
         // it (pair again), each its own sentence.
-        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "the stored key is malformed"))
+        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "this machine\u{2019}s saved key can\u{2019}t be read"))
         expect(
             copy.replaceButtonTitle == "Make a New Key",
             "the button title is Title Case, like every other button -- got \(copy.replaceButtonTitle)"
         )
         expect(
-            copy.replaceConsequence == "Make a New Key replaces the key that identifies this machine. The "
+            unbound(copy.replaceConsequence) == "Make a New Key replaces the key that identifies this machine. The "
                 + "host will then ask for a pairing code again.",
             "the consequence states both facts plainly, one sentence each, opening with the button's own "
                 + "title -- got \(copy.replaceConsequence)"
@@ -127,7 +127,7 @@ func testViewerIdentityRecoveryTests() async {
             "the first thing to try is repeating the read that just failed -- got \(copy.retryButtonTitle)"
         )
         expect(
-            copy.detail.hasPrefix("The stored key is malformed. "),
+            copy.detail.hasPrefix("This machine\u{2019}s saved key can\u{2019}t be read. "),
             "the detail opens with the reason the read gave, as a sentence of its own starting with a capital, "
                 + "so the screen is a real defect report -- got \(copy.detail)"
         )
@@ -136,11 +136,33 @@ func testViewerIdentityRecoveryTests() async {
     }
 
     do {
+        // The eyebrow says what happened in the words the host's own
+        // warnings use, and each paragraph keeps its last words together so
+        // none ends on a line holding one word.
+        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "this machine\u{2019}s saved key can\u{2019}t be read"))
+        let prompt = ViewerStartupFailurePrompt.make(for: copy)
+        expect(prompt.eyebrow == "COULD NOT START", "the eyebrow reads COULD NOT START -- got \(prompt.eyebrow)")
+        for paragraph in [copy.headline, copy.detail, copy.replaceConsequence] {
+            let lastLine = paragraph.split(separator: " ").last.map(String.init) ?? ""
+            expect(
+                lastLine.contains("\u{00A0}") && lastLine.count >= 10,
+                "the closing words of every paragraph are held together, got \(paragraph)"
+            )
+        }
+        expect(
+            !prompt.detail.localizedCaseInsensitiveContains("malformed"),
+            "no jargon about the key's format reaches the screen -- got \(prompt.detail)"
+        )
+
+        print("PASS: the startup failure says COULD NOT START and keeps the end of each paragraph together")
+    }
+
+    do {
         // The failure screen's two-button shape: tapping either one
         // resolves run() with the button that was actually tapped.
-        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "the stored key is malformed"))
+        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "this machine\u{2019}s saved key can\u{2019}t be read"))
         let actionMessage = ViewerMessageWindowController(
-            eyebrow: "CANNOT START",
+            eyebrow: "COULD NOT START",
             headline: copy.headline,
             detail: copy.detail + "\n\n" + copy.replaceConsequence,
             actionTitle: copy.replaceButtonTitle,
@@ -151,7 +173,7 @@ func testViewerIdentityRecoveryTests() async {
         expect(await actionTask.value == .actionTapped, "tapping the replace action resolves run() with .actionTapped, not .dismissed")
 
         let dismissMessage = ViewerMessageWindowController(
-            eyebrow: "CANNOT START",
+            eyebrow: "COULD NOT START",
             headline: copy.headline,
             detail: copy.detail,
             actionTitle: copy.replaceButtonTitle,
@@ -189,7 +211,7 @@ func testViewerIdentityRecoveryTests() async {
         }
 
         let replaceFirstMessage = ViewerMessageWindowController(
-            eyebrow: "CANNOT START",
+            eyebrow: "COULD NOT START",
             headline: "headline",
             detail: "detail",
             actionTitle: "Make a New Key",
@@ -202,7 +224,7 @@ func testViewerIdentityRecoveryTests() async {
         )
 
         let retryFirstMessage = ViewerMessageWindowController(
-            eyebrow: "CANNOT START",
+            eyebrow: "COULD NOT START",
             headline: "headline",
             detail: "detail",
             actionTitle: "Try again",
@@ -223,10 +245,10 @@ func testViewerIdentityRecoveryTests() async {
 @MainActor
 func testViewerIdentityFailureButtonsTests() async {
     do {
-        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "the stored key is malformed"))
+        let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "this machine\u{2019}s saved key can\u{2019}t be read"))
         func window() -> ViewerMessageWindowController {
             ViewerMessageWindowController(
-                eyebrow: "CANNOT START",
+                eyebrow: "COULD NOT START",
                 headline: copy.headline,
                 detail: copy.detail,
                 actionTitle: copy.retryButtonTitle,

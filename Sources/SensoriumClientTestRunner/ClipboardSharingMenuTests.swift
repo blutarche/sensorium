@@ -74,32 +74,32 @@ func testClipboardSharingMenuTests() async {
         let limit = ClipboardPolicy.maximumContentBytes
         let sixPointTwoMB = Int(6.2 * 1024 * 1024)
         expect(
-            ClipboardRefusalCopy.line(for: .tooLarge(byteCount: sixPointTwoMB, limit: limit))
+            clipboardLine(for: .tooLarge(byteCount: sixPointTwoMB, limit: limit))
                 == "Clipboard not shared: 6.2 MB is over the 4 MB limit.",
-            "a copy over the limit names both sizes in plain words -- got \(String(describing: ClipboardRefusalCopy.line(for: .tooLarge(byteCount: sixPointTwoMB, limit: limit))))"
+            "a copy over the limit names both sizes in plain words -- got \(String(describing: clipboardLine(for: .tooLarge(byteCount: sixPointTwoMB, limit: limit))))"
         )
         expect(
-            ClipboardRefusalCopy.line(for: .tooLarge(byteCount: limit + 1, limit: limit))
+            clipboardLine(for: .tooLarge(byteCount: limit + 1, limit: limit))
                 == "Clipboard not shared: 4.1 MB is over the 4 MB limit.",
             "a copy just over the limit never reads as the same size as the limit"
         )
         expect(
-            ClipboardRefusalCopy.line(for: .tooLarge(byteCount: 3000, limit: 2048))
+            clipboardLine(for: .tooLarge(byteCount: 3000, limit: 2048))
                 == "Clipboard not shared: 3 KB is over the 2 KB limit.",
             "smaller sizes are named in KB"
         )
         expect(
-            ClipboardRefusalCopy.line(for: .excludedType)
+            clipboardLine(for: .excludedType)
                 == "Clipboard not shared: the app that copied it marked it private, or it is a file.",
             "a marked copy is named for what marked it"
         )
         expect(
-            ClipboardRefusalCopy.line(for: .unsupportedContent)
+            clipboardLine(for: .unsupportedContent)
                 == "Clipboard not shared: only text and images are shared.",
             "an unsupported copy says what is shared"
         )
-        expect(ClipboardRefusalCopy.line(for: .syncDisabled) == nil, "sharing being off is not a notice")
-        expect(ClipboardRefusalCopy.line(for: .sessionNotActive) == nil, "nor is a refusal that only describes the session")
+        expect(clipboardLine(for: .syncDisabled) == nil, "sharing being off is not a notice")
+        expect(clipboardLine(for: .sessionNotActive) == nil, "nor is a refusal that only describes the session")
 
         expect(
             ClientSessionRunner.clipboardRefusal(for: .clipboardRefused(.excludedType)) == .excludedType,
@@ -114,3 +114,9 @@ func testClipboardSharingMenuTests() async {
     }
 }
 #endif
+
+/// The notice's words with its no-break spaces read as the plain spaces a
+/// person sees.
+private func clipboardLine(for refusal: ClipboardRefusal) -> String? {
+    ClipboardRefusalCopy.line(for: refusal).map(unbound)
+}

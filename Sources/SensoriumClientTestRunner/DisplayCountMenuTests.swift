@@ -43,24 +43,24 @@ func testDisplayCountMenuTests() async {
         // quoted rather than translated, the same discipline
         // `ViewerSessionFailureCopy.canvasRefusalLine` already follows.
         expect(
-            DisplayCountRefusalCopy.line(reason: "host-screen-session-active").localizedCaseInsensitiveContains("host screen"),
+            unbound(DisplayCountRefusalCopy.line(reason: "host-screen-session-active")).localizedCaseInsensitiveContains("host screen"),
             "a host-screen session's own refusal says why in words a person reads, not the wire token"
         )
         expect(
-            DisplayCountRefusalCopy.line(reason: "host-screen-session-active", hostLabel: "studio-mini")
-                == "Could not add a second display: studio-mini is showing this machine a host screen, and a "
+            unbound(DisplayCountRefusalCopy.line(reason: "host-screen-session-active", hostLabel: "studio-mini"))
+                == "Could not add another private desktop: studio-mini is showing this machine a host screen, and a "
                     + "host screen allows only one display.",
             "the host-screen refusal names the machine showing the host screen, not just \"this connection\""
         )
         expect(
-            DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit").localizedCaseInsensitiveContains("allow"),
+            unbound(DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit")).localizedCaseInsensitiveContains("allow"),
             "the operator's own cap is explained as the other machine's own limit, not this machine's failure"
         )
         // This banner offers only a dismiss (\u{2715}) -- `ViewerTransientNoticeView`
         // has no second button -- so its remedy must point at the Displays
         // menu itself, never at a "Try again" the banner cannot offer.
         expect(
-            DisplayCountRefusalCopy.line(reason: CanvasRefusalReason.creationInProgress)
+            unbound(DisplayCountRefusalCopy.line(reason: CanvasRefusalReason.creationInProgress))
                 .localizedCaseInsensitiveContains("choose again from the displays menu"),
             "the single-flight creation gate's own refusal points at the Displays menu, the banner's only real remedy"
         )
@@ -70,7 +70,7 @@ func testDisplayCountMenuTests() async {
         // quoted verbatim by the default case below.
         let changeFailed = DisplayCountRefusalCopy.line(reason: "display-count-change-failed")
         expect(
-            changeFailed.localizedCaseInsensitiveContains("choose again from the displays menu"),
+            unbound(changeFailed).localizedCaseInsensitiveContains("choose again from the displays menu"),
             "the host's own setup failure is explained as the other machine's own problem, with the Displays menu as the way to retry"
         )
         expect(
@@ -89,20 +89,20 @@ func testDisplayCountMenuTests() async {
             "and quoted inside a real sentence, not shown bare as if it were already words for a person"
         )
         expect(
-            unknown.contains("second display:"),
-            "the unrecognised-reason notice uses the same colon after \"second display\" as every other one"
+            unknown.contains("another private desktop:"),
+            "the unrecognised-reason notice uses the same colon after \"another private desktop\" as every other one"
         )
+        let heldReason = "a\u{2011}reason\u{2011}this\u{2011}build\u{2011}has\u{2011}never\u{2011}seen"
         expect(
-            unknown == "Could not add a second display: the other machine gave a reason this version of "
-                + "Sensorium does not know: \u{201C}a\u{2011}reason\u{2011}this\u{2011}build\u{2011}has\u{2011}"
-                + "never\u{2011}seen.\u{201D} Update both apps, then try again.",
-            "US punctuation puts the period inside the closing quote, and the notice ends with the one "
-                + "step that can fix a token this build does not know -- got: \(unknown)"
+            unknown == "Could not add another private desktop: the other machine gave a reason this version of "
+                + "Sensorium does not know:\u{00A0}\u{201C}\(heldReason)\u{201D}. Update both apps,\u{00A0}then\u{00A0}try\u{00A0}again.",
+            "the period sits outside the closing quote, the quote and token ride together after the colon, "
+                + "and the notice ends with the one step that can fix a token this build does not know -- got: \(unknown)"
         )
 
         expect(
-            DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit", hostLabel: "mini")
-                == "Could not add a second display: mini allows only one display, and that limit cannot be "
+            unbound(DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit", hostLabel: "mini"))
+                == "Could not add another private desktop: mini allows only one display, and that limit cannot be "
                     + "changed from this machine.",
             "the operator's own machine is named, not called \"the other machine\", when the caller has its label, "
                 + "and the notice says the limit is not this machine's to change, since Sensorium Host has no "
@@ -113,9 +113,29 @@ func testDisplayCountMenuTests() async {
             "and the generic phrase does not linger once a real label is given"
         )
         expect(
-            DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit").contains("the other machine"),
+            unbound(DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit")).contains("the other machine"),
             "leaving the label out still reads as a full sentence, for a caller with none to give"
         )
+        let named = DisplayCountRefusalCopy.line(
+            reason: "display-count-change-failed", hostLabel: "Kestrel Laptop"
+        )
+        expect(
+            named.contains("Kestrel\u{00A0}Laptop") && !named.contains("Kestrel Laptop"),
+            "a machine's name is held whole in the banner, got: \(named)"
+        )
+        for reason in ["host-screen-session-active", "display-count-exceeds-host-limit",
+                       CanvasRefusalReason.creationInProgress, "display-count-change-failed", "unlisted-reason"] {
+            let text = DisplayCountRefusalCopy.line(reason: reason, hostLabel: "Workstation")
+            expect(
+                text.hasPrefix("Could not add another private desktop:") && !text.contains("second display"),
+                "every Displays refusal opens with the same words and never calls a private desktop a display, got: \(text)"
+            )
+            let lastLine = text.split(separator: " ").last.map(String.init) ?? ""
+            expect(
+                lastLine.contains("\u{00A0}") && lastLine.count >= 10,
+                "the last words of the banner are held together, so none is alone on its line, got: \(text)"
+            )
+        }
 
         print("PASS: every named Displays refusal reads as a plain sentence, and an unknown one is quoted rather than invented")
     }

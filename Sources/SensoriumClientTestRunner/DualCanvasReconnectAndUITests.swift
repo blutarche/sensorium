@@ -2283,7 +2283,7 @@ func testDualCanvasReconnectAndUITests() async {
         // key that cannot be read died to stdout with nothing on screen —
         // the same silent death the pairing window replaced, one step
         // earlier.
-        let identityCopy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "the stored key is malformed"))
+        let identityCopy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "this machine\u{2019}s saved key can\u{2019}t be read"))
         // Design SS: no user ever runs a command, so a dead end naming a
         // CLI flag or another app is not a screen this app ships — the
         // screen offers the fix itself, and names its consequence before
@@ -2297,15 +2297,15 @@ func testDualCanvasReconnectAndUITests() async {
             "it offers the replace action, since a fresh identity recovers from an unreadable one"
         )
         expect(
-            identityCopy.replaceConsequence.contains(identityCopy.replaceButtonTitle),
+            unbound(identityCopy.replaceConsequence).contains(identityCopy.replaceButtonTitle),
             "the consequence names the very button the person is about to tap, not a generic warning"
         )
         expect(
-            identityCopy.replaceConsequence.localizedCaseInsensitiveContains("pairing code"),
+            unbound(identityCopy.replaceConsequence).localizedCaseInsensitiveContains("pairing code"),
             "the consequence says plainly, before the tap, that the other machine will ask for a pairing code again"
         )
         expect(
-            identityCopy.detail.localizedCaseInsensitiveContains("the stored key is malformed"),
+            identityCopy.detail.localizedCaseInsensitiveContains("saved key can\u{2019}t be read"),
             "the loader's own reason is carried through rather than replaced with a guess"
         )
         expect(

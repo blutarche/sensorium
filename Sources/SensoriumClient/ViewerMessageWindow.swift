@@ -66,7 +66,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
             string: eyebrow,
             attributes: [
                 .font: ViewerDesign.font(mono: true, size: 12, weight: .medium),
-                .foregroundColor: ViewerDesign.muted2.nsColor,
+                .foregroundColor: ViewerDesign.warn.nsColor,
                 .kern: ViewerDesign.kern(ViewerDesign.Tracking.widest, size: 12)
             ]
         ))
@@ -95,9 +95,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
             if actionIsPrimary {
                 button.layer?.backgroundColor = ViewerDesign.accent.cgColor
             } else {
-                button.layer?.backgroundColor = ViewerDesign.bg4.cgColor
-                button.layer?.borderWidth = 1
-                button.layer?.borderColor = ViewerDesign.line.cgColor
+                Self.outline(button)
             }
             button.attributedTitle = NSAttributedString(
                 string: actionTitle,
@@ -123,9 +121,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
             button.isBordered = false
             button.wantsLayer = true
             button.layer?.cornerRadius = ViewerDesign.Radius.base
-            button.layer?.backgroundColor = ViewerDesign.bg4.cgColor
-            button.layer?.borderWidth = 1
-            button.layer?.borderColor = ViewerDesign.line.cgColor
+            Self.outline(button)
             button.attributedTitle = NSAttributedString(
                 string: secondaryActionTitle,
                 attributes: [
@@ -146,9 +142,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
         dismissButton.wantsLayer = true
         dismissButton.layer?.cornerRadius = ViewerDesign.Radius.base
         if actionButton != nil && actionIsPrimary {
-            dismissButton.layer?.backgroundColor = ViewerDesign.bg4.cgColor
-            dismissButton.layer?.borderWidth = 1
-            dismissButton.layer?.borderColor = ViewerDesign.line.cgColor
+            Self.outline(dismissButton)
         } else {
             dismissButton.layer?.backgroundColor = ViewerDesign.accent.cgColor
         }
@@ -158,7 +152,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
                 .font: ViewerDesign.font(mono: false, size: 13, weight: .medium),
                 // `.ink`, the same off-white a secondary `ViewerActionButton`
                 // uses (see ClientCanvasWindowController.swift): `.muted2`
-                // here read as a disabled label on this button's `.bg4` fill.
+                // here read as a disabled label on an outlined button.
                 .foregroundColor: (actionButton != nil && actionIsPrimary ? ViewerDesign.ink : ViewerDesign.chromeBg).nsColor
             ]
         )
@@ -258,6 +252,15 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
     }
 
     private static let windowWidth: CGFloat = 460
+
+    /// A secondary button is an outline on the window's own surface, the same
+    /// treatment as the secondary buttons in the pairing form; a fill the
+    /// colour of the border would read as a second primary.
+    private static func outline(_ button: NSButton) {
+        button.layer?.backgroundColor = ViewerDesign.chromeBg2.cgColor
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = ViewerDesign.line.cgColor
+    }
 
     private static func label(_ text: String, font: NSFont, color: ViewerColor) -> NSTextField {
         let label = NSTextField(labelWithString: text)

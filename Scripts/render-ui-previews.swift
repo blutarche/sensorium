@@ -1442,15 +1442,15 @@ MainActor.assumeIsolated {
     // fire by accident.
     @MainActor
     func identityFailureContent(for failure: ViewerIdentityFailure) -> NSView {
-        let copy = ViewerStartupFailureCopy.copy(for: failure)
+        let prompt = ViewerStartupFailurePrompt.make(for: ViewerStartupFailureCopy.copy(for: failure))
         let controller = ViewerMessageWindowController(
-            eyebrow: "CANNOT START",
-            headline: copy.headline,
-            detail: copy.detail + "\n\n" + copy.replaceConsequence,
-            actionTitle: copy.retryButtonTitle,
+            eyebrow: prompt.eyebrow,
+            headline: prompt.headline,
+            detail: prompt.detail,
+            actionTitle: prompt.tryAgainTitle,
             actionIsDefault: true,
-            secondaryActionTitle: copy.replaceButtonTitle,
-            dismissTitle: "Quit Sensorium"
+            secondaryActionTitle: prompt.replaceTitle,
+            dismissTitle: prompt.quitTitle
         )
         guard let content = stored("window", of: controller, as: NSWindow.self).contentView else {
             fail("the identity-failure window has no content view")
@@ -1459,11 +1459,11 @@ MainActor.assumeIsolated {
     }
     write(
         render(identityFailureContent(for: .unreadable(
-            reason: "the stored key is malformed"
+            reason: IdentityFailureReason.describe(FileDeviceIdentityStoreError.invalidStoredValue)
         ))),
         named: "viewer-identity-1-key-unreadable.png",
         state: "ViewerMessageWindowController for a key file this app cannot read -- the exact defect report"
-            + " -- offering Try again, then Make a new key, instead of naming a CLI flag; no stream pass, it"
+            + " -- offering Try Again, then Make a New Key, instead of naming a CLI flag; no stream pass, it"
             + " never leaves the viewer's own machine"
     )
 
@@ -1544,7 +1544,9 @@ MainActor.assumeIsolated {
         }
         let status = endedMachine.handle(
             .hostScreenConnectEnded(
-                reasonLine: HostScreenRefusalCopy.line(reason: reason)
+                reasonLine: ViewerSessionFailureCopy.line(
+                    for: .hostScreenRefused(reason: reason), hostLabel: "Workstation"
+                )
             )
         )
         viewerStates.append((
@@ -1567,7 +1569,9 @@ MainActor.assumeIsolated {
         var endedMachine = ViewerSessionStateMachine(hostName: longHostName)
         let status = endedMachine.handle(
             .hostScreenConnectEnded(
-                reasonLine: HostScreenRefusalCopy.line(reason: reason)
+                reasonLine: ViewerSessionFailureCopy.line(
+                    for: .hostScreenRefused(reason: reason), hostLabel: longHostName
+                )
             )
         )
         viewerStates.append((
@@ -1600,7 +1604,9 @@ MainActor.assumeIsolated {
         "viewer-status-16-private-desktop-offered",
         "host screen unavailable with an explicitly offered private desktop",
         privateDesktopOffered.handle(.hostScreenConnectEnded(
-            reasonLine: HostScreenRefusalCopy.line(reason: HostScreenRefusalCopy.noneAvailableReason),
+            reasonLine: ViewerSessionFailureCopy.line(
+                for: .hostScreenRefused(reason: HostScreenRefusalCopy.noneAvailableReason), hostLabel: "Workstation"
+            ),
             offersVirtualDisplay: true
         ))
     ))
@@ -1958,7 +1964,7 @@ MainActor.assumeIsolated {
         (
             "viewer-notice-1-host-screen-active",
             "host-screen-session-active",
-            "a host-screen session's own cap on a second display"
+            "a host-screen session's own cap on adding another private desktop"
         ),
         (
             "viewer-notice-2-exceeds-host-limit",

@@ -225,7 +225,7 @@ public struct ViewerStartupFailurePrompt: Equatable, Sendable {
 
     public static func make(for copy: ViewerStartupFailureCopy) -> ViewerStartupFailurePrompt {
         ViewerStartupFailurePrompt(
-            eyebrow: "CANNOT START",
+            eyebrow: "COULD NOT START",
             headline: copy.headline,
             detail: copy.detail + "\n\n" + copy.replaceConsequence,
             tryAgainTitle: copy.retryButtonTitle,

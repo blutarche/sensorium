@@ -455,7 +455,8 @@ func testViewerUXFixTests() async {
             )
             let wrapped = laidOut(fourLineText)
             let threeLines = laidOut("one\ntwo\nthree")
-            let lineHeight = laidOut("one").neededHeight
+            let lineHeightNotice = laidOut("one")
+            let lineHeight = lineHeightNotice.neededHeight
             expect(
                 wrapped.neededHeight > lineHeight * 3.5,
                 "the unrecognised-reason line is the fixture because it needs four lines at the label's "
@@ -470,6 +471,14 @@ func testViewerUXFixTests() async {
                 wrapped.notice.fittingSize.height > threeLines.notice.fittingSize.height,
                 "a four-line sentence makes the banner taller than a three-line one, got "
                     + "\(wrapped.notice.fittingSize.height) vs \(threeLines.notice.fittingSize.height)"
+            )
+
+            expect(
+                wrapped.notice.fittingSize.width == lineHeightNotice.notice.fittingSize.width
+                    && wrapped.notice.fittingSize.width == threeLines.notice.fittingSize.width,
+                "every notice is one width, so its dismiss control sits at the same x each time, got "
+                    + "\(wrapped.notice.fittingSize.width), \(threeLines.notice.fittingSize.width) and "
+                    + "\(lineHeightNotice.notice.fittingSize.width)"
             )
 
             print("PASS: the transient notice grows with its wrapped sentence instead of cutting off the fourth line")

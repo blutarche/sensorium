@@ -9,7 +9,7 @@ public enum ClipboardRefusalCopy {
     /// is the person's own choice, and a refusal for want of a session never
     /// reaches a live session window.
     public static func line(for refusal: ClipboardRefusal) -> String? {
-        switch refusal {
+        let text: String? = switch refusal {
         case let .tooLarge(byteCount, limit):
             "Clipboard not shared: \(size(byteCount, roundingUp: true)) is over the "
                 + "\(size(limit, roundingUp: false)) limit."
@@ -20,6 +20,7 @@ public enum ClipboardRefusalCopy {
         case .syncDisabled, .sessionNotActive:
             nil
         }
+        return text.map(ViewerCopyWrapping.keepingTailTogether)
     }
 
     /// The copy's size rounds up and the limit's rounds down, so a copy just

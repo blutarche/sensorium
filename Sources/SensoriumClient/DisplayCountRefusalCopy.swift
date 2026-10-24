@@ -9,32 +9,38 @@ import SensoriumCore
 /// primary canvas's own refusals -- inventing a cause for a token this
 /// build has never seen would be a guess dressed as an explanation.
 public enum DisplayCountRefusalCopy {
+    /// What a line calls the host when its caller has no saved host to name.
+    public static let genericHostLabel = "the other machine"
+
+    private static let displaysMenuName = ViewerCopyWrapping.control("the Displays menu")
+    private static let leadIn = "Could not add another private desktop:"
+
     /// `hostLabel` defaults to the generic phrase for a caller with no saved
-    /// host to name.
-    public static func line(reason: String, hostLabel: String = "the other machine") -> String {
+    /// host to name. The line comes back wrapped for a narrow banner: the
+    /// host's name and the menu's name are held whole, and the last words
+    /// stay together.
+    public static func line(reason: String, hostLabel: String = genericHostLabel) -> String {
+        let host = hostLabel == genericHostLabel ? hostLabel : ViewerCopyWrapping.name(hostLabel)
+        let sentence: String
         switch reason {
         case "host-screen-session-active":
-            return "Could not add a second display: \(hostLabel) is showing this machine a host screen, and a "
+            sentence = "\(leadIn) \(host) is showing this machine a host screen, and a "
                 + "host screen allows only one display."
         case "display-count-exceeds-host-limit":
-            return "Could not add a second display: \(hostLabel) allows only one display, and that limit "
+            sentence = "\(leadIn) \(host) allows only one display, and that limit "
                 + "cannot be changed from this machine."
         case CanvasRefusalReason.creationInProgress:
-            return "Could not add a second display: \(hostLabel) is still setting one up for another "
-                + "request. Choose again from the Displays menu in a moment."
+            sentence = "\(leadIn) \(host) is still setting one up for another "
+                + "request. Choose again from \(displaysMenuName) in a moment."
         case "display-count-change-failed":
-            return "Could not add a second display: \(hostLabel) could not set it up right now. Choose "
-                + "again from the Displays menu."
+            sentence = "\(leadIn) \(host) could not set it up right now. Choose "
+                + "again from \(displaysMenuName)."
         default:
-            return "Could not add a second display: \(hostLabel) gave a reason this version of Sensorium "
-                + "does not know: \u{201C}\(nonBreaking(reason)).\u{201D} Update both apps, then try again."
+            // The closing quote and the stop after it ride with the token, so
+            // neither can begin a line.
+            sentence = "\(leadIn) \(host) gave a reason this version of Sensorium "
+                + "does not know:\u{00A0}\(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
         }
-    }
-
-    /// A quoted, unrecognised wire token wraps like any other text; without
-    /// this, the wrap can land inside the token's own hyphens and split the
-    /// closing quote mark onto the line after it.
-    private static func nonBreaking(_ token: String) -> String {
-        token.replacingOccurrences(of: "-", with: "\u{2011}")
+        return ViewerCopyWrapping.keepingTailTogether(sentence)
     }
 }
