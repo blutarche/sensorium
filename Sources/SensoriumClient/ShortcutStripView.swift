@@ -431,7 +431,7 @@ public final class ShortcutStripView: NSView {
         pill.translatesAutoresizingMaskIntoConstraints = false
         pill.wantsLayer = true
         pill.layer?.cornerRadius = clusterHeight / 2
-        pill.layer?.backgroundColor = ViewerDesign.chromeBg.nsColor.withAlphaComponent(0.55).cgColor
+        pill.layer?.backgroundColor = ViewerDesign.bg4.cgColor
         let row = NSStackView(views: buttons)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.orientation = .horizontal
@@ -579,9 +579,14 @@ private final class ShortcutStripIconButton: NSButton {
     static let size: CGFloat = ShortcutStripView.clusterHeight
     private static let iconPointSize: CGFloat = ViewerChromeMetrics.Strip.actionIconSize
 
+    /// How far down, in points, a symbol has to move for its ink to sit on the
+    /// button's centre. The circled cross is drawn high in its own frame.
+    private static let opticalOffsets: [String: CGFloat] = ["xmark.circle": 1]
+
     var onPress: (() -> Void)?
 
     private let icon = NSImageView()
+    private var iconCentreY: NSLayoutConstraint!
     private var trackingArea: NSTrackingArea?
     private var isHovering = false {
         didSet { updateBackground() }
@@ -609,13 +614,14 @@ private final class ShortcutStripIconButton: NSButton {
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.contentTintColor = ViewerDesign.ink.nsColor
         addSubview(icon)
+        iconCentreY = icon.centerYAnchor.constraint(equalTo: centerYAnchor)
         setSymbol(symbolName)
 
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: Self.size),
             heightAnchor.constraint(equalToConstant: Self.size),
             icon.centerXAnchor.constraint(equalTo: centerXAnchor),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            iconCentreY,
             icon.widthAnchor.constraint(equalToConstant: Self.iconPointSize),
             icon.heightAnchor.constraint(equalToConstant: Self.iconPointSize)
         ])
@@ -632,6 +638,7 @@ private final class ShortcutStripIconButton: NSButton {
         let configuration = NSImage.SymbolConfiguration(pointSize: Self.iconPointSize, weight: .medium)
         icon.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
+        iconCentreY.constant = Self.opticalOffsets[symbolName] ?? 0
     }
 
     override var acceptsFirstResponder: Bool { false }

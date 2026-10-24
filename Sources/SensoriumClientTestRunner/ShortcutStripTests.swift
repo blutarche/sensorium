@@ -893,6 +893,110 @@ func testShortcutStripConfirmationOrderAndDefaultTests() {
     print("PASS: the strip's question puts Cancel first and styles the action that goes ahead as the default")
 }
 
+/// Each icon's ink sits on its button's centre. The symbols are laid out in
+/// their own frames, which leave some of them visibly off the row's line: the
+/// circled cross used to ride two device pixels high.
+@MainActor
+func testShortcutStripIconsSitOnTheirButtonCentreTests() {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
+    container.addSubview(strip)
+    NSLayoutConstraint.activate([
+        strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        strip.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        strip.topAnchor.constraint(equalTo: container.topAnchor)
+    ])
+    strip.phaseChanged(.live)
+    strip.toggleRequested()
+    container.layoutSubtreeIfNeeded()
+
+    let buttons = collectButtonsWithToolTipPrefix("")(strip).filter { $0.subviews.contains { $0 is NSImageView } }
+    expect(buttons.count == ShortcutStripAction.allCases.count + 1, "every action and the pin were found")
+    // Device pixels at 2x. Three quarters of a point is the most any symbol's
+    // own optical balance is allowed to move it from the middle of its button.
+    let bound = 1.5
+    for button in buttons {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(button.bounds.width * 2), pixelsHigh: Int(button.bounds.height * 2),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        rep.size = button.bounds.size
+        button.cacheDisplay(in: button.bounds, to: rep)
+        var minX = Int.max, maxX = -1, minY = Int.max, maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.4 {
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        expect(maxX >= 0, "\(button.toolTip ?? "a strip icon") draws something")
+        let offsetX = Double(minX + maxX + 1) / 2 - Double(rep.pixelsWide) / 2
+        let offsetY = Double(minY + maxY + 1) / 2 - Double(rep.pixelsHigh) / 2
+        expect(
+            abs(offsetX) <= bound && abs(offsetY) <= bound,
+            "\(button.toolTip ?? "a strip icon")'s ink is within \(bound) px of its button's centre, got (\(offsetX), \(offsetY))"
+        )
+    }
+    print("PASS: every strip icon sits within three quarters of a point of the middle of its button")
+}
+
+/// The pill behind each group of buttons has to show against the bar it sits
+/// on: a group that cannot be seen is a row of unrelated icons.
+@MainActor
+func testShortcutStripClusterPillsContrastWithTheBarTests() {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
+    container.addSubview(strip)
+    NSLayoutConstraint.activate([
+        strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        strip.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        strip.topAnchor.constraint(equalTo: container.topAnchor)
+    ])
+    strip.phaseChanged(.live)
+    strip.toggleRequested()
+    container.layoutSubtreeIfNeeded()
+
+    func pills(in view: NSView) -> [NSView] {
+        var found = view.subviews.filter { !($0 is NSControl) && $0.layer?.cornerRadius == 14 }
+        for subview in view.subviews { found += pills(in: subview) }
+        return found
+    }
+    func luminance(_ color: NSColor) -> Double {
+        func linear(_ value: CGFloat) -> Double {
+            let v = Double(value)
+            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        guard let rgb = color.usingColorSpace(.sRGB) else { return 0 }
+        return 0.2126 * linear(rgb.redComponent) + 0.7152 * linear(rgb.greenComponent) + 0.0722 * linear(rgb.blueComponent)
+    }
+    // A colour as it lands on `base`, which for the bar is the black of a
+    // dark picture: the least the bar can show through.
+    func opaque(_ cgColor: CGColor?, over base: NSColor = .black) -> NSColor {
+        guard let cgColor, let color = NSColor(cgColor: cgColor)?.usingColorSpace(.sRGB),
+              let under = base.usingColorSpace(.sRGB) else { return base }
+        let alpha = color.alphaComponent
+        return NSColor(
+            srgbRed: color.redComponent * alpha + under.redComponent * (1 - alpha),
+            green: color.greenComponent * alpha + under.greenComponent * (1 - alpha),
+            blue: color.blueComponent * alpha + under.blueComponent * (1 - alpha),
+            alpha: 1
+        )
+    }
+
+    let found = pills(in: strip)
+    expect(found.count == 5, "four action groups and the pin each sit in a pill, got \(found.count)")
+    for pill in found {
+        var bar = pill.superview
+        while let candidate = bar, candidate.layer?.backgroundColor == nil { bar = candidate.superview }
+        let barColour = opaque(bar?.layer?.backgroundColor)
+        let pillColour = opaque(pill.layer?.backgroundColor, over: barColour)
+        let ratio = (max(luminance(pillColour), luminance(barColour)) + 0.05)
+            / (min(luminance(pillColour), luminance(barColour)) + 0.05)
+        expect(ratio >= 1.2, "a group's pill is told apart from the bar it sits on (contrast \(ratio))")
+    }
+    print("PASS: each group's pill shows against the bar")
+}
+
 @MainActor
 private func collectButtonsWithToolTipPrefix(_ prefix: String) -> (NSView) -> [NSButton] {
     func collect(_ view: NSView) -> [NSButton] {

@@ -23,6 +23,12 @@ func testShortcutStripGlyphSetTests() {
     }
     expect(circles.count == 1 && diagonals.count == 2 && quit.count == 3, "Quit App is a circle crossed by two diagonals")
 
+    expect(ShortcutStripAction.lockScreen.symbolName == "lock", "Lock Screen is the outlined padlock, not the solid one")
+    expect(
+        !ShortcutStripAction.lockScreen.glyph.shapes.contains(where: \.isFilled),
+        "and Linux draws its body as an outline too"
+    )
+
     let outline = ShortcutStripGlyph.pin(filled: false).shapes
     expect(!outline.contains(where: \.isFilled), "the unpinned pin is an outline")
     expect(ShortcutStripGlyph.pin(filled: true).shapes.contains(where: \.isFilled), "the pinned pin is filled")

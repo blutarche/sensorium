@@ -213,9 +213,9 @@ extension ShortcutStripAction {
                 line(Point(10.33, 9.68), Point(12, 11.35), Point(10.33, 13.02))
             ])
         case .lockScreen:
-            return ShortcutStripGlyph(lineWidth: 1.75, shapes: [
-                .arch(center: Point(8.85, 5.4), radius: 3.95, legLength: 1.5),
-                block(2.45, 6.9, 12.7, 10.5, radius: 2.6)
+            return ShortcutStripGlyph(lineWidth: 1.7, shapes: [
+                .arch(center: Point(8.85, 5.45), radius: 3.95, legLength: 1.5),
+                frame(3.3, 7.75, 11.0, 8.8, radius: 1.75)
             ])
         case .quitApp:
             return ShortcutStripGlyph(lineWidth: 1.35, shapes: [

@@ -62,7 +62,7 @@ public enum ShortcutStripAction: CaseIterable, Equatable, Sendable {
         case .spotlight: "magnifyingglass"
         case .launchpad: "square.grid.3x3.fill"
         case .switchApp: "arrow.left.arrow.right.square"
-        case .lockScreen: "lock.fill"
+        case .lockScreen: "lock"
         case .quitApp: "xmark.circle"
         }
     }
