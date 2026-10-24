@@ -19,7 +19,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/pairing-still.png">
-    <img src="docs/media/pairing.gif" width="880" alt="Pairing, one machine at a time. In Sensorium Host, Show pairing code reveals six digits. In Sensorium, Add a Machine lists the tailnet, the host is picked, the code is typed, and Pair is clicked. The session window then shows the host's screen, with an editor and a terminal, and typing in it runs a test on the host. A badge on the host names the connected machine, with a Stop button. It ends on the Sensorium logo above the live session window.">
+    <img src="docs/media/pairing.gif" width="880" alt="Pairing, one machine at a time. In Sensorium Host, Show Pairing Code reveals six digits. In Sensorium, Add a Machine lists the tailnet, the host is picked, the code is typed, and Pair is clicked. The session window then shows the host's screen, with an editor and a terminal, and typing in it runs a test on the host. A badge on the host names the connected machine, with a Stop button. It ends on the Sensorium logo above the live session window.">
   </picture>
 </p>
 

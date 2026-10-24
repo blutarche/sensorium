@@ -327,7 +327,7 @@ let windowScale: CGFloat = 1.5
 let labelBaseline: CGFloat = 1080
 
 let captions = [
-    "In Sensorium Host, click Show pairing code.",
+    "In Sensorium Host, click Show Pairing Code.",
     "Sensorium Host shows a six-digit code.",
     "In Sensorium, click Add a Machine and pick the host.",
     "Type the code from the host: 418 297",
@@ -1042,9 +1042,9 @@ let pickerRect = restRect(viewerPicker)
 let codeRect = restRect(viewerCode)
 
 let showCodeTip = scenePoint(hostReadyRect, CGPoint(x: 400, y: 276))
-let addMachineTip = scenePoint(machinesRect, CGPoint(x: 190, y: 230))
+let addMachineTip = scenePoint(machinesRect, CGPoint(x: 190, y: 256))
 let workstationTip = scenePoint(pickerRect, CGPoint(x: 330, y: 290))
-let pairTip = scenePoint(codeRect, CGPoint(x: 160, y: 460))
+let pairTip = scenePoint(codeRect, CGPoint(x: 290, y: 454))
 
 func approach(_ tip: CGPoint) -> CGPoint { CGPoint(x: tip.x + 180, y: tip.y + 120) }
 
@@ -1335,7 +1335,7 @@ func writeAtTheHost(to url: URL) {
             // paired-machine list above.
             Placement(crop(
                 render("host-window-12-last-session-clean-stop"),
-                CGRect(x: 32, y: 1260, width: 656, height: 210),
+                CGRect(x: 32, y: 906, width: 656, height: 206),
                 "the host window"
             )),
             true

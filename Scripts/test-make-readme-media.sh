@@ -34,7 +34,7 @@ grep -F 'docs/media' "$GENERATOR" >/dev/null || fail 'the default output directo
 while IFS= read -r caption; do
   grep -F -- "$caption" "$GENERATOR" >/dev/null || fail "the generator is missing the caption: $caption"
 done <<'CAPTIONS'
-In Sensorium Host, click Show pairing code.
+In Sensorium Host, click Show Pairing Code.
 Sensorium Host shows a six-digit code.
 In Sensorium, click Add a Machine and pick the host.
 Type the code from the host: 418 297
@@ -54,10 +54,10 @@ mkdir -p "$WORK/in" "$WORK/out" "$WORK/out-missing"
 
 # name width height
 cat > "$WORK/sizes.txt" <<'SIZES'
-viewer-machines-1-empty 920 304
-host-window-3-ready-no-machines-paired 720 870
-host-window-4-pairing-code-shown 720 1130
-viewer-add-1-picker 920 850
+viewer-machines-1-empty 920 336
+host-window-3-ready-no-machines-paired 720 990
+host-window-4-pairing-code-shown 720 1250
+viewer-add-1-picker 920 856
 viewer-add-2-code 920 534
 viewer-add-2b-code-typed-1 920 534
 viewer-add-2b-code-typed-2 920 534
@@ -67,8 +67,8 @@ viewer-add-2b-code-typed-5 920 534
 viewer-add-2b-code-typed-6 920 534
 viewer-shortcuts-1b-pinned 1920 1200
 host-screen-badge-1-expanded 604 180
-host-screen-presence-prompt-1-short 720 482
-host-window-12-last-session-clean-stop 720 1498
+host-screen-presence-prompt-1-short 720 514
+host-window-12-last-session-clean-stop 720 1594
 SIZES
 
 python3 -I - "$WORK" <<'PY'
