@@ -316,13 +316,12 @@ func runLauncherDesignAndOperatorTests() async {
                 CanvasLauncherPresentation.catalogStatus(count: 105, showing: 0).text == "0 of 105",
                 "a filter matching nothing still counts against the catalog it was filtered from"
             )
-            // The empty-catalog case leaves the status line blank: the empty
-            // state below it already says the same thing in its own subtext,
-            // and a status line repeating it read as the host stuttering.
+            // An empty catalog is counted like any other, so the panel's foot
+            // is laid out the same whether the list is empty or not.
             expect(
-                CanvasLauncherPresentation.catalogStatus(count: 0, showing: 0).text.isEmpty
-                    && CanvasLauncherPresentation.catalogStatus(count: 0).text.isEmpty,
-                "a host that discovered nothing leaves the status line to the empty state, rather than repeating it"
+                CanvasLauncherPresentation.catalogStatus(count: 0, showing: 0).text == "0 applications"
+                    && CanvasLauncherPresentation.catalogStatus(count: 0).text == "0 applications",
+                "a host that discovered nothing still reports its count, so the foot matches the no-match state's"
             )
             expect(
                 CanvasLauncherPresentation.emptyState(catalogCount: 0, hostName: "Kestrel Studio")
@@ -851,7 +850,7 @@ func runLauncherDesignAndOperatorTests() async {
             expect(
                 expiredPairing.headline == "Waiting for a machine to connect",
                 "an expired code leaves the status line unchanged -- no machine is connected either way -- and its own "
-                    + "section falls back to a Show pairing code button instead of a second wording here"
+                    + "section falls back to a Show Pairing Code button instead of a second wording here"
             )
 
             let peerName = "Kestrel Laptop Pro"
@@ -896,9 +895,16 @@ func runLauncherDesignAndOperatorTests() async {
                 "the alert itself still carries the whole sentence, even though the panel no longer draws it as a second card -- got: \(missingCapture.alerts.first?.detail ?? "nil")"
             )
             let missingCaptureTexts = CanvasHostTestHooks.menuBarPanelTexts(missingCapture)
+            // The panel draws these with its break points tidied (non-breaking
+            // spaces and hyphens); the words are what this asserts.
+            let missingCaptureWords = missingCaptureTexts.map {
+                $0.string
+                    .replacingOccurrences(of: HostTextFlow.noBreakSpace, with: " ")
+                    .replacingOccurrences(of: HostTextFlow.nonBreakingHyphen, with: "-")
+            }
             expect(
-                missingCaptureTexts.map(\.string) == ["SCREEN RECORDING NEEDED", "Connected to Kestrel Laptop Pro", missingCapture.detail],
-                "one block: the gold SCREEN RECORDING NEEDED eyebrow and headline, then the Screen Recording sentence -- no second eyebrow beneath it -- got: \(missingCaptureTexts.map(\.string))"
+                missingCaptureWords == ["SCREEN RECORDING NEEDED", "Connected to Kestrel Laptop Pro", missingCapture.detail],
+                "one block: the gold SCREEN RECORDING NEEDED eyebrow and headline, then the Screen Recording sentence -- no second eyebrow beneath it -- got: \(missingCaptureWords)"
             )
             let missingCaptureEyebrowColor = missingCaptureTexts[0].attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
             expect(

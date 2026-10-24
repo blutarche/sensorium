@@ -131,14 +131,11 @@ public enum CanvasLauncherPresentation {
     /// whole catalog printed under a list showing one row reads as a
     /// contradiction, so a filtered list is counted by what it shows.
     ///
-    /// An empty catalog leaves this blank: `emptyState(catalogCount: 0)`'s
-    /// subtext already says the host has nothing installed, and a status line
-    /// under it saying the same thing again reads as a stutter.
+    /// An empty catalog is counted too, so the panel's foot is laid out the
+    /// same whether the list is empty or not. The count reports; the empty
+    /// state's heading and subtext say what to do.
     public static func catalogStatus(count: Int, showing: Int? = nil) -> CanvasLauncherStatus {
-        guard count > 0 else {
-            return CanvasLauncherStatus(text: "", severity: .neutral)
-        }
-        if let showing, showing != count {
+        if count > 0, let showing, showing != count {
             return CanvasLauncherStatus(text: "\(showing) of \(count)", severity: .neutral)
         }
         let text = count == 1 ? "1 application" : "\(count) applications"
@@ -565,7 +562,7 @@ final class CanvasLauncherView: NSView, NSTableViewDataSource, NSTableViewDelega
     }
 
     private func show(_ status: CanvasLauncherStatus) {
-        statusLabel.stringValue = status.text
+        statusLabel.stringValue = HostTextFlow.flow(status.text, names: [hostName])
         statusLabel.textColor = status.severity.color.nsColor
         // A longer sentence is a taller label, and the hint below it moves.
         layoutColumn()
@@ -807,7 +804,7 @@ private final class LauncherEmptyStateView: NSView {
 
     func apply(_ state: CanvasLauncherEmptyState) {
         heading.stringValue = state.heading
-        subtext.stringValue = state.subtext
+        subtext.stringValue = HostTextFlow.flow(state.subtext)
         position()
     }
 

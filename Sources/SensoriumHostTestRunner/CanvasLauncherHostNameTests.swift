@@ -15,13 +15,26 @@ func runCanvasLauncherHostNameTests() async {
         hostName: hostName
     )
 
+    // The drawn text keeps a name whole with non-breaking characters.
+    func plain(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{00A0}", with: " ").replacingOccurrences(of: "\u{2011}", with: "-")
+    }
+
     expect(
-        texts.emptyStateSubtext.contains(hostName),
+        plain(texts.emptyStateSubtext).contains(hostName),
         "the empty-catalog subtext names the machine from the view's own hostName -- got: \(texts.emptyStateSubtext)"
     )
     expect(
-        texts.launchFailedStatus.contains(hostName),
+        plain(texts.launchFailedStatus).contains(hostName),
         "a failed launch's status names the machine from the view's own hostName -- got: \(texts.launchFailedStatus)"
+    )
+    expect(
+        texts.launchFailedStatus.hasSuffix("installed\u{00A0}there."),
+        "a failed launch's status never leaves its last word alone on a line -- got: \(texts.launchFailedStatus)"
+    )
+    expect(
+        texts.emptyStateSubtext.hasSuffix("and\u{00A0}reconnect."),
+        "the empty-catalog subtext never leaves its last word alone on a line -- got: \(texts.emptyStateSubtext)"
     )
 
     print("PASS: the launcher's empty-catalog subtext and its launch-failed status both name the machine from one stored hostName")
