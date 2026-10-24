@@ -8,7 +8,7 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
-## [0.5.7] - 2026-10-24
+## [0.5.8] - 2026-10-24
 
 ### Changed
 
@@ -21,6 +21,7 @@ once it reaches 1.0.
   itself, which saves about 2 ms per frame on a full-size display. The
   picture's colours are unchanged.
 - The host window has clearer status text, spacing and contrast.
+- Linux session menus have more space between their titles.
 
 ### Fixed
 
@@ -28,6 +29,8 @@ once it reaches 1.0.
   keeping every row and control reachable.
 - Host-screen recovery controls offer actions the connected host supports
   and retry the same screen.
+- About Sensorium shows the packaged version on Linux.
+- The macOS viewer fills the available screen when maximized.
 
 ## [0.5.6] - 2026-10-23
 
@@ -609,7 +612,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
-[0.5.7]: https://github.com/blutarche/sensorium/releases/tag/v0.5.7
+[0.5.8]: https://github.com/blutarche/sensorium/releases/tag/v0.5.8
 [0.5.6]: https://github.com/blutarche/sensorium/releases/tag/v0.5.6
 [0.5.5]: https://github.com/blutarche/sensorium/releases/tag/v0.5.5
 [0.5.4]: https://github.com/blutarche/sensorium/releases/tag/v0.5.4
