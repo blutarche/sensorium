@@ -124,7 +124,7 @@ func testStartTargetTests() {
 
     do {
         // The Screen menu's "Start with" submenu: always Host screen when
-        // offered and Virtual display, then one row per host screen most
+        // offered and Private Desktop, then one row per host screen most
         // recently offered, checking whichever is saved.
         let menu = ScreenMenuPlan.startWithMenu(
             preference: .hostScreen(displayIdentity: "lounge-display-id", label: "Lounge"),
@@ -133,7 +133,7 @@ func testStartTargetTests() {
         )
         expect(menu.title == "Start with", "the submenu is named what a person is choosing")
         expect(
-            menu.items.map(\.title) == ["Host Screen When Offered", "Virtual Display", "Office", "Lounge"],
+            menu.items.map(\.title) == ["Host Screen When Offered", "Private Desktop", "Office", "Lounge"],
             "the two fixed rows come first, then every offered screen by its own label -- got \(menu.items.map(\.title))"
         )
         expect(
@@ -152,7 +152,7 @@ func testStartTargetTests() {
         )
         expect(menu.items.allSatisfy(\.isEnabled), "every row stays enabled while a host screen is live")
         expect(
-            menu.items.map(\.title) == ["Host Screen When Offered", "Virtual Display", "Office"],
+            menu.items.map(\.title) == ["Host Screen When Offered", "Private Desktop", "Office"],
             "but the rows themselves are unchanged"
         )
         expect(menu.items[0].isSelected, "the default is the row checked when it is the saved preference")

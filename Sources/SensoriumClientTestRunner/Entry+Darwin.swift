@@ -65,6 +65,7 @@ func runDarwinClientTests() async {
     await testCanvasSurfaceInputOrderTests()
     await testShortcutStripSendsWholeChordsTests()
     await testYourMachinesWindowTests()
+    testViewerMenusNameThePrivateDesktopTests()
     testYourMachinesWindowMoreButtonAccessibilityLabelTests()
     testYourMachinesRowDetailLinesShareOneLeftEdgeTests()
     testYourMachinesMoreButtonEllipsisIsCentredTests()

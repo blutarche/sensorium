@@ -149,7 +149,7 @@ func testOfferedHostScreenStartTests() async {
         let menu = ScreenMenuPlan.items(displays: [builtin], selectedToken: builtin.opaqueToken, canvasAvailable: false)
         expect(
             menu.map(\.title) == ["Built-in Display"],
-            "the Screen menu hides Virtual Display when the host offers none, got \(menu.map(\.title))"
+            "the Screen menu hides Private Desktop when the host offers none, got \(menu.map(\.title))"
         )
         let startWith = ScreenMenuPlan.startWithMenu(
             preference: .hostScreenWhenOffered, offeredHostScreens: [builtin],

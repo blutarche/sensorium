@@ -26,15 +26,15 @@ private final class AttemptCounter: @unchecked Sendable {
 func testHostScreenSessionFlowTests() async {
     do {
         // "no list means no Host screen items": nothing offered
-        // leaves Virtual Display as the only row, selected.
+        // leaves Private Desktop as the only row, selected.
         let state = ScreenMenuPlan.items(displays: [], selectedToken: nil)
 
         expect(
-            state == [ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: true)],
-            "with no hostScreenList ever received, the Screen menu offers only Virtual display"
+            state == [ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: true)],
+            "with no hostScreenList ever received, the Screen menu offers only Private Desktop"
         )
 
-        print("PASS: no host-screen offer means no Host screen row, only Virtual display")
+        print("PASS: no host-screen offer means no Host screen row, only Private Desktop")
     }
 
     do {
@@ -55,7 +55,7 @@ func testHostScreenSessionFlowTests() async {
 
         expect(
             items == [
-                ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: false),
+                ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: false),
                 ScreenMenuItem(token: Data([0x01]), title: "Built-in Display", isSelected: false),
                 ScreenMenuItem(token: Data([0x02]), title: "External Display", isSelected: true)
             ],
@@ -387,12 +387,12 @@ func testHostScreenSessionFlowTests() async {
 
         expect(
             menu == [
-                ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: false),
+                ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: false),
                 ScreenMenuItem(token: Data([0x01]), title: "Built-in Display", isSelected: false),
                 ScreenMenuItem(token: Data([0x02]), title: "LS27A800U", isSelected: true)
             ],
             "a direct host-screen connect's own offer must list every offered screen, with the streaming one "
-                + "selected and Virtual Display unselected -- got \(menu)"
+                + "selected and Private Desktop unselected -- got \(menu)"
         )
 
         print("PASS: a direct host-screen connect carries its own offer, so the Screen menu lists every screen "
@@ -691,7 +691,7 @@ func testHostScreenSessionFlowTests() async {
             "the far corner of a 2560x1440 real display maps to (2560, 1440), not the 1920x1200 preset -- got \(hostScreenCorner)"
         )
 
-        // Returning to Virtual display restores the canvas preset --
+        // Returning to Private Desktop restores the canvas preset --
         // design's "a session streams exactly one of two targets."
         await viewport.updateMapper(geometry: .sessionCanvasDefault)
         await viewport.setViewportSize(width: 1920, height: 1200)
@@ -701,7 +701,7 @@ func testHostScreenSessionFlowTests() async {
             "returning to the virtual display maps the far corner back onto the 1920x1200 preset -- got \(canvasCorner)"
         )
 
-        print("PASS: a host-screen connect's own geometry maps pointer input, and returning to Virtual display restores the preset")
+        print("PASS: a host-screen connect's own geometry maps pointer input, and returning to Private Desktop restores the preset")
     }
 
     do {

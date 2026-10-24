@@ -491,7 +491,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             // action, reached from whichever ending is on screen.
             g_menu_append(
                 sensorium_g_menu(menu),
-                "Connect with a Virtual Display",
+                "Connect with a Private Desktop",
                 "machine.connect-virtual-display(\(index))"
             )
         }

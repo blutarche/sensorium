@@ -17,7 +17,7 @@ private func testMenus() -> [ViewerMenu] {
             ViewerMenuItem(title: "Copy", command: .copy, keyEquivalent: "c", modifiers: [.command])
         ]),
         ViewerMenu(title: "Screen", items: [
-            ViewerMenuItem(title: "Virtual Display", command: .selectRealScreen(nil)),
+            ViewerMenuItem(title: "Private Desktop", command: .selectRealScreen(nil)),
             ViewerMenuItem(title: "Disabled", command: .selectRealScreen(Data([9])), isEnabled: false),
             ViewerMenuItem(title: "Studio Display", command: .selectRealScreen(Data([1])), isSelected: true),
             .separator,

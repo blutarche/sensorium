@@ -22,7 +22,7 @@ func menuBarFixtureState() -> ViewerMenuBarState {
         ]),
         screen: ScreenMenuState(
             items: [
-                ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: false),
+                ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: false),
                 ScreenMenuItem(token: studio, title: "Studio Display", isSelected: true),
                 ScreenMenuItem(token: side, title: "Side Display", isSelected: false)
             ],
@@ -32,7 +32,7 @@ func menuBarFixtureState() -> ViewerMenuBarState {
             ]),
             startWith: StartWithMenuState(title: "Start With", items: [
                 StartWithMenuItem(target: .hostScreenWhenOffered, title: "Last Used", isSelected: true, isEnabled: true),
-                StartWithMenuItem(target: .virtualDisplay, title: "Virtual Display", isSelected: false, isEnabled: false)
+                StartWithMenuItem(target: .virtualDisplay, title: "Private Desktop", isSelected: false, isEnabled: false)
             ])
         ),
         isPointerCaptured: true,

@@ -114,12 +114,12 @@ public struct ScreenMenuState: Equatable, Sendable {
 
 public enum ScreenMenuPlan {
     /// docs/ux-spec.md's Screen menu: each host screen the host has allowed
-    /// this machine to see, and Virtual display. `displays` is empty for
+    /// this machine to see, and Private Desktop. `displays` is empty for
     /// every machine that has never received a `hostScreenList` offer, in
-    /// which case Virtual display is the only row -- there is nothing else
+    /// which case Private Desktop is the only row -- there is nothing else
     /// to offer, not a permission this menu can guess at. `canvasAvailable`
     /// false, when the host said it opens no session canvas, drops the
-    /// Virtual display row.
+    /// Private Desktop row.
     public static func items(
         displays: [HostScreenListEntry],
         selectedToken: Data?,
@@ -127,7 +127,7 @@ public enum ScreenMenuPlan {
     ) -> [ScreenMenuItem] {
         var result: [ScreenMenuItem] = []
         if canvasAvailable {
-            result.append(ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: selectedToken == nil))
+            result.append(ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: selectedToken == nil))
         }
         for display in displays {
             result.append(ScreenMenuItem(
@@ -172,7 +172,7 @@ public enum ScreenMenuPlan {
     }
 
     /// The "Start with" submenu's own rows: "Host screen when offered" and
-    /// "Virtual display" always, then one row per host screen this machine
+    /// "Private Desktop" always, then one row per host screen this machine
     /// most recently offered -- the same list the Screen menu's own items
     /// already read, so a display can be picked as a starting point before
     /// it has ever been offered to this exact session. Every row stays
@@ -195,7 +195,7 @@ public enum ScreenMenuPlan {
         if canvasAvailable {
             items.append(StartWithMenuItem(
                 target: .virtualDisplay,
-                title: "Virtual Display",
+                title: "Private Desktop",
                 isSelected: preference == .virtualDisplay,
                 isEnabled: true
             ))

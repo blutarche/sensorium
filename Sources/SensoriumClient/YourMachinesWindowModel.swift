@@ -41,7 +41,7 @@ public struct YourMachinesRow: Equatable, Sendable {
     /// trying a host screen this saved machine's own "Start with"
     /// preference named -- nothing here is automatic beyond that:
     /// the row's own "\u{2026}" menu offers the one explicit way out,
-    /// "Connect with a virtual display", the same title and action
+    /// "Connect with a Private Desktop", the same action
     /// `ViewerSessionAction.connectAsVirtualDisplay` already carries for
     /// the live session panel's own button. `false` for every other
     /// failure, and reset to `false` the moment a fresh attempt starts.
@@ -155,7 +155,7 @@ public struct YourMachinesWindowModel: Equatable, Sendable {
     public static let renameTitle = "Rename\u{2026}"
     public static let renameHeading = "Rename this machine"
     public static let renameHint = ViewerCopyWrapping.keepingTailTogether(
-        "The name is kept on this machine only. Leave it empty to use the original."
+        "Only this machine uses this name. Leave it empty to use the name it had when it was paired."
     )
     public static let renameConfirmTitle = "Rename"
     public static let renameCancelTitle = "Cancel"

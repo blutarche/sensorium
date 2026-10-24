@@ -78,7 +78,7 @@ func testHostScreenModeMenuTests() async {
             modes: ScreenMenuPlan.modeMenu(modes: [], currentModeID: nil, isHostScreenSessionLive: false)
         )
         expect(
-            state.items == [ScreenMenuItem(token: nil, title: "Virtual Display", isSelected: true)],
+            state.items == [ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: true)],
             "adding a Resolution submenu changes none of the rows that were already there"
         )
         print("PASS: the Screen menu's own rows are unchanged by the Resolution submenu beside them")

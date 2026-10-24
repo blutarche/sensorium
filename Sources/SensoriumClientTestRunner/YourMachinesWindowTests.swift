@@ -1748,4 +1748,48 @@ func testViewerPairingFieldTextTests() {
 
     print("PASS: the pairing fields' placeholders clear AA and their text starts at one inset")
 }
+
+/// A session-owned virtual display is "Private Desktop" to the person at the
+/// viewer, in every title the Screen menu and a machine's row menu offer.
+@MainActor
+func testViewerMenusNameThePrivateDesktopTests() {
+    let office = HostScreenListEntry(
+        opaqueToken: Data([9, 9]),
+        label: "Office",
+        logicalWidth: 1920,
+        logicalHeight: 1080,
+        backingScale: 2,
+        isBuiltin: false,
+        displayIdentity: "office-display-id"
+    )
+    let screen = ScreenMenuState(
+        items: ScreenMenuPlan.items(displays: [office], selectedToken: nil),
+        startWith: ScreenMenuPlan.startWithMenu(
+            preference: .hostScreenWhenOffered, offeredHostScreens: [office], isHostScreenSessionLive: false
+        )
+    )
+    let screenTitles = ViewerMenuPlan.rows(of: [ViewerMenuPlan.screenMenu(screen)]).map(\.title)
+    expect(
+        screenTitles.filter { $0 == "Private Desktop" }.count == 2,
+        "the Screen menu and its Start with submenu each offer Private Desktop, got \(screenTitles)"
+    )
+
+    let loft = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [loft]))
+    controller.connectStarted(hostPublicKey: loft.hostPublicKey)
+    controller.attemptFailed(reason: "refused", offersConnectAsVirtualDisplayFallback: true)
+    let rowActionTitles = rowMenuTitles(in: content(of: controller)).first ?? []
+    expect(
+        rowActionTitles.last == "Connect with a Private Desktop",
+        "a failed row's menu ends with the one explicit retry on a private desktop, got \(rowActionTitles)"
+    )
+
+    for title in screenTitles + rowActionTitles {
+        expect(
+            !title.localizedCaseInsensitiveContains("virtual display"),
+            "a menu title never calls a private desktop a virtual display, got \"\(title)\""
+        )
+    }
+    print("PASS: the Screen menu, its Start with submenu and a row's menu call a private desktop Private Desktop")
+}
 #endif

@@ -57,7 +57,7 @@ Pair Again|Pair Again
 Rename|YourMachinesWindowModel.renameTitle
 Rename step|YourMachinesWindowModel.renameHeading
 Forget|Forget
-Connect with a Virtual Display|Connect with a Virtual Display
+Connect with a Private Desktop|Connect with a Private Desktop
 Look Again|Look Again
 Enter Address Manually|Enter Address Manually
 Code step headline|Type the Code Shown on

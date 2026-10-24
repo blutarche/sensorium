@@ -39,8 +39,8 @@ func testYourMachinesWindowModelTests() {
             "the button's name stays whole and the sentence does not strand its last word"
         )
         expect(
-            YourMachinesWindowModel.renameHint.hasSuffix("use\u{00A0}the\u{00A0}original."),
-            "the rename hint does not strand \"original.\" on a line of its own, got \(YourMachinesWindowModel.renameHint)"
+            YourMachinesWindowModel.renameHint.hasSuffix("when\u{00A0}it\u{00A0}was\u{00A0}paired."),
+            "the rename hint does not strand \"paired.\" on a line of its own, got \(YourMachinesWindowModel.renameHint)"
         )
         expect(empty.addIsPrimary, "with nothing paired, adding a machine is the accent")
 
