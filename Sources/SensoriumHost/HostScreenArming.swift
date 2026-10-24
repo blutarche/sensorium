@@ -420,11 +420,8 @@ public enum HostScreenArmingPresentation {
     public struct PairedMachineRow: Equatable, Sendable {
         public let devicePublicKey: Data
         public let deviceName: String
-        /// "Key 5DB742A2" when `deviceName` is the name the device actually
-        /// gave -- a small secondary line telling apart two machines someone
-        /// happened to name alike. `nil` when `deviceName` is itself the
-        /// fingerprint fallback (no name recorded), where a second line
-        /// would only repeat the title.
+        /// "Key 5DB742A2" -- a small secondary line telling apart two machines
+        /// someone happened to name alike, or that reported no name at all.
         public let keyFingerprintLine: String?
         public let isSharingRealScreen: Bool
         /// "May share Built-in Display.", the permission, not a live share.
@@ -460,6 +457,10 @@ public enum HostScreenArmingPresentation {
         }
     }
 
+    /// The title of a paired machine that never reported a name and was never
+    /// given one here. Its key line tells it apart from any other such machine.
+    public static let unnamedMachineTitle = "Unnamed machine"
+
     /// The checkbox label under a sharing row's toggle, shared so the Host
     /// Setup window and any test asserting on it read the same words.
     public static let asksWhenInUseLabel = "Ask me first if this machine is in use"
@@ -476,8 +477,8 @@ public enum HostScreenArmingPresentation {
         activeDisplays: [DisplaySnapshot] = []
     ) -> [PairedMachineRow] {
         approvedDevices.map { device in
-            let resolvedName = device.name ?? ApprovedDeviceDisplayName.fingerprint(of: device.publicKey)
-            let keyFingerprintLine = device.name != nil ? "Key \(ApprovedDeviceDisplayName.hex(of: device.publicKey))" : nil
+            let resolvedName = device.name ?? unnamedMachineTitle
+            let keyFingerprintLine = "Key \(ApprovedDeviceDisplayName.hex(of: device.publicKey))"
             if let armed = arming.devices.first(where: { $0.devicePublicKey == device.publicKey }) {
                 let sharedDisplaysLine = sharedDisplaysLine(activeDisplays: activeDisplays)
                 let notOfferedReason = sharedDisplaysLine == nil && !activeDisplays.isEmpty

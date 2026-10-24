@@ -527,6 +527,36 @@ func runPairedMachineRenameTests() async {
     }
 
     do {
+        // A machine with no name shows "Unnamed machine" as its title. That
+        // is not a name to keep, so Rename opens on an empty field, and
+        // confirming it empty means "use the name the machine reports".
+        var prompted: [String] = []
+        let controller = HostSetupWindowController(
+            status: HostOperatorStatus(
+                connection: .notHosting,
+                permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
+            ),
+            onRevealPairingCode: {},
+            onStop: {},
+            onToggleSharing: { _, _ in },
+            onRemovePairedDevice: { _ in },
+            presentRenamePrompt: { _, currentName, _ in prompted.append(currentName) }
+        )
+        controller.updatePairedMachines(
+            HostScreenArmingPresentation.pairedMachineRows(
+                approvedDevices: [(Data([0x01, 0x02, 0x03, 0x04]), nil)],
+                arming: HostScreenArming()
+            )
+        )
+        let pairedMachines: NSView = field("pairedMachines", of: controller, as: NSView.self)
+        let rowsStack: NSStackView = field("rowsStack", of: pairedMachines, as: NSStackView.self)
+        let renameButton: NSButton = field("renameButton", of: rowsStack.arrangedSubviews[0], as: NSButton.self)
+        renameButton.performClick(nil)
+        expect(prompted == [""], "Rename on an unnamed machine opens on an empty field -- got \(prompted)")
+        print("PASS: renaming an unnamed machine starts from an empty field, not the placeholder title")
+    }
+
+    do {
         // The rename sheet: prefilled, Rename on Return, Cancel on Escape.
         var confirmed: [String] = []
         var cancelled = 0

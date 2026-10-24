@@ -324,12 +324,10 @@ func runHostScreenArmingTests() async {
 
     do {
         // The card title is the name a device gave, never a fingerprint of
-        // its key -- and when a name is known, the key becomes a small
-        // secondary line instead of disappearing, so two machines someone
-        // named alike can still be told apart. A device with no recorded
-        // name keeps the fingerprint as its title, exactly as
-        // `ApprovedDeviceDisplayName` already falls back, and gets no
-        // second line repeating the same fingerprint underneath it.
+        // its key, with the key as a small secondary line so two machines
+        // someone named alike can still be told apart. A device with no
+        // recorded name is titled "Unnamed machine" and gets the same key
+        // line, so every row reads alike.
         let namedKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x01])
         let unnamedKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x02])
         expect(
@@ -352,11 +350,11 @@ func runHostScreenArmingTests() async {
             "a named device's title is the name it gave, with its key fingerprint on a small secondary line -- got title \(rows[0].deviceName), line \(rows[0].keyFingerprintLine ?? "nil")"
         )
         expect(
-            rows[1].deviceName == "Machine 5DB742A2" && rows[1].keyFingerprintLine == nil,
-            "a device with no recorded name keeps the fingerprint as its title, and gets no redundant second line -- got title \(rows[1].deviceName), line \(rows[1].keyFingerprintLine ?? "nil")"
+            rows[1].deviceName == "Unnamed machine" && rows[1].keyFingerprintLine == "Key 5DB742A2",
+            "a device with no recorded name is titled Unnamed machine and shows its key line like every other row -- got title \(rows[1].deviceName), line \(rows[1].keyFingerprintLine ?? "nil")"
         )
 
-        print("PASS: a paired-machine row is titled by name with the fingerprint beneath, or by fingerprint alone when no name is known")
+        print("PASS: a paired-machine row is titled by name, or Unnamed machine, with the key line beneath either way")
     }
 
     do {

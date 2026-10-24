@@ -141,7 +141,9 @@ final class PairedMachinesView: NSView {
             let rowView = PairedMachineRowView(row: row)
             rowView.onToggle = { [weak self] isOn in self?.onToggleSharing?(row.devicePublicKey, isOn) }
             rowView.onRemove = { [weak self] in self?.onRemovePairedDevice?(row.devicePublicKey) }
-            rowView.onRename = { [weak self] in self?.onRenamePairedDevice?(row.devicePublicKey, row.deviceName) }
+            // The placeholder title is not a name to start from.
+            let currentName = row.deviceName == HostScreenArmingPresentation.unnamedMachineTitle ? "" : row.deviceName
+            rowView.onRename = { [weak self] in self?.onRenamePairedDevice?(row.devicePublicKey, currentName) }
             rowView.onToggleAskFirst = { [weak self] isOn in self?.onToggleAskFirst?(row.devicePublicKey, isOn) }
             return rowView
         }

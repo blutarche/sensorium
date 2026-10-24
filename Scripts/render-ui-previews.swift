@@ -655,11 +655,11 @@ MainActor.assumeIsolated {
         activeDisplays: [builtInDisplay]
     )
 
-    // A machine that gave its own name at pairing, next to one still only known
-    // by its key -- built through `pairedMachineRows` itself, the same
-    // production path `sensoriumd` calls, so the card title and the small
-    // key-fingerprint line beneath it are exactly what a real approved-
-    // devices store produces, named and unnamed.
+    // A machine that gave its own name at pairing, next to one that never gave
+    // one -- built through `pairedMachineRows` itself, the same production path
+    // `sensoriumd` calls, so the card title and the small key-fingerprint line
+    // beneath it are exactly what a real approved-devices store produces,
+    // named and unnamed.
     let namedDeviceKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x01])
     let unnamedLegacyDeviceKey = Data([0x6E, 0xC8, 0x53, 0xB3, 0x02])
     let namedAndUnnamedRows = HostScreenArmingPresentation.pairedMachineRows(
@@ -784,8 +784,8 @@ MainActor.assumeIsolated {
         ),
         (
             "host-window-17-paired-machines-named-and-unnamed",
-            "one paired machine titled by the name it gave, with its key on a small line underneath, next to one still"
-                + " only known by its key fingerprint",
+            "one paired machine titled by the name it gave, next to one titled Unnamed machine, each with its key on a"
+                + " small line underneath",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             namedAndUnnamedRows
         ),
