@@ -77,7 +77,8 @@ public struct YourMachinesRow: Equatable, Sendable {
         if name == address {
             return status ?? ""
         }
-        return status.map { "\(address) \u{2014} \($0)" } ?? address
+        // A line that wraps breaks before the dash, never between it and the status.
+        return status.map { "\(address) \u{2014}\u{00A0}\($0)" } ?? address
     }
 
     /// The dot beside the detail line. `offline` stands for a machine that

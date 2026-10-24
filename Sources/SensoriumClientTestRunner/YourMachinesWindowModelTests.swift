@@ -89,12 +89,12 @@ func testYourMachinesWindowModelTests() {
             reachability: SavedMachineReachability.byHostKey(hosts: [mini, studio], peers: peers)
         )
         expect(
-            known.rows[0].detail == "mini.tail1234.ts.net \u{2014} online",
+            known.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}online",
             "a machine matched by its MagicDNS name says online, got \(known.rows[0].detail)"
         )
         expect(known.rows[0].dot == .online, "and draws the online dot, got \(String(describing: known.rows[0].dot))")
         expect(
-            known.rows[1].detail == "100.64.1.7 \u{2014} offline",
+            known.rows[1].detail == "100.64.1.7 \u{2014}\u{00A0}offline",
             "a machine matched by its tailnet address says offline, got \(known.rows[1].detail)"
         )
         expect(known.rows[1].dot == .offline, "and draws the offline dot, got \(String(describing: known.rows[1].dot))")
@@ -149,7 +149,7 @@ func testYourMachinesWindowModelTests() {
         model.connectStarted(hostPublicKey: mini.hostPublicKey)
         expect(model.connectingHostPublicKey == mini.hostPublicKey, "the clicked row is the connecting one")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} connecting\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}connecting\u{2026}",
             "the row keeps its address and says so, got \(model.rows[0].detail)"
         )
         expect(model.rows[0].dot == .activity, "a connecting row shows the pulsing dot")
@@ -159,7 +159,7 @@ func testYourMachinesWindowModelTests() {
 
         model.attemptFailed(reason: "no answer")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} no answer",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer",
             "a failed attempt keeps the address and appends the reason, got \(model.rows[0].detail)"
         )
         expect(
@@ -171,7 +171,7 @@ func testYourMachinesWindowModelTests() {
 
         model.connectStarted(hostPublicKey: mini.hostPublicKey)
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} connecting\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}connecting\u{2026}",
             "the next attempt says it is connecting again, got \(model.rows[0].detail)"
         )
         model.attemptFailed(reason: "no answer")
@@ -222,7 +222,7 @@ func testYourMachinesWindowModelTests() {
         model.replaceHosts([mini, studio], reachability: [mini.hostPublicKey: true])
         expect(model.connectingHostPublicKey == mini.hostPublicKey, "the machine being dialled is still the one dialling")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} no answer",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer",
             "the attempt already out survives a re-read, got \(model.rows[0].detail)"
         )
         expect(
@@ -255,7 +255,7 @@ func testYourMachinesWindowModelTests() {
         model.attemptFailed(reason: "no answer")
         model.stoppedTrying()
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} no answer",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}no answer",
             "giving up keeps the reason on the row, got \(model.rows[0].detail)"
         )
         expect(!model.rows[0].offersCancel, "there is nothing left to cancel once the retries have stopped")
@@ -267,7 +267,7 @@ func testYourMachinesWindowModelTests() {
 
         model.connectStarted(hostPublicKey: mini.hostPublicKey)
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} connecting\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}connecting\u{2026}",
             "and that attempt starts counting again, got \(model.rows[0].detail)"
         )
 
@@ -291,7 +291,7 @@ func testYourMachinesWindowModelTests() {
         model.connectRequested(hostPublicKey: mini.hostPublicKey)
         expect(model.connectingHostPublicKey == mini.hostPublicKey, "the clicked row is the connecting one at once")
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} connecting\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}connecting\u{2026}",
             "and says so before the first attempt has begun, got \(model.rows[0].detail)"
         )
         expect(model.rows[0].offersCancel, "a row with a click behind it can be cancelled")
@@ -324,7 +324,7 @@ func testYourMachinesWindowModelTests() {
         model.connectStarted(hostPublicKey: mini.hostPublicKey)
         model.stopping()
         expect(
-            model.rows[0].detail == "mini.tail1234.ts.net \u{2014} stopping\u{2026}",
+            model.rows[0].detail == "mini.tail1234.ts.net \u{2014}\u{00A0}stopping\u{2026}",
             "a row being stopped keeps its address and says so, got \(model.rows[0].detail)"
         )
         expect(model.rows[0].dot == .activity, "a stopping row shows the pulsing dot")

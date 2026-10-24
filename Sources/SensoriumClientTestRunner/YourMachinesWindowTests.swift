@@ -214,12 +214,12 @@ func testYourMachinesWindowTests() async {
 
         controller.connectStarted(hostPublicKey: mini.hostPublicKey)
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014} connecting\u{2026}", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}connecting\u{2026}", in: content(of: controller)),
             "the row keeps its address and says it is connecting"
         )
         controller.attemptFailed(reason: "no answer")
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014} no answer", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer", in: content(of: controller)),
             "a failed attempt is reported on the row itself, address kept and reason appended"
         )
 
@@ -233,7 +233,7 @@ func testYourMachinesWindowTests() async {
         // instant, so the row says what it is doing rather than going quiet
         // and twitching again seconds later.
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014} stopping\u{2026}", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}stopping\u{2026}", in: content(of: controller)),
             "and keeps its address and says so until that attempt has actually ended"
         )
         expect(
@@ -706,17 +706,17 @@ func testYourMachinesWindowTests() async {
         let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini, studio]))
         controller.connectStarted(hostPublicKey: mini.hostPublicKey)
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014} connecting\u{2026}", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}connecting\u{2026}", in: content(of: controller)),
             "a first dial is reported on this window's own row, not in a canvas nobody can see yet"
         )
         controller.attemptFailed(reason: "no answer")
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014} no answer", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer", in: content(of: controller)),
             "and so is an attempt that failed"
         )
         controller.stoppedTrying()
         expect(
-            hasLabel("mini.tail1234.ts.net \u{2014} no answer", in: content(of: controller)),
+            hasLabel("mini.tail1234.ts.net \u{2014}\u{00A0}no answer", in: content(of: controller)),
             "a run that gave up leaves its reason where the person is looking"
         )
 
