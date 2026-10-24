@@ -43,14 +43,15 @@ func testDisplayCountMenuTests() async {
         // quoted rather than translated, the same discipline
         // `ViewerSessionFailureCopy.canvasRefusalLine` already follows.
         expect(
-            unbound(DisplayCountRefusalCopy.line(reason: "host-screen-session-active")).localizedCaseInsensitiveContains("host screen"),
+            unbound(DisplayCountRefusalCopy.line(reason: "host-screen-session-active")).localizedCaseInsensitiveContains("host-screen session"),
             "a host-screen session's own refusal says why in words a person reads, not the wire token"
         )
         expect(
             unbound(DisplayCountRefusalCopy.line(reason: "host-screen-session-active", hostLabel: "studio-mini"))
-                == "Could not add another private desktop: studio-mini is showing this machine a host screen, and a "
-                    + "host screen allows only one display.",
-            "the host-screen refusal names the machine showing the host screen, not just \"this connection\""
+                == "Could not add a private desktop: private desktops cannot be added during a host-screen "
+                    + "session with studio-mini.",
+            "the host-screen refusal says no private desktop can be added during a host-screen session, naming "
+                + "the machine, and never says \"another\" when no private desktop exists"
         )
         expect(
             unbound(DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit")).localizedCaseInsensitiveContains("allow"),
@@ -126,9 +127,14 @@ func testDisplayCountMenuTests() async {
         for reason in ["host-screen-session-active", "display-count-exceeds-host-limit",
                        CanvasRefusalReason.creationInProgress, "display-count-change-failed", "unlisted-reason"] {
             let text = DisplayCountRefusalCopy.line(reason: reason, hostLabel: "Workstation")
+            // "Another" is true only where a private desktop already exists; a
+            // host-screen session has none.
+            let opening = reason == "host-screen-session-active"
+                ? "Could not add a private desktop:"
+                : "Could not add another private desktop:"
             expect(
-                text.hasPrefix("Could not add another private desktop:") && !text.contains("second display"),
-                "every Displays refusal opens with the same words and never calls a private desktop a display, got: \(text)"
+                text.hasPrefix(opening) && !text.contains("second display"),
+                "every Displays refusal opens \"Could not add \u{2026}:\" and never calls a private desktop a display, got: \(text)"
             )
             let lastLine = text.split(separator: " ").last.map(String.init) ?? ""
             expect(

@@ -26,8 +26,10 @@ public enum DisplayCountRefusalCopy {
         let sentence: String
         switch reason {
         case "host-screen-session-active":
-            sentence = "\(leadIn) \(host) is showing this machine a host screen, and a "
-                + "host screen allows only one display."
+            // No private desktop exists during a host-screen session, so this
+            // is the one refusal that cannot say "another".
+            sentence = "Could not add a private desktop: private desktops cannot be added during a "
+                + "host-screen session with \(host)."
         case "display-count-exceeds-host-limit":
             sentence = "\(leadIn) \(host) allows only one display, and that limit "
                 + "cannot be changed from this machine."
