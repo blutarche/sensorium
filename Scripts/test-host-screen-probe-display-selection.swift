@@ -5,6 +5,11 @@ struct DisplaySnapshot: Equatable {
     let main: Bool
 }
 
+struct HostScreenDisplayIdentity {
+    let wireStableIdentifier: String
+    init(_ display: DisplaySnapshot) { wireStableIdentifier = String(display.id) }
+}
+
 @MainActor
 enum DisplayInventory {
     static var activeDisplays: [DisplaySnapshot] = []
@@ -33,11 +38,18 @@ struct DisplaySelectionChecks {
         precondition(Probe.targetDisplay() == secondary && DisplayInventory.onlineReads == 0)
         DisplayInventory.activeDisplays = [secondary, primary]
         precondition(Probe.targetDisplay() == primary)
+        guard Probe.targetDisplay(identity: "1") == secondary else {
+            print("FAIL: the connected display must override the main display selected before waking")
+            exit(1)
+        }
+        DisplayInventory.onlineDisplays = [secondary, secondary, primary]
+        precondition(Probe.targetDisplay(identity: "1") == nil)
+        precondition(Probe.targetDisplay(identity: "missing") == nil)
         DisplayInventory.activeDisplays = []
         DisplayInventory.onlineDisplays = [secondary]
         precondition(Probe.targetDisplay() == secondary)
         DisplayInventory.onlineDisplays = []
         precondition(Probe.targetDisplay() == nil)
-        print("PASS: host-screen probe prefers active displays and retains an online target while asleep")
+        print("PASS: host-screen probe resolves the connected identity and handles active or sleeping displays")
     }
 }

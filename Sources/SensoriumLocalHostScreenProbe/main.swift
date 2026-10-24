@@ -164,19 +164,13 @@ struct SensoriumLocalHostScreenProbe {
         print("host_screen_probe_armed_display_id=\(display.id)")
     }
 
-    /// docs/host-screen-design.md §6.2: a host-screen session starts without asking only when
-    /// nobody has touched this machine for several minutes. Anyone who starts this
-    /// rig has, by definition, just touched it, so the rig waits that out
-    /// rather than leaving a prompt on a real screen with nobody expecting it.
-    /// Waiting cannot be skipped from the wire and is not a way around the
-    /// rule: it is the same reading the host itself takes, read here first so
-    /// a run that could only ever be refused says so instead.
+    /// Keeps unattended pointer and keyboard tests from interfering with local
+    /// use. This harness precondition is separate from the host's optional
+    /// "Ask me first" setting.
     private static func waitForNobodyAtThisMac(rawTimeout: String) async {
         guard let timeout = Double(rawTimeout), timeout > 0 else {
             usageAndExit()
         }
-        // A second past the host's own threshold, because the host refuses an
-        // exact tie: "an exact tie resolves toward asking."
         let required = HostScreenPresenceRule.recommendedPresenceThreshold + 1
         let signal = CoreGraphicsLocalActivitySignal()
         let deadline = Date().addingTimeInterval(timeout)
@@ -195,7 +189,7 @@ struct SensoriumLocalHostScreenProbe {
             lastReported = seconds
             try? await Task.sleep(for: .seconds(5))
         }
-        print("BLOCKED: someone is using this machine, so the host would ask them before sharing a screen. "
+        print("BLOCKED: someone is using this machine, so pointer and keyboard verification would interfere with their work. "
             + "Leave it alone for \(Int(required / 60)) minutes and run this again.")
         Foundation.exit(3)
     }
@@ -204,9 +198,7 @@ struct SensoriumLocalHostScreenProbe {
         let port = try endpointPort(rawPort)
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
         let approval = try JSONDecoder().decode(SavedApproval.self, from: Data(contentsOf: approvalURL()))
-        guard let display = targetDisplay(), let screen = screen(for: display) else {
-            throw HostScreenProbeError.noTargetDisplay
-        }
+        let preferredIdentity = targetDisplay().map { HostScreenDisplayIdentity($0).wireStableIdentifier }
 
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
@@ -224,12 +216,22 @@ struct SensoriumLocalHostScreenProbe {
         await session.setCanvasObserver(window.canvasObserver())
         let outcome = try await session.connect(
             deviceName: deviceName,
-            target: .hostScreen(displayIdentity: HostScreenDisplayIdentity(display).wireStableIdentifier)
+            target: .offeredHostScreen(preferredDisplayIdentity: preferredIdentity)
         )
         guard case let .hostScreen(geometry, _, _) = outcome else {
             throw HostScreenProbeError.sessionIsNotHostScreen
         }
+        guard let selectedIdentity = await session.hostScreenDisplayIdentity,
+              let display = targetDisplay(identity: selectedIdentity) else {
+            await session.disconnect(reason: "probe-display-unavailable")
+            throw HostScreenProbeError.noTargetDisplay
+        }
+        print("host_screen_probe_selected_display_id=\(display.id)")
         print("host_screen_geometry=\(geometry.logicalWidth)x\(geometry.logicalHeight)@\(geometry.backingScale)")
+        guard let screen = screen(for: display) else {
+            await session.disconnect(reason: "probe-screen-unavailable")
+            throw HostScreenProbeError.noTargetDisplay
+        }
         await window.show()
 
         let runner = ClientSessionRunner(connection: connection, session: session, window: window)
@@ -666,11 +668,7 @@ struct SensoriumLocalHostScreenProbe {
         let port = try endpointPort(rawPort)
         let identity = try FileDeviceIdentityStore(url: identityURL()).loadOrCreate()
         let approval = try JSONDecoder().decode(SavedApproval.self, from: Data(contentsOf: approvalURL()))
-        // A locked machine's display may be asleep and so not active; fall
-        // back to any online one.
-        guard let display = targetDisplay() ?? DisplayInventory.online().first else {
-            throw HostScreenProbeError.noTargetDisplay
-        }
+        let preferredIdentity = targetDisplay().map { HostScreenDisplayIdentity($0).wireStableIdentifier }
         let connection = NetworkControlConnection(
             host: NWEndpoint.Host(host),
             port: port,
@@ -687,11 +685,17 @@ struct SensoriumLocalHostScreenProbe {
         await session.setCanvasObserver(window.canvasObserver())
         let outcome = try await session.connect(
             deviceName: deviceName,
-            target: .hostScreen(displayIdentity: HostScreenDisplayIdentity(display).wireStableIdentifier)
+            target: .offeredHostScreen(preferredDisplayIdentity: preferredIdentity)
         )
         guard case let .hostScreen(geometry, _, _) = outcome else {
             throw HostScreenProbeError.sessionIsNotHostScreen
         }
+        guard let selectedIdentity = await session.hostScreenDisplayIdentity,
+              let display = targetDisplay(identity: selectedIdentity) else {
+            await session.disconnect(reason: "probe-display-unavailable")
+            throw HostScreenProbeError.noTargetDisplay
+        }
+        print("host_screen_probe_selected_display_id=\(display.id)")
         print("host_screen_geometry=\(geometry.logicalWidth)x\(geometry.logicalHeight)@\(geometry.backingScale)")
         await window.show()
 
@@ -874,11 +878,15 @@ struct SensoriumLocalHostScreenProbe {
         }
     }
 
-    /// The display this rig arms and drives: the main one, which is where a
-    /// window opened with no placement of its own already goes. `enter`
-    /// re-checks that its window really stands here before measuring anything
-    /// against it.
-    private static func targetDisplay() -> DisplaySnapshot? {
+    /// Resolves the session's selected identity after waking, so input and
+    /// mode measurements use the display the host actually streams.
+    private static func targetDisplay(identity: String? = nil) -> DisplaySnapshot? {
+        if let identity {
+            let matching = DisplayInventory.online().filter {
+                HostScreenDisplayIdentity($0).wireStableIdentifier == identity
+            }
+            return matching.count == 1 ? matching.first : nil
+        }
         let active = DisplayInventory.active()
         let displays = active.isEmpty ? DisplayInventory.online() : active
         return displays.first { $0.main } ?? displays.first

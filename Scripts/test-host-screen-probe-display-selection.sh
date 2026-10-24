@@ -7,7 +7,7 @@ python3 - "$ROOT/Sources/SensoriumLocalHostScreenProbe/main.swift" "$CHECK_DIR/S
 from pathlib import Path
 import sys
 source = Path(sys.argv[1]).read_text()
-start = source.index("    private static func targetDisplay()")
+start = source.index("    private static func targetDisplay(")
 end = source.index("\n    }", start) + len("\n    }")
 body = source[start:end].replace("private static func", "static func", 1)
 Path(sys.argv[2]).write_text("@MainActor enum Probe {\n" + body + "\n}\n")
