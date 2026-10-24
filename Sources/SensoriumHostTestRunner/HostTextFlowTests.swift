@@ -73,6 +73,49 @@ func runHostTextFlowTests() async {
     }
 
     do {
+        let font = NSFont.systemFont(ofSize: 12)
+        let name = "Kestrel Field Station Sixteen-Inch Laptop (2024)"
+        let nameWidth = ceil(NSAttributedString(string: name, attributes: [.font: font]).size().width)
+        // Wide enough for the name on a line of its own, too narrow for it
+        // after "If you allow, ".
+        let measure = HostTextFlow.Measure(attributes: [.font: font], width: nameWidth + 8)
+
+        let alone = HostTextFlow.flow("\(name) sees and controls the display.", names: [name], measure: measure)
+        expect(
+            alone.hasPrefix(HostTextFlow.whole(name)),
+            "a name that fits the line it starts is held whole -- got \(alone.debugDescription)"
+        )
+
+        let after = HostTextFlow.flow(
+            "If you allow, \(name) sees and controls the display.", names: [name], measure: measure
+        )
+        expect(
+            after.contains("Kestrel\(nbsp)Field Station Sixteen-Inch Laptop (2024)"),
+            "a name that does not fit what remains of its line wraps at its spaces instead of jumping whole to "
+                + "the next line and leaving this one nearly empty -- got \(after.debugDescription)"
+        )
+
+        let wellFilled = HostTextFlow.flow(
+            "Kestrel and the other machines see \(name) now.", names: [name], measure: measure
+        )
+        expect(
+            wellFilled.contains(HostTextFlow.whole(name)),
+            "when the line before it is more than half full, a name moves whole to the next line -- got "
+                + "\(wellFilled.debugDescription)"
+        )
+
+        let twice = HostTextFlow.flow(
+            "\(name) sees it. If you allow, \(name) sees it.", names: [name], measure: measure
+        )
+        expect(
+            twice.hasPrefix(HostTextFlow.whole(name)) && twice.hasSuffix("Kestrel\(nbsp)Field Station Sixteen-Inch Laptop (2024) sees\(nbsp)it."),
+            "each mention of a name is judged where it falls: the first starts its line and stays whole, the "
+                + "second follows other words and wraps -- got \(twice.debugDescription)"
+        )
+        print("PASS: a name that does not fit what remains of its line wraps at its spaces")
+    }
+
+    do {
         let british = HostTextFlow.flow("Kestrel Laptop used Display from 15 Nov 2023, 05:13 to 05:43.")
         expect(
             british.contains("15\(nbsp)Nov\(nbsp)2023,"),

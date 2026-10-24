@@ -29,18 +29,20 @@ package enum HostTextFlow {
     }
 
     /// `text` with its break points tidied:
-    /// - each of `names` stays whole when it fits `measure`'s column, or
-    ///   always when there is no `measure`; a name wider than the column
-    ///   breaks where it naturally would, except that its first two words
-    ///   stay together;
+    /// - each mention of one of `names` stays whole when it fits `measure`'s
+    ///   column, or always when there is no `measure`, with one exception: a
+    ///   name that does not fit what remains of the line it falls on, and
+    ///   would leave that line less than half full by moving to the next,
+    ///   wraps at its spaces instead. A name too wide for the column breaks
+    ///   where it naturally would. Either way its first two words stay
+    ///   together;
     /// - a calendar date stays whole;
     /// - the one-letter words "a" and "I" stay with the word after them;
     /// - the last two words stay together, so no line ends with one word alone.
     package static func flow(_ text: String, names: [String] = [], measure: Measure? = nil) -> String {
         var result = text
         for name in names.sorted(by: { $0.count > $1.count }) where name.contains(" ") || name.contains("-") {
-            let held = fits(name, in: measure) ? whole(name) : bindingFirstTwoWords(of: name)
-            result = result.replacingOccurrences(of: name, with: held)
+            result = holding(name, in: result, measure: measure)
         }
         result = bindingDates(in: result)
         result = bindingOneLetterWords(in: result)
@@ -54,9 +56,51 @@ package enum HostTextFlow {
         return result
     }
 
-    private static func fits(_ name: String, in measure: Measure?) -> Bool {
+    /// Every mention of `name` in `text`, each held whole or not by where it
+    /// falls, in reading order so a later mention is judged after the earlier
+    /// ones are in place.
+    private static func holding(_ name: String, in text: String, measure: Measure?) -> String {
+        var result = text
+        var resume = 0
+        while let range = result.range(
+            of: name,
+            range: result.index(result.startIndex, offsetBy: resume)..<result.endIndex
+        ) {
+            let held = staysWhole(name, after: result[..<range.lowerBound], in: measure)
+                ? whole(name)
+                : bindingFirstTwoWords(of: name)
+            let start = result.distance(from: result.startIndex, to: range.lowerBound)
+            result.replaceSubrange(range, with: held)
+            resume = start + held.count
+        }
+        return result
+    }
+
+    /// How full the line before a name must be for the name to move whole to
+    /// the next line. Below it, the gap that move leaves is worse than
+    /// breaking the name at a space.
+    private static let minimumFilledBeforeWholeName: CGFloat = 0.5
+
+    private static func staysWhole(_ name: String, after preceding: Substring, in measure: Measure?) -> Bool {
         guard let measure else { return true }
-        return NSAttributedString(string: name, attributes: measure.attributes).size().width <= measure.width
+        let width = NSAttributedString(string: name, attributes: measure.attributes).size().width
+        guard width <= measure.width else { return false }
+        let used = usedWidthOfLastLine(of: String(preceding), in: measure)
+        return width <= measure.width - used || used >= measure.width * minimumFilledBeforeWholeName
+    }
+
+    /// How much of its column the last line of `text` fills, trailing space
+    /// included.
+    private static func usedWidthOfLastLine(of text: String, in measure: Measure) -> CGFloat {
+        let storage = NSTextStorage(string: bindingOneLetterWords(in: bindingDates(in: text)), attributes: measure.attributes)
+        let container = NSTextContainer(size: NSSize(width: measure.width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        let layout = NSLayoutManager()
+        layout.addTextContainer(container)
+        storage.addLayoutManager(layout)
+        layout.ensureLayout(for: container)
+        guard layout.numberOfGlyphs > 0 else { return 0 }
+        return layout.lineFragmentUsedRect(forGlyphAt: layout.numberOfGlyphs - 1, effectiveRange: nil).maxX
     }
 
     /// "15 Nov 2023" and "Nov 15, 2023", the two orders a medium date takes.

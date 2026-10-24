@@ -159,6 +159,41 @@ func runHostScreenPresencePromptTests() async {
     }
 
     do {
+        // A device name that fits a line of its own but not what is left of
+        // the body's first line must not push "If you allow," onto a line by
+        // itself.
+        let controller = HostScreenPresencePromptWindowController(
+            content: HostScreenBadgeContent(
+                deviceName: "Kestrel Field Station Sixteen-Inch Laptop (2024)",
+                displayLabel: "Built-in Display"
+            )
+        )
+        let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
+        let window: NSPanel = field("window", of: controller, as: NSPanel.self)
+        let width = window.contentRect(forFrameRect: window.frame).width - CanvasDesign.Space.lg * 2
+
+        let storage = NSTextStorage(string: subtitle.stringValue, attributes: [.font: subtitle.font as Any])
+        let container = NSTextContainer(size: NSSize(width: width, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        let manager = NSLayoutManager()
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        manager.ensureLayout(for: container)
+        var glyphRange = NSRange()
+        manager.lineFragmentRect(forGlyphAt: 0, effectiveRange: &glyphRange)
+        let characterRange = manager.characterRange(forGlyphRange: glyphRange, actualGlyphRange: nil)
+        let firstLine = (subtitle.stringValue as NSString).substring(with: characterRange)
+
+        expect(
+            plain(firstLine).hasPrefix("If you allow, Kestrel Field Station"),
+            "the body's first line carries the start of the device name, not just \"If you allow,\" -- got "
+                + "\(firstLine.debugDescription)"
+        )
+
+        print("PASS: a long device name never leaves the body's first line almost empty")
+    }
+
+    do {
         // Countdown: a live "Don't Allow will be chosen automatically in M:SS."
         // line, not a static sentence that never moves, and one that
         // names who acts at zero.
