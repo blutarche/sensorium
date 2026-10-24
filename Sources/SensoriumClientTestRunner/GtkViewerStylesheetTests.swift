@@ -61,7 +61,7 @@ func testGtkTextRoleColoursMatchMacOSTests() {
         (".\(Class.muted)", palette.muted, "secondary: body text, a field's label and hint"),
         (".\(Class.detail)", palette.muted, "secondary: the line under a headline"),
         (".\(Class.rowDetail)", palette.muted, "secondary: a saved machine's address"),
-        (".\(Class.deviceSubtitle)", palette.muted, "secondary: a device's mono address"),
+        (".\(Class.deviceSubtitle)", palette.muted, "secondary: a device's address"),
         (".\(Class.eyebrow)", palette.warn, "warning: the startup-failure eyebrow"),
         ("window.sensorium entry > text > placeholder", palette.muted, "secondary: a placeholder, which muted2 would leave under 4.5:1 on the field"),
         (".\(Class.rowName).\(Class.offline)", palette.muted, "dimmed: an offline device's name"),
@@ -247,12 +247,11 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         "the code field is 20 mono with no added tracking, as YourMachinesWindow.codeField draws it, in a rule that outranks the plain field's"
     )
     // GTK centres a field's text on the Linux face's own ascent and descent,
-    // which sets a sans or code field's text a point below the macOS field's;
-    // a 14pt mono field's already sits on it.
+    // which sets a field's text a point below the macOS field's.
     check(
         cssValue("margin-bottom", in: cssRule("window.sensorium entry > text", in: css)) == "2px"
-            && cssValue("margin-bottom", in: cssRule("window.sensorium entry.\(Class.monoField) > text", in: css)) == "0",
-        "a sans or code field's text sits a point above centre, a mono field's on it, as on macOS"
+            && !css.contains("sensorium-mono-field"),
+        "a field's text sits a point above centre, and no field but the code field is set in the mono face, as on macOS"
     )
     check(
         !css.contains("entry:focus"),

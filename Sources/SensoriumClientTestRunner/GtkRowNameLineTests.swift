@@ -170,7 +170,7 @@ private func textLabels(under widget: UnsafeMutableRawPointer) -> [(UnsafeMutabl
         (GtkViewerStyle.Class.detail, 12, false),
         (GtkViewerStyle.Class.rowName, 14, false),
         (GtkViewerStyle.Class.rowDetail, 12, false),
-        (GtkViewerStyle.Class.deviceSubtitle, 11, true)
+        (GtkViewerStyle.Class.deviceSubtitle, 12, false)
     ]
     var found: [(UnsafeMutableRawPointer, Double, Bool)] = []
     var child = gtk_widget_get_first_child(sensorium_gtk_widget(widget))

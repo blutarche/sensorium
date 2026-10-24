@@ -60,7 +60,7 @@ Forget|Forget
 Connect to a Private Desktop|Connect to a Private Desktop
 Look Again|Look Again
 Enter Address Manually|Enter Address Manually
-Code step headline|Type the Code Shown on
+Code step headline|Type the code shown on
 Status panel words|status: ViewerSessionStatus
 Status panel buttons drawn|SessionChromePainter.drawStatusPanel
 Status panel button pressed|ViewerStatusPanelHitTest.action

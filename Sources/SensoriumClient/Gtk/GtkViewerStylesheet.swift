@@ -60,7 +60,6 @@ public enum GtkViewerStyle {
         public static let offline = "sensorium-offline"
         /// A field whose text cannot be edited while a pairing is out.
         public static let readOnly = "sensorium-read-only"
-        public static let monoField = "sensorium-mono-field"
     }
 
     /// The icon a link draws ahead of its title, where macOS draws an SF
@@ -443,11 +442,9 @@ public enum GtkViewerStyle {
             caret-color: \(palette.accentHi.hexString);
         }
         window.sensorium entry > text { margin-bottom: 2px; }
-        window.sensorium entry.\(Class.monoField) > text { margin-bottom: 0; }
         window.sensorium entry > text > placeholder { color: \(muted); }
         window.sensorium entry > text > selection { background-color: \(selectionBg); color: \(ink); }
         window.sensorium entry.\(Class.readOnly) { color: \(muted); }
-        .\(Class.monoField) { \(mono); }
         window.sensorium entry.\(Class.code) { \(monoText(20)); \(weight(Weight.code)) min-height: \(codeMinHeight)px; }
         \(menus)
         """

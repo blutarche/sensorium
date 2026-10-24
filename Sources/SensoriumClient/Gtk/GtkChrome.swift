@@ -429,6 +429,19 @@ enum GtkWidgets {
         return dot
     }
 
+    /// The dot in a slot as tall as one `lineSize`-point line of text, centred
+    /// in it, so a row that top-aligns the slot and the text keeps the dot
+    /// beside the text's first line however many lines the text wraps to.
+    static func dotSlot(cssClass: String, lineSize: Int) -> GtkRef {
+        let slot = box(vertical: false, spacing: 0)
+        let lineHeight = ceil(ViewerChromeMetrics.TextLine.height(size: Double(lineSize), mono: false))
+        gtk_widget_set_size_request(sensorium_gtk_widget(slot), 6, Int32(lineHeight))
+        gtk_widget_set_valign(sensorium_gtk_widget(slot), GTK_ALIGN_START)
+        gtk_widget_set_halign(sensorium_gtk_widget(slot), GTK_ALIGN_START)
+        append(dot(cssClass: cssClass), to: slot)
+        return slot
+    }
+
     static func button(_ title: String, cssClass: String?) -> GtkRef {
         let button = gtkRef(gtk_button_new_with_label(title))
         takesNoKeyboardFocus(button)
