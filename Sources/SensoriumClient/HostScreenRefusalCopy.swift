@@ -28,6 +28,10 @@ public enum HostScreenRefusalCopy {
     /// screen, exactly as Sensorium Host labels it.
     private static let hostScreenSwitchName = "Share host screen"
 
+    /// The name of the per-machine switch on the host that asks the person
+    /// there before a screen is shared, exactly as Sensorium Host labels it.
+    private static let askFirstSwitchName = "Ask me first if this machine is in use"
+
     // These lines are shown under the status panel whose accent button is
     // Try Again, and again as a row's failure fragment in Your Machines, so
     // the way back is always "trying again": it names what that does and
@@ -56,15 +60,15 @@ public enum HostScreenRefusalCopy {
                 + "this machine. Someone there can turn it on. Trying again then asks for its screen."
         case "host-screen-presence-declined":
             return "The person at \(host) chose not to share its screen this time. "
-                + "Trying again asks them again."
+                + "Trying again asks them once more."
         case "host-screen-presence-unanswered":
             return "No one at \(host) answered the request within thirty seconds."
         case "host-screen-presence-check-required":
-            return "Sensorium Host could not ask for permission to share the screen. Quit and reopen "
+            return "Sensorium Host could not show its ask-first prompt, which "
+                + "\u{201C}\(ViewerCopyWrapping.control(askFirstSwitchName))\u{201D} turns on. Quit and reopen "
                 + "Sensorium Host there, then try again."
         case "host-screen-display-unavailable":
-            return "The screen you chose is no longer available. Trying again asks for it once more, or "
-                + "choose an available screen from \(ViewerCopyWrapping.control("Your Machines"))."
+            return "The screen you chose is no longer available. Trying again asks for it once more."
         case "host-screen-retry-needs-person":
             // Minted here rather than sent by the host: an automatic redial
             // after a request was sent, holding no resume ticket, never

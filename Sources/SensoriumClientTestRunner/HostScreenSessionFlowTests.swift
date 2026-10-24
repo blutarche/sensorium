@@ -117,8 +117,7 @@ func testHostScreenSessionFlowTests() async {
         expect(!line.contains("does not know"), "this build minted the reason itself, so it is not an unknown one")
         expect(line.localizedCaseInsensitiveContains("no longer available"), "says plainly that the screen is gone")
         expect(
-            line == "The screen you chose is no longer available. Trying again asks for it once more, or "
-                + "choose an available screen from Your\u{00A0}Machines.",
+            line == "The screen you chose is no longer available. Trying again asks for it once more.",
             "the one gone screen never rules out a different host screen that may still be available, and "
                 + "never names a specific recovery path the on-screen button may not offer -- got \(line)"
         )
@@ -217,7 +216,9 @@ func testHostScreenSessionFlowTests() async {
 
         let presenceCheckRequired = HostScreenRefusalCopy.line(reason: "host-screen-presence-check-required")
         expect(
-            presenceCheckRequired == "Sensorium Host could not ask for permission to share the screen. Quit and reopen Sensorium Host there, then try again.",
+            presenceCheckRequired == "Sensorium Host could not show its ask-first prompt, which "
+                + "\u{201C}Ask\u{00A0}me\u{00A0}first\u{00A0}if\u{00A0}this\u{00A0}machine\u{00A0}is\u{00A0}in\u{00A0}use\u{201D} "
+                + "turns on. Quit and reopen Sensorium Host there, then try again.",
             "host-screen-presence-check-required must not imply a specific person declined, since the same "
                 + "reason fires when no gate was configured or another prompt was already on screen -- "
                 + "got \(presenceCheckRequired)"
@@ -226,7 +227,7 @@ func testHostScreenSessionFlowTests() async {
         let presenceDeclined = HostScreenRefusalCopy.line(reason: "host-screen-presence-declined")
         expect(
             presenceDeclined == "The person at that machine chose not to share its screen this time. "
-                + "Trying again asks them again.",
+                + "Trying again asks them once more.",
             "host-screen-presence-declined must say plainly that a person declined, and point at the real "
                 + "path back rather than an empty promise to retry -- got \(presenceDeclined)"
         )
