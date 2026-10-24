@@ -113,10 +113,10 @@ func testClipboardSharingMenuTests() async {
         print("PASS: a clipboard refusal from either machine becomes one plain sentence, and sharing being off never does")
     }
 }
-#endif
 
 /// The notice's words with its no-break spaces read as the plain spaces a
 /// person sees.
 private func clipboardLine(for refusal: ClipboardRefusal) -> String? {
     ClipboardRefusalCopy.line(for: refusal).map(unbound)
 }
+#endif
