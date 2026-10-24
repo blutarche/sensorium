@@ -117,7 +117,7 @@ func runViewerHostStopTests() async {
         let status = machine.handle(.stoppedByHost(reasonLine: reasonLine))
 
         expect(
-            status.detail == "Stopped: a person at Studio ended this session from that machine.",
+            unbound(status.detail) == "Stopped: a person at Studio ended this session from that machine.",
             "the panel carries the ending's own words -- got \"\(status.detail)\""
         )
         expect(

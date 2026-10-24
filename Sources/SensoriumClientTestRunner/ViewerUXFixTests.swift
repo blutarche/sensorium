@@ -489,15 +489,15 @@ func testViewerUXFixTests() async {
                 "a failed first attempt stays on the connecting panel with its own buttons, got \(failed.phase) / \(failed.buttons.map(\.title))"
             )
             expect(
-                failed.detail.contains("Attempt 1") && failed.detail.contains("Nothing answered."),
+                unbound(failed.detail).contains("Attempt 1") && unbound(failed.detail).contains("Nothing answered."),
                 "the connecting detail names the failed attempt and repeats why it failed, got \"\(failed.detail)\""
             )
 
             let retried = machine.handle(.connectStarted)
             expect(
                 retried.phase == .connecting
-                    && retried.detail.contains("Attempt 2")
-                    && retried.detail.contains("Nothing answered."),
+                    && unbound(retried.detail).contains("Attempt 2")
+                    && unbound(retried.detail).contains("Nothing answered."),
                 "a fresh attempt after a known failure still names the new attempt and the last failure, got \"\(retried.detail)\""
             )
 
@@ -529,14 +529,14 @@ func testViewerUXFixTests() async {
             let failedReconnect = machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             expect(
                 failedReconnect.phase == .reconnecting
-                    && failedReconnect.detail == "The picture is paused from before the connection dropped. "
+                    && unbound(failedReconnect.detail) == "The picture is paused from before the connection dropped. "
                         + "Nothing answered.",
                 "reconnecting carries no attempt count and appends the failure line, got \"\(failedReconnect.detail)\""
             )
 
             let secondFailedReconnect = machine.handle(.connectStarted)
             expect(
-                secondFailedReconnect.detail == "If it does not come back, check that it is awake and on the "
+                unbound(secondFailedReconnect.detail) == "If it does not come back, check that it is awake and on the "
                     + "same network. Nothing answered.",
                 "the next reconnect attempt drops the picture-is-paused line for the standing advice, still "
                     + "with no attempt count, got \"\(secondFailedReconnect.detail)\""
@@ -551,7 +551,7 @@ func testViewerUXFixTests() async {
             machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             let retried = machine.handle(.retryRequested)
             expect(
-                !retried.detail.contains("Nothing answered."),
+                !unbound(retried.detail).contains("Nothing answered."),
                 "asking to try again clears the remembered failure line, got \"\(retried.detail)\""
             )
 
@@ -656,7 +656,7 @@ func testViewerUXFixTests() async {
             machine.handle(.connectStarted)
             let ended = machine.handle(.unverifiedHostConnectEnded(reasonLine: reasonLine))
             expect(ended.phase == .ended, "an unverified host ends the wait outright, got \(ended.phase)")
-            expect(ended.detail == reasonLine, "the panel shows the unverified-host wording verbatim, got \"\(ended.detail)\"")
+            expect(unbound(ended.detail) == unbound(reasonLine), "the panel shows the unverified-host wording verbatim, got \"\(ended.detail)\"")
             expect(
                 ended.buttons.map(\.action) == [.quit, .yourMachines, .pairAgain],
                 "the unverified-host state offers Quit, Your machines, and Pair again, got \(ended.buttons.map(\.action))"
@@ -664,7 +664,7 @@ func testViewerUXFixTests() async {
             let primary = ended.buttons.first { $0.isPrimary }
             expect(primary?.action == .pairAgain, "Pair again is the primary action, since re-pinning the key is the only fix")
             expect(
-                !ended.detail.hasPrefix("Attempt") && !ended.headline.contains("Attempt"),
+                !unbound(ended.detail).hasPrefix("Attempt") && !ended.headline.contains("Attempt"),
                 "the terminal state never reads like an attempt still under way"
             )
 

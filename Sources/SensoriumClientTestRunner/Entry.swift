@@ -151,6 +151,7 @@ struct SensoriumClientTestRunner {
         testHostDisplaysAsleepCopyTests()
         testViewerLocalNetworkCopyTests()
         testViewerCopyWrappingTests()
+        testViewerStatusCopyTests()
         await testHostDisplaysAsleepStopsTheRunTests()
         testViewerSessionStatusIndicatorPulseTests()
         runViewerTelemetryAndFidelityHUDTests()

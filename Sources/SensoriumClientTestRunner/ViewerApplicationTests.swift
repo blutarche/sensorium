@@ -625,13 +625,13 @@ private func testViewerApplicationLiveSessionAndHostEnding() async {
             + "\(String(describing: window.appliedStatuses.last?.eyebrow))"
     )
     expect(
-        window.appliedStatuses.last?.detail == ViewerSessionFailureCopy.line(
+        window.appliedStatuses.last.map({ unbound($0.detail) }) == unbound(ViewerSessionFailureCopy.line(
             for: .stoppedByHost, hostLabel: "Studio"
-        ),
+        )),
         "with the host's own reason line, got \(String(describing: window.appliedStatuses.last?.detail))"
     )
     expect(
-        window.appliedStatuses.last?.headline == "Stopped at Studio.",
+        window.appliedStatuses.last.map({ unbound($0.headline) }) == "Stopped at Studio.",
         "and a headline naming the machine that stopped it, got "
             + "\(String(describing: window.appliedStatuses.last?.headline))"
     )
@@ -701,7 +701,7 @@ private func withHostStoppedSessionWhoseSendsStall(
     await connection.stallSends()
     await connection.push(.control(.goodbye(reason: GoodbyeReason.stoppedByHost)))
     expect(
-        await harness.settle(until: { window.appliedStatuses.last?.headline == "Stopped at Studio." }),
+        await harness.settle(until: { window.appliedStatuses.last.map({ unbound($0.headline) }) == "Stopped at Studio." }),
         "the panel says the host stopped it, got \(String(describing: window.appliedStatuses.last?.headline))"
     )
     await body(harness, window, connection)

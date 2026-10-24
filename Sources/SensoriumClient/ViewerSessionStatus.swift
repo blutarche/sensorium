@@ -40,6 +40,22 @@ public struct ViewerSessionStatus: Equatable, Sendable {
     /// while there is nothing to decide.
     public let buttons: [ViewerSessionButton]
 
+    init(
+        phase: ViewerSessionPhase,
+        tone: ViewerStatusTone,
+        eyebrow: String,
+        headline: String,
+        detail: String,
+        buttons: [ViewerSessionButton]
+    ) {
+        self.phase = phase
+        self.tone = tone
+        self.eyebrow = eyebrow
+        self.headline = ViewerCopyWrapping.keepingTailTogether(headline)
+        self.detail = ViewerCopyWrapping.keepingTailTogether(detail)
+        self.buttons = buttons
+    }
+
     /// A live session shows nothing over the canvas; every other phase does.
     public var isOverlayVisible: Bool { phase != .live }
 
@@ -140,7 +156,8 @@ public enum ViewerSessionEvent: Equatable, Sendable {
 /// sequence — first connect, live, drop, redial, stop, try again, give up — is
 /// verifiable as a pure event stream.
 public struct ViewerSessionStateMachine: Equatable, Sendable {
-    /// The host name as it is written on screen, verbatim from the caller.
+    /// The host name as it is written on screen: the caller's own name, held
+    /// together so a headline never breaks inside it.
     private let hostName: String
     /// Dial attempts since the last live canvas, or since the user asked for
     /// another go. Zero while live, so the next outage does not inherit the
@@ -155,7 +172,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     public private(set) var status: ViewerSessionStatus
 
     public init(hostName: String) {
-        self.hostName = hostName
+        self.hostName = ViewerCopyWrapping.name(hostName)
         status = Self.connecting(hostName: self.hostName, attempt: 0, lastFailureLine: nil)
     }
 
@@ -238,7 +255,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "STOPPED",
                 headline: "Stopped trying to reach \(hostName).",
-                detail: "Nothing is being retried now. Choose Try Again when that machine is awake, or quit.",
+                detail: "Nothing is being retried now. Choose \(Self.tryAgainName) when that machine is awake, or quit.",
                 buttons: Self.recoveryButtons
             )
         case .retryRequested:
@@ -253,8 +270,8 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "SESSION LOST",
                 headline: "Cannot reach \(hostName).",
-                detail: "Sensorium has stopped retrying. Check that it is awake, and that both machines "
-                    + "are on the same network or have Tailscale connected, then choose Try Again.",
+                detail: "Sensorium has stopped retrying. Check that \(hostName) is awake, and that both machines "
+                    + "are on the same network or have Tailscale connected, then choose \(Self.tryAgainName).",
                 buttons: Self.recoveryButtons
             )
         case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay):
@@ -309,14 +326,18 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     /// refused may stay that way all night, so Your Machines is the filled
     /// default -- it sits rightmost, the way macOS itself places a default
     /// button in a horizontal row. The private desktop is opt-in and starts
-    /// only when named, so Connect to a private desktop must never be
+    /// only when named, so Connect to a Private Desktop must never be
     /// what a stray Return fires.
     private static let endedButtons = [
+        ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
         ViewerSessionButton(
-            action: .connectAsVirtualDisplay, title: "Connect to a private desktop", isPrimary: false
+            action: .connectAsVirtualDisplay, title: "Connect to a Private Desktop", isPrimary: false
         ),
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
     ]
+
+    /// How the Try Again button is named inside a sentence.
+    private static let tryAgainName = ViewerCopyWrapping.control("Try Again")
 
     private static let endedWithoutVirtualDisplayButtons = recoveryButtons
 

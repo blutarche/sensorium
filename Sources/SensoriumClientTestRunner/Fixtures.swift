@@ -664,6 +664,13 @@ func expect(_ condition: Bool, _ message: String) {
     }
 }
 
+/// Copy as a person reads it: the no-break space and non-breaking hyphen that
+/// keep a name or a sentence end whole on screen read as an ordinary space and
+/// hyphen, so a test can state the words without the wrapping.
+func unbound(_ text: String) -> String {
+    text.replacingOccurrences(of: "\u{00A0}", with: " ").replacingOccurrences(of: "\u{2011}", with: "-")
+}
+
 /// Records the order two queued pieces of work actually ran in.
 actor RecordedOrder {
     private(set) var entries: [String] = []
