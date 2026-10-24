@@ -37,4 +37,4 @@ Preconditions:
 - Files with `-natural` sit over a synthetic frame; `-stream1.0x`/`-stream1.5x` versions exist for canvas content only. Viewer-local chrome never crosses the wire, so cite the single-pass file.
 - The connecting overlay is opaque, so its stream passes are identical to the natural one by design.
 - Menus (View, Resolution, Displays, Screen) have no render. Do not claim one was looked at.
-- The words "workstation" and "virtual display" are product copy; "canvas" must never appear in a PNG. Seeing it is a defect.
+- "private desktop" is the product's only name for a session-owned display; "virtual display" and "canvas" must never appear in a PNG. Seeing either is a defect.
