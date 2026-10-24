@@ -1189,17 +1189,11 @@ final class SavedMachineRowButton: NSButton {
         detail.maximumNumberOfLines = 0
         detail.translatesAutoresizingMaskIntoConstraints = false
 
-        let detailRow: NSView
-        if let kind = row.dot {
-            let detailStack = NSStackView(views: [SavedMachineRowButton.dot(for: kind), detail])
-            detailStack.orientation = .horizontal
-            detailStack.alignment = .centerY
-            detailStack.spacing = ViewerDesign.Space.xxs
-            detailStack.translatesAutoresizingMaskIntoConstraints = false
-            detailRow = detailStack
-        } else {
-            detailRow = detail
-        }
+        let detailRow = NSStackView(views: [SavedMachineRowButton.dot(for: row.dot), detail])
+        detailRow.orientation = .horizontal
+        detailRow.alignment = .centerY
+        detailRow.spacing = ViewerDesign.Space.xxs
+        detailRow.translatesAutoresizingMaskIntoConstraints = false
 
         let text = NSStackView(views: row.detail.isEmpty ? [name] : [name, detailRow])
         text.orientation = .vertical
@@ -1222,7 +1216,10 @@ final class SavedMachineRowButton: NSButton {
             string: "\u{2026}",
             attributes: [
                 .font: ViewerDesign.font(mono: false, size: 16, weight: .medium),
-                .foregroundColor: ViewerDesign.muted.nsColor
+                .foregroundColor: ViewerDesign.muted.nsColor,
+                // The ellipsis sits on the baseline, so its dots land below
+                // the middle of the line the button centres.
+                .baselineOffset: 8.5
             ]
         )
         let moreLabel = "More actions for \(row.name)"
@@ -1254,12 +1251,13 @@ final class SavedMachineRowButton: NSButton {
         fatalError("init(coder:) is not used")
     }
 
-    /// The dot beside a row's address. Online and offline hold still; only
+    /// The dot beside a row's address. Online and offline hold still, and no
+    /// kind at all -- a machine nothing is known about -- is a muted one; only
     /// `.activity` pulses, standing in for the words a connecting or
     /// stopping row's detail line no longer carries alone. Held static
     /// under Reduce Motion, since a pulse conveys nothing a person who has
     /// asked for less motion needs the animation itself to receive.
-    static func dot(for kind: YourMachinesRow.RowDot) -> NSView {
+    static func dot(for kind: YourMachinesRow.RowDot?) -> NSView {
         let dot = NSView()
         dot.translatesAutoresizingMaskIntoConstraints = false
         dot.wantsLayer = true
@@ -1268,6 +1266,7 @@ final class SavedMachineRowButton: NSButton {
         case .online: color = ViewerDesign.ok
         case .offline: color = ViewerDesign.bad
         case .activity: color = ViewerDesign.warn
+        case .none: color = ViewerDesign.muted2
         }
         dot.layer?.backgroundColor = color.cgColor
         dot.layer?.cornerRadius = 3

@@ -80,13 +80,14 @@ public struct YourMachinesRow: Equatable, Sendable {
         return status.map { "\(address) \u{2014} \($0)" } ?? address
     }
 
-    /// The dot beside the detail line, or none where nothing is worth
-    /// marking. Idle reads `isOnline` the same way `detail` does --
-    /// unknown reachability draws no dot, the same restraint that keeps an
-    /// unmentioned machine from being called offline. A connecting or
-    /// stopping attempt draws the one dot that pulses, in place of the
-    /// words this line no longer needs to carry alone. A failed or stopped
-    /// attempt draws none: its own line already says everything.
+    /// The dot beside the detail line. `offline` stands for a machine that
+    /// cannot be reached, whether `tailscale status` says so or the last
+    /// attempt did. `nil` is a machine nothing is known about, the same
+    /// restraint that keeps an unmentioned machine from being called offline;
+    /// the row still draws a dot there, a neutral one, so every address
+    /// starts at the same place. A connecting or stopping attempt draws the
+    /// one dot that pulses, in place of the words this line no longer needs
+    /// to carry alone.
     public enum RowDot: Equatable, Sendable {
         case online
         case offline
@@ -104,7 +105,7 @@ public struct YourMachinesRow: Equatable, Sendable {
         case .connecting, .stopping:
             return .activity
         case .failed, .stopped:
-            return nil
+            return .offline
         }
     }
 

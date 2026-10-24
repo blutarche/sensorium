@@ -847,6 +847,69 @@ func testYourMachinesWindowMoreButtonAccessibilityLabelTests() {
     print("PASS: a saved machine's row's \"\u{2026}\" button carries an accessibility label naming that machine")
 }
 
+/// Every row draws a dot before its detail line, whatever it says, so the
+/// addresses of an idle row, a failed one and one nothing is known about
+/// start at the same place.
+@MainActor
+func testYourMachinesRowDetailLinesShareOneLeftEdgeTests() {
+    let idle = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let failing = testMachine("Studio", key: 2, host: "studio.tail1234.ts.net")
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [idle, failing]))
+    controller.connectStarted(hostPublicKey: failing.hostPublicKey)
+    controller.attemptFailed(reason: "no answer")
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+
+    guard let idleDetail = label(containing: "mini.tail1234.ts.net", in: root),
+          let failedDetail = label(containing: "studio.tail1234.ts.net", in: root) else {
+        expect(false, "both rows show a detail line")
+        return
+    }
+    let idleX = idleDetail.convert(idleDetail.bounds, to: root).minX
+    let failedX = failedDetail.convert(failedDetail.bounds, to: root).minX
+    expect(abs(idleX - failedX) < 0.5, "an idle row's address and a failed row's start together, got \(idleX) and \(failedX)")
+    let beforeIdle = (idleDetail.superview as? NSStackView)?.arrangedSubviews.first
+    expect(
+        beforeIdle != nil && beforeIdle !== idleDetail && beforeIdle?.frame.size == NSSize(width: 6, height: 6),
+        "a row nothing is known about still draws a dot before its address"
+    )
+
+    print("PASS: every row's detail line starts at the same x, dot or not")
+}
+
+/// The "..." glyph rides the text baseline, so its ink sits low in its own
+/// frame; the button has to put the ink, not the frame, on its centre.
+@MainActor
+func testYourMachinesMoreButtonEllipsisIsCentredTests() {
+    let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini]))
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+    guard let more = button(titled: "\u{2026}", in: root) else {
+        expect(false, "a saved machine's row has a \"\u{2026}\" button")
+        return
+    }
+    let side = Int((more.bounds.width * 2).rounded())
+    let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: Int((more.bounds.height * 2).rounded()),
+        bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+        bytesPerRow: 0, bitsPerPixel: 0
+    )!
+    rep.size = more.bounds.size
+    more.cacheDisplay(in: more.bounds, to: rep)
+    var minY = Int.max, maxY = -1
+    for y in 0..<rep.pixelsHigh {
+        for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.3 {
+            minY = min(minY, y); maxY = max(maxY, y)
+        }
+    }
+    expect(maxY >= 0, "the \"\u{2026}\" button draws its glyph")
+    let offset = Double(minY + maxY + 1) / 2 - Double(rep.pixelsHigh) / 2
+    expect(abs(offset) <= 1.0, "the \"\u{2026}\" ink is within half a point of its button's centre, got \(offset) px at 2x")
+
+    print("PASS: the \"\u{2026}\" glyph sits on the middle of its button")
+}
+
 /// `ViewerFormControls.actionButton`'s own `>= 96` width floor only pads a
 /// short title; a longer one, like the add step's own, otherwise hugs the
 /// accent fill edge-to-edge with no horizontal margin at all.

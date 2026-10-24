@@ -1168,7 +1168,7 @@ MainActor.assumeIsolated {
             + " address and offers Cancel; every other row stays clickable"
     )
 
-    machinesList.attemptFailed(reason: "no answer")
+    machinesList.attemptFailed(reason: ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Workstation"))
     write(
         render(machinesContent(machinesList)),
         named: "viewer-machines-4-failed.png",
@@ -1227,6 +1227,17 @@ MainActor.assumeIsolated {
         tlsCertificateHash: Data([4, 4]),
         lastConnectedAt: Date(timeIntervalSince1970: 500)
     )])
+    longNamed.loadTailnet = { .devices([TailnetDevicePickerRow(peer: TailnetPeer(
+        id: "4", displayName: "Kestrel-Field-Station-Long-Range-Research-Notebook",
+        magicDNSName: "kestrel-field-station-notebook.tail1234.ts.net",
+        tailnetIPv4: "100.64.1.11", tailnetIPv6: nil, isOnline: true, isThisMachine: false
+    ))]) }
+    longNamed.showAddAMachine()
+    pumpUntil(
+        { stored("reachability", of: longNamed, as: [Data: Bool].self).isEmpty == false },
+        description: "the tailnet answer behind the long-named row's online note"
+    )
+    longNamed.showList()
     write(
         render(machinesContent(longNamed)),
         named: "viewer-machines-7-long-name.png",

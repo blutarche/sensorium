@@ -66,6 +66,8 @@ func runDarwinClientTests() async {
     await testShortcutStripSendsWholeChordsTests()
     await testYourMachinesWindowTests()
     testYourMachinesWindowMoreButtonAccessibilityLabelTests()
+    testYourMachinesRowDetailLinesShareOneLeftEdgeTests()
+    testYourMachinesMoreButtonEllipsisIsCentredTests()
     testYourMachinesWindowUpdateLineTests()
     testViewerFormActionButtonPaddingTests()
     testYourMachinesCodeStepFieldsSitOnTheColumnTests()

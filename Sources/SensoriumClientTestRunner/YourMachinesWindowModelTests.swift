@@ -162,7 +162,7 @@ func testYourMachinesWindowModelTests() {
             model.rows[0].activity == .failed(attempt: 1, reason: "no answer"),
             "the attempt number is still tracked, even though the row no longer prints it, got \(model.rows[0].activity)"
         )
-        expect(model.rows[0].dot == nil, "a failed attempt's own line already says everything, so it draws no dot")
+        expect(model.rows[0].dot == .offline, "a failed attempt is marked like a machine that cannot be reached")
         expect(model.rows[0].offersCancel, "a failed attempt is still being retried, so Cancel stays")
 
         model.connectStarted(hostPublicKey: mini.hostPublicKey)
