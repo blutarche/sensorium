@@ -136,9 +136,11 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         // person was doing. The window title (set above) avoids "Screen
         // Sharing Request": macOS has its own Screen Sharing feature, and
         // this prompt is not that.
-        // Wider than the prompt at the eyebrow's tracking, so it wraps.
+        // Wider than the prompt at the eyebrow's tracking, so it wraps. Each
+        // name is held whole and the separator stays with the first, so the
+        // one place it breaks is after the separator.
         eyebrow.attributedStringValue = CanvasDesign.eyebrow(
-            HostTextFlow.flow("Sensorium Host \u{00B7} Host Screen Request")
+            HostTextFlow.whole("Sensorium Host \u{00B7}") + " " + HostTextFlow.whole("Host Screen Request")
         )
         eyebrow.lineBreakMode = .byWordWrapping
         eyebrow.maximumNumberOfLines = 0

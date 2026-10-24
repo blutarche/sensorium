@@ -40,10 +40,12 @@ func runHostScreenPresencePromptTests() async {
                 + "Sharing feature -- got: \(eyebrow)"
         )
         // At the widest tracking the whole eyebrow is wider than the prompt,
-        // so it wraps, and "REQUEST" never stands alone on the second line.
+        // so it wraps. "Sensorium Host" and "Host Screen Request" each stay in
+        // one piece, so the one place it can break is after the separator.
+        let nbsp = HostTextFlow.noBreakSpace
         expect(
-            eyebrow.hasSuffix("SCREEN\(HostTextFlow.noBreakSpace)REQUEST"),
-            "the eyebrow's last two words stay together when it wraps -- got \(eyebrow.debugDescription)"
+            eyebrow == "SENSORIUM\(nbsp)HOST\(nbsp)\u{00B7} HOST\(nbsp)SCREEN\(nbsp)REQUEST",
+            "the eyebrow breaks only after the separator -- got \(eyebrow.debugDescription)"
         )
         let eyebrowField: NSTextField = field(
             "eyebrow",
