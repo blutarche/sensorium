@@ -49,6 +49,10 @@ for configuration in debug release; do
     done
 done
 
+if [ "$(uname -s)" = Darwin ]; then
+    Scripts/test-viewer-window-maximize.sh
+fi
+
 Scripts/test-render-ui-previews.sh
 Scripts/test-make-readme-media.sh
 Scripts/test-clipboard-sharing-gui-reachable.sh

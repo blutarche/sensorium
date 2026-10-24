@@ -240,13 +240,8 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         self.title = title
         window.title = title
         window.contentView = surfaceView
-        // Ordinary manual resizing stays 16:10 so it never needs a letterbox;
-        // the presenter still letterboxes for cases this can't cover, such as
-        // going fullscreen on a differently-shaped physical display.
-        window.contentAspectRatio = NSSize(
-            width: CGFloat(preset.logicalWidth),
-            height: CGFloat(preset.logicalHeight)
-        )
+        // Leave the window unconstrained so native zoom can fill screens of
+        // any aspect ratio; the presenter letterboxes the remote picture.
 
         // AppKit remembers the frame under this name from here on; a window
         // that has one goes back where the user left it, and only a window
