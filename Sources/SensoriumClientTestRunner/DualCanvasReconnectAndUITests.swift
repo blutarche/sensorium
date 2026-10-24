@@ -2470,23 +2470,26 @@ func testDualCanvasReconnectAndUITests() async {
                 "the client's own decode and the host's encode both appear, each with its own number"
             )
             expect(
-                backedOffSections.contains { $0.title == "THIS MACHINE" } && backedOffSections.contains { $0.title == "STUDIO" },
+                backedOffSections.contains { $0.title == "LATENCY \u{00B7} THIS MACHINE" }
+                    && backedOffSections.contains { $0.title == "LATENCY \u{00B7} STUDIO" },
                 "each latency figure is labelled with the machine that measured it, the host by its own upper-cased name"
             )
-            // The two latency blocks are parallel data with short values, and
-            // the question a person opens this panel to answer is which
-            // machine is slow. Side by side answers it at a glance and costs
-            // half the height; the model says they pair, the view only draws
-            // it.
+            // The two latency groups are full-width sections like every other
+            // group, so their values start where every other row's do. Side by
+            // side they could not: a column is too narrow for the shared label
+            // width.
             let backedOffBlocks = SessionHUDPanel.blocks(telemetry: backedOff, session: liveStatus)
-            let pairedTitles: [[String]] = backedOffBlocks.compactMap { block in
-                guard case let .columns(title, left, right) = block else { return nil }
-                return [title, left.title, right.title]
-            }
             expect(
-                pairedTitles == [["LATENCY", "THIS MACHINE", "STUDIO"]],
-                "the only paired block is the two latency columns, this machine's on the left, the host named by its"
-                    + " own upper-cased name rather than the generic word \"HOST\""
+                !backedOffBlocks.contains { if case .columns = $0 { true } else { false } },
+                "no block puts two sections side by side, so every value sits on the one grid"
+            )
+            expect(
+                backedOffBlocks.compactMap { block -> String? in
+                    guard case let .section(section) = block, section.title.hasPrefix("LATENCY") else { return nil }
+                    return section.title
+                } == ["LATENCY \u{00B7} THIS MACHINE", "LATENCY \u{00B7} STUDIO"],
+                "this machine's latency comes first, then the host's, named by its own upper-cased name rather than"
+                    + " the generic word \"HOST\""
             )
             expect(
                 hudRow(backedOffSections, "FPS")?.note == "Encoded on Studio.",
@@ -2533,7 +2536,7 @@ func testDualCanvasReconnectAndUITests() async {
                 "every empty diagnostics value reads as one \"not \u{2026}\" pattern -- APPLIED, CEILING, and PRESENT "
                     + "alike -- got: \(hudRow(oldHostSections, "CEILING")?.value ?? "nil")"
             )
-            let oldHostPairedTitles: [[String]] = SessionHUDPanel.blocks(
+            let oldHostLatencyTitles: [String] = SessionHUDPanel.blocks(
                 telemetry: SessionHUDSnapshot(
                     surfaceID: 0,
                     availability: .fresh(oldHostSample),
@@ -2544,14 +2547,14 @@ func testDualCanvasReconnectAndUITests() async {
                     decoder: nil
                 ),
                 session: liveStatus
-            ).compactMap { block in
-                guard case let .columns(title, left, right) = block else { return nil }
-                return [title, left.title, right.title]
+            ).compactMap { block -> String? in
+                guard case let .section(section) = block, section.title.hasPrefix("LATENCY") else { return nil }
+                return section.title
             }
             expect(
-                oldHostPairedTitles == [["LATENCY", "THIS MACHINE", "HOST"]],
-                "the generic word \"HOST\" survives as the column header's own fallback when no name is known,"
-                    + " got: \(oldHostPairedTitles)"
+                oldHostLatencyTitles == ["LATENCY \u{00B7} THIS MACHINE", "LATENCY \u{00B7} HOST"],
+                "the generic word \"HOST\" survives as the heading's own fallback when no name is known,"
+                    + " got: \(oldHostLatencyTitles)"
             )
             expect(
                 hudRow(oldHostSections, "SIZE")?.value == "unavailable"

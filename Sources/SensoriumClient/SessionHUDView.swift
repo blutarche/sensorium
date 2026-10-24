@@ -232,6 +232,13 @@ private final class SessionHUDBlockView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             columns.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
+        // A stacked section is as wide as the panel, not as its widest row: a
+        // heading longer than the rows under it would otherwise be cut short.
+        if !isColumns {
+            for section in sectionViews {
+                section.widthAnchor.constraint(equalTo: columns.widthAnchor).isActive = true
+            }
+        }
     }
 
     @available(*, unavailable)

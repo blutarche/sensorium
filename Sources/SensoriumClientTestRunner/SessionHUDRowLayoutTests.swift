@@ -146,6 +146,45 @@ func testSessionHUDRowLayoutMatchesMacOSGeometryTests() {
 #if canImport(AppKit)
 import AppKit
 
+/// Every value on the panel starts at the one x, the latency groups included,
+/// and a group's heading is drawn whole however short its rows are.
+@MainActor
+func testSessionHUDLatencyGroupsShareTheValueGridTests() {
+    let view = SessionHUDView()
+    view.apply(telemetry: fixtureSnapshot())
+    view.layoutSubtreeIfNeeded()
+
+    func descendants(_ view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
+    }
+    let fields = descendants(view).compactMap { $0 as? NSTextField }
+    func valueX(ofRow label: String) -> CGFloat? {
+        guard let labelField = fields.first(where: { $0.stringValue == label }),
+              let line = labelField.superview as? NSStackView,
+              line.arrangedSubviews.count == 2 else { return nil }
+        let value = line.arrangedSubviews[1]
+        return value.convert(value.alignmentRect(forFrame: value.bounds).origin, to: view).x
+    }
+    let reference = valueX(ofRow: "SIZE")
+    expect(reference != nil, "the panel shows a SIZE row to compare against")
+    for label in ["RECEIVE", "END-TO-END", "CAPTURE", "SEND", "VIDEO IN"] {
+        let x = valueX(ofRow: label)
+        expect(x != nil, "the panel shows a \(label) row")
+        if let x, let reference {
+            expect(abs(x - reference) < 0.5, "\(label)'s value starts at \(reference), got \(x)")
+        }
+    }
+    let headings = fields.filter { $0.stringValue.hasPrefix("LATENCY") }
+    expect(headings.count == 2, "this machine's latency and the host's each have a heading, got \(headings.count)")
+    for heading in headings {
+        expect(
+            heading.frame.width >= heading.intrinsicContentSize.width - 0.5,
+            "\"\(heading.stringValue)\" is drawn whole, got \(heading.frame.width) of \(heading.intrinsicContentSize.width)"
+        )
+    }
+    print("PASS: every HUD value starts on the one grid, and the latency headings are not cut short")
+}
+
 /// The macOS panel itself lands where `SessionHUDRowLayout` says the Linux
 /// one draws: the VIDEO IN value and its sparkline.
 @MainActor

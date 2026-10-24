@@ -265,11 +265,12 @@ public struct SessionHUDSection: Equatable, Sendable {
     }
 }
 
-/// How the sections sit on the panel. Two sections of parallel data with
-/// short values -- the two latency blocks -- are half the height and easier to
-/// compare side by side, and which of the two machines is slow is the question
-/// a person opens this panel to answer. The pairing is decided here rather
-/// than by the view so it is verifiable without a window.
+/// How the sections sit on the panel. A block is one section, or two drawn
+/// side by side under one eyebrow. `SessionHUDPanel` builds only single
+/// sections: a column is too narrow for the label width every full-width row
+/// shares, and values that start at different places are harder to read down
+/// than the height a pair saves. The layout is decided here rather than by the
+/// view so it is verifiable without a window.
 public enum SessionHUDBlock: Equatable, Sendable {
     case section(SessionHUDSection)
     /// The shared eyebrow, then the two columns under it. A column is under
@@ -346,44 +347,41 @@ public enum SessionHUDPanel {
                 hostAddress: telemetry.hostAddress
             )),
             .section(resolutionSection(telemetry, sample: sample, isStale: isStale, isSessionDown: isSessionDown)),
-            .columns(
-                title: "LATENCY",
-                SessionHUDSection(title: "THIS MACHINE", rows: [
-                    stageRow("RECEIVE", telemetry.clientMetrics.samples(for: .receive).p50, isStale: isSessionDown),
-                    stageRow("DECODE", telemetry.clientMetrics.samples(for: .decode).p50, isStale: isSessionDown),
-                    // Decode finishing to the frame reaching the screen,
-                    // the hold included -- never screen latency itself.
-                    stageRow("UPDATES", telemetry.clientMetrics.samples(for: .present).p50, isStale: isSessionDown),
-                    // What "PRESENT" means: the GPU's own completion signal,
-                    // not the instant `present(_:)` returned -- see
-                    // `MetalFramePresenter.completionLatency`.
-                    stageRow("PRESENT", telemetry.presentCompletionP50Nanoseconds, isStale: isSessionDown),
-                    // Latency this machine added on purpose, named as such and
-                    // placed before the figure it is part of. A hold of zero
-                    // is a session that has held nothing yet, not a session
-                    // that measured no hold.
-                    stageRow(
-                        "HOLD",
-                        telemetry.presentationHoldNanoseconds.flatMap { $0 > 0 ? $0 : nil },
-                        isStale: isSessionDown,
-                        note: "Added on this machine to steady the motion."
-                    ),
-                    stageRow(
-                        "END-TO-END",
-                        telemetry.clientMetrics.samples(for: .endToEnd).p50,
-                        isStale: isSessionDown,
-                        trend: telemetry.endToEndLatencyTrend.samples
-                    ),
-                    // Send to `inputApplied` reply, entirely local to the viewer --
-                    // see `SessionMetricStage.inputRoundTrip`.
-                    stageRow("INPUT RTT", telemetry.clientMetrics.samples(for: .inputRoundTrip).p50, isStale: isSessionDown)
-                ]),
-                SessionHUDSection(title: telemetry.hostName?.uppercased() ?? "HOST", rows: [
-                    stageRow("CAPTURE", sample?.capture?.p50Nanoseconds, isStale: isStale),
-                    stageRow("ENCODE", sample?.encode?.p50Nanoseconds, isStale: isStale),
-                    stageRow("SEND", sample?.send?.p50Nanoseconds, isStale: isStale)
-                ])
-            ),
+            .section(SessionHUDSection(title: "LATENCY \u{00B7} THIS MACHINE", rows: [
+                stageRow("RECEIVE", telemetry.clientMetrics.samples(for: .receive).p50, isStale: isSessionDown),
+                stageRow("DECODE", telemetry.clientMetrics.samples(for: .decode).p50, isStale: isSessionDown),
+                // Decode finishing to the frame reaching the screen,
+                // the hold included -- never screen latency itself.
+                stageRow("UPDATES", telemetry.clientMetrics.samples(for: .present).p50, isStale: isSessionDown),
+                // What "PRESENT" means: the GPU's own completion signal,
+                // not the instant `present(_:)` returned -- see
+                // `MetalFramePresenter.completionLatency`.
+                stageRow("PRESENT", telemetry.presentCompletionP50Nanoseconds, isStale: isSessionDown),
+                // Latency this machine added on purpose, named as such and
+                // placed before the figure it is part of. A hold of zero
+                // is a session that has held nothing yet, not a session
+                // that measured no hold.
+                stageRow(
+                    "HOLD",
+                    telemetry.presentationHoldNanoseconds.flatMap { $0 > 0 ? $0 : nil },
+                    isStale: isSessionDown,
+                    note: "Added on this machine to steady the motion."
+                ),
+                stageRow(
+                    "END-TO-END",
+                    telemetry.clientMetrics.samples(for: .endToEnd).p50,
+                    isStale: isSessionDown,
+                    trend: telemetry.endToEndLatencyTrend.samples
+                ),
+                // Send to `inputApplied` reply, entirely local to the viewer --
+                // see `SessionMetricStage.inputRoundTrip`.
+                stageRow("INPUT RTT", telemetry.clientMetrics.samples(for: .inputRoundTrip).p50, isStale: isSessionDown)
+            ])),
+            .section(SessionHUDSection(title: "LATENCY \u{00B7} \(telemetry.hostName?.uppercased() ?? "HOST")", rows: [
+                stageRow("CAPTURE", sample?.capture?.p50Nanoseconds, isStale: isStale),
+                stageRow("ENCODE", sample?.encode?.p50Nanoseconds, isStale: isStale),
+                stageRow("SEND", sample?.send?.p50Nanoseconds, isStale: isStale)
+            ])),
             .section(throughputSection(telemetry, sample: sample, isStale: isStale, isSessionDown: isSessionDown))
         ]
     }
