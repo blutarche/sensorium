@@ -130,9 +130,13 @@ func runHostPairedMachinesEmptyStateTests() async {
             onRemovePairedDevice: { _ in }
         )
         approving.updatePairedMachines([])
+        let approvingHeading = field(
+            "emptyHeading", of: field("pairedMachines", of: approving, as: NSView.self), as: NSTextField.self
+        )
         expect(
-            subtext(of: approving) == notReady,
-            "a machine finishing its pairing leaves no button to show a code either -- got \(subtext(of: approving).debugDescription)"
+            subtext(of: approving).isEmpty && approvingHeading.isHidden,
+            "a machine finishing its pairing is already named by the status card, so the section says nothing -- got "
+                + "\(subtext(of: approving).debugDescription), heading hidden \(approvingHeading.isHidden)"
         )
 
         ready.update(HostOperatorStatus(connection: .notHosting, permissions: granted, problem: "Could not start hosting."))

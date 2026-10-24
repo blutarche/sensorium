@@ -63,20 +63,20 @@ func runPairedMachinesSharingToggleTests() async {
             "on, the track is tinted with this app's own accent colour, not left to NSColor.controlAccentColor -- which a person can set to Graphite, making on and off the same grey"
         )
         expect(
-            toggleLabel.textColor == CanvasDesign.muted.nsColor,
-            "on, the Share host screen label still reads muted -- one label colour regardless of state"
+            toggleLabel.textColor == CanvasDesign.ink.nsColor,
+            "on, the Share host screen label reads in ink -- one label colour regardless of state"
         )
         expect(
             toggle.alphaValue == 1 && toggleLabel.alphaValue == 1,
             "an enabled toggle and its label are drawn at full opacity"
         )
 
-        print("PASS: a sharing row's toggle takes the app accent, and its label stays the same muted colour either way")
+        print("PASS: a sharing row's toggle takes the app accent, and its label stays the same ink either way")
     }
 
     do {
         // Off: the track falls back to a plain dark fill, and the
-        // label stays muted.
+        // label stays in ink.
         let idleRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
             deviceName: "Kestrel Laptop Air",
@@ -94,15 +94,15 @@ func runPairedMachinesSharingToggleTests() async {
             "off, the track is not tinted with the accent colour -- it must read as visibly different from on"
         )
         expect(
-            toggleLabel.textColor == CanvasDesign.muted.nsColor,
-            "off, the Share host screen label stays muted"
+            toggleLabel.textColor == CanvasDesign.ink.nsColor,
+            "off, the Share host screen label stays in ink"
         )
         expect(
             toggle.alphaValue == 1 && toggleLabel.alphaValue == 1,
             "an enabled toggle and its label are drawn at full opacity"
         )
 
-        print("PASS: an idle row's toggle track is not accent-tinted, and its label stays muted")
+        print("PASS: an idle row's toggle track is not accent-tinted, and its label stays in ink")
     }
 
 
