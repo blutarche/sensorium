@@ -143,6 +143,37 @@ func testSessionHUDRowLayoutMatchesMacOSGeometryTests() {
     print("PASS: a HUD row lays out on SessionHUDRowView's own label column, value start, sparkline and note indent")
 }
 
+/// A lost session's status panel never sits over the diagnostics panel when
+/// the canvas has room beside it, and stays centred whenever it is already
+/// clear or there is no room to move into.
+func testSessionHUDStatusPanelClearsTheHUDTests() {
+    let panel = 400.0
+    let keepClear = SessionHUDClearance.keepClear
+    expect(keepClear == 8 + 320 + 8, "the diagnostics panel's edge inset, width and a gap are kept clear, got \(keepClear)")
+
+    func originX(_ canvasWidth: Double) -> Double {
+        SessionHUDClearance.statusPanelOriginX(canvasWidth: canvasWidth, panelWidth: panel, keepClear: keepClear)
+    }
+    expect(originX(1920) == 760, "a wide canvas keeps the panel centred, got \(originX(1920))")
+    expect(originX(960) == 448, "a 960 wide canvas centres it in the 624 to the right of the diagnostics, got \(originX(960))")
+    expect(originX(700) == 150, "with no room beside the diagnostics the panel stays centred, got \(originX(700))")
+
+    var moved = 0
+    for width in stride(from: 300.0, through: 2400.0, by: 5.0) {
+        let origin = originX(width)
+        if width - keepClear >= panel {
+            expect(origin >= keepClear, "at \(width) the panel starts at \(origin), over the diagnostics")
+            expect(origin + panel <= width, "at \(width) the panel starts at \(origin) and runs past the canvas")
+            if origin != (width - panel) / 2 { moved += 1 }
+        } else {
+            expect(origin == (width - panel) / 2, "at \(width) there is no room to move, so the panel stays centred, got \(origin)")
+        }
+    }
+    expect(moved > 0, "some canvas widths do move the panel")
+
+    print("PASS: the status panel sits right of the diagnostics panel whenever the canvas has room for both")
+}
+
 #if canImport(AppKit)
 import AppKit
 

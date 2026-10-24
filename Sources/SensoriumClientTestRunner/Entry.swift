@@ -101,6 +101,7 @@ struct SensoriumClientTestRunner {
         testMessagePromptSpacingTests()
         testSessionHUDRowLayoutNoOverlapTests()
         testSessionHUDRowLayoutMatchesMacOSGeometryTests()
+        testSessionHUDStatusPanelClearsTheHUDTests()
         testSessionChromePainterPixelTests()
         testShortcutStripGlyphsDrawTests()
         testShortcutStripLongHostNameNeverDrawsUnderPillTests()

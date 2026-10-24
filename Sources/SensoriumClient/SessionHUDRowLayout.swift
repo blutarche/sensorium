@@ -50,3 +50,26 @@ public enum SessionHUDRowLayout {
         )
     }
 }
+
+/// Keeps the session status panel off the diagnostics panel, which is pinned
+/// to the canvas's leading edge. The status panel's buttons are what ends an
+/// outage, and the readings behind a lost session are still worth reading, so
+/// neither covers the other when the canvas has room for both.
+public enum SessionHUDClearance {
+    /// How much of the canvas's leading edge the diagnostics panel holds: its
+    /// inset, its width, and one more inset as the gap beside it.
+    public static let keepClear = Double(
+        ViewerChromeMetrics.Diagnostics.edgeInset * 2 + ViewerChromeMetrics.Diagnostics.width
+    )
+
+    /// The x of the status panel's leading edge on a canvas `canvasWidth`
+    /// wide: centred, unless that puts it over the leading `keepClear` points
+    /// and the canvas has room to the right of them -- then centred in that
+    /// room. With no room to move into it stays centred and the panel,
+    /// drawn above, covers what it must.
+    public static func statusPanelOriginX(canvasWidth: Double, panelWidth: Double, keepClear: Double) -> Double {
+        let centred = (canvasWidth - panelWidth) / 2
+        guard centred < keepClear, canvasWidth - keepClear >= panelWidth else { return centred }
+        return keepClear + (canvasWidth - keepClear - panelWidth) / 2
+    }
+}

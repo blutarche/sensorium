@@ -762,6 +762,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// monitor and the View menu are the same act rather than two.
     public func toggleTelemetryOverlay() {
         sessionHUD.isHidden.toggle()
+        statusOverlay.leadingKeepClear = sessionHUD.isHidden ? 0 : CGFloat(SessionHUDClearance.keepClear)
     }
 
     /// Likewise for captured-pointer mode, and it matters more here: this
@@ -1126,6 +1127,13 @@ final class ViewerSessionStatusOverlay: NSView {
     /// Collapsed to nothing when a state offers no buttons, so a panel with
     /// only words keeps its own padding.
     private var buttonRowTop: NSLayoutConstraint!
+    private var panelCentreX: NSLayoutConstraint!
+    /// How much of this view's leading edge something else holds -- the
+    /// diagnostics panel while it is shown. The panel moves off it when the
+    /// view has room, see `SessionHUDClearance`.
+    var leadingKeepClear: CGFloat = 0 {
+        didSet { needsLayout = true }
+    }
     var onAction: ((ViewerSessionAction) -> Void)?
 
     init() {
@@ -1182,8 +1190,9 @@ final class ViewerSessionStatusOverlay: NSView {
         panel.addSubview(buttonRow)
 
         let inset = ViewerDesign.Space.lg
+        panelCentreX = panel.centerXAnchor.constraint(equalTo: centerXAnchor)
         NSLayoutConstraint.activate([
-            panel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            panelCentreX,
             panel.centerYAnchor.constraint(equalTo: centerYAnchor),
             // One width for every state (`StatusPanelLayout.sessionPanelWidth`),
             // so the panel does not jump as the session changes state under
@@ -1218,6 +1227,18 @@ final class ViewerSessionStatusOverlay: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not used")
+    }
+
+    override func layout() {
+        let width = Double(StatusPanelLayout.sessionPanelWidth)
+        let originX = SessionHUDClearance.statusPanelOriginX(
+            canvasWidth: Double(bounds.width), panelWidth: width, keepClear: Double(leadingKeepClear)
+        )
+        let offset = CGFloat(originX + width / 2) - bounds.width / 2
+        if panelCentreX.constant != offset {
+            panelCentreX.constant = offset
+        }
+        super.layout()
     }
 
     func apply(_ status: ViewerSessionStatus) {

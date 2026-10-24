@@ -1990,6 +1990,17 @@ MainActor.assumeIsolated {
             let overlay = ViewerSessionStatusOverlay()
             overlay.frame = NSRect(origin: .zero, size: viewportSize)
             overlay.apply(status)
+            // What `ClientCanvasWindowController` hands it while the HUD is shown.
+            overlay.leadingKeepClear = CGFloat(SessionHUDClearance.keepClear)
+            overlay.layoutSubtreeIfNeeded()
+            let panelFrame = stored("panel", of: overlay, as: NSView.self).frame
+            let room = viewportSize.width - SessionHUDClearance.keepClear
+            if room >= panelFrame.width, panelFrame.minX < pinned.frame.maxX {
+                fail(
+                    "the status panel starts at x=\(panelFrame.minX), over the HUD that ends at x=\(pinned.frame.maxX),"
+                        + " though the canvas has \(room)pt beside the HUD for its \(panelFrame.width)pt"
+                )
+            }
             canvas = composite(render(overlay), over: canvas)
         }
         return canvas
@@ -2014,8 +2025,8 @@ MainActor.assumeIsolated {
     write(
         hudOverCanvas(status: lostMachine.handle(.gaveUp)),
         named: "viewer-hud-7-under-session-panel.png",
-        state: "the same HUD with a lost session over it — the status panel and its buttons are above the"
-            + " HUD, never behind it"
+        state: "the same HUD with a lost session over it — the status panel and its buttons sit in the room"
+            + " to the right of the HUD, above it in z-order but never over it"
     )
 
     // ViewerTransientNoticeView: the banner a "Displays" increase refusal
