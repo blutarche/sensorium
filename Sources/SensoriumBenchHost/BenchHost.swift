@@ -9,8 +9,11 @@
 // or any other permission-gated API, create a virtual display, post input
 // events, lock or unlock the screen, hold a display awake, open a window or a
 // menu-bar item, listen on the host app's port, or read or write anything
-// outside --state-dir and --trace. The session canvas it offers is a display
-// number only; the picture is drawn from the pointer positions the viewer sends.
+// outside --state-dir, --trace and --packet-log. The session canvas it offers
+// is a display number only; the picture is drawn from the pointer positions the
+// viewer sends. With --canvas the picture is a fixed size instead of the
+// viewer's window size, so a stream can start above the size at which the host
+// encodes a moving picture smaller than a settled one.
 //
 // The viewer pairs with the code printed as `bench-host pairing-code <code>`
 // the first time; the paired device is kept in --state-dir for later runs.
@@ -39,6 +42,7 @@ private struct NoRelock: HostScreenRelocking {
 private enum BenchHostFailure: Error, CustomStringConvertible {
     case notTailnetAddress(String)
     case identityUnavailable(String)
+    case packetLogUnavailable
 
     var description: String {
         switch self {
@@ -46,6 +50,8 @@ private enum BenchHostFailure: Error, CustomStringConvertible {
             return "\(address) is not a tailnet address; refusing to listen"
         case let .identityUnavailable(reason):
             return reason
+        case .packetLogUnavailable:
+            return "the --packet-log file could not be created"
         }
     }
 }
@@ -56,6 +62,9 @@ private enum BenchHostFailure: Error, CustomStringConvertible {
 private final class BenchHostRun {
     private let options: BenchHostOptions
     private let trace: LatencyTraceWriter
+    private let packetLog: PacketLog?
+    /// The picture the stream is built at, or `nil` to follow the viewer's window.
+    private let canvasConfiguration: VideoEncoderConfiguration?
     private let listener: HostNetworkListener
     private let pairing: HostPairingService
     private let sessionFactory: HostConnectionSessionFactory
@@ -70,6 +79,22 @@ private final class BenchHostRun {
             throw BenchHostFailure.notTailnetAddress(options.address)
         }
         trace = try LatencyTraceWriter(url: URL(fileURLWithPath: options.tracePath), sessionLabel: options.address)
+        if let path = options.packetLogPath {
+            do {
+                packetLog = try PacketLog(path: path)
+            } catch {
+                throw BenchHostFailure.packetLogUnavailable
+            }
+        } else {
+            packetLog = nil
+        }
+        // Sized as the host sizes a screen it streams: opened at its own
+        // logical size, never past what the hardware encoder takes.
+        canvasConfiguration = options.canvasSize.map {
+            HostScreenEncoderSizing.resolve(
+                for: SessionSurfaceGeometry(logicalWidth: $0.width, logicalHeight: $0.height, backingScale: 2)
+            ).configuration
+        }
 
         try FileManager.default.createDirectory(at: options.stateDirectory, withIntermediateDirectories: true)
         let identity: DeviceIdentity
@@ -159,6 +184,8 @@ private final class BenchHostRun {
         let pointer = pointer
         let trace = trace
         let injector = injector
+        let packetLog = packetLog
+        let canvasConfiguration = canvasConfiguration
         let session = HostNetworkSession(
             connection: channel,
             controller: controller,
@@ -171,17 +198,22 @@ private final class BenchHostRun {
         controller.onStopRequested = { [weak session] in session?.stop() }
         let coordinator = HostSessionCoordinator(
             controller: controller,
-            media: CanvasSurfaceSlots { surface in
-                ScreenCaptureCanvasMedia(
+            media: CanvasSurfaceSlots { surface -> any CanvasMediaStreaming in
+                let capture = ScreenCaptureCanvasMedia(
                     surface: surface,
-                    configuration: .remoteDefault,
+                    configuration: canvasConfiguration ?? .remoteDefault,
                     latencyRecorder: latencyRecorder,
                     focus: focus,
                     admissionGate: controller.encodeAdmission,
                     sendFeedback: sendFeedback,
                     log: { print("bench-host host: \($0)") },
                     pipelineFactory: { _, surface, configuration, latencyRecorder, gate, focus, sendFeedback, _, packetizer, streamStopped, packetHandler in
-                        try await HostMediaPipeline(
+                        packetLog?.write(PacketLogLine.configuration(
+                            atNanoseconds: MonotonicClock.nowNanoseconds(),
+                            settled: "\(configuration.encodeWidth)x\(configuration.encodeHeight)",
+                            moving: configuration.motionConfiguration.map { "\($0.encodeWidth)x\($0.encodeHeight)" }
+                        ))
+                        return try await HostMediaPipeline(
                             surface: surface,
                             configuration: configuration,
                             latencyRecorder: latencyRecorder,
@@ -198,12 +230,13 @@ private final class BenchHostRun {
                                     frameHandler: frameHandler
                                 )
                             },
-                            encodedPacketHandler: packetHandler
+                            encodedPacketHandler: Self.logging(packetHandler, to: packetLog)
                         )
                     },
                     // Resolves no capture target: the filter is never used to capture.
                     contentFilterProvider: { _ in SCContentFilter() }
                 )
+                return canvasConfiguration == nil ? capture : FixedSizeCanvasMedia(capture)
             },
             videoSink: session,
             workspaces: CanvasSurfaceSlots { _ -> any CanvasWorkspacePresenting in NoCanvasWorkspace() },
@@ -236,11 +269,63 @@ private final class BenchHostRun {
             sharpScreens: nil
         )
         session.attach(coordinator: coordinator)
+        if let packetLog {
+            logViewerReadings(of: controller, to: packetLog)
+        }
         teardowns.append { [weak session] in
             await coordinator.sessionDidEnd(reason: "bench-host-exit")
             session?.stop()
         }
         session.start()
+    }
+
+    /// `handler`, with every packet it is given written to `log` first.
+    nonisolated private static func logging(
+        _ handler: @escaping @Sendable (EncodedVideoFramePacket) -> Bool,
+        to log: PacketLog?
+    ) -> @Sendable (EncodedVideoFramePacket) -> Bool {
+        guard let log else { return handler }
+        return { packet in
+            // Only a key frame carries the sequence parameter set, and it
+            // holds the size the encoder produced.
+            let parameterSet = packet.codecConfiguration
+                .flatMap { try? H264CodecConfigurationCodec.decode($0).sequenceParameterSet }
+                .map { $0.map { String(format: "%02x", $0) }.joined() }
+            log.write(PacketLogLine.packet(
+                atNanoseconds: MonotonicClock.nowNanoseconds(),
+                sequence: packet.sequence,
+                isKeyFrame: packet.isKeyFrame,
+                bytes: packet.payload.count,
+                parameterSetHex: parameterSet
+            ))
+            return handler(packet)
+        }
+    }
+
+    /// Writes each new reading the viewer sends about itself, stamped with the
+    /// moment this host first sees it. The host has no event for a reading
+    /// arriving, so it is looked for ten times a second; one that repeats the
+    /// last in every figure is not new.
+    private func logViewerReadings(of controller: HostSessionController, to log: PacketLog) {
+        let surface = CanvasSurfaceID.allCases[0]
+        Task { @MainActor [weak self, weak controller] in
+            var last: ViewerTelemetrySample?
+            while let self, !self.isFinishing, let controller {
+                try? await Task.sleep(for: .milliseconds(100))
+                let now = MonotonicClock.nowNanoseconds()
+                guard let reading = controller.latestViewerTelemetry(for: surface, atSeconds: Double(now) / 1_000_000_000),
+                      reading != last else {
+                    continue
+                }
+                last = reading
+                log.write(PacketLogLine.viewer(
+                    atNanoseconds: now,
+                    presentedFramesPerSecond: reading.presentedFramesPerSecond,
+                    decodedFramesPerSecond: reading.decodedFramesPerSecond,
+                    receivedBitsPerSecond: reading.receivedBitsPerSecond
+                ))
+            }
+        }
     }
 
     /// Ends every live connection, closes the listener and the trace, and
@@ -256,6 +341,7 @@ private final class BenchHostRun {
         // Lets the farewell reach the viewer before the process goes.
         try? await Task.sleep(for: .milliseconds(500))
         trace.close()
+        packetLog?.close()
         print("bench-host exit")
         Foundation.exit(0)
     }

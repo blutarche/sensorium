@@ -29,6 +29,19 @@
 #   --scale F         virtual output scale (default 1.0)
 #   --ab              each run makes two sessions, one with the viewer's
 #                     release-on-interaction behaviour and one without it
+#   --canvas WxH      the stand-in draws and encodes a fixed picture of W by H
+#                     pixels (each side even, at most 4096) instead of one that
+#                     follows the viewer's window, and writes a packet log. A
+#                     picture well above 1920x1080 makes the host encode a
+#                     moving picture smaller than a settled one. Each run then
+#                     ends with a table of what happened at every change
+#                     between the two (Scripts/summarize-motion-switches.py).
+#                     Use a plan of several short stretches, for example
+#                     --canvas 3008x1692 --seconds 40 \
+#                     --plan move:2,still:2,move:2,still:2,move:2,still:2,move:2,still:2,move:2,still:2,move:2,still:2,move:2,still:2
+#   --probe-binary P  run the SensoriumViewerProbe at P on the viewer (an
+#                     absolute path there, or one relative to the synced tree)
+#                     and build no probe there
 #   --out DIR         where raw files are kept (default a new directory under
 #                     $TMPDIR)
 #
@@ -47,6 +60,8 @@ width=2560
 height=1440
 scale="1.0"
 ab=0
+canvas=""
+probe_binary=""
 out=""
 
 die() {
@@ -62,7 +77,7 @@ is_number() { [[ $1 =~ ^[0-9]+$ ]]; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --viewer|--remote-dir|--port|--runs|--plan|--seconds|--width|--height|--scale|--out)
+        --viewer|--remote-dir|--port|--runs|--plan|--seconds|--width|--height|--scale|--canvas|--probe-binary|--out)
             [ $# -ge 2 ] || usage_error "$1 needs a value"
             case "$1" in
                 --viewer) viewer=$2 ;;
@@ -74,6 +89,8 @@ while [ $# -gt 0 ]; do
                 --width) width=$2 ;;
                 --height) height=$2 ;;
                 --scale) scale=$2 ;;
+                --canvas) canvas=$2 ;;
+                --probe-binary) probe_binary=$2 ;;
                 --out) out=$2 ;;
             esac
             shift 2
@@ -96,6 +113,8 @@ is_number "$height" && [ "$height" -ge 1 ] || usage_error "--height must be a wh
 [[ $scale =~ ^[0-9]+(\.[0-9]+)?$ ]] || usage_error "--scale must be a number such as 1.0"
 phase='(move|still):[0-9]+(\.[0-9]+)?'
 [[ $plan =~ ^$phase(,$phase)*$ ]] || usage_error "--plan must look like move:20,still:40,move:20"
+[ -z "$canvas" ] || [[ $canvas =~ ^[0-9]+x[0-9]+$ ]] || usage_error "--canvas must look like 3008x1692"
+[ -z "$probe_binary" ] || [[ $probe_binary =~ ^/?[A-Za-z0-9_][A-Za-z0-9._/-]*$ && $probe_binary != *..* ]] || usage_error "--probe-binary may hold only letters, digits, . _ - and /"
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo" || die "cannot enter $repo"
@@ -146,7 +165,7 @@ trap 'exit 143' TERM
 
 # Quiet SSH: stdout is the caller's, stderr is kept in a file because it can
 # name addresses.
-vssh() { ssh -- "$viewer" "$@" 2>>"$ssh_errors"; }
+vssh() { ssh -o BatchMode=yes -- "$viewer" "$@" 2>>"$ssh_errors"; }
 
 fail() {
     say "benchmark-session: $* (SSH errors, if any, are in $ssh_errors)"
@@ -167,21 +186,33 @@ vssh "rm -rf '$remote_dir/xdg' && mkdir -p '$remote_dir/tree' '$remote_dir/runs'
     || fail "cannot reach the viewer over SSH"
 remote_abs=$(vssh "cd '$remote_dir' && pwd") || fail "cannot resolve the remote directory"
 [[ $remote_abs =~ ^/[A-Za-z0-9._/-]+$ ]] || fail "the remote directory resolved to an unexpected path"
-rsync -a --delete --exclude .build --exclude .git --exclude Artifacts -e ssh \
+rsync -a --delete --exclude .build --exclude .git --exclude Artifacts -e "ssh -o BatchMode=yes" \
     "$repo/" "$viewer:$remote_abs/tree/" >"$out/rsync.log" 2>>"$ssh_errors" \
     || fail "rsync to the viewer failed"
 
-say "building the viewer probe on the viewer"
-vssh "bash -lc 'cd \"$remote_abs/tree\" && swift build -c release --product SensoriumViewerProbe'" >"$out/build-viewer-probe.log" 2>&1 \
-    || fail "building SensoriumViewerProbe on the viewer failed; see $out/build-viewer-probe.log"
+probe_path=".build/release/SensoriumViewerProbe"
+if [ -n "$probe_binary" ]; then
+    probe_path=$probe_binary
+    say "using the viewer probe at $probe_path on the viewer"
+    vssh "cd '$remote_abs/tree' && test -x '$probe_path'" || fail "no executable probe at $probe_path on the viewer"
+else
+    say "building the viewer probe on the viewer"
+    vssh "bash -lc 'cd \"$remote_abs/tree\" && swift build -c release --product SensoriumViewerProbe'" >"$out/build-viewer-probe.log" 2>&1 \
+        || fail "building SensoriumViewerProbe on the viewer failed; see $out/build-viewer-probe.log"
+fi
 
 # Starts the stand-in in the background and waits for it to listen.
-# $1 names its files; $2 is its time limit in seconds.
+# $1 names its files; $2 is its time limit in seconds; a $3 of "run" gives it
+# the --canvas and packet log, which the pairing does not need.
 start_standin() {
     standin_log="$out/$1.host.log"
     standin_trace="$out/$1.trace"
+    local canvas_args=()
+    if [ "${3-}" = "run" ] && [ -n "$canvas" ]; then
+        canvas_args=(--canvas "$canvas" --packet-log "$out/$1.packets")
+    fi
     "$bench_bin" "$addr" "$port" --state-dir "$state_dir" --trace "$standin_trace" --max-seconds "$2" \
-        >"$standin_log" 2>&1 &
+        ${canvas_args[@]+"${canvas_args[@]}"} >"$standin_log" 2>&1 &
     standin_pid=$!
     local waited=0
     while ! grep -q '^bench-host listening' "$standin_log" 2>/dev/null; do
@@ -209,11 +240,11 @@ run_one() {
     [ "$release" = "off" ] && flag=" --no-interaction-release"
     say "run $label: interaction release $release"
 
-    start_standin "$label" $((seconds + 120))
+    start_standin "$label" $((seconds + 120)) run
 
     local inner="Scripts/linux-headless-session.sh --width $width --height $height --scale $scale"
     inner="$inner --seconds $((seconds + 10)) --wait 10 --shot $run_dir/$label.png --log $run_dir/$label.log"
-    inner="$inner -- .build/release/SensoriumViewerProbe view $addr $port $seconds --pointer-plan $plan$flag"
+    inner="$inner -- $probe_path view $addr $port $seconds --pointer-plan $plan$flag"
 
     # Detached with setsid: an SSH hangup would otherwise kill the session. The
     # runtime directory is set because Tailscale SSH sessions lack it, and KWin
@@ -252,6 +283,11 @@ REMOTE
 
     summarize "$label" "$release" "$viewer_status"
     [ "$viewer_status" = "0" ] || failures=$((failures + 1))
+    if [ -n "$canvas" ]; then
+        python3 -I "$repo/Scripts/summarize-motion-switches.py" "$out/$label.packets" "$out/$label.bench-viewer.json" \
+            >"$out/$label.switches.txt" 2>&1 || failures=$((failures + 1))
+        sanitize <"$out/$label.switches.txt"
+    fi
 }
 
 # One line per run, read from the viewer's bench-viewer JSON, the stand-in's
