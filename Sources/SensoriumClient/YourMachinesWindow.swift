@@ -117,6 +117,10 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         "", font: ViewerDesign.font(mono: false, size: 12),
         color: ViewerDesign.muted, width: YourMachinesWindowController.contentWidth
     )
+    /// Holds the headline and the detail as one message, so the detail sits
+    /// right under its headline instead of a whole section's gap below it.
+    /// Hidden while both are empty, so an empty message adds no gap.
+    private var messageGroup: NSStackView?
     /// The saved machine a "Pair again" is for, or `nil` when this is a machine being
     /// added. A machine that answers with a new key is the same machine to the person
     /// who started this, so its old record is replaced rather than left
@@ -140,7 +144,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
     private static let addressHintText = "Tailscale address, or a name like mini.local."
     private static let codeHintText =
-        "Shown by Sensorium Host on that machine under Show pairing code."
+        "Shown by Sensorium Host on that machine under Show Pairing Code."
 
     public init(
         store: any SavedHostStoring,
@@ -878,8 +882,12 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             ))
         }
         views.append(fieldGroup(label: nil, field: codeField, hint: codeHint, fieldHeight: 44))
-        views.append(messageHeadline)
-        views.append(messageDetail)
+        let message = column([messageHeadline, messageDetail], spacing: ViewerDesign.Space.xxs)
+        for line in message.arrangedSubviews {
+            line.widthAnchor.constraint(equalTo: message.widthAnchor).isActive = true
+        }
+        messageGroup = message
+        views.append(message)
         views.append(fieldGroup(
             label: "Name (optional)",
             field: nameField,
@@ -900,10 +908,15 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         for view in stack.arrangedSubviews where view !== buttonRow {
             view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
-        messageHeadline.isHidden = messageHeadline.stringValue.isEmpty
-        messageDetail.isHidden = messageDetail.stringValue.isEmpty
+        updateMessageVisibility()
         refresh()
         return stack
+    }
+
+    private func updateMessageVisibility() {
+        messageHeadline.isHidden = messageHeadline.stringValue.isEmpty
+        messageDetail.isHidden = messageDetail.stringValue.isEmpty
+        messageGroup?.isHidden = messageHeadline.isHidden && messageDetail.isHidden
     }
 
     /// A field, its sentence label where it has one, and the hint or error
@@ -953,8 +966,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         messageHeadline.stringValue = headline
         messageHeadline.textColor = (tone == .bad ? ViewerDesign.bad : ViewerDesign.ink).nsColor
         messageDetail.stringValue = detail
-        messageHeadline.isHidden = headline.isEmpty
-        messageDetail.isHidden = detail.isEmpty
+        updateMessageVisibility()
         resizeToFit()
     }
 
@@ -1128,9 +1140,17 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
                 )
                 self.refresh()
                 self.showMessage(headline: copy.headline, detail: copy.detail, tone: .bad)
-                self.window.makeFirstResponder(self.field(for: copy.focus))
+                self.focus(self.field(for: copy.focus))
             }
         }
+    }
+
+    /// Focusing a field selects everything in it; a person correcting a code
+    /// or an address edits it where it ends, so the caret goes there instead.
+    private func focus(_ field: NSTextField) {
+        window.makeFirstResponder(field)
+        guard let editor = field.currentEditor() else { return }
+        editor.selectedRange = NSRange(location: (editor.string as NSString).length, length: 0)
     }
 
     private func field(for field: ViewerPairingField) -> NSTextField {

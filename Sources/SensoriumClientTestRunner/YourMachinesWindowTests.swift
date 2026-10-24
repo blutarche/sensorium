@@ -409,7 +409,7 @@ func testYourMachinesWindowTests() async {
         )
         expect(
             hasLabel(
-                "Shown by Sensorium Host on that machine under Show pairing code.",
+                "Shown by Sensorium Host on that machine under Show Pairing Code.",
                 in: content(of: controller)
             ),
             "the code field's hint says where that code comes from"
@@ -1224,6 +1224,123 @@ private func isShown(_ view: NSView) -> Bool {
         current = candidate.superview
     }
     return true
+}
+
+private func studioPeerRow() -> TailnetDevicePickerRow {
+    TailnetDevicePickerRow(peer: TailnetPeer(
+        id: "1", displayName: "Studio", magicDNSName: "studio.tail1234.ts.net",
+        tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: true, isThisMachine: false
+    ))
+}
+
+/// A machine's address is set in one face wherever it is named: the picker
+/// of tailnet devices and the list of saved machines read alike.
+@MainActor
+func testYourMachinesPickerAndListShareTheAddressFontTests() {
+    let listed = YourMachinesWindowController(
+        store: InMemorySavedHostStore(hosts: [testMachine("Studio", key: 1, host: "studio.tail1234.ts.net")])
+    )
+    let picker = YourMachinesWindowController(store: InMemorySavedHostStore())
+    picker.apply(deviceList: .devices([studioPeerRow()]))
+
+    guard let listAddress = label(containing: "studio.tail1234.ts.net", in: content(of: listed)),
+          let pickerAddress = label(containing: "studio.tail1234.ts.net", in: content(of: picker)),
+          let listFont = listAddress.font, let pickerFont = pickerAddress.font else {
+        expect(false, "both the list and the picker show the machine's address")
+        return
+    }
+    expect(
+        pickerFont.fontName == listFont.fontName && pickerFont.pointSize == listFont.pointSize,
+        "the picker sets the address in the list's \(listFont.fontName) \(listFont.pointSize), got "
+            + "\(pickerFont.fontName) \(pickerFont.pointSize)"
+    )
+
+    print("PASS: the picker and the list set a machine's address in the same font")
+}
+
+/// The add step's three links start their words at one x, whatever the width
+/// of the icon ahead of each.
+@MainActor
+func testYourMachinesAddStepLinkTitlesShareOneLeftEdgeTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.apply(deviceList: .devices([studioPeerRow()]))
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+
+    var edges: [(String, CGFloat)] = []
+    for title in ["Look Again", "Enter Address Manually\u{2026}", "Back"] {
+        guard let link = button(titled: title, in: root), let cell = link.cell as? NSButtonCell else {
+            expect(false, "the add step offers \(title)")
+            return
+        }
+        let titleRect = cell.titleRect(forBounds: link.bounds)
+        edges.append((title, link.convert(NSPoint(x: titleRect.minX, y: 0), to: root).x))
+    }
+    let reference = edges[0].1
+    for (title, x) in edges {
+        expect(abs(x - reference) < 0.5, "\(title) starts its word at \(x), where Look Again starts at \(reference)")
+    }
+
+    print("PASS: the add step's links start their words on one edge")
+}
+
+/// A pairing that fails leaves the caret after the code that was typed, not
+/// the whole code selected.
+@MainActor
+func testYourMachinesCodeFieldIsNotSelectedAfterAFailedPairingTests() async {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.sendPairIntent = { _ in .sent }
+    controller.pair = { _, _ in .failed(.refused(reason: "invalid-code")) }
+    controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+    codeField.stringValue = "418297"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: nil))
+    triggerSubmit(controller)
+    await pumpUntil { storedValue("isPairing", of: controller, as: Bool.self) == false }
+
+    guard let editor = codeField.currentEditor() as? NSTextView else {
+        expect(false, "the code field takes focus again so the code can be corrected")
+        return
+    }
+    let selection = editor.selectedRange()
+    expect(
+        selection.length == 0 && selection.location == (editor.string as NSString).length,
+        "the caret sits after the code with nothing selected, got \(selection) in \"\(editor.string)\""
+    )
+
+    print("PASS: after a refused code the caret is at the end of the code, nothing selected")
+}
+
+/// What went wrong and what to do about it read as one message: the detail
+/// sits right under its headline, not a section's gap below.
+@MainActor
+func testYourMachinesPairingMessageHeadlineAndDetailSitTogetherTests() async {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.sendPairIntent = { _ in .sent }
+    controller.pair = { _, _ in .failed(.refused(reason: "invalid-code")) }
+    controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
+    let headline = storedValue("messageHeadline", of: controller, as: NSTextField.self)
+    let detail = storedValue("messageDetail", of: controller, as: NSTextField.self)
+    expect(!isShown(headline) && !isShown(detail), "before anything goes wrong there is no message on the step")
+
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+    codeField.stringValue = "418297"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: nil))
+    triggerSubmit(controller)
+    await pumpUntil { storedValue("isPairing", of: controller, as: Bool.self) == false }
+
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+    expect(isShown(headline) && isShown(detail), "a refused code shows its headline and its detail")
+    let headlineFrame = headline.convert(headline.bounds, to: root)
+    let detailFrame = detail.convert(detail.bounds, to: root)
+    let gap = headlineFrame.minY - detailFrame.maxY
+    expect(
+        gap >= 0 && gap <= ViewerDesign.Space.xs,
+        "the detail starts at most \(ViewerDesign.Space.xs) below its headline, got \(gap)"
+    )
+
+    print("PASS: a pairing message's headline and detail sit together")
 }
 
 /// The update line sits beneath the list, on every step, and carries

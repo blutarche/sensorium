@@ -33,7 +33,7 @@ final class TailnetDeviceRowButton: NSButton {
         title.translatesAutoresizingMaskIntoConstraints = false
 
         let subtitle = NSTextField(labelWithString: row.subtitle)
-        subtitle.font = ViewerDesign.font(mono: true, size: 11)
+        subtitle.font = ViewerDesign.font(mono: false, size: 12)
         subtitle.textColor = (row.peer.isOnline ? ViewerDesign.muted : ViewerDesign.muted2).nsColor
         subtitle.translatesAutoresizingMaskIntoConstraints = false
 

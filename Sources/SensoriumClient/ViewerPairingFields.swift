@@ -74,9 +74,12 @@ enum ViewerFormControls {
         return field
     }
 
-    /// The gap `linkButton`'s own icon sits at ahead of its title. NSButton
-    /// has no spacing property between an image and a title beside it, so
-    /// this is baked into the icon itself as transparent trailing margin.
+    /// The column a `linkButton`'s icon is centred in, and the gap after it
+    /// before the title. Icons differ in width, so a column of one width puts
+    /// every link's title at the same x. NSButton has no spacing property
+    /// between an image and a title beside it, so both are baked into the
+    /// icon itself as transparent margin.
+    private static let linkIconSlotWidth: CGFloat = 16
     private static let linkIconTitleGap: CGFloat = 4
 
     /// A word that acts, drawn as text rather than as a control: the way back,
@@ -97,7 +100,7 @@ enum ViewerFormControls {
         if let symbol,
            let icon = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
                .withSymbolConfiguration(NSImage.SymbolConfiguration(scale: .small)) {
-            button.image = withTrailingGap(icon, linkIconTitleGap)
+            button.image = inIconSlot(icon, slot: linkIconSlotWidth, gap: linkIconTitleGap)
             button.imagePosition = .imageLeading
             button.imageHugsTitle = true
             button.contentTintColor = ViewerDesign.accent.nsColor
@@ -105,12 +108,17 @@ enum ViewerFormControls {
         return button
     }
 
-    /// A copy of `image`, widened by `gap` points of transparent margin on
-    /// its trailing edge -- see `linkIconTitleGap`.
-    private static func withTrailingGap(_ image: NSImage, _ gap: CGFloat) -> NSImage {
-        let padded = NSImage(size: NSSize(width: image.size.width + gap, height: image.size.height))
+    /// A copy of `image` centred in a transparent `slot` points wide, followed
+    /// by `gap` more -- see `linkIconSlotWidth`. An icon wider than the slot
+    /// widens it rather than being clipped.
+    private static func inIconSlot(_ image: NSImage, slot: CGFloat, gap: CGFloat) -> NSImage {
+        let slotWidth = max(slot, ceil(image.size.width))
+        let padded = NSImage(size: NSSize(width: slotWidth + gap, height: image.size.height))
         padded.lockFocus()
-        image.draw(at: .zero, from: .zero, operation: .sourceOver, fraction: 1)
+        image.draw(
+            at: NSPoint(x: (slotWidth - image.size.width) / 2, y: 0),
+            from: .zero, operation: .sourceOver, fraction: 1
+        )
         padded.unlockFocus()
         padded.isTemplate = image.isTemplate
         return padded

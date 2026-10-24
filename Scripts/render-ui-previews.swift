@@ -1393,15 +1393,16 @@ MainActor.assumeIsolated {
         code: String? = nil,
         name: String? = nil
     ) {
-        if let address {
-            stored("addressField", of: controller, as: NSTextField.self).stringValue = address
+        // A typed character leaves the caret after it; assigning the string
+        // would leave a focused field's whole text selected.
+        func type(_ text: String, into fieldName: String) {
+            let field = stored(fieldName, of: controller, as: NSTextField.self)
+            field.stringValue = text
+            field.currentEditor()?.selectedRange = NSRange(location: (text as NSString).length, length: 0)
         }
-        if let code {
-            stored("codeField", of: controller, as: NSTextField.self).stringValue = code
-        }
-        if let name {
-            stored("nameField", of: controller, as: NSTextField.self).stringValue = name
-        }
+        if let address { type(address, into: "addressField") }
+        if let code { type(code, into: "codeField") }
+        if let name { type(name, into: "nameField") }
         controller.controlTextDidChange(
             Notification(name: NSControl.textDidChangeNotification, object: nil)
         )
