@@ -118,7 +118,12 @@ public enum ViewerSessionEvent: Equatable, Sendable {
     /// `ClientReconnectEvent.attemptFailed`'s text lives outside this type.
     /// `offersVirtualDisplay` is true only for a confirmed private desktop
     /// offer. An unknown capability keeps the same-target retry instead.
-    case hostScreenConnectEnded(reasonLine: String, offersVirtualDisplay: Bool = false)
+    /// `screenNeverCameUp` is true when the host screen asked for was never
+    /// shown, even in a window that was live on another target before, so it
+    /// is not reported as a session that ended.
+    case hostScreenConnectEnded(
+        reasonLine: String, offersVirtualDisplay: Bool = false, screenNeverCameUp: Bool = false
+    )
     /// One dial attempt ended without a session and the reconnect policy is
     /// about to try again -- the already-translated sentence, same
     /// discipline as `hostScreenConnectEnded`: this state machine holds no
@@ -275,12 +280,13 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     + "then choose \(Self.tryAgainName).",
                 buttons: Self.recoveryButtons
             )
-        case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay):
+        case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay, screenNeverCameUp):
+            let sessionEnded = hasBeenLive && !screenNeverCameUp
             status = ViewerSessionStatus(
                 phase: .ended,
                 tone: .bad,
-                eyebrow: hasBeenLive ? "SESSION ENDED" : "NOT STARTED",
-                headline: hasBeenLive
+                eyebrow: sessionEnded ? "SESSION ENDED" : "NOT STARTED",
+                headline: sessionEnded
                     ? "The host-screen session with \(hostName) ended."
                     : "Could not show a host screen from \(hostName).",
                 detail: reasonLine,

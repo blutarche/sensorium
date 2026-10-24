@@ -115,6 +115,38 @@ func testViewerStatusCopyTests() {
         "and no longer opens with the attempt count, got \"\(retryingDetail)\""
     )
 
+    // A window that was live on one target and then asked for a host screen
+    // that never came up has not ended a host-screen session.
+    var liveThenRefused = ViewerSessionStateMachine(hostName: "Workstation")
+    liveThenRefused.handle(.connectStarted)
+    liveThenRefused.handle(.canvasReady)
+    let neverCameUp = liveThenRefused.handle(
+        .hostScreenConnectEnded(reasonLine: "The reason is stated here.", screenNeverCameUp: true)
+    )
+    expect(
+        neverCameUp.eyebrow == "NOT STARTED"
+            && unbound(neverCameUp.headline) == "Could not show a host screen from Workstation.",
+        "a host screen that never came up reads as not started even in a window that was live before, got "
+            + "\(neverCameUp.eyebrow) / \(unbound(neverCameUp.headline))"
+    )
+    let endedAfterLive = liveThenRefused.handle(.hostScreenConnectEnded(reasonLine: "The reason is stated here."))
+    expect(
+        endedAfterLive.eyebrow == "SESSION ENDED"
+            && unbound(endedAfterLive.headline) == "The host-screen session with Workstation ended.",
+        "a host-screen session that was showing and then ended still reads as ended, got "
+            + "\(endedAfterLive.eyebrow) / \(unbound(endedAfterLive.headline))"
+    )
+
+    expect(
+        HostScreenRefusalCopy.screenNeverCameUp(reason: HostScreenRefusalCopy.retryNeedsPersonReason),
+        "a redial that never reached the host is a host screen that never came up"
+    )
+    expect(
+        !HostScreenRefusalCopy.screenNeverCameUp(reason: "host-screen-resume-refused")
+            && !HostScreenRefusalCopy.screenNeverCameUp(reason: "host-screen-presence-declined"),
+        "a refused resume names a session that was up, and the other refusals keep the reading they had"
+    )
+
     var offered = ViewerSessionStateMachine(hostName: "Workstation")
     let offeredStatus = offered.handle(.hostScreenConnectEnded(reasonLine: "Nothing to share.", offersVirtualDisplay: true))
     expect(

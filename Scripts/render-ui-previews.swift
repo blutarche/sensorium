@@ -1645,7 +1645,8 @@ MainActor.assumeIsolated {
             .hostScreenConnectEnded(
                 reasonLine: ViewerSessionFailureCopy.line(
                     for: .hostScreenRefused(reason: reason), hostLabel: "Workstation"
-                )
+                ),
+                screenNeverCameUp: HostScreenRefusalCopy.screenNeverCameUp(reason: reason)
             )
         )
         viewerStates.append((

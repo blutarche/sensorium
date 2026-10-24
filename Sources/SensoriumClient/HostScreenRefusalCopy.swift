@@ -17,6 +17,17 @@ public enum HostScreenRefusalCopy {
     /// screen, and a session never falls back to a canvas on its own.
     public static let noneAvailableReason = "host-screen-none-available"
 
+    /// Minted here rather than sent by the host: an automatic redial after a
+    /// request was sent, holding no resume ticket, never reaches that machine.
+    public static let retryNeedsPersonReason = "host-screen-retry-needs-person"
+
+    /// Whether a refusal means the host screen never came up, so a window
+    /// that was live on another target before it has not had a host-screen
+    /// session end.
+    public static func screenNeverCameUp(reason: String) -> Bool {
+        reason == retryNeedsPersonReason
+    }
+
     /// Where a person picks a host screen: the Screen menu, in the menu bar
     /// on both platforms.
     public static let screenControlName = "the Screen menu"
@@ -69,10 +80,7 @@ public enum HostScreenRefusalCopy {
                 + "Sensorium Host there, then try again."
         case "host-screen-display-unavailable":
             return "The screen you chose is no longer available. Trying again asks for it once more."
-        case "host-screen-retry-needs-person":
-            // Minted here rather than sent by the host: an automatic redial
-            // after a request was sent, holding no resume ticket, never
-            // reaches that machine at all.
+        case retryNeedsPersonReason:
             return "The connection dropped before the screen came up. Trying again requests the screen once more."
         case "host-screen-resume-refused":
             // The host ended or never knew the session this resume named: a

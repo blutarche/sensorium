@@ -327,7 +327,7 @@ final class ClientSessionHost {
             // attempt; stop instead and wait for the person here, the same
             // way a host's own refusal already ends the run without
             // retrying. Decided above, before `transport.start()`.
-            throw ClientSessionError.hostScreenRefused("host-screen-retry-needs-person")
+            throw ClientSessionError.hostScreenRefused(HostScreenRefusalCopy.retryNeedsPersonReason)
         }
         do {
             try await transport.start(timeout: SessionTimeouts.remoteDefault.handshake)
@@ -789,8 +789,14 @@ final class ClientSessionHost {
             onFailureBeforeLive?(failure)
             return
         }
+        let screenNeverCameUp: Bool
+        if case let .hostScreenRefused(reason) = failure {
+            screenNeverCameUp = HostScreenRefusalCopy.screenNeverCameUp(reason: reason)
+        } else {
+            screenNeverCameUp = false
+        }
         applyStatus(sessionState.handle(.hostScreenConnectEnded(
-            reasonLine: reasonLine, offersVirtualDisplay: hostOffersCanvas
+            reasonLine: reasonLine, offersVirtualDisplay: hostOffersCanvas, screenNeverCameUp: screenNeverCameUp
         )))
     }
 
