@@ -219,7 +219,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "SESSION LOST",
                 headline: "Connection to \(hostName) lost.",
-                detail: "The picture is paused from before the connection dropped.",
+                detail: "The picture is frozen where the connection dropped.",
                 buttons: Self.recoveryButtons
             )
         case let .stoppedByHost(reasonLine):
@@ -316,11 +316,13 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false)
     ]
 
-    /// `Stop Trying` is what makes a reconnect wait finite -- the retry
-    /// policy itself has no attempt limit.
+    /// `Cancel` is what makes a reconnect wait finite -- the retry policy
+    /// itself has no attempt limit. It leads the other two so a stray Return
+    /// lands on it and not on Quit.
     private static let reconnectingButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
-        ViewerSessionButton(action: .stopTrying, title: "Stop Trying", isPrimary: false)
+        ViewerSessionButton(action: .stopTrying, title: "Cancel", isPrimary: false),
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false)
     ]
 
     /// A refusal is a dead end without the list beside it: the machine that
@@ -397,7 +399,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     private func reconnecting() -> ViewerSessionStatus {
         let shown = max(attempt, 1)
         var detail = shown <= 1
-            ? "The picture is paused from before the connection dropped."
+            ? "The picture is frozen where the connection dropped."
             : "If it does not come back, check that it is awake and on the same network."
         if let lastFailureLine {
             detail += " \(lastFailureLine)"

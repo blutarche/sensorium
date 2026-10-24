@@ -1592,11 +1592,11 @@ func testDualCanvasReconnectAndUITests() async {
             "no transport jargon reaches the person reading it, got: \(dropped.detail)"
         )
         expect(
-            unbound(dropped.detail).contains("paused") && !dropped.detail.contains("trying"),
+            unbound(dropped.detail).contains("frozen") && !dropped.detail.contains("trying"),
             "the drop says what the user is looking at and lets the buttons offer the retry, rather than announcing one beside a Try again button, got: \(dropped.detail)"
         )
         expect(
-            unbound(dropped.detail).contains("The picture is paused from before the connection dropped."),
+            unbound(dropped.detail).contains("The picture is frozen where the connection dropped."),
             "the drop describes the frozen frame as behind the panel that is covering it, not \"below\" -- "
                 + "got: \(dropped.detail)"
         )
@@ -1616,7 +1616,7 @@ func testDualCanvasReconnectAndUITests() async {
             "the frozen frame stays dimmed while reconnecting"
         )
         expect(
-            unbound(firstRedial.detail) == "The picture is paused from before the connection dropped.",
+            unbound(firstRedial.detail) == "The picture is frozen where the connection dropped.",
             "the first reconnect attempt describes the paused frame without an attempt count, since nothing "
                 + "has failed yet to count -- got: \(firstRedial.detail)"
         )
@@ -1635,7 +1635,7 @@ func testDualCanvasReconnectAndUITests() async {
         let recovered = viewerState.handle(.canvasReady)
         expect(recovered.phase == .live, "a reconnected canvas returns to live")
         expect(
-            unbound(viewerState.handle(.connectStarted).detail) == "The picture is paused from before the connection dropped.",
+            unbound(viewerState.handle(.connectStarted).detail) == "The picture is frozen where the connection dropped.",
             "a session that comes back and drops again reads exactly like a fresh drop's first attempt, so "
                 + "no leftover count from before it recovered is showing"
         )
@@ -1728,12 +1728,12 @@ func testDualCanvasReconnectAndUITests() async {
 
         let reconnect = actionable.handle(.connectStarted)
         expect(
-            reconnect.buttons.map(\.action) == [.quit, .stopTrying],
+            reconnect.buttons.map(\.action) == [.quit, .stopTrying, .yourMachines],
             "reconnecting puts Quit Sensorium leftmost like every other panel, then the one thing that "
-                + "ends an indefinite wait, got: \(reconnect.buttons.map(\.title))"
+                + "ends an indefinite wait, then the list, got: \(reconnect.buttons.map(\.title))"
         )
         expect(
-            reconnect.buttons.map(\.title) == ["Quit Sensorium", "Stop Trying"],
+            reconnect.buttons.map(\.title) == ["Quit Sensorium", "Cancel", "Your Machines"],
             "the reconnect buttons carry the same titles the other panels use, got: \(reconnect.buttons.map(\.title))"
         )
         expect(
@@ -1745,7 +1745,7 @@ func testDualCanvasReconnectAndUITests() async {
             "the reconnect headline names the machine it is redialling, got: \(reconnect.headline)"
         )
         expect(
-            unbound(reconnect.detail) == "The picture is paused from before the connection dropped.",
+            unbound(reconnect.detail) == "The picture is frozen where the connection dropped.",
             "the first redial says what is on screen, with no attempt count -- the pulsing indicator already "
                 + "says a redial is under way, got: \(reconnect.detail)"
         )
@@ -1783,7 +1783,7 @@ func testDualCanvasReconnectAndUITests() async {
             "asking to try again puts the viewer back in the reconnecting state, got: \(resumed.phase)"
         )
         expect(
-            unbound(resumed.detail) == "The picture is paused from before the connection dropped.",
+            unbound(resumed.detail) == "The picture is frozen where the connection dropped.",
             "a retry the user asked for starts its count over, reading like a fresh drop's first attempt, "
                 + "got: \(resumed.detail)"
         )

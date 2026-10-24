@@ -538,7 +538,7 @@ func testViewerUXFixTests() async {
             let failedReconnect = machine.handle(.attemptFailed(reasonLine: "Nothing answered."))
             expect(
                 failedReconnect.phase == .reconnecting
-                    && unbound(failedReconnect.detail) == "The picture is paused from before the connection dropped. "
+                    && unbound(failedReconnect.detail) == "The picture is frozen where the connection dropped. "
                         + "Nothing answered.",
                 "reconnecting carries no attempt count and appends the failure line, got \"\(failedReconnect.detail)\""
             )
@@ -584,9 +584,10 @@ func testViewerUXFixTests() async {
             expect(
                 ViewerFocusPolicy.chosenIndex(among: [
                     (action: .quit, isPrimary: false),
-                    (action: .stopTrying, isPrimary: false)
+                    (action: .stopTrying, isPrimary: false),
+                    (action: .yourMachines, isPrimary: false)
                 ]) == 1,
-                "the reconnecting row with no primary focuses Stop trying, not Quit"
+                "the reconnecting row with no primary focuses Cancel, not Quit"
             )
             expect(
                 ViewerFocusPolicy.chosenIndex(among: [
