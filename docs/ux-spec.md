@@ -65,7 +65,7 @@ Each machine row shows:
 | Address | The paired address |
 | State | *online* or *offline* |
 
-Rows are ordered most recently connected first. With nothing paired yet, the list is replaced by *No machine is paired with this one yet.*, and **Add a Machine** is the only action.
+Rows are ordered most recently connected first. With nothing paired yet, the list is replaced by *No machine is paired with this one yet. Choose Add a Machine to pair with one.*, and **Add a Machine** is the only action.
 
 Nothing is dialled until a row is clicked. One click connects. Return connects the selected row. While an attempt is out, the row appends *connecting…* or *stopping…* with a pulsing dot and offers **Cancel**. Other rows stay clickable, and clicking one stops the attempt already out. A failed attempt keeps a short reason, with the full explanation in the status panel.
 
