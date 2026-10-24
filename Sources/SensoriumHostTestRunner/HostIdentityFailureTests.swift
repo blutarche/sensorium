@@ -58,7 +58,7 @@ func runHostIdentityFailureTests() async {
         // The copy itself: worded for the host, not the viewer
         let copy = HostIdentityFailureCopy.cannotReadKey
         expect(
-            copy.headline == "Sensorium Host cannot read its own key.",
+            copy.headline == "Sensorium Host could not read its own key.",
             "the headline names Sensorium Host, not the viewer app -- got: \(copy.headline)"
         )
         expect(
@@ -89,12 +89,13 @@ func runHostIdentityFailureTests() async {
         )
         expect(
             copy.detail == "The file that holds the key identifying this machine could not be read. Click "
-                + "Try\u{00A0}Again. If that keeps failing, click Make\u{00A0}a\u{00A0}New\u{00A0}Key.",
-            "the body names what failed and the next click, quoting each button exactly and never splitting "
-                + "its name across lines -- got: \(copy.detail)"
+                + "Try\u{00A0}Again. If that keeps failing, click Make\u{00A0}a\u{00A0}New\u{00A0}Key. That replaces "
+                + "the key, so every paired machine must pair again.",
+            "the body names what failed, the next click and what Make a New Key costs, quoting each button "
+                + "exactly and never splitting its name across lines -- got: \(copy.detail)"
         )
 
-        print("PASS: HostIdentityFailureCopy offers Try Again first and says which file could not be read")
+        print("PASS: HostIdentityFailureCopy offers Try Again first, says which file could not be read and what a new key costs")
     }
 
     do {
