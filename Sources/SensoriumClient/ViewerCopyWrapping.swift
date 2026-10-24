@@ -10,7 +10,9 @@ import Foundation
 /// - A control name quoted in a sentence, such as `Your Machines`, never
 ///   splits across two lines.
 /// - The end of a sentence is held together, so the last line of a wrapped
-///   headline or body never holds a lone word.
+///   headline or body never holds a lone word. A last word long enough to
+///   stand alone, such as a long machine name, takes no companion: binding it
+///   to the word before would strand that word on a line of its own.
 public enum ViewerCopyWrapping {
     static let noBreakSpace: Character = "\u{00A0}"
     static let nonBreakingHyphen: Character = "\u{2011}"
@@ -37,16 +39,15 @@ public enum ViewerCopyWrapping {
         "\u{201C}\(name(token))\u{201D}"
     }
 
-    /// The fewest words a closing run holds, and the length below which a run
-    /// still reads as a stranded remnant and takes another word with it.
-    private static let minimumTailWords = 2
+    /// The length below which a closing run still reads as a stranded remnant
+    /// and takes another word with it.
     private static let minimumTailCharacters = 16
     private static let maximumTailWords = 4
 
     /// Joins the last words of `text`'s final paragraph with no-break spaces.
-    /// A tail is at least two words, and grows (up to four) until it is long
-    /// enough not to look like a leftover. Idempotent, so a sentence built
-    /// from bound sentences can be bound again.
+    /// A tail grows (up to four words) until it is long enough not to look
+    /// like a leftover, so a short last word always has company. Idempotent,
+    /// so a sentence built from bound sentences can be bound again.
     public static func keepingTailTogether(_ text: String) -> String {
         var characters = Array(text)
         let paragraphStart = characters.lastIndex(of: "\n").map { $0 + 1 } ?? 0
@@ -66,9 +67,9 @@ public enum ViewerCopyWrapping {
         if let start = wordStart {
             words.append(start..<characters.count)
         }
-        guard words.count >= minimumTailWords, let last = words.last else { return text }
+        guard words.count >= 2, let last = words.last else { return text }
 
-        var tailWords = minimumTailWords
+        var tailWords = 1
         while tailWords < words.count, tailWords < maximumTailWords,
               last.upperBound - words[words.count - tailWords].lowerBound < minimumTailCharacters {
             tailWords += 1

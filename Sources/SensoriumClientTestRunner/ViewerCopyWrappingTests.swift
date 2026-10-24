@@ -42,6 +42,12 @@ func testViewerCopyWrappingTests() {
         ViewerCopyWrapping.keepingTailTogether("Nothing here.") == "Nothing\(nbsp)here.",
         "a short sentence is bound whole"
     )
+    let longName = "Kestrel\u{2011}Field\u{2011}Station\u{2011}Notebook."
+    expect(
+        ViewerCopyWrapping.keepingTailTogether("Could not show a host screen from \(longName)")
+            == "Could not show a host screen from \(longName)",
+        "a last word long enough to stand alone takes no companion, so the word before it is not stranded"
+    )
     expect(ViewerCopyWrapping.keepingTailTogether("Stopped.") == "Stopped.", "one word has nothing to bind")
     expect(ViewerCopyWrapping.keepingTailTogether("") == "", "empty text is untouched")
     for text in [nameSentence, tryAgain, "Connecting to Kestrel\(nbsp)Laptop\u{2026}"] {
