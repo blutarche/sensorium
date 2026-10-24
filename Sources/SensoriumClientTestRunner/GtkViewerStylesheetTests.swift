@@ -47,8 +47,9 @@ func testGtkViewerStylesheetTests() {
 }
 
 /// Each text role takes the token macOS draws it in: ink for primary text,
-/// `muted` for secondary, `muted2` for tertiary, and the dimmed colours an
-/// offline device's name and address take in `TailnetDeviceRow`.
+/// `muted` for secondary and for a placeholder, `warn` for the startup-failure
+/// eyebrow, and the dimmed colours an offline device's name and address take in
+/// `TailnetDeviceRow`.
 func testGtkTextRoleColoursMatchMacOSTests() {
     let css = GtkViewerStyle.stylesheet
     typealias Class = GtkViewerStyle.Class
@@ -61,8 +62,8 @@ func testGtkTextRoleColoursMatchMacOSTests() {
         (".\(Class.detail)", palette.muted, "secondary: the line under a headline"),
         (".\(Class.rowDetail)", palette.muted, "secondary: a saved machine's address"),
         (".\(Class.deviceSubtitle)", palette.muted, "secondary: a device's mono address"),
-        (".\(Class.eyebrow)", palette.muted2, "tertiary: an eyebrow"),
-        ("window.sensorium entry > text > placeholder", palette.muted2, "tertiary: a placeholder"),
+        (".\(Class.eyebrow)", palette.warn, "warning: the startup-failure eyebrow"),
+        ("window.sensorium entry > text > placeholder", palette.muted, "secondary: a placeholder, which muted2 would leave under 4.5:1 on the field"),
         (".\(Class.rowName).\(Class.offline)", palette.muted, "dimmed: an offline device's name"),
         (".\(Class.deviceSubtitle).\(Class.offline)", palette.muted2, "dimmed: an offline device's address")
     ]
@@ -201,15 +202,16 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         "a disabled primary button is outlined with muted2 text, as ViewerFormControls.style draws isEnabled false"
     )
     check(
-        cssRule(".\(Class.messageSecondary)", in: css).contains("background-color: \(palette.bg4.hexString)"),
-        "a message window's outlined button is filled bg4, as ViewerMessageWindowController draws it"
+        cssRule(".\(Class.messageSecondary)", in: css).contains("background-color: \(palette.chromeBg2.hexString)")
+            && cssRule(".\(Class.messageSecondary)", in: css).contains("border: 1px solid \(palette.line.hexString)"),
+        "a message window's outlined button is chromeBg2 with a line border, as ViewerMessageWindowController.outline draws it"
     )
 
     let eyebrow = cssRule(".\(Class.eyebrow)", in: css)
     check(
         eyebrow.contains("font-size: 12px")
-            && eyebrow.contains("color: \(palette.muted2.hexString)") && eyebrow.contains("letter-spacing: 2.64px"),
-        "the eyebrow is mono 12 muted2 at Tracking.widest, as ViewerMessageWindowController draws it"
+            && eyebrow.contains("color: \(palette.warn.hexString)") && eyebrow.contains("letter-spacing: 2.64px"),
+        "the eyebrow is mono 12 warn at Tracking.widest, as ViewerMessageWindowController draws it"
     )
     check(cssRule(".\(Class.detail)", in: css).contains("font-size: 12px"), "a message's detail is 12, as ViewerMessageWindowController draws it")
     check(cssRule(".\(Class.hint)", in: css).contains("font-size: 12px"), "a field's hint is 12, as ViewerFormControls.hintLabel draws it")
@@ -228,8 +230,8 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         check(entry.contains(value), "a text field has \(value), as ViewerFormControls.textField draws it")
     }
     check(
-        cssRule("window.sensorium entry > text > placeholder", in: css).contains("color: \(palette.muted2.hexString)"),
-        "a placeholder is muted2, as ViewerFormControls.placeholder draws it"
+        cssRule("window.sensorium entry > text > placeholder", in: css).contains("color: \(palette.muted.hexString)"),
+        "a placeholder is muted, as ViewerFormControls.placeholder draws it"
     )
     // A bare `.code` would lose to `window.sensorium entry` on specificity.
     let code = cssRule("window.sensorium entry.\(Class.code)", in: css)

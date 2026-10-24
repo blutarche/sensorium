@@ -363,7 +363,7 @@ public enum GtkViewerStyle {
             color: \(ink);
         }
         .\(Class.heading) { \(text(20)); \(weight(Weight.windowHeading)) color: \(ink); }
-        .\(Class.eyebrow) { \(monoText(12)); \(weight(Weight.eyebrow)) letter-spacing: \(tracking(12))px; color: \(muted2); }
+        .\(Class.eyebrow) { \(monoText(12)); \(weight(Weight.eyebrow)) letter-spacing: \(tracking(12))px; color: \(palette.warn.hexString); }
         .\(Class.sentence) { \(text(13)); \(weight(Weight.body)) color: \(ink); }
         .\(Class.muted) { \(text(13)); \(weight(Weight.body)) color: \(muted); }
         .\(Class.bad) { \(text(13)); \(weight(Weight.body)) color: \(palette.bad.hexString); }
@@ -402,7 +402,7 @@ public enum GtkViewerStyle {
         .\(Class.primary) { background-color: \(accent); border: \(border)px solid \(accent); color: \(chromeBg); }
         .\(Class.primary):disabled { background-color: \(chromeBg2); border: \(border)px solid \(line); color: \(muted2); }
         .\(Class.secondary) { background-color: \(chromeBg2); border: \(border)px solid \(line); }
-        .\(Class.messageSecondary) { background-color: \(bg4); border: \(border)px solid \(line); }
+        .\(Class.messageSecondary) { background-color: \(chromeBg2); border: \(border)px solid \(line); }
         .\(Class.rowAction) {
             background-color: transparent;
             border: none;
@@ -437,7 +437,7 @@ public enum GtkViewerStyle {
         }
         window.sensorium entry > text { margin-bottom: 2px; }
         window.sensorium entry.\(Class.monoField) > text { margin-bottom: 0; }
-        window.sensorium entry > text > placeholder { color: \(muted2); }
+        window.sensorium entry > text > placeholder { color: \(muted); }
         window.sensorium entry > text > selection { background-color: \(selectionBg); color: \(ink); }
         window.sensorium entry.\(Class.readOnly) { color: \(muted); }
         .\(Class.monoField) { \(mono); }
