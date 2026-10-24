@@ -625,27 +625,35 @@ MainActor.assumeIsolated {
         return content
     }
 
+    // Every paired machine below is built through `pairedMachineRows`, the
+    // production path `sensoriumd` calls, so each row carries the key line and
+    // the display line a real host draws and none can drift from it.
+    let builtInDisplay = DisplaySnapshot(
+        id: 1, pixelWidth: 1512, pixelHeight: 982, modeWidth: 1512, modeHeight: 982,
+        modePixelWidth: 3024, modePixelHeight: 1964, bounds: CGRect(x: 0, y: 0, width: 1512, height: 982),
+        online: true, builtin: true, main: true, vendorNumber: 0x01, modelNumber: 0x01
+    )
+    let kestrelLaptopKey = Data([0xAB, 0x12, 0x7C, 0x4E])
+    let kestrelNotebookKey = Data([0xCD, 0x34, 0x9A, 0x61])
+    let kestrelLaptopSharing = HostScreenArming(devices: [
+        HostScreenDeviceArming(devicePublicKey: kestrelLaptopKey, deviceName: "Kestrel Laptop", armedAt: Date())
+    ])
     let noRows: [HostScreenArmingPresentation.PairedMachineRow] = []
-    let onePairedRow: [HostScreenArmingPresentation.PairedMachineRow] = [
-        HostScreenArmingPresentation.PairedMachineRow(
-            devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel Laptop",
-            isSharingRealScreen: false
-        )
-    ]
-    let twoPairedRows: [HostScreenArmingPresentation.PairedMachineRow] = [
-        HostScreenArmingPresentation.PairedMachineRow(
-            devicePublicKey: Data([0xAB]),
-            deviceName: "Kestrel Laptop",
-            isSharingRealScreen: true,
-            sharedDisplaysLine: "May share Built-in Display."
-        ),
-        HostScreenArmingPresentation.PairedMachineRow(
-            devicePublicKey: Data([0xCD]),
-            deviceName: "Kestrel Notebook",
-            isSharingRealScreen: false
-        )
-    ]
+    let onePairedRow = HostScreenArmingPresentation.pairedMachineRows(
+        approvedDevices: [(kestrelLaptopKey, "Kestrel Laptop")],
+        arming: HostScreenArming(),
+        activeDisplays: [builtInDisplay]
+    )
+    let sharingLaptopRow = HostScreenArmingPresentation.pairedMachineRows(
+        approvedDevices: [(kestrelLaptopKey, "Kestrel Laptop")],
+        arming: kestrelLaptopSharing,
+        activeDisplays: [builtInDisplay]
+    )
+    let twoPairedRows = HostScreenArmingPresentation.pairedMachineRows(
+        approvedDevices: [(kestrelLaptopKey, "Kestrel Laptop"), (kestrelNotebookKey, "Kestrel Notebook")],
+        arming: kestrelLaptopSharing,
+        activeDisplays: [builtInDisplay]
+    )
 
     // A machine that gave its own name at pairing, next to one still only known
     // by its key -- built through `pairedMachineRows` itself, the same
@@ -656,7 +664,7 @@ MainActor.assumeIsolated {
     let unnamedLegacyDeviceKey = Data([0x6E, 0xC8, 0x53, 0xB3, 0x02])
     let namedAndUnnamedRows = HostScreenArmingPresentation.pairedMachineRows(
         approvedDevices: [
-            (namedDeviceKey, "kestrel-mbp"),
+            (namedDeviceKey, "kestrel-laptop"),
             (unnamedLegacyDeviceKey, nil)
         ],
         arming: HostScreenArming()
@@ -667,11 +675,6 @@ MainActor.assumeIsolated {
     // relative to the main display, the same disambiguation
     // `sharedDisplaysLine` applies to any pair that collides.
     let sameNameDisplaysKey = Data([0xEE, 0x47, 0x92, 0xC1])
-    let sameNameMainDisplay = DisplaySnapshot(
-        id: 1, pixelWidth: 1512, pixelHeight: 982, modeWidth: 1512, modeHeight: 982,
-        modePixelWidth: 3024, modePixelHeight: 1964, bounds: CGRect(x: 0, y: 0, width: 1512, height: 982),
-        online: true, builtin: true, main: true, vendorNumber: 0x01, modelNumber: 0x01
-    )
     let sameNameLeftDisplay = DisplaySnapshot(
         id: 2, pixelWidth: 1920, pixelHeight: 1080, modeWidth: 1920, modeHeight: 1080,
         modePixelWidth: 1920, modePixelHeight: 1080, bounds: CGRect(x: -1920, y: 0, width: 1920, height: 1080),
@@ -691,7 +694,7 @@ MainActor.assumeIsolated {
                 armedAt: Date()
             )
         ]),
-        activeDisplays: [sameNameMainDisplay, sameNameLeftDisplay, sameNameRightDisplay]
+        activeDisplays: [builtInDisplay, sameNameLeftDisplay, sameNameRightDisplay]
     )
 
     // An armed machine with no display list to judge from, which leaves the
@@ -723,7 +726,7 @@ MainActor.assumeIsolated {
         ),
         (
             "host-window-3-ready-no-machines-paired",
-            "reachable and ready, nobody connected, no machine has paired yet, Show Pairing Code offered",
+            "reachable and ready, nobody connected, no machine paired, Show Pairing Code offered",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             noRows
         ),
@@ -923,41 +926,55 @@ MainActor.assumeIsolated {
     // update line under it, in each of the line's states, with the words
     // `HostUpdateStatusLine` gives them.
     let runningHostVersion = UpdateVersion("0.4.0")!
-    let hostUpdateStates: [(String, String, Bool, UpdateStatus)] = [
+    let idleHostStatus = HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted)
+    let hostUpdateStates: [(String, String, Bool, UpdateStatus, HostOperatorStatus, [HostScreenArmingPresentation.PairedMachineRow])] = [
         (
             "host-window-21-update-up-to-date",
             "automatic updates on, and the running version is the latest",
             true,
-            .current
+            .current,
+            idleHostStatus,
+            onePairedRow
         ),
         (
             "host-window-22-update-waiting",
-            "a newer version downloaded and checked, waiting until no machine is connected",
+            "a newer version downloaded and checked, waiting because a machine is connected and sharing its host screen",
             true,
-            .waiting(UpdateVersion("0.5.0")!)
+            .waiting(UpdateVersion("0.5.0")!),
+            HostOperatorStatus(
+                connection: .servingHostScreen(peerName: "Kestrel Laptop", displayLabel: "Built-in Display"),
+                permissions: granted
+            ),
+            sharingLaptopRow
         ),
         (
             "host-window-23-update-failed",
             "an update that could not install, saying why in plain words and which version keeps running",
             true,
-            .failed(reason: UpdateFailure.readyLate.reason)
+            .failed(reason: UpdateFailure.readyLate.reason),
+            idleHostStatus,
+            onePairedRow
         ),
         (
             "host-window-24-update-not-updatable",
             "run from a place it cannot replace itself in, asking to be moved to Applications",
             true,
-            .notUpdatable
+            .notUpdatable,
+            idleHostStatus,
+            onePairedRow
         ),
         (
             "host-window-25-automatic-updates-off",
             "Install updates automatically turned off, the line still saying where the running version stands",
             false,
-            .current
+            .current,
+            idleHostStatus,
+            onePairedRow
         )
     ]
-    for (prefix, description, installsAutomatically, updateStatus) in hostUpdateStates {
+    for (prefix, description, installsAutomatically, updateStatus, status, rows) in hostUpdateStates {
         let controller = HostSetupWindowController(
-            status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
+            status: status,
             onRevealPairingCode: {},
             onStop: {},
             onOpenPermissionSettings: { _ in },
@@ -968,7 +985,7 @@ MainActor.assumeIsolated {
             autoLoginStatus: { .enabled },
             installsUpdatesAutomatically: { installsAutomatically }
         )
-        controller.updatePairedMachines(onePairedRow)
+        controller.updatePairedMachines(rows)
         controller.setUpdateLine(HostUpdateStatusLine.line(for: updateStatus, runningVersion: runningHostVersion))
         write(
             render(hostWindowContent(controller)),
