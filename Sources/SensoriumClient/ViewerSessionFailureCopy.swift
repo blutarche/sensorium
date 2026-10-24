@@ -165,7 +165,7 @@ public enum ViewerSessionFailureCopy {
     public static func rowLine(for failure: ViewerSessionFailure, hostLabel: String) -> String {
         switch failure {
         case .unreachable:
-            return "no answer"
+            return "couldn\u{2019}t reach it"
         case .unverifiedHost:
             return "answered with a key other than the one saved at pairing; check it at the machine "
                 + "before pairing again"

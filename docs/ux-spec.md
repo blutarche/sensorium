@@ -55,7 +55,7 @@ An unmissable badge sits on the display being streamed, naming the connected mac
 
 ### Your machines
 
-Launching opens one window, the only one until a picture arrives. It shows the heading *Your Machines*, every paired machine, and **Add a Machine**.
+Launching opens one window, the only one until a picture arrives. It shows the heading *Your machines*, every paired machine, and **Add a Machine**.
 
 Each machine row shows:
 

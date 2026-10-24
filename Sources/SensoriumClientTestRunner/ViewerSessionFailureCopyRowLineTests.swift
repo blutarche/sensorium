@@ -7,8 +7,8 @@ import SensoriumCore
 /// `line(for:hostLabel:)` still carries unchanged.
 func testViewerSessionFailureCopyRowLineTests() {
     expect(
-        ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Studio") == "no answer",
-        "an unreachable host says only that nothing answered, got "
+        ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Studio") == "couldn\u{2019}t reach it",
+        "an unreachable host says in plain words that it could not be reached, got "
             + ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Studio")
     )
     expect(
