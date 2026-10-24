@@ -847,6 +847,15 @@ func testYourMachinesWindowMoreButtonAccessibilityLabelTests() {
     print("PASS: a saved machine's row's \"\u{2026}\" button carries an accessibility label naming that machine")
 }
 
+/// The six-point dot drawn before a row's detail line, which sits in a slot
+/// as the first item of the stack that holds the line.
+@MainActor
+private func rowDot(besideLabel label: NSTextField) -> NSView? {
+    guard let stack = label.superview as? NSStackView, let slot = stack.arrangedSubviews.first,
+          slot !== label else { return nil }
+    return slot.subviews.first { $0.frame.size == NSSize(width: 6, height: 6) }
+}
+
 /// Every row draws a dot before its detail line, whatever it says, so the
 /// addresses of an idle row, a failed one and one nothing is known about
 /// start at the same place.
@@ -868,9 +877,8 @@ func testYourMachinesRowDetailLinesShareOneLeftEdgeTests() {
     let idleX = idleDetail.convert(idleDetail.bounds, to: root).minX
     let failedX = failedDetail.convert(failedDetail.bounds, to: root).minX
     expect(abs(idleX - failedX) < 0.5, "an idle row's address and a failed row's start together, got \(idleX) and \(failedX)")
-    let beforeIdle = (idleDetail.superview as? NSStackView)?.arrangedSubviews.first
     expect(
-        beforeIdle != nil && beforeIdle !== idleDetail && beforeIdle?.frame.size == NSSize(width: 6, height: 6),
+        rowDot(besideLabel: idleDetail) != nil,
         "a row nothing is known about still draws a dot before its address"
     )
 
@@ -1393,5 +1401,180 @@ func testYourMachinesWindowUpdateLineTests() {
     controller.setUpdateLine(nil)
     expect(!isShown(line), "nothing to say hides the line")
     print("PASS: Your Machines shows the update line beneath the list on every step, with Restart Now only when offered")
+}
+
+/// The saved-machine row buttons in the order the list draws them.
+@MainActor
+private func savedMachineRows(in view: NSView) -> [NSButton] {
+    var found: [NSButton] = []
+    for subview in view.subviews {
+        if String(describing: type(of: subview)) == "SavedMachineRowButton", let row = subview as? NSButton {
+            found.append(row)
+        }
+        found += savedMachineRows(in: subview)
+    }
+    return found.sorted { $0.convert($0.bounds, to: nil).maxY > $1.convert($1.bounds, to: nil).maxY }
+}
+
+/// The add flow's closing buttons read left to right as leaving, then going on.
+@MainActor
+func testYourMachinesCodeStepPutsBackBeforePairTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: ViewerPairingDevice(address: "mini.local", name: "Loft"))
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+    guard let back = button(titled: "Back", in: root), let pair = button(titled: "Pair", in: root) else {
+        expect(false, "the code step offers Back and Pair")
+        return
+    }
+    let backFrame = back.convert(back.bounds, to: root)
+    let pairFrame = pair.convert(pair.bounds, to: root)
+    expect(
+        backFrame.maxX <= pairFrame.minX,
+        "Back sits to the left of Pair, got Back \(backFrame) and Pair \(pairFrame)"
+    )
+    expect(pair.keyEquivalent == "\r", "and Pair, on the right, is still the default button")
+
+    controller.showCodeStep(for: nil)
+    root.layoutSubtreeIfNeeded()
+    if let manualBack = button(titled: "Back", in: root), let manualPair = button(titled: "Pair", in: root) {
+        expect(
+            manualBack.convert(manualBack.bounds, to: root).maxX <= manualPair.convert(manualPair.bounds, to: root).minX,
+            "the same order holds when the address is typed by hand"
+        )
+    } else {
+        expect(false, "the manual code step offers Back and Pair")
+    }
+
+    print("PASS: the code step puts Back on the left of Pair")
+}
+
+/// Open Tailscale is a link like the others on its step: its own line, at the
+/// same left edge, not beside Look Again.
+@MainActor
+func testYourMachinesOpenTailscaleStacksWithTheOtherLinksTests() {
+    let controller = YourMachinesWindowController(
+        store: InMemorySavedHostStore(),
+        tailscaleAppURLLookup: { URL(fileURLWithPath: "/Applications/Tailscale.app") },
+        onOpenTailscaleApp: { _ in }
+    )
+    controller.apply(deviceList: .unreachable(reason: TailnetDevicePickerFetchError.tailscaledUnreachable.reason))
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+    guard let look = button(titled: "Look Again", in: root), let open = button(titled: "Open Tailscale", in: root),
+          let manual = button(titled: "Enter Address Manually\u{2026}", in: root) else {
+        expect(false, "the unreachable step offers Look Again, Open Tailscale and Enter Address Manually")
+        return
+    }
+    func titleX(_ link: NSButton) -> CGFloat {
+        guard let cell = link.cell as? NSButtonCell else { return .nan }
+        return link.convert(NSPoint(x: cell.titleRect(forBounds: link.bounds).minX, y: 0), to: root).x
+    }
+    expect(
+        abs(titleX(open) - titleX(look)) < 0.5 && abs(titleX(open) - titleX(manual)) < 0.5,
+        "Open Tailscale starts its word where the other links do, got \(titleX(open)) against \(titleX(look))"
+    )
+    let lookFrame = look.convert(look.bounds, to: root)
+    let openFrame = open.convert(open.bounds, to: root)
+    let manualFrame = manual.convert(manual.bounds, to: root)
+    expect(
+        openFrame.maxY <= lookFrame.minY && manualFrame.maxY <= openFrame.minY,
+        "it has its own line between Look Again and Enter Address Manually, got \(lookFrame), \(openFrame), \(manualFrame)"
+    )
+
+    print("PASS: Open Tailscale stacks with the step's other links")
+}
+
+/// The address is a name or a number a person reads and types, so it is set
+/// in the same face as the name beside it; the pairing code keeps its mono.
+@MainActor
+func testYourMachinesAddressFieldIsNotMonospacedTests() {
+    // Read before any step shows a field: the one being edited holds its placeholder aside.
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    let addressField = storedValue("addressField", of: controller, as: NSTextField.self)
+    let nameField = storedValue("nameField", of: controller, as: NSTextField.self)
+    let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+
+    func placeholderFont(_ field: NSTextField) -> NSFont? {
+        guard let text = field.placeholderAttributedString, text.length > 0 else { return nil }
+        return text.attribute(.font, at: 0, effectiveRange: nil) as? NSFont
+    }
+    expect(
+        addressField.font?.fontName == nameField.font?.fontName,
+        "the typed address is set in the name field's face, got \(addressField.font?.fontName ?? "nil") "
+            + "and \(nameField.font?.fontName ?? "nil")"
+    )
+    expect(
+        placeholderFont(addressField) != nil
+            && placeholderFont(addressField)?.fontName == placeholderFont(nameField)?.fontName,
+        "so is its placeholder, got \(placeholderFont(addressField)?.fontName ?? "nil")"
+    )
+    expect(
+        codeField.font?.fontName != nameField.font?.fontName,
+        "the pairing code keeps its own monospaced face"
+    )
+
+    print("PASS: the address field is set in the interface face, not the monospaced one")
+}
+
+/// Every row is two lines tall with a dot before the second, whether or not
+/// anything is known about the machine, and a long name takes the width the
+/// row's controls leave it while the dot stays beside the first line of an
+/// address that wraps.
+@MainActor
+func testYourMachinesRowsShareOneStructureAndUseTheirWidthTests() {
+    let named = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let unnamed = testMachine("100.64.1.9", key: 2, host: "100.64.1.9")
+    let longName = String(repeating: "Kestrel-Field-Station-", count: 4) + "Notebook"
+    let longAddress = String(repeating: "kestrel-field-station-notebook-", count: 3) + "annex.tail1234.ts.net"
+    let long = testMachine(longName, key: 3, host: longAddress)
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [named, unnamed, long]))
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+
+    let rows = savedMachineRows(in: root)
+    guard rows.count == 3 else {
+        expect(false, "the list draws three rows, got \(rows.count)")
+        return
+    }
+    expect(
+        abs(rows[0].frame.height - rows[1].frame.height) < 0.5,
+        "an unnamed machine's row is as tall as a named one's, got \(rows[1].frame.height) and \(rows[0].frame.height)"
+    )
+    guard let status = label(containing: "status unknown", in: rows[1]), rowDot(besideLabel: status) != nil else {
+        expect(false, "an unnamed machine's second line is a dot and its status")
+        return
+    }
+
+    guard let name = label(containing: "Kestrel-Field-Station-Kestrel", in: rows[2]),
+          let detail = label(containing: "kestrel-field-station-notebook", in: rows[2]),
+          let more = button(titled: "\u{2026}", in: rows[2]) else {
+        expect(false, "the long row shows its name, its address and its more button")
+        return
+    }
+    let nameFrame = name.convert(name.bounds, to: rows[2])
+    let moreFrame = more.convert(more.bounds, to: rows[2])
+    expect(
+        moreFrame.minX - nameFrame.maxX < 12,
+        "a long name runs up to the row's controls, got its right edge at \(nameFrame.maxX) and the controls at \(moreFrame.minX)"
+    )
+
+    // The content view is not flipped, so a higher y is higher on screen.
+    let detailFrame = detail.convert(detail.bounds, to: root)
+    let lineHeight = ceil((detail.font ?? NSFont.systemFont(ofSize: 12)).boundingRectForFont.height)
+    expect(detailFrame.height > lineHeight * 1.5, "the long address wraps in this fixture, got height \(detailFrame.height)")
+    guard let longDot = rowDot(besideLabel: detail) else {
+        expect(false, "the long row has a dot before its address")
+        return
+    }
+    let dotFrame = longDot.convert(longDot.bounds, to: root)
+    let fromTop = detailFrame.maxY - dotFrame.midY
+    expect(
+        fromTop > 0 && fromTop < lineHeight,
+        "the dot sits beside the address's first line, got \(fromTop) below its top against a line of "
+            + "\(lineHeight): address \(detailFrame), dot \(dotFrame)"
+    )
+
+    print("PASS: every row has the same two lines, and a long row uses its width and keeps the dot on the first line")
 }
 #endif

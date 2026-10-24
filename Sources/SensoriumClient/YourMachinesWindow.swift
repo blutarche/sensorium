@@ -91,7 +91,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
     // MARK: Code step
 
-    private let addressField = ViewerFormControls.textField(mono: true, size: 14)
+    private let addressField = ViewerFormControls.textField(mono: false, size: 14)
     private let codeField = ViewerFormControls.textField(mono: true, size: 20)
     private let nameField = ViewerFormControls.textField(mono: false, size: 14)
     private let addressHint = ViewerFormControls.hintLabel(width: YourMachinesWindowController.contentWidth)
@@ -178,7 +178,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         window.isReleasedWhenClosed = false
         window.delegate = self
 
-        addressField.placeholderAttributedString = ViewerFormControls.placeholder("mini.local", mono: true, size: 14)
+        addressField.placeholderAttributedString = ViewerFormControls.placeholder("mini.local", mono: false, size: 14)
         addressField.delegate = self
         // Grouped exactly as the other machine shows it, because the field takes
         // the code either way and the placeholder is where that is learned.
@@ -745,7 +745,8 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
                 let button = ViewerFormControls.linkButton("Look Again", symbol: "arrow.clockwise")
                 button.target = self
                 button.action = #selector(lookAgain)
-                views.append(leadingRow([button, open]))
+                views.append(leadingRow([button]))
+                views.append(leadingRow([open]))
             } else {
                 tailscaleActionURL = nil
                 views.append(lookAgainLink())
@@ -898,7 +899,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         let back = ViewerFormControls.linkButton("Back", symbol: "chevron.left")
         back.target = self
         back.action = #selector(backFromCode)
-        let buttonRow = NSStackView(views: [pairButton, back])
+        let buttonRow = NSStackView(views: [back, pairButton])
         buttonRow.orientation = .horizontal
         buttonRow.alignment = .centerY
         buttonRow.spacing = ViewerDesign.Space.md
@@ -1209,9 +1210,11 @@ final class SavedMachineRowButton: NSButton {
         detail.maximumNumberOfLines = 0
         detail.translatesAutoresizingMaskIntoConstraints = false
 
-        let detailRow = NSStackView(views: [SavedMachineRowButton.dot(for: row.dot), detail])
+        let detailRow = NSStackView(views: [SavedMachineRowButton.dotSlot(for: row.dot, lineOf: detail), detail])
         detailRow.orientation = .horizontal
-        detailRow.alignment = .centerY
+        // Top-aligned, with the dot centred in a slot one line tall, so the dot
+        // stays beside the first line when a long address wraps.
+        detailRow.alignment = .top
         detailRow.spacing = ViewerDesign.Space.xxs
         detailRow.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1247,12 +1250,20 @@ final class SavedMachineRowButton: NSButton {
         moreButton.setAccessibilityLabel(moreLabel)
         addSubview(moreButton)
 
+        // Cancel claims its width only while it is on the row; hidden, the text
+        // runs up to the more button.
+        if row.offersCancel {
+            text.trailingAnchor.constraint(
+                lessThanOrEqualTo: cancelButton.leadingAnchor, constant: -ViewerDesign.Space.xs
+            ).isActive = true
+        }
+
         let inset = ViewerDesign.Space.md
         NSLayoutConstraint.activate([
             text.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             text.topAnchor.constraint(equalTo: topAnchor, constant: ViewerDesign.Space.sm),
             text.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -ViewerDesign.Space.sm),
-            text.trailingAnchor.constraint(lessThanOrEqualTo: cancelButton.leadingAnchor, constant: -ViewerDesign.Space.xs),
+            text.trailingAnchor.constraint(lessThanOrEqualTo: moreButton.leadingAnchor, constant: -ViewerDesign.Space.xs),
 
             cancelButton.trailingAnchor.constraint(equalTo: moreButton.leadingAnchor, constant: -ViewerDesign.Space.xs),
             cancelButton.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -1269,6 +1280,25 @@ final class SavedMachineRowButton: NSButton {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not used")
+    }
+
+    /// The dot in a slot as tall as one line of `label`, centred in it, so the
+    /// stack that holds both can top-align them and the dot sits beside the
+    /// label's first line however many lines the label wraps to.
+    private static func dotSlot(for kind: YourMachinesRow.RowDot?, lineOf label: NSTextField) -> NSView {
+        let line = NSTextField(labelWithString: "x")
+        line.font = label.font
+        let dot = dot(for: kind)
+        let slot = NSView()
+        slot.translatesAutoresizingMaskIntoConstraints = false
+        slot.addSubview(dot)
+        NSLayoutConstraint.activate([
+            slot.widthAnchor.constraint(equalToConstant: 6),
+            slot.heightAnchor.constraint(equalToConstant: ceil(line.intrinsicContentSize.height)),
+            dot.leadingAnchor.constraint(equalTo: slot.leadingAnchor),
+            dot.centerYAnchor.constraint(equalTo: slot.centerYAnchor)
+        ])
+        return slot
     }
 
     /// The dot beside a row's address. Online and offline hold still, and no
