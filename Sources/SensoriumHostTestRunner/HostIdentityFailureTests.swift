@@ -5,8 +5,8 @@ import SensoriumHost
 
 /// The host's own recovery from a key it cannot read: the words
 /// `HostIdentityFailureCopy` shows, `HostOperatorStatusStore`'s typed
-/// identity problem, and `HostSetupWindowController`'s "Try again" and
-/// "Make a new key" buttons, exercised only through injected closures --
+/// identity problem, and `HostSetupWindowController`'s "Try Again" and
+/// "Make a New Key" buttons, exercised only through injected closures --
 /// the same discipline `HostSetupTailscaleButtonTests` uses for the
 /// Tailscale button beside it.
 @MainActor
@@ -24,7 +24,7 @@ func runHostIdentityFailureTests() async {
 
     func tap(_ button: NSButton) {
         guard let action = button.action, let target = button.target as? NSObject else {
-            fatalError("the Make a new key button has no target/action wired")
+            fatalError("the Make a New Key button has no target/action wired")
         }
         _ = target.perform(action, with: button)
     }
@@ -66,11 +66,11 @@ func runHostIdentityFailureTests() async {
             "the detail names no command-line flag and no other app to open -- got: \(copy.detail)"
         )
         expect(
-            copy.replaceButtonTitle == "Make a new key",
-            "the button title matches the spec's own wording exactly -- got: \(copy.replaceButtonTitle)"
+            copy.replaceButtonTitle == "Make a New Key",
+            "the button title is Title Case, like every button -- got: \(copy.replaceButtonTitle)"
         )
         expect(
-            copy.replaceConsequence.contains("replaces the key")
+            copy.replaceConsequence.hasPrefix("Make\u{00A0}a\u{00A0}New\u{00A0}Key replaces the key")
                 && copy.replaceConsequence.contains("no longer recognize this machine")
                 && copy.replaceConsequence.contains("Host screen settings are kept"),
             "the consequence states plainly that the key is replaced, that pairing breaks, and what does "
@@ -84,16 +84,17 @@ func runHostIdentityFailureTests() async {
         // The first thing to try is repeating the read, not throwing the key away
         let copy = HostIdentityFailureCopy.cannotReadKey
         expect(
-            copy.retryButtonTitle == "Try again",
+            copy.retryButtonTitle == "Try Again",
             "the primary button repeats the read that already ran once to reach this screen -- got: \(copy.retryButtonTitle)"
         )
         expect(
-            copy.detail == "The file that holds the key identifying this machine could not be read. Click Try "
-                + "again. If that keeps failing, make a new key.",
-            "the body names what failed and the next click -- got: \(copy.detail)"
+            copy.detail == "The file that holds the key identifying this machine could not be read. Click "
+                + "Try\u{00A0}Again. If that keeps failing, click Make\u{00A0}a\u{00A0}New\u{00A0}Key.",
+            "the body names what failed and the next click, quoting each button exactly and never splitting "
+                + "its name across lines -- got: \(copy.detail)"
         )
 
-        print("PASS: HostIdentityFailureCopy offers Try again first and says which file could not be read")
+        print("PASS: HostIdentityFailureCopy offers Try Again first and says which file could not be read")
     }
 
     do {
