@@ -1651,8 +1651,8 @@ MainActor.assumeIsolated {
         sustainableScaleCeiling: Double?,
         clampedFromUserChoice: Double? = nil,
         framesPerSecond: Double = 59,
-        appliedFramesPerSecond: Int? = nil,
-        qualityScale: Double? = nil,
+        appliedFramesPerSecond: Int? = 60,
+        qualityScale: Double? = 1.0,
         fidelityLimitReason: String? = nil
     ) -> SurfaceTelemetrySample {
         SurfaceTelemetrySample(
@@ -1692,6 +1692,10 @@ MainActor.assumeIsolated {
     let healthyEndToEndLatencyTrend = (0..<30).map { 20.0 + 3.0 * sin(Double($0) / 4.0) }
     let healthyVideoInBitrateTrend = (0..<30).map { 41_800_000.0 + 2_500_000.0 * sin(Double($0) / 5.0 + 1) }
     let healthyFpsTrend = (0..<30).map { 59.0 - 1.5 * sin(Double($0) / 6.0 + 2) }
+    // The two measurements a session that has drawn a frame always has: the
+    // GPU's completion signal and the hold that steadies the motion.
+    let presentCompletionP50Nanoseconds: Int64 = 900_000
+    let presentationHoldNanoseconds: Int64 = 800_000
 
     let hudStates: [(String, String, SessionHUDSnapshot)] = [
         (
@@ -1705,6 +1709,8 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
                 hostAddress: previewHostAddress,
                 endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
@@ -1723,8 +1729,13 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1732,14 +1743,24 @@ MainActor.assumeIsolated {
             "a host that sends neither applied scale nor ceiling — unknown, not held below",
             SessionHUDSnapshot(
                 surfaceID: 0,
-                availability: .fresh(hostSample(appliedStreamScale: nil, sustainableScaleCeiling: nil)),
+                availability: .fresh(hostSample(
+                    appliedStreamScale: nil,
+                    sustainableScaleCeiling: nil,
+                    appliedFramesPerSecond: nil,
+                    qualityScale: nil
+                )),
                 clientMetrics: clientMetrics,
                 stream: streamReading(scale: 2.0),
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1753,8 +1774,13 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1768,8 +1794,13 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .softwareFallback,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1784,8 +1815,13 @@ MainActor.assumeIsolated {
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
                 isPointerCaptured: true,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1807,8 +1843,13 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1830,8 +1871,13 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .automatic,
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         ),
         (
@@ -1849,8 +1895,13 @@ MainActor.assumeIsolated {
                 requestedStreamScale: 2.0,
                 streamScalePreference: .fixed(2.0),
                 decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
-                hostAddress: previewHostAddress
+                hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
             )
         )
     ]
