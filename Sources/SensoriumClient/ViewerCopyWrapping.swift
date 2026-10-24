@@ -49,6 +49,18 @@ public enum ViewerCopyWrapping {
     /// like a leftover, so a short last word always has company. Idempotent,
     /// so a sentence built from bound sentences can be bound again.
     public static func keepingTailTogether(_ text: String) -> String {
+        keepingTailTogether(text, maximumWords: maximumTailWords)
+    }
+
+    /// For a banner, whose few wide lines show a ragged right edge: only the
+    /// last two words are bound, which is all it takes for the last line not
+    /// to hold a lone word. Every earlier line is free to fill. A last word
+    /// long enough to stand alone still takes no companion.
+    public static func keepingLastTwoWordsTogether(_ text: String) -> String {
+        keepingTailTogether(text, maximumWords: 2)
+    }
+
+    private static func keepingTailTogether(_ text: String, maximumWords: Int) -> String {
         var characters = Array(text)
         let paragraphStart = characters.lastIndex(of: "\n").map { $0 + 1 } ?? 0
 
@@ -70,7 +82,7 @@ public enum ViewerCopyWrapping {
         guard words.count >= 2, let last = words.last else { return text }
 
         var tailWords = 1
-        while tailWords < words.count, tailWords < maximumTailWords,
+        while tailWords < words.count, tailWords < maximumWords,
               last.upperBound - words[words.count - tailWords].lowerBound < minimumTailCharacters {
             tailWords += 1
         }

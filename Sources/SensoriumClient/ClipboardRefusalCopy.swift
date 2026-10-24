@@ -20,7 +20,7 @@ public enum ClipboardRefusalCopy {
         case .syncDisabled, .sessionNotActive:
             nil
         }
-        return text.map(ViewerCopyWrapping.keepingTailTogether)
+        return text.map(ViewerCopyWrapping.keepingLastTwoWordsTogether)
     }
 
     /// The copy's size rounds up and the limit's rounds down, so a copy just

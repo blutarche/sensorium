@@ -12,12 +12,14 @@ public enum DisplayCountRefusalCopy {
     /// What a line calls the host when its caller has no saved host to name.
     public static let genericHostLabel = "the other machine"
 
-    private static let displaysMenuName = ViewerCopyWrapping.control("the Displays menu")
+    /// The article stays loose: it may end a line, where binding it to the
+    /// menu's name would push the whole phrase down and leave the line short.
+    private static let displaysMenuName = "the " + ViewerCopyWrapping.control("Displays menu")
     private static let leadIn = "Could not add another private desktop:"
 
     /// `hostLabel` defaults to the generic phrase for a caller with no saved
     /// host to name. The line comes back wrapped for a narrow banner: the
-    /// host's name and the menu's name are held whole, and the last words
+    /// host's name and the menu's name are held whole, and the last two words
     /// stay together.
     public static func line(reason: String, hostLabel: String = genericHostLabel) -> String {
         let host = hostLabel == genericHostLabel ? hostLabel : ViewerCopyWrapping.name(hostLabel)
@@ -41,6 +43,6 @@ public enum DisplayCountRefusalCopy {
             sentence = "\(leadIn) \(host) gave a reason this version of Sensorium "
                 + "does not know: \(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
         }
-        return ViewerCopyWrapping.keepingTailTogether(sentence)
+        return ViewerCopyWrapping.keepingLastTwoWordsTogether(sentence)
     }
 }

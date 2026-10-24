@@ -124,6 +124,6 @@ public enum HostScreenRefusalCopy {
                 + "of Sensorium does not know: \(ViewerCopyWrapping.quoted(reason)). "
                 + "Update both apps, then try again."
         }
-        return ViewerCopyWrapping.keepingTailTogether(line)
+        return ViewerCopyWrapping.keepingLastTwoWordsTogether(line)
     }
 }
