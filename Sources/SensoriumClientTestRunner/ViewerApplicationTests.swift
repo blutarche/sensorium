@@ -406,9 +406,10 @@ private struct ViewerApplicationHarness {
 
     /// Lets the controller's own task run until something it was asked for has
     /// happened. Every check below is the end of a chain of awaits, not a
-    /// fixed delay.
+    /// fixed delay. The ten-second ceiling only bounds a genuine failure; a
+    /// loaded CI machine can take seconds to schedule the chain.
     func settle(until condition: @MainActor () -> Bool) async -> Bool {
-        for _ in 0..<600 {
+        for _ in 0..<2000 {
             if condition() { return true }
             try? await Task.sleep(for: .milliseconds(5))
         }
