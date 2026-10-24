@@ -38,7 +38,7 @@ Top to bottom:
 6. **Install updates automatically.** A checkbox, on by default. Beneath it, one line says where updates stand:
    - *Sensorium Host `<version>`, up to date*.
    - *Sensorium Host `<new version>` will install when no machine is connected*.
-   - *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.*
+   - *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.* The only line drawn in the warning colour.
    - *Move Sensorium Host to Applications and open it again to receive updates.*
 7. **Offer a private desktop.** A checkbox, off by default. While it is off, the host creates no session canvas, and a viewer can only work on a host screen. A host with no monitor still creates its sharp screen for a host-screen session, as [Host screen mode](host-screen-design.md#10-a-host-with-no-monitor) explains. A viewer sees it as a host screen.
 8. **Allow connections from this network.** A checkbox, off by default. It lets a viewer on the same Wi-Fi or wired network connect by name, such as `mini.local`, without Tailscale. Anyone on that network can then ask to pair.

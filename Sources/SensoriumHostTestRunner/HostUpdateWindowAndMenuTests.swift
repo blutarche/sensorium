@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SensoriumHost
+import SensoriumUpdate
 
 /// **Install updates automatically** and the update line, under **Open at
 /// login**, and **Check for Updates…** in both menus.
@@ -117,6 +118,24 @@ func runHostUpdateWindowTests() {
         window.setUpdateLine(nil)
         expect(line.isHidden, "nil hides it")
         print("PASS: the update line shows the updater's words under the checkbox")
+    }
+
+    do {
+        // Only a failed update is drawn in the warning colour; every other
+        // line stays quiet, and a later good line takes the quiet colour back.
+        let running = UpdateVersion("0.4.0")!
+        let window = controller(installsUpdatesAutomatically: { true })
+        let line = stored("updateLineLabel", in: window, as: NSTextField.self)
+        window.setUpdateLine(HostUpdateStatusLine.failed(reason: "the new version did not start in time", runningVersion: running))
+        expect(
+            line.textColor == CanvasDesign.warn.nsColor,
+            "a failed update reads in the warning colour -- got \(String(describing: line.textColor))"
+        )
+        window.setUpdateLine(HostUpdateStatusLine.line(for: .current, runningVersion: running))
+        expect(line.textColor == CanvasDesign.muted.nsColor, "an up-to-date line goes back to the quiet colour")
+        window.setUpdateLine(HostUpdateStatusLine.line(for: .notUpdatable, runningVersion: running))
+        expect(line.textColor == CanvasDesign.muted.nsColor, "asking to be moved to Applications is not a failure")
+        print("PASS: only a failed update line is drawn in the warning colour")
     }
 }
 

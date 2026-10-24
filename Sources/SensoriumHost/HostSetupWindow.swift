@@ -217,6 +217,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// it. Never shown by a build with no updater.
     public func setUpdateLine(_ line: String?) {
         updateLineLabel.stringValue = line.map { HostTextFlow.flow($0) } ?? ""
+        updateLineLabel.textColor = line.map(HostUpdateStatusLine.isFailure) == true
+            ? CanvasDesign.warn.nsColor
+            : CanvasDesign.muted.nsColor
         updateLineLabel.isHidden = line == nil || installsUpdatesAutomatically == nil
         resizeToFit()
     }

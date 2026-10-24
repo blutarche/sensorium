@@ -21,6 +21,14 @@ public enum HostUpdateStatusLine {
     }
 
     public static func failed(reason: String, runningVersion: UpdateVersion) -> String {
-        "Sensorium Host could not update: \(reason). It keeps running \(runningVersion)."
+        "\(failurePrefix)\(reason). It keeps running \(runningVersion)."
     }
+
+    /// Whether `line` is the one `failed` words, so the window can draw it
+    /// apart from the rest. The window is handed the line as text.
+    static func isFailure(_ line: String) -> Bool {
+        line.hasPrefix(failurePrefix)
+    }
+
+    private static let failurePrefix = "Sensorium Host could not update: "
 }
