@@ -1,6 +1,27 @@
 import AppKit
 import Foundation
 
+/// What the empty Paired machines section tells the person to do. It depends
+/// on what the window offers beside it: a code already on screen is typed,
+/// not shown again, and a host that cannot offer a code yet has nothing to
+/// show.
+package enum PairedMachinesEmptyState {
+    case codeShowing
+    case canShowCode
+    case cannotPairYet
+
+    package var subtext: String {
+        switch self {
+        case .codeShowing:
+            return "Type the code above on the machine you are pairing."
+        case .canShowCode:
+            return "Show a pairing code, then type it on the machine you are pairing."
+        case .cannotPairYet:
+            return "Machines appear here once they pair."
+        }
+    }
+}
+
 /// One row per machine that has ever paired, each with its own Rename,
 /// Remove and Share host screen controls. Visible in every state the surrounding
 /// `HostSetupWindowController` can be in, not only while a session is live
@@ -9,9 +30,9 @@ import Foundation
 final class PairedMachinesView: NSView {
     private let eyebrow = NSTextField(labelWithAttributedString: CanvasDesign.eyebrow("Paired machines"))
     /// The two-line empty state: what is empty, then what to do about it.
-    private let emptyHeading = PairedMachinesView.label("No machine has paired yet.")
+    private let emptyHeading = PairedMachinesView.label("No machine is paired.")
     private let emptySubtext = PairedMachinesView.label(
-        HostTextFlow.flow("Show a pairing code, then type it on the machine you are pairing."),
+        HostTextFlow.flow(PairedMachinesEmptyState.canShowCode.subtext),
         color: CanvasDesign.muted
     )
     private let lastSessionCard = NSView()
@@ -138,6 +159,10 @@ final class PairedMachinesView: NSView {
             }
         }
         return rows.map { space.convert($0.bounds, from: $0) }
+    }
+
+    func setEmptyState(_ state: PairedMachinesEmptyState) {
+        emptySubtext.stringValue = HostTextFlow.flow(state.subtext)
     }
 
     /// `nil` when host screen has never run on this machine.

@@ -561,6 +561,12 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             || !tailscaleButton.isHidden || !retryIdentityButton.isHidden
         setRevealButton(enabled: canReveal, dropsToPlain: anotherFilledButtonAbove)
 
+        if presentation.pairingCode != nil {
+            pairedMachines.setEmptyState(.codeShowing)
+        } else {
+            pairedMachines.setEmptyState(canReveal ? .canShowCode : .cannotPairYet)
+        }
+
         if let code = presentation.pairingCode {
             pairingCodeView.isHidden = false
             hideCodeButton.isHidden = false
