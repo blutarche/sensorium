@@ -78,7 +78,7 @@ func runHostSetupPairingCountdownTickTests() async {
         CanvasHostTestHooks.fireHostSetupWindowPairingTick(controller)
 
         expect(view(named: "pairingCodeView", in: controller).isHidden, "a tick with nothing showing leaves the code view exactly as hidden as it started")
-        expect(view(named: "revealButton", in: controller).isHidden == false, "and leaves the Show pairing code button exactly as offered as it started")
+        expect(view(named: "revealButton", in: controller).isHidden == false, "and leaves the Show Pairing Code button exactly as offered as it started")
 
         print("PASS: firing the pairing countdown tick with no code showing changes nothing")
     }
@@ -114,7 +114,7 @@ func runHostSetupPairingCountdownTickTests() async {
             "a tick that finds the code already expired stops the ticker -- nothing is left for a further tick to count down"
         )
         expect(view(named: "pairingCodeView", in: controller).isHidden, "the expired code's own view comes off screen the same tick")
-        expect(view(named: "revealButton", in: controller).isHidden == false, "and the Show pairing code button returns")
+        expect(view(named: "revealButton", in: controller).isHidden == false, "and the Show Pairing Code button returns")
 
         print("PASS: a pairing countdown tick that finds the code already expired stops the ticker itself")
     }

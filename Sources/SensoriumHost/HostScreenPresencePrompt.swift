@@ -136,9 +136,19 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         // person was doing. The window title (set above) avoids "Screen
         // Sharing Request": macOS has its own Screen Sharing feature, and
         // this prompt is not that.
-        eyebrow.attributedStringValue = CanvasDesign.eyebrow("Sensorium Host \u{00B7} Host Screen Request")
-        headline.stringValue = "\(content.deviceName) wants to see and control a display of this machine"
+        // Wider than the prompt at the eyebrow's tracking, so it wraps.
+        eyebrow.attributedStringValue = CanvasDesign.eyebrow(
+            HostTextFlow.flow("Sensorium Host \u{00B7} Host Screen Request")
+        )
+        eyebrow.lineBreakMode = .byWordWrapping
+        eyebrow.maximumNumberOfLines = 0
+        eyebrow.preferredMaxLayoutWidth = textWidth
         headline.font = CanvasDesign.font(.primary, size: 15, weight: .semibold)
+        headline.stringValue = HostTextFlow.flow(
+            "\(content.deviceName) wants to see and control a display of this machine",
+            names: [content.deviceName],
+            measure: HostTextFlow.Measure(attributes: [.font: headline.font as Any], width: textWidth)
+        )
         headline.textColor = CanvasDesign.ink.nsColor
         headline.lineBreakMode = .byWordWrapping
         // No cap, same reason as `subtitle` below.
@@ -150,10 +160,14 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         // as one name. A word joiner (U+2060) glues the opening quote to the
         // label's first character so word wrap never leaves the quote
         // orphaned at the end of a line.
-        subtitle.stringValue = "If you allow, \(content.deviceName) sees and controls "
-            + "\u{201C}\u{2060}\(content.displayLabel)\u{201D} until you click Stop on the badge that stays on screen, "
-            + "or it disconnects. You\u{2019}re asked because this machine was used in the last few minutes."
         subtitle.font = CanvasDesign.font(.primary, size: 12)
+        subtitle.stringValue = HostTextFlow.flow(
+            "If you allow, \(content.deviceName) sees and controls "
+                + "\u{201C}\u{2060}\(content.displayLabel)\u{201D} until you click Stop on the badge that stays on screen, "
+                + "or it disconnects. You\u{2019}re asked because this machine was used in the last few minutes.",
+            names: [content.deviceName, content.displayLabel],
+            measure: HostTextFlow.Measure(attributes: [.font: subtitle.font as Any], width: textWidth)
+        )
         subtitle.textColor = CanvasDesign.muted.nsColor
         subtitle.lineBreakMode = .byWordWrapping
         // No cap: `maximumNumberOfLines` does not only clip the drawn text --

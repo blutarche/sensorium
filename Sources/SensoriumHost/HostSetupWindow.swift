@@ -89,6 +89,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private var countdownTicker: Timer?
 
     private static let windowWidth: CGFloat = 360
+    /// The width every section is laid out at, inside the window's side insets.
+    private static let contentWidth: CGFloat = windowWidth - CanvasDesign.Space.xl * 2
     private static let tailscaleDownloadURL = URL(string: "https://tailscale.com/download")!
 
     public init(
@@ -154,12 +156,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         self.onToggleAutomaticUpdates = onToggleAutomaticUpdates
         self.now = now
         self.status = status
+        pairedMachines.columnWidth = Self.contentWidth
         pairedMachines.onToggleSharing = onToggleSharing
         pairedMachines.onRemovePairedDevice = onRemovePairedDevice
         pairedMachines.onToggleAskFirst = onToggleAskFirst
-        let presentRename = presentRenamePrompt ?? { window, currentName, onRename in
-            PairedMachineRenameSheet.present(on: window, currentName: currentName, onRename: onRename)
-        }
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 420),
             styleMask: [.titled, .closable],
@@ -173,9 +173,19 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         window.backgroundColor = CanvasDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
         window.delegate = self
-        pairedMachines.onRenamePairedDevice = { [weak window] key, currentName in
-            guard let window else { return }
-            presentRename(window, currentName) { typed in onRenamePairedDevice(key, typed) }
+        pairedMachines.onRenamePairedDevice = { [weak self, weak window] key, currentName in
+            guard let self, let window else { return }
+            let renamed: (String) -> Void = { typed in onRenamePairedDevice(key, typed) }
+            if let presentRenamePrompt {
+                presentRenamePrompt(window, currentName, renamed)
+            } else {
+                PairedMachineRenameSheet.present(
+                    on: window,
+                    currentName: currentName,
+                    minimumHeight: self.renameSheetHeight(atLeast: PairedMachineRenameView.naturalHeight),
+                    onRename: renamed
+                )
+            }
         }
 
         buildContent()
@@ -206,7 +216,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// The update line under **Install updates automatically**; nil hides
     /// it. Never shown by a build with no updater.
     public func setUpdateLine(_ line: String?) {
-        updateLineLabel.stringValue = line ?? ""
+        updateLineLabel.stringValue = line.map { HostTextFlow.flow($0) } ?? ""
         updateLineLabel.isHidden = line == nil || installsUpdatesAutomatically == nil
         resizeToFit()
     }
@@ -269,7 +279,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         revealButton.action = #selector(revealTapped)
         revealButton.translatesAutoresizingMaskIntoConstraints = false
         revealButton.attributedTitle = NSAttributedString(
-            string: "Show pairing code",
+            string: "Show Pairing Code",
             attributes: [
                 .font: CanvasDesign.font(.primary, size: 14, weight: .medium),
                 .foregroundColor: CanvasDesign.chromeBg.nsColor
@@ -285,7 +295,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         hideCodeButton.layer?.borderWidth = 1
         hideCodeButton.layer?.borderColor = CanvasDesign.line2.cgColor
         hideCodeButton.attributedTitle = NSAttributedString(
-            string: "Hide code",
+            string: "Hide Code",
             attributes: [
                 .font: CanvasDesign.font(.primary, size: 14, weight: .medium),
                 .foregroundColor: CanvasDesign.ink.nsColor
@@ -374,10 +384,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         let groups: [NSView] = [
             panel, stopButton, permissionButton, tailscaleButton,
             retryIdentityButton, replaceIdentityButton, revealButton, pairingCodeView, hideCodeButton,
+            pairedMachines,
             autoLoginCheckbox, autoLoginStatusLabel, automaticUpdatesCheckbox, updateLineLabel,
             privateDesktopCheckbox, privateDesktopExplanationLabel,
-            localNetworkCheckbox, localNetworkExplanationLabel,
-            pairedMachines
+            localNetworkCheckbox, localNetworkExplanationLabel
         ]
         for view in groups {
             root.addArrangedSubview(view)
@@ -391,6 +401,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.setCustomSpacing(CanvasDesign.Space.lg, after: replaceIdentityButton)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: revealButton)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: hideCodeButton)
+        root.setCustomSpacing(CanvasDesign.Space.lg, after: pairedMachines)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: autoLoginCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: autoLoginStatusLabel)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: automaticUpdatesCheckbox)
@@ -406,7 +417,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
             root.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
             root.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -inset),
-            root.widthAnchor.constraint(equalToConstant: Self.windowWidth - inset * 2),
+            root.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             stopButton.heightAnchor.constraint(equalToConstant: 32),
             permissionButton.heightAnchor.constraint(equalToConstant: 32),
             tailscaleButton.heightAnchor.constraint(equalToConstant: 32),
@@ -439,7 +450,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         if let alert = presentation.alerts.first {
             permissionButton.isHidden = false
             permissionButton.attributedTitle = NSAttributedString(
-                string: alert.windowButtonTitle,
+                string: alert.title,
                 attributes: [
                     .font: CanvasDesign.font(.primary, size: 13, weight: .medium),
                     .foregroundColor: CanvasDesign.chromeBg.nsColor
@@ -481,6 +492,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             replaceIdentityButton.isHidden = true
         }
 
+        panel.machineNames = status.namedMachines
         panel.presentation = presentation
 
         switch autoLoginStatus() {
@@ -697,7 +709,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             revealButton.layer?.borderWidth = 1
             revealButton.layer?.borderColor = CanvasDesign.line2.cgColor
             revealButton.attributedTitle = NSAttributedString(
-                string: "Show pairing code",
+                string: "Show Pairing Code",
                 attributes: [
                     .font: CanvasDesign.font(.primary, size: 14, weight: .medium),
                     .foregroundColor: CanvasDesign.ink.nsColor
@@ -708,7 +720,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             revealButton.layer?.borderWidth = enabled ? 0 : 1
             revealButton.layer?.borderColor = CanvasDesign.line2.cgColor
             revealButton.attributedTitle = NSAttributedString(
-                string: "Show pairing code",
+                string: "Show Pairing Code",
                 attributes: [
                     .font: CanvasDesign.font(.primary, size: 14, weight: .medium),
                     .foregroundColor: CanvasDesign.chromeBg.nsColor
@@ -716,6 +728,41 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             )
         }
     }
+
+    /// How far down this window's content a sheet reaches, so that its bottom
+    /// edge falls in a gap between two rows, never across one. A sheet drops
+    /// from the top and covers what is beneath it; `naturalHeight` is what
+    /// the sheet needs for its own content, and the answer is that or the
+    /// next gap below it.
+    package func renameSheetHeight(atLeast naturalHeight: CGFloat) -> CGFloat {
+        guard let content = window.contentView else { return naturalHeight }
+        content.layoutSubtreeIfNeeded()
+        var bands: [NSRect] = []
+        for section in root.arrangedSubviews where !section.isHidden {
+            if let machines = section as? PairedMachinesView {
+                bands += machines.rowFrames(in: content)
+            } else {
+                bands.append(content.convert(section.bounds, from: section))
+            }
+        }
+        // Distances down from the top of the content, nearest first.
+        let spans = bands
+            .map { (top: content.bounds.height - $0.maxY, bottom: content.bounds.height - $0.minY) }
+            .sorted { $0.top < $1.top }
+        var gapStart: CGFloat = 0
+        for span in spans + [(top: content.bounds.height, bottom: content.bounds.height)] {
+            let gapEnd = span.top
+            if gapEnd - gapStart >= Self.minimumRowGap, gapEnd >= naturalHeight {
+                return max(naturalHeight, (gapStart + gapEnd) / 2)
+            }
+            gapStart = max(gapStart, span.bottom)
+        }
+        return max(naturalHeight, content.bounds.height)
+    }
+
+    /// The narrowest space between two rows that a sheet's edge can sit in
+    /// and still read as between them.
+    private static let minimumRowGap = CanvasDesign.Space.xs
 
     /// The window has no scroll view: its height is whatever the panel and
     /// the paired-machines section currently need.

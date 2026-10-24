@@ -8,7 +8,12 @@ import Foundation
 @MainActor
 final class PairedMachinesView: NSView {
     private let eyebrow = NSTextField(labelWithAttributedString: CanvasDesign.eyebrow("Paired machines"))
-    private let emptyLabel = PairedMachinesView.label("No machine has paired yet.", color: CanvasDesign.muted)
+    /// The two-line empty state: what is empty, then what to do about it.
+    private let emptyHeading = PairedMachinesView.label("No machine has paired yet.")
+    private let emptySubtext = PairedMachinesView.label(
+        HostTextFlow.flow("Show a pairing code, then type it on the machine you are pairing."),
+        color: CanvasDesign.muted
+    )
     private let lastSessionCard = NSView()
     private let lastSessionEyebrow = NSTextField(labelWithAttributedString: CanvasDesign.eyebrow("Last Host Screen Session"))
     private let lastSessionLabel = PairedMachinesView.label("", color: CanvasDesign.muted)
@@ -16,6 +21,15 @@ final class PairedMachinesView: NSView {
     private let stack = NSStackView()
     private let rowsStack = NSStackView()
     private var rowViews: [PairedMachineRowView] = []
+    private var pairedNames: [String] = []
+    private var lastSessionLine: String?
+
+    /// The width this section is laid out at. A machine name is held whole on
+    /// the last-session line only when it fits that line; `0` means unknown,
+    /// and a name is then always held whole.
+    var columnWidth: CGFloat = 0 {
+        didSet { showLastSession() }
+    }
 
     var onToggleSharing: ((Data, Bool) -> Void)?
     var onRemovePairedDevice: ((Data) -> Void)?
@@ -57,13 +71,15 @@ final class PairedMachinesView: NSView {
             lastSessionStack.bottomAnchor.constraint(equalTo: lastSessionCard.bottomAnchor, constant: -lastSessionInset)
         ])
 
-        for view in [eyebrow, emptyLabel, rowsStack, lastSessionEyebrow, lastSessionCard] {
+        emptyHeading.font = CanvasDesign.font(.primary, size: 13, weight: .medium)
+        for view in [eyebrow, emptyHeading, emptySubtext, rowsStack, lastSessionEyebrow, lastSessionCard] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
         }
         rowsStack.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         lastSessionCard.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         stack.setCustomSpacing(CanvasDesign.Space.xs, after: eyebrow)
+        stack.setCustomSpacing(CanvasDesign.Space.xxs, after: emptyHeading)
         stack.setCustomSpacing(CanvasDesign.Space.sm, after: rowsStack)
         stack.setCustomSpacing(CanvasDesign.Space.xs, after: lastSessionEyebrow)
 
@@ -101,15 +117,49 @@ final class PairedMachinesView: NSView {
             rowsStack.addArrangedSubview(rowView)
             rowView.widthAnchor.constraint(equalTo: rowsStack.widthAnchor).isActive = true
         }
-        emptyLabel.isHidden = !rows.isEmpty
+        emptyHeading.isHidden = !rows.isEmpty
+        emptySubtext.isHidden = !rows.isEmpty
         rowsStack.isHidden = rows.isEmpty
+        pairedNames = rows.map(\.deviceName)
+        showLastSession()
+    }
+
+    /// The frame of each thing this section draws as a row -- the heading,
+    /// every machine, the last-session card -- in `space`'s coordinates, so
+    /// something laid over the window can end between them.
+    func rowFrames(in space: NSView) -> [NSRect] {
+        space.layoutSubtreeIfNeeded()
+        var rows: [NSView] = []
+        for view in stack.arrangedSubviews where !view.isHidden {
+            if view === rowsStack {
+                rows += rowViews.filter { !$0.isHidden }
+            } else {
+                rows.append(view)
+            }
+        }
+        return rows.map { space.convert($0.bounds, from: $0) }
     }
 
     /// `nil` when host screen has never run on this machine.
     func updateLastSession(_ line: String?) {
-        lastSessionLabel.stringValue = line ?? ""
-        lastSessionEyebrow.isHidden = line == nil
-        lastSessionCard.isHidden = line == nil
+        lastSessionLine = line
+        showLastSession()
+    }
+
+    /// The last-session line with its break points tidied: a machine name
+    /// that fits the card stays whole, the date never splits.
+    private func showLastSession() {
+        let measure = columnWidth > 0
+            ? HostTextFlow.Measure(
+                attributes: [.font: CanvasDesign.font(.primary, size: 13)],
+                width: columnWidth - CanvasDesign.Space.md * 2
+            )
+            : nil
+        lastSessionLabel.stringValue = lastSessionLine.map {
+            HostTextFlow.flow($0, names: pairedNames, measure: measure)
+        } ?? ""
+        lastSessionEyebrow.isHidden = lastSessionLine == nil
+        lastSessionCard.isHidden = lastSessionLine == nil
     }
 
     fileprivate static func label(_ text: String = "", color: DesignColor = CanvasDesign.ink) -> NSTextField {

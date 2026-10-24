@@ -2,12 +2,10 @@ import AppKit
 import Foundation
 import SensoriumHost
 
-/// `HostSetupWindowController`'s permission button sits in a window, where
-/// every other button reads sentence case ("Download Tailscale", "Reveal pairing
-/// code"). The status-item menu's equivalent entry is Title Case instead --
-/// `HostMenuBarTitleCaseTests` pins that half. Both read the same
-/// `HostOperatorPermissionAlert`, so the alert must carry its two casings
-/// separately rather than let one surface dictate the other's style.
+/// `HostSetupWindowController`'s permission button is Title Case, like every
+/// other button in the window ("Download Tailscale", "Show Pairing Code") and
+/// like the status-item menu's equivalent entry, which
+/// `HostMenuBarTitleCaseTests` pins.
 @MainActor
 func runHostSetupPermissionButtonCaseTests() async {
     func permissionButton(in controller: HostSetupWindowController) -> NSButton {
@@ -32,30 +30,28 @@ func runHostSetupPermissionButtonCaseTests() async {
     }
 
     do {
-        // Screen Recording missing: window button reads sentence case
+        // Screen Recording missing
         let button = permissionButton(in: controller(
             permissions: HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .granted)
         ))
         expect(
-            button.attributedTitle.string == "Open Screen Recording settings",
-            "the window button is sentence case like every other button in this window, unlike the status-item "
-                + "menu's Title Case entry -- got: \(button.attributedTitle.string)"
+            button.attributedTitle.string == "Open Screen Recording Settings",
+            "the window button is Title Case, as every button is -- got: \(button.attributedTitle.string)"
         )
 
-        print("PASS: the Screen Recording permission button in the host window reads sentence case")
+        print("PASS: the Screen Recording permission button in the host window reads Title Case")
     }
 
     do {
-        // Accessibility missing: window button reads sentence case
+        // Accessibility missing
         let button = permissionButton(in: controller(
             permissions: HostPermissionRequestResult(screenCapture: .granted, accessibility: .approvalRequired)
         ))
         expect(
-            button.attributedTitle.string == "Open Accessibility settings",
-            "the Accessibility case gets the same sentence-case treatment as Screen Recording -- got: "
-                + "\(button.attributedTitle.string)"
+            button.attributedTitle.string == "Open Accessibility Settings",
+            "the Accessibility case reads Title Case like Screen Recording -- got: \(button.attributedTitle.string)"
         )
 
-        print("PASS: the Accessibility permission button in the host window reads sentence case")
+        print("PASS: the Accessibility permission button in the host window reads Title Case")
     }
 }

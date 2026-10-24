@@ -466,10 +466,10 @@ final class WorkspaceContentView: NSView, NSTextViewDelegate {
         editor.isRichText = false
         editor.allowsUndo = true
         editor.usesFindBar = true
-        // Typed text is the closest thing this surface has to raw data, which is
-        // what the system reserves the mono face for. 18pt so it stays legible
-        // after the canvas is encoded and scaled down to the viewer's window.
-        editor.font = CanvasDesign.font(.mono, size: 18)
+        // Prose in the body face; the system reserves the mono face for raw
+        // data. 18pt so it stays legible after the canvas is encoded and
+        // scaled down to the viewer's window.
+        editor.font = CanvasDesign.font(.primary, size: 18)
         editor.textColor = CanvasDesign.ink.nsColor
         editor.backgroundColor = CanvasDesign.bg2.nsColor
         editor.textContainerInset = NSSize(width: 0, height: CanvasDesign.Space.md)
@@ -480,7 +480,7 @@ final class WorkspaceContentView: NSView, NSTextViewDelegate {
             .foregroundColor: CanvasDesign.ink.nsColor
         ]
         editor.string = """
-        Your virtual display is ready. Launch an application from the list on the left; its window opens here. Closing the session removes this display.
+        Your private desktop is ready. Launch an application from the list on the left; its window opens here. Closing the session removes this desktop.
         """
         editor.delegate = self
 

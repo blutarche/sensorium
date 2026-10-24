@@ -19,6 +19,13 @@ func runHostScreenPresencePromptTests() async {
         fatalError("HostScreenPresencePromptWindowController no longer has a stored property named \(name) of type \(T.self)")
     }
 
+    /// The words as typed, without the break points the prompt tidies.
+    func plain(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: HostTextFlow.noBreakSpace, with: " ")
+            .replacingOccurrences(of: HostTextFlow.nonBreakingHyphen, with: "-")
+    }
+
     do {
         // Eyebrow: names which app is asking, and asks for a real
         // screen -- "Allow Seeing and Controlling This Screen?" (the
@@ -28,9 +35,27 @@ func runHostScreenPresencePromptTests() async {
             content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         )
         expect(
-            eyebrow == "SENSORIUM HOST \u{00B7} HOST SCREEN REQUEST",
+            plain(eyebrow) == "SENSORIUM HOST \u{00B7} HOST SCREEN REQUEST",
             "the eyebrow names the app asking and what it asks for -- a host screen, not macOS's own Screen "
                 + "Sharing feature -- got: \(eyebrow)"
+        )
+        // At the widest tracking the whole eyebrow is wider than the prompt,
+        // so it wraps, and "REQUEST" never stands alone on the second line.
+        expect(
+            eyebrow.hasSuffix("SCREEN\(HostTextFlow.noBreakSpace)REQUEST"),
+            "the eyebrow's last two words stay together when it wraps -- got \(eyebrow.debugDescription)"
+        )
+        let eyebrowField: NSTextField = field(
+            "eyebrow",
+            of: HostScreenPresencePromptWindowController(
+                content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
+            ),
+            as: NSTextField.self
+        )
+        expect(
+            eyebrowField.maximumNumberOfLines == 0 && eyebrowField.lineBreakMode == .byWordWrapping,
+            "the eyebrow wraps instead of clipping its last word -- got maximumNumberOfLines "
+                + "\(eyebrowField.maximumNumberOfLines)"
         )
 
         print("PASS: the presence prompt's eyebrow reads Sensorium Host · Host Screen Request")
@@ -64,7 +89,7 @@ func runHostScreenPresencePromptTests() async {
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            subtitle.stringValue == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}Built-in Display\u{201D} "
+            plain(subtitle.stringValue) == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}Built-in Display\u{201D} "
                 + "until you click Stop on the badge that stays on screen, or it disconnects. You\u{2019}re asked because "
                 + "this machine was used in the last "
                 + "few minutes.",
@@ -85,7 +110,7 @@ func runHostScreenPresencePromptTests() async {
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            subtitle.stringValue == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}\(longLabel)\u{201D} "
+            plain(subtitle.stringValue) == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}\(longLabel)\u{201D} "
                 + "until you click Stop on the badge that stays on screen, or it disconnects. You\u{2019}re asked because "
                 + "this machine was used in the last "
                 + "few minutes.",
@@ -94,6 +119,41 @@ func runHostScreenPresencePromptTests() async {
         )
 
         print("PASS: the presence prompt's subtitle quotes a display label that carries its own commas")
+    }
+
+    do {
+        // Where a line may break: no line ends on "a", the device and a
+        // display label that fits stay whole, a label too long to fit never
+        // splits its first two words, and "minutes." never stands alone.
+        let nbsp = HostTextFlow.noBreakSpace
+        let controller = HostScreenPresencePromptWindowController(
+            content: HostScreenBadgeContent(deviceName: "Kestrel Laptop", displayLabel: "LG UltraFine 5K Display")
+        )
+        let headline: NSTextField = field("headline", of: controller, as: NSTextField.self)
+        let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
+        expect(
+            headline.stringValue == "Kestrel\(nbsp)Laptop wants to see and control a\(nbsp)display of this\(nbsp)machine",
+            "the headline holds the device name whole and never ends a line on \"a\" -- got \(headline.stringValue.debugDescription)"
+        )
+        expect(
+            subtitle.stringValue.contains("\u{201C}\u{2060}LG\(nbsp)UltraFine\(nbsp)5K\(nbsp)Display\u{201D}")
+                && subtitle.stringValue.hasSuffix("last few\(nbsp)minutes."),
+            "a display label that fits stays whole and \"minutes.\" keeps \"few\" -- got \(subtitle.stringValue.debugDescription)"
+        )
+
+        let longLabel = HostScreenPresencePromptWindowController(
+            content: HostScreenBadgeContent(
+                deviceName: "Kestrel Laptop",
+                displayLabel: "LG UltraFine 5K Display, connected over Thunderbolt 3 (Left of Built-in Display)"
+            )
+        )
+        let longSubtitle: NSTextField = field("subtitle", of: longLabel, as: NSTextField.self)
+        expect(
+            longSubtitle.stringValue.contains("\u{201C}\u{2060}LG\(nbsp)UltraFine 5K Display, connected"),
+            "a display label too long to fit never splits its first two words -- got \(longSubtitle.stringValue.debugDescription)"
+        )
+
+        print("PASS: the presence prompt breaks lines only where a reader can follow them")
     }
 
     do {
@@ -211,7 +271,7 @@ func runHostScreenPresencePromptTests() async {
         let headline: NSTextField = field("headline", of: controller, as: NSTextField.self)
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            headline.stringValue == "Kestrel Laptop Pro wants to see and control a display of this machine",
+            plain(headline.stringValue) == "Kestrel Laptop Pro wants to see and control a display of this machine",
             "the headline asks for one display, the same thing the subtitle names, not this machine's whole screen "
                 + "-- got: \(headline.stringValue)"
         )

@@ -119,6 +119,7 @@ public final class HostMenuBarPresence: NSObject {
             button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
             button.toolTip = presentation.headline
         }
+        panel.machineNames = status.namedMachines
         panel.presentation = presentation
         if alertsChanged || panel.frame.height != previousPanelHeight {
             rebuildMenu()
@@ -339,6 +340,19 @@ final class HostOperatorPanelView: NSView {
         }
     }
 
+    /// The machine and display names the presentation's sentences quote. Each
+    /// stays whole on a line when it fits; see `HostTextFlow`.
+    var machineNames: [String] = [] {
+        didSet {
+            guard machineNames != oldValue else {
+                return
+            }
+            invalidateIntrinsicContentSize()
+            frame = NSRect(origin: frame.origin, size: fittingSize)
+            needsDisplay = true
+        }
+    }
+
     /// `true` draws the code inset in this card; `HostSetupWindowController`
     /// sets it `false` and draws the code itself, outside the card, at the
     /// window's own full width.
@@ -404,9 +418,27 @@ final class HostOperatorPanelView: NSView {
             y += ceil(height)
         }
 
+        /// `string` with its break points set for a paragraph in this column.
+        func flowed(_ string: String, size: CGFloat, weight: NSFont.Weight) -> String {
+            HostTextFlow.flow(
+                string,
+                names: machineNames,
+                measure: HostTextFlow.Measure(
+                    attributes: [.font: CanvasDesign.font(.primary, size: size, weight: weight)],
+                    width: contentWidth
+                )
+            )
+        }
+
         place(CanvasDesign.eyebrow(presentation.eyebrow, color: presentation.eyebrowColor))
         place(
-            Self.text(presentation.headline, face: .primary, size: 14, weight: .medium, color: CanvasDesign.ink),
+            Self.text(
+                flowed(presentation.headline, size: 14, weight: .medium),
+                face: .primary,
+                size: 14,
+                weight: .medium,
+                color: CanvasDesign.ink
+            ),
             gapAbove: CanvasDesign.Space.xs
         )
         // Left blank exactly when the permission alert below is the one
@@ -415,7 +447,7 @@ final class HostOperatorPanelView: NSView {
         if !presentation.detail.isEmpty {
             place(
                 Self.text(
-                    presentation.detail,
+                    flowed(presentation.detail, size: 12, weight: .regular),
                     face: .primary,
                     size: 12,
                     weight: .regular,
@@ -541,7 +573,13 @@ final class HostOperatorPanelView: NSView {
                 gapAbove: CanvasDesign.Space.md
             )
             place(
-                Self.text(alert.detail, face: .primary, size: 12, weight: .regular, color: CanvasDesign.ink2),
+                Self.text(
+                    flowed(alert.detail, size: 12, weight: .regular),
+                    face: .primary,
+                    size: 12,
+                    weight: .regular,
+                    color: CanvasDesign.ink2
+                ),
                 gapAbove: CanvasDesign.Space.xxs
             )
         }
@@ -571,5 +609,26 @@ final class HostOperatorPanelView: NSView {
                 .paragraphStyle: paragraph
             ]
         )
+    }
+}
+
+extension HostOperatorStatus {
+    /// Every machine and display name this status's sentences quote.
+    var namedMachines: [String] {
+        var names: [String] = []
+        switch connection {
+        case let .pairingApproved(deviceName):
+            names.append(deviceName)
+        case let .serving(peerName):
+            names.append(peerName)
+        case let .servingHostScreen(peerName, displayLabel):
+            names.append(contentsOf: [peerName, displayLabel])
+        case .notHosting, .hosting:
+            break
+        }
+        if case let .showing(_, _, requestingDeviceName?) = pairing {
+            names.append(requestingDeviceName)
+        }
+        return names
     }
 }

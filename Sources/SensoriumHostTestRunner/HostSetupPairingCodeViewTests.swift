@@ -3,7 +3,7 @@ import Foundation
 import SensoriumHost
 
 /// docs/ux-spec.md's "Window contents" puts the pairing code outside the
-/// status card, full width, in the "Show pairing code" button's own place --
+/// status card, full width, in the "Show Pairing Code" button's own place --
 /// not inset inside another card the way the menu-bar panel still draws it.
 /// `Mirror` reads `HostSetupWindowController`'s private `pairingCodeView`
 /// and `revealButton` past their own access level, casting each to `NSView`
@@ -51,7 +51,7 @@ func runHostSetupPairingCodeViewTests() async {
         expect(view(named: "revealButton", in: controller).isHidden == false, "nothing is on screen to read yet, so the button is what offers to fetch a code")
         expect(view(named: "pairingCodeView", in: controller).isHidden, "there is no code to show, so its own view stays out of the way")
 
-        print("PASS: with no pairing code on screen, the Show pairing code button shows and the code view stays hidden")
+        print("PASS: with no pairing code on screen, the Show Pairing Code button shows and the code view stays hidden")
     }
 
     do {
@@ -63,7 +63,7 @@ func runHostSetupPairingCodeViewTests() async {
         expect(view(named: "revealButton", in: controller).isHidden, "the code itself replaces the button the moment one is on screen")
         expect(view(named: "pairingCodeView", in: controller).isHidden == false, "a code on screen needs its own view to show it")
 
-        print("PASS: once a pairing code is on screen, its own view replaces the Show pairing code button")
+        print("PASS: once a pairing code is on screen, its own view replaces the Show Pairing Code button")
     }
 
     do {

@@ -152,10 +152,10 @@ func runHostConnectionAndPairingTests() async {
         let reveal = button("revealButton", in: controller)
         expect(!hide.isHidden, "a code on screen is a code the operator can take back off it")
         expect(reveal.isHidden, "the code itself replaces the button that asked for it")
-        expect(hide.title == "Hide code", "the control says what it does -- got \"\(hide.title)\"")
+        expect(hide.title == "Hide Code", "the control says what it does -- got \"\(hide.title)\"")
 
         hide.performClick(nil)
-        expect(hidden, "tapping Hide code must call onHidePairingCode")
+        expect(hidden, "tapping Hide Code must call onHidePairingCode")
 
         store.hidePairingCode()
         controller.update(store.status)
@@ -166,7 +166,7 @@ func runHostConnectionAndPairingTests() async {
             "hiding the code must leave the connected machine, and its Stop control, exactly where they were"
         )
 
-        print("PASS: the pairing code section has its own Hide code control, and hiding it leaves the connection alone")
+        print("PASS: the pairing code section has its own Hide Code control, and hiding it leaves the connection alone")
     }
 
     do {

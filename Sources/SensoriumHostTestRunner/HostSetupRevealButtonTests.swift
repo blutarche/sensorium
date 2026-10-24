@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import SensoriumHost
 
-/// `HostSetupWindowController`'s "Show pairing code" button while a pairing
+/// `HostSetupWindowController`'s "Show Pairing Code" button while a pairing
 /// is in progress -- `Mirror` reads the button's own `isHidden`, the same
 /// technique `HostSetupTailscaleButtonTests` uses, so none of this needs
 /// `NSApplication` running or a window actually on screen.
@@ -34,7 +34,7 @@ func runHostSetupRevealButtonTests() async {
         let button = revealButton(in: controller)
         expect(button.isHidden, "a device already confirming the code has nothing left for a fresh reveal to do -- offering the button here only invites a second, redundant code")
 
-        print("PASS: the Show pairing code button stays hidden while a pairing is approved and waiting on the device")
+        print("PASS: the Show Pairing Code button stays hidden while a pairing is approved and waiting on the device")
     }
 
     do {
@@ -50,7 +50,11 @@ func runHostSetupRevealButtonTests() async {
         )
         let button = revealButton(in: controller)
         expect(!button.isHidden, "a live session still offers to show the code, beside the Stop button that dominates it")
-        expect(!button.isBordered, "while a session is live, Show pairing code drops its fill but stays layer-drawn, not a second filled button")
+        expect(
+            button.attributedTitle.string == "Show Pairing Code",
+            "the plain style reads Title Case too -- got \(button.attributedTitle.string)"
+        )
+        expect(!button.isBordered, "while a session is live, Show Pairing Code drops its fill but stays layer-drawn, not a second filled button")
         expect(
             button.layer?.backgroundColor == nil,
             "a plain button carries no fill of its own -- got \(String(describing: button.layer?.backgroundColor))"
@@ -60,11 +64,11 @@ func runHostSetupRevealButtonTests() async {
             "the button keeps its usual 32pt height even with its fill dropped -- only the fill changes"
         )
 
-        print("PASS: while a session is live, Show pairing code is a plain button, still 32pt tall, so Stop dominates")
+        print("PASS: while a session is live, Show Pairing Code is a plain button, still 32pt tall, so Stop dominates")
     }
 
     do {
-        // With no session live, Show pairing code keeps its current
+        // With no session live, Show Pairing Code keeps its current
         // filled, emphasised style.
         let controller = HostSetupWindowController(
             status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
@@ -74,7 +78,11 @@ func runHostSetupRevealButtonTests() async {
             onRemovePairedDevice: { _ in }
         )
         let button = revealButton(in: controller)
-        expect(!button.isBordered, "with nobody connected, Show pairing code stays the filled, layer-drawn button it already was")
+        expect(
+            button.attributedTitle.string == "Show Pairing Code",
+            "a button is Title Case -- got \(button.attributedTitle.string)"
+        )
+        expect(!button.isBordered, "with nobody connected, Show Pairing Code stays the filled, layer-drawn button it already was")
         expect(
             button.layer?.backgroundColor == CanvasDesign.accent.cgColor,
             "and keeps its accent fill -- got \(String(describing: button.layer?.backgroundColor))"
@@ -84,12 +92,12 @@ func runHostSetupRevealButtonTests() async {
             "the filled style is 32pt tall -- the same height the plain style keeps"
         )
 
-        print("PASS: with no session live, Show pairing code keeps its filled style")
+        print("PASS: with no session live, Show Pairing Code keeps its filled style")
     }
 
     do {
-        // The gold "Open Screen Recording settings" button also
-        // dominates: Show pairing code must not compete with it as a
+        // The gold "Open Screen Recording Settings" button also
+        // dominates: Show Pairing Code must not compete with it as a
         // second filled button either, even with no session live.
         let controller = HostSetupWindowController(
             status: HostOperatorStatus(
@@ -103,7 +111,7 @@ func runHostSetupRevealButtonTests() async {
         )
         let button = revealButton(in: controller)
         expect(!button.isHidden, "the Screen Recording alert does not stop this button from offering the code")
-        expect(!button.isBordered, "the gold Open Screen Recording settings button sits above this one -- Show pairing code must drop its fill, staying layer-drawn")
+        expect(!button.isBordered, "the gold Open Screen Recording Settings button sits above this one -- Show Pairing Code must drop its fill, staying layer-drawn")
         expect(
             button.layer?.backgroundColor == nil,
             "a plain button carries no fill of its own -- got \(String(describing: button.layer?.backgroundColor))"
@@ -113,6 +121,6 @@ func runHostSetupRevealButtonTests() async {
             "the button keeps its usual 32pt height even with its fill dropped -- only the fill changes"
         )
 
-        print("PASS: with the Screen Recording alert showing, Show pairing code is a plain button, still 32pt tall")
+        print("PASS: with the Screen Recording alert showing, Show Pairing Code is a plain button, still 32pt tall")
     }
 }

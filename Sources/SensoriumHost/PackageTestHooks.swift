@@ -99,6 +99,16 @@ package enum CanvasHostTestHooks {
         return (textOriginX, hint.frame.minX)
     }
 
+    /// The editor's opening text and the face it is set in.
+    @MainActor
+    package static func workspaceEditorContent(
+        frame: NSRect,
+        canvas: CanvasWorkspacePlacement
+    ) -> (text: String, font: NSFont?) {
+        let view = WorkspaceContentView(frame: frame, canvas: canvas)
+        return (view.editor.string, view.editor.font)
+    }
+
     /// The launcher's own status row and the hint below it, laid out for a
     /// status applied directly through `testApplyStatus`, bypassing the
     /// relay's async hop.
@@ -160,6 +170,27 @@ package enum CanvasHostTestHooks {
         let view = HostOperatorPanelView()
         view.presentation = presentation
         return view.testLayoutTexts()
+    }
+
+    /// The menu-bar panel drawn into a bitmap from inside a window that is
+    /// never shown, the way a menu hosts it, for judging the pixels a person
+    /// would see. A view with no window is colour-converted on the way into a
+    /// bitmap and its thin glyphs come out darker than their token, so one is
+    /// not measured.
+    @MainActor
+    package static func menuBarPanelImage(_ presentation: HostOperatorPresentation) -> CGImage? {
+        let view = HostOperatorPanelView()
+        view.presentation = presentation
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: view.frame.size),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentView = view
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep.cgImage
     }
 
     /// Fires the Host Setup window's pairing countdown tick synchronously --

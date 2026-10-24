@@ -106,8 +106,13 @@ func runHostUpdateWindowTests() {
         window.setUpdateLine("Sensorium Host 0.5.0 will install when no machine is connected.")
         expect(!line.isHidden, "the line shows once given")
         expect(
-            line.stringValue == "Sensorium Host 0.5.0 will install when no machine is connected.",
+            line.stringValue.replacingOccurrences(of: HostTextFlow.noBreakSpace, with: " ")
+                == "Sensorium Host 0.5.0 will install when no machine is connected.",
             "the line shows the updater's words exactly, got \(line.stringValue)"
+        )
+        expect(
+            line.stringValue.hasSuffix("is\(HostTextFlow.noBreakSpace)connected."),
+            "the line never leaves \"connected.\" alone on a last row, got \(line.stringValue.debugDescription)"
         )
         window.setUpdateLine(nil)
         expect(line.isHidden, "nil hides it")
