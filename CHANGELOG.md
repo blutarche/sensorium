@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-10-24
+
 ### Changed
 
 - A large picture is sent smaller while you scroll or drag, and sharp again
@@ -18,6 +20,14 @@ once it reaches 1.0.
   encoder takes directly. The encoder no longer converts every frame
   itself, which saves about 2 ms per frame on a full-size display. The
   picture's colours are unchanged.
+- The host window has clearer status text, spacing and contrast.
+
+### Fixed
+
+- Stream diagnostics scroll within the viewer window on macOS and Linux,
+  keeping every row and control reachable.
+- Host-screen recovery controls offer actions the connected host supports
+  and retry the same screen.
 
 ## [0.5.6] - 2026-10-23
 
@@ -599,6 +609,7 @@ First public release.
   `Sensorium Host.app`, built with `Scripts/package-apps.sh`. No
   command-line interface for end users.
 
+[0.5.7]: https://github.com/blutarche/sensorium/releases/tag/v0.5.7
 [0.5.6]: https://github.com/blutarche/sensorium/releases/tag/v0.5.6
 [0.5.5]: https://github.com/blutarche/sensorium/releases/tag/v0.5.5
 [0.5.4]: https://github.com/blutarche/sensorium/releases/tag/v0.5.4
