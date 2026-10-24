@@ -86,6 +86,19 @@ enum RenderGtkVerb {
         tlsCertificateHash: Data([4, 4]),
         lastConnectedAt: Date(timeIntervalSince1970: 500)
     )
+    private static let wrappedAddressName = "kestrel-field-station-notebook-research-annex-building-two.tail1234.ts.net"
+    private static let wrappedAddressHost = SavedHost(
+        displayName: "Kestrel Field Station",
+        host: wrappedAddressName,
+        port: 7777,
+        hostPublicKey: Data([5]),
+        tlsCertificateHash: Data([5, 5]),
+        lastConnectedAt: Date(timeIntervalSince1970: 400)
+    )
+    private static let wrappedAddressPeer = TailnetDevicePickerRow(peer: TailnetPeer(
+        id: "5", displayName: "Kestrel Field Station", magicDNSName: wrappedAddressName,
+        tailnetIPv4: "100.64.1.12", tailnetIPv6: nil, isOnline: true, isThisMachine: false
+    ))
     private static let tailnetRows = [
         TailnetDevicePickerRow(peer: TailnetPeer(
             id: "1", displayName: "Workstation", magicDNSName: "mini.tail1234.ts.net",
@@ -123,16 +136,31 @@ enum RenderGtkVerb {
     /// callbacks point back into these objects.
     private static var retained: [AnyObject] = []
 
+    /// The code step with `digits` typed into its real field, as the person
+    /// at the viewer would type them.
+    private static func typeCode(_ digits: String, into window: GtkYourMachinesWindow) async {
+        window.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Workstation"))
+        await pause(milliseconds: 100)
+        guard let code = descendant(of: window.toplevel, where: { hasClass($0, GtkViewerStyle.Class.code) }) else {
+            say("the code step has no code field")
+            return
+        }
+        gtk_editable_set_text(sensorium_gtk_editable(code), digits)
+    }
+
     private static func machines(
         _ name: String,
         hosts: [SavedHost],
         withTailnet: Bool = false,
+        tailnet: [TailnetDevicePickerRow]? = nil,
         _ drive: @escaping @MainActor (GtkYourMachinesWindow) async -> Void = { _ in }
     ) -> Fixture {
         Fixture(name: name) {
             let window = GtkYourMachinesWindow(store: InMemorySavedHostStore(hosts: hosts))
             retained.append(window)
-            if withTailnet {
+            if let tailnet {
+                window.loadTailnet = { .devices(tailnet) }
+            } else if withTailnet {
                 window.loadTailnet = { .devices(tailnetRows) }
             }
             window.show()
@@ -182,7 +210,10 @@ enum RenderGtkVerb {
             machines("viewer-machines-4-failed", hosts: [miniHost, studioHost], withTailnet: true) { window in
                 window.connectRequested(hostPublicKey: miniHost.hostPublicKey)
                 window.connectStarted(hostPublicKey: miniHost.hostPublicKey)
-                window.attemptFailed(reason: "no answer", offersConnectAsVirtualDisplayFallback: false)
+                window.attemptFailed(
+                    reason: ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Workstation"),
+                    offersConnectAsVirtualDisplayFallback: false
+                )
             },
             machines("viewer-machines-5-one-unnamed", hosts: [unnamedHost]),
             machines(
@@ -193,6 +224,7 @@ enum RenderGtkVerb {
                 window.select(hostPublicKey: studioHost.hostPublicKey)
             },
             machines("viewer-machines-7-long-name", hosts: [longNamedHost]),
+            machines("viewer-machines-8-long-address", hosts: [wrappedAddressHost], tailnet: [wrappedAddressPeer]),
             machines("viewer-rename-1", hosts: [miniHost, studioHost], withTailnet: true) { window in
                 window.beginRename(hostPublicKey: miniHost.hostPublicKey)
             },
@@ -205,11 +237,20 @@ enum RenderGtkVerb {
             machines("viewer-add-1c-picker-tailscaled-unreachable", hosts: [miniHost]) { window in
                 window.apply(deviceList: .unreachable(reason: TailnetDevicePickerFetchError.tailscaledUnreachable.reason))
             },
+            machines("viewer-add-1e-picker-tailscale-not-installed", hosts: [miniHost]) { window in
+                window.apply(deviceList: .unreachable(reason: TailnetDevicePickerFetchError.tailscaleNotInstalled.reason))
+            },
             machines("viewer-add-1f-picker-no-other-devices", hosts: [miniHost]) { window in
                 window.apply(deviceList: .noOtherDevices)
             },
             machines("viewer-add-2-code", hosts: [miniHost]) { window in
                 window.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Workstation"))
+            },
+            machines("viewer-add-2b-code-typed-1", hosts: [miniHost]) { window in
+                await typeCode("4", into: window)
+            },
+            machines("viewer-add-2b-code-typed-6", hosts: [miniHost]) { window in
+                await typeCode("418297", into: window)
             },
             machines("viewer-add-3-code-manual", hosts: [miniHost]) { window in
                 window.showCodeStep(for: nil)
@@ -231,7 +272,9 @@ enum RenderGtkVerb {
                 let prompts = GtkViewerPrompts()
                 retained.append(prompts)
                 let prompt = ViewerStartupFailurePrompt.make(
-                    for: .copy(for: .unreadable(reason: "the stored key is malformed"))
+                    for: .copy(for: .unreadable(
+                        reason: IdentityFailureReason.describe(FileDeviceIdentityStoreError.invalidStoredValue)
+                    ))
                 )
                 Task { @MainActor in _ = await prompts.showStartupFailure(prompt) }
                 guard let window = await newestVisibleToplevel() else { return nil }
