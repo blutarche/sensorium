@@ -22,6 +22,17 @@ once it reaches 1.0.
   session panel no longer covers them.
 - The host window says what to do when no machine has paired yet, and the
   rename sheet dims the window behind it.
+- The viewer's Screen menu, Start with menu and machine rows offer a
+  Private Desktop by that name.
+- A machine row that failed to connect says it is trying again, and Cancel
+  stops the retry. Reconnecting offers Cancel and Your Machines.
+- Adding a machine without Tailscale installed offers Download Tailscale,
+  and the pairing code field has a label.
+- The host's menu-bar panel offers Open Screen Recording Settings when the
+  permission is missing. Make a New Key now says every paired machine must
+  pair again.
+- A paired machine with no name reads Unnamed machine, and every row shows
+  its key.
 
 ## [0.5.8] - 2026-10-24
 
