@@ -2840,7 +2840,7 @@ func testDualCanvasReconnectAndUITests() async {
                 hostLabel: unavailableLabel
             )
             expect(
-                unavailableLine == "Stopped: \(unavailableLabel) could not open a session canvas. Its Sensorium "
+                unavailableLine == "Stopped: \(unavailableLabel) could not open a private desktop. Its Sensorium "
                     + "Host app needs to be quit and opened again at the machine itself before this machine can "
                     + "connect.",
                 "a canvas the host could not open at all says so and names the one thing that fixes it, got: \(unavailableLine)"

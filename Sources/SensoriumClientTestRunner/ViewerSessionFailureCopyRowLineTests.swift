@@ -21,7 +21,7 @@ func testViewerSessionFailureCopyRowLineTests() {
     expect(
         ViewerSessionFailureCopy.rowLine(
             for: .canvasRefused(reason: CanvasRefusalReason.canvasUnavailable), hostLabel: "Studio"
-        ) == "could not open a session canvas; quit and reopen Sensorium Host there",
+        ) == "could not open a private desktop; quit and reopen Sensorium Host there",
         "a canvas the host could not open at all says so plainly, got "
             + ViewerSessionFailureCopy.rowLine(
                 for: .canvasRefused(reason: CanvasRefusalReason.canvasUnavailable), hostLabel: "Studio"

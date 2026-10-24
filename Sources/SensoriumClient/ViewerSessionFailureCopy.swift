@@ -84,12 +84,15 @@ public enum ViewerSessionFailureCopy {
     }
 
     public static func line(for failure: ViewerSessionFailure, hostLabel: String) -> String {
+        let rawHostLabel = hostLabel
+        let hostLabel = ViewerCopyWrapping.name(hostLabel)
         switch failure {
         case .unreachable:
             return "Could not reach \(hostLabel). Nothing answered at that address. Check that the "
                 + "other machine is awake, that Sensorium Host is running on it, and that both "
                 + "machines are on the same network. If you connect by a name ending in .local, also turn on "
-                + "\u{201C}Allow connections from this network\u{201D} in Sensorium Host on the other machine."
+                + "\u{201C}\(ViewerCopyWrapping.control("Allow connections from this network"))\u{201D} in "
+                + "Sensorium Host on the other machine."
         case .unverifiedHost:
             // Security-relevant, and the one failure where trying again is the
             // wrong reflex: pairing again would pin whatever answered.
@@ -99,7 +102,7 @@ public enum ViewerSessionFailureCopy {
         case let .canvasRefused(reason):
             return canvasRefusalLine(reason: reason, hostLabel: hostLabel)
         case .canvasIdentityMismatch:
-            return "\(hostLabel) opened a session canvas this machine did not ask for, so nothing was shown. "
+            return "\(hostLabel) opened a private desktop this machine did not ask for, so nothing was shown. "
                 + "The two machines are probably running different versions of Sensorium; update both, then "
                 + "try again."
         case .unexpectedReply:
@@ -117,9 +120,9 @@ public enum ViewerSessionFailureCopy {
             // Same reasoning as `.pairingRefused` above: the session-time
             // host-screen flow already has words for every reason the host
             // can send, in `HostScreenRefusalCopy`, so this reuses them
-            // rather than writing a second set that could drift. They are
-            // read under a headline that names the host, so no label here.
-            return HostScreenRefusalCopy.line(reason: reason)
+            // rather than writing a second set that could drift. The label
+            // is for the lines whose sentence needs the host as its subject.
+            return HostScreenRefusalCopy.line(reason: reason, hostLabel: rawHostLabel)
         case .stoppedByHost:
             // Nothing here failed, and nothing here is being retried, so this
             // says what happened and stops. "Stopped:" is the same opening
@@ -194,13 +197,13 @@ public enum ViewerSessionFailureCopy {
     private static func canvasRefusalRowLine(reason: String) -> String {
         switch reason {
         case CanvasRefusalReason.creationInProgress:
-            return "busy opening a canvas for another connection; try again in a moment"
+            return "busy opening a private desktop for another connection; try again in a moment"
         case CanvasRefusalReason.canvasUnavailable:
-            return "could not open a session canvas; quit and reopen Sensorium Host there"
+            return "could not open a private desktop; quit and reopen Sensorium Host there"
         case CanvasRefusalReason.canvasNotOffered:
-            return "does not offer a virtual display"
+            return "does not offer a private desktop"
         default:
-            return "refused: \u{201C}\(reason)\u{201D}"
+            return "refused: \(ViewerCopyWrapping.quoted(reason))"
         }
     }
 
@@ -223,21 +226,21 @@ public enum ViewerSessionFailureCopy {
     private static func canvasRefusalLine(reason: String, hostLabel: String) -> String {
         switch reason {
         case CanvasRefusalReason.creationInProgress:
-            return "\(hostLabel) is already opening a session canvas for another connection, so it "
+            return "\(hostLabel) is already opening a private desktop for another connection, so it "
                 + "could not open one for this machine. Wait a moment, then try again."
         case CanvasRefusalReason.canvasUnavailable:
             // Nothing here can be tried again: the host asked macOS for a
             // canvas under every identity it has and was refused each time, so
             // the only thing that changes the answer happens at that machine.
-            return "Stopped: \(hostLabel) could not open a session canvas. Its Sensorium Host app needs "
+            return "Stopped: \(hostLabel) could not open a private desktop. Its Sensorium Host app needs "
                 + "to be quit and opened again at the machine itself before this machine can connect."
         case CanvasRefusalReason.canvasNotOffered:
-            return "\(hostLabel) does not offer a virtual display. A person at that machine can turn on "
-                + "\u{201C}Offer a private desktop\u{201D} in Sensorium Host, or choose one of its screens "
-                + "from \(HostScreenRefusalCopy.screenControlName)."
+            return "\(hostLabel) does not offer a private desktop. A person at that machine can turn on "
+                + "\u{201C}\(ViewerCopyWrapping.control("Offer a private desktop"))\u{201D} in Sensorium Host, "
+                + "or choose one of its screens from \(ViewerCopyWrapping.control(HostScreenRefusalCopy.screenControlName))."
         default:
-            return "\(hostLabel) would not open a session canvas. It gave a reason this version of "
-                + "Sensorium does not know: \u{201C}\(reason)\u{201D}. Try again, and if it keeps "
+            return "\(hostLabel) would not open a private desktop. It gave a reason this version of "
+                + "Sensorium does not know:\u{00A0}\(ViewerCopyWrapping.quoted(reason)). Try again, and if it keeps "
                 + "failing, update Sensorium on both machines."
         }
     }

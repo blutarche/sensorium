@@ -144,7 +144,7 @@ public struct ViewerPairingFailureCopy: Equatable, Sendable {
         case "no-active-code":
             return ViewerPairingFailureCopy(
                 headline: "\(hostLabel) is not showing a code.",
-                detail: "Press Show pairing code there first.",
+                detail: "Press Show Pairing Code there first.",
                 focus: .code,
                 needsFreshCode: true
             )

@@ -193,7 +193,7 @@ func testOfferedHostScreenStartTests() async {
             for: .canvasRefused(reason: CanvasRefusalReason.canvasNotOffered), hostLabel: "Mini"
         )
         expect(!row.contains("canvas-not-offered"), "on the row too, got \(row)")
-        expect(line.hasSuffix("from the Screen menu."), "the line names the Screen menu, got \(line)")
+        expect(unbound(line).hasSuffix("from the Screen menu."), "the line names the Screen menu, got \(line)")
         print("PASS: a host that does not offer a virtual display says so in words, naming the Screen menu")
     }
 }

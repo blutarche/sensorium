@@ -7,7 +7,9 @@ import SensoriumClient
 func testViewerLocalNetworkCopyTests() {
     let line = ViewerSessionFailureCopy.line(for: .unreachable, hostLabel: "Studio")
     expect(
-        line.contains(".local") && line.contains("\u{201C}Allow connections from this network\u{201D}"),
+        line.contains(".local")
+            && unbound(line).contains("\u{201C}Allow connections from this network\u{201D}")
+            && line.contains("Allow\u{00A0}connections\u{00A0}from\u{00A0}this\u{00A0}network"),
         "an unreachable machine's copy names the host setting for a .local name, got: \(line)"
     )
     expect(

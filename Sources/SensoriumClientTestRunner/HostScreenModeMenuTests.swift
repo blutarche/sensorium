@@ -90,17 +90,17 @@ func testHostScreenModeMenuTests() async {
             reason: HostScreenModeRefusalReason.failed, hostLabel: "studio-mini"
         )
         expect(
-            failed == "studio-mini could not change its screen\u{2019}s resolution. It is back to what it was.",
+            unbound(failed) == "studio-mini could not change its screen\u{2019}s resolution. It is back to what it was.",
             "the refusal names the machine and says what the screen is on now -- got: \(failed)"
         )
         let unknown = HostScreenRefusalCopy.modeRefusalLine(
             reason: HostScreenModeRefusalReason.unknown, hostLabel: "studio-mini"
         )
         expect(
-            unknown.localizedCaseInsensitiveContains("no longer offers"),
+            unbound(unknown).localizedCaseInsensitiveContains("no longer offers"),
             "a resolution the host has stopped offering is explained as that, not as a failure of this machine"
         )
-        expect(unknown.hasSuffix("from the Screen menu."), "the line names the Screen menu, got \(unknown)")
+        expect(unbound(unknown).hasSuffix("from the Screen menu."), "the line names the Screen menu, got \(unknown)")
         let notLive = HostScreenRefusalCopy.modeRefusalLine(
             reason: HostScreenModeRefusalReason.notLive, hostLabel: "studio-mini"
         )

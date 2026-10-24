@@ -9,8 +9,9 @@ import SensoriumCore
 /// refusals -- inventing a cause for a token this build has never seen
 /// would be a guess dressed as an explanation.
 ///
-/// Every line is read under a headline that already names the host, so
-/// none names it again: "that machine" is the subject throughout.
+/// Every line is read under a headline that already names the host, so a
+/// line names it only where the sentence needs a subject; otherwise "that
+/// machine" is it.
 public enum HostScreenRefusalCopy {
     /// Minted here rather than sent by the host: the host's offer held no
     /// screen, and a session never falls back to a canvas on its own.
@@ -20,35 +21,55 @@ public enum HostScreenRefusalCopy {
     /// on both platforms.
     public static let screenControlName = "the Screen menu"
 
-    // Nothing below names a specific recovery path -- "connect with a
-    // virtual display", say -- since a session canvas is opt-in and off by
-    // default (`HostPrivateDesktopSetting`): a machine that refuses a host
-    // screen may well refuse a canvas too. Every recovery here happens
-    // through whichever button `ViewerSessionStateMachine` actually puts on
-    // screen for this refusal, which already reflects what that machine
-    // offers -- these lines only ever state the fact.
-    public static func line(reason: String) -> String {
+    /// What a line calls the host when its caller has no name for it.
+    public static let genericHostLabel = "that machine"
+
+    /// The name of the per-machine switch on the host that allows a host
+    /// screen, exactly as Sensorium Host labels it.
+    private static let hostScreenSwitchName = "Share host screen"
+
+    // These lines are shown under the status panel whose accent button is
+    // Try Again, and again as a row's failure fragment in Your Machines, so
+    // the way back is always "trying again": it names what that does and
+    // names no button. Another path (Your Machines, the Screen menu) is
+    // offered only as the alternative to it.
+    //
+    // A line never names a specific recovery through a private desktop,
+    // since that is opt-in and off by default (`HostPrivateDesktopSetting`):
+    // a machine that refuses a host screen may well refuse a private desktop
+    // too. `ViewerSessionStateMachine` puts that button on screen only when
+    // the machine offers it.
+    /// `hostLabel` is the host's name as the person gave it, used only where
+    /// a sentence needs a subject; leave it out where the caller has none.
+    public static func line(reason: String, hostLabel: String = genericHostLabel) -> String {
+        let isGeneric = hostLabel == genericHostLabel
+        let host = isGeneric ? hostLabel : ViewerCopyWrapping.name(hostLabel)
+        let subject = isGeneric ? "That machine" : host
         switch reason {
         case noneAvailableReason:
             return "The host has no screen available to share right now."
         case "canvas-session-active":
-            return "An earlier private desktop session was still active. It has now ended. Choose the host again from Your Machines."
+            return "An earlier private desktop session was still active. It has now ended. "
+                + "Trying again asks for the host screen once more."
         case "host-screen-not-allowed":
-            return "Screen sharing is off for this viewer. Enable it in Sensorium Host on the other machine, then connect from Your Machines."
+            return "\(subject) has \u{201C}\(ViewerCopyWrapping.control(hostScreenSwitchName))\u{201D} turned off for "
+                + "this machine. Someone there can turn it on. Trying again then asks for its screen."
         case "host-screen-presence-declined":
-            return "The person at that machine chose not to share its screen this time. "
-                + "They will be asked again when you connect from Your Machines."
+            return "The person at \(host) chose not to share its screen this time. "
+                + "Trying again asks them again."
         case "host-screen-presence-unanswered":
-            return "No one at that machine answered the request within thirty seconds."
+            return "No one at \(host) answered the request within thirty seconds."
         case "host-screen-presence-check-required":
-            return "Sensorium Host could not ask for permission to share the screen. Quit and reopen Sensorium Host there, then connect from Your Machines."
+            return "Sensorium Host could not ask for permission to share the screen. Quit and reopen "
+                + "Sensorium Host there, then try again."
         case "host-screen-display-unavailable":
-            return "The screen you chose is no longer available. Connect from Your Machines to choose an available screen."
+            return "The screen you chose is no longer available. Trying again asks for it once more, or "
+                + "choose an available screen from \(ViewerCopyWrapping.control("Your Machines"))."
         case "host-screen-retry-needs-person":
             // Minted here rather than sent by the host: an automatic redial
             // after a request was sent, holding no resume ticket, never
             // reaches that machine at all.
-            return "The connection dropped before the screen came up. Choose the host again from Your Machines to request its screen."
+            return "The connection dropped before the screen came up. Trying again requests the screen once more."
         case "host-screen-resume-refused":
             // The host ended or never knew the session this resume named: a
             // Stop at the host, a restart, or a changed arming record. The
@@ -60,7 +81,8 @@ public enum HostScreenRefusalCopy {
             // this way, or by a viewer that does not start one.
             return "The connection was away too long to resume."
         case "host-screen-session-active":
-            return "An earlier screen sharing session was still active. It has now ended. Choose the host again from Your Machines."
+            return "An earlier host-screen session was still active. It has now ended. "
+                + "Trying again asks for the host screen once more."
         case "host-screen-already-live":
             // "Another window here" is a real cause, not a hypothetical one:
             // `HostScreenLiveSessionRegistry.admit` keys its one-live-session
@@ -71,12 +93,12 @@ public enum HostScreenRefusalCopy {
             // which redials by then, and the host's own, shorter
             // `HostNetworkSession.defaultViewerSilenceTimeout` has already
             // freed the slot before that redial lands.
-            return "That machine still shows an earlier session as live. If another "
+            return "\(subject) still shows an earlier session as live. If another "
                 + "window here is showing its screen, use that one. Otherwise it clears within thirty "
-                + "seconds \u{2014} connect again from Your Machines then."
+                + "seconds, and trying again then asks for the screen."
         default:
-            return "That machine gave a reason this version of Sensorium does not know: "
-                + "\u{201C}\(nonBreaking(reason))\u{201D}. Update both apps."
+            return "\(subject) gave a reason this version of Sensorium does not know:\u{00A0}"
+                + "\(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
         }
     }
 
@@ -87,24 +109,21 @@ public enum HostScreenRefusalCopy {
     /// still live, so it names the machine itself rather than relying on a
     /// headline above it.
     public static func modeRefusalLine(reason: String, hostLabel: String = "The other machine") -> String {
+        let host = ViewerCopyWrapping.name(hostLabel)
+        let line: String
         switch reason {
         case HostScreenModeRefusalReason.failed:
-            return "\(hostLabel) could not change its screen\u{2019}s resolution. It is back to what it was."
+            line = "\(host) could not change its screen\u{2019}s resolution. It is back to what it was."
         case HostScreenModeRefusalReason.unknown:
-            return "\(hostLabel) no longer offers that resolution for its screen. Choose another from "
-                + "\(screenControlName)."
+            line = "\(host) no longer offers that resolution for its screen. Choose another from "
+                + "\(ViewerCopyWrapping.control(screenControlName))."
         case HostScreenModeRefusalReason.notLive:
-            return "\(hostLabel) is no longer showing this machine its screen, so its resolution did not change."
+            line = "\(host) is no longer showing this machine its screen, so its resolution did not change."
         default:
-            return "\(hostLabel) would not change its screen\u{2019}s resolution, and gave a reason this version "
-                + "of Sensorium does not know: \u{201C}\(nonBreaking(reason))\u{201D}. Update both apps, then try again."
+            line = "\(host) would not change its screen\u{2019}s resolution, and gave a reason this version "
+                + "of Sensorium does not know:\u{00A0}\(ViewerCopyWrapping.quoted(reason)). "
+                + "Update both apps, then try again."
         }
-    }
-
-    /// A quoted, unrecognised wire token wraps like any other text; without
-    /// this, the wrap can land inside the token's own hyphens and split the
-    /// closing quote mark onto the line after it.
-    private static func nonBreaking(_ token: String) -> String {
-        token.replacingOccurrences(of: "-", with: "\u{2011}")
+        return ViewerCopyWrapping.keepingTailTogether(line)
     }
 }
