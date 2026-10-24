@@ -95,7 +95,7 @@ func runPairedMachineRenameTests() async {
     do {
         // The typed name is trimmed, capped, and an empty one means "no
         // name of my own" rather than a blank row.
-        expect(PairedDeviceName.normalized("  Studio Mac \n") == "Studio Mac", "a typed name is trimmed")
+        expect(PairedDeviceName.normalized("  Studio Laptop \n") == "Studio Laptop", "a typed name is trimmed")
         expect(PairedDeviceName.normalized("   ") == nil, "a name of only spaces is no name at all")
         expect(PairedDeviceName.normalized("") == nil, "an empty name is no name at all")
         let long = String(repeating: "a", count: 100)
@@ -122,14 +122,14 @@ func runPairedMachineRenameTests() async {
         store.save([key])
         store.setName("Kestrel Laptop Pro", for: key)
 
-        PairedDeviceName.rename(key, to: "  Studio Mac  ", in: store)
+        PairedDeviceName.rename(key, to: "  Studio Laptop  ", in: store)
 
         let reopened = FileApprovedDeviceStore(url: url)
-        expect(reopened.customName(for: key) == "Studio Mac", "a rename survives a fresh read of the file")
+        expect(reopened.customName(for: key) == "Studio Laptop", "a rename survives a fresh read of the file")
         expect(reopened.name(for: key) == "Kestrel Laptop Pro", "the reported name is kept alongside, untouched")
         expect(reopened.load() == [key], "renaming adds and removes no key")
         expect(
-            ApprovedDeviceDisplayName.resolve(for: key, in: reopened) == "Studio Mac",
+            ApprovedDeviceDisplayName.resolve(for: key, in: reopened) == "Studio Laptop",
             "the name this host shows is the one chosen here"
         )
         let attributes = try! FileManager.default.attributesOfItem(atPath: url.path)
@@ -195,7 +195,7 @@ func runPairedMachineRenameTests() async {
             let key = Data([0x05])
             store.save([key])
             store.setName("Kestrel Laptop Pro", for: key)
-            store.setCustomName("Studio Mac", for: key)
+            store.setCustomName("Studio Laptop", for: key)
             store.remove(key)
             expect(store.customName(for: key) == nil, "\(type(of: store)): removing a device forgets its chosen name")
         }
@@ -221,7 +221,7 @@ func runPairedMachineRenameTests() async {
         let armingBytesBefore = try! Data(contentsOf: armingURL)
         let writesBefore = armingStore.writeCount
 
-        PairedDeviceName.rename(key, to: "Studio Mac", in: store)
+        PairedDeviceName.rename(key, to: "Studio Laptop", in: store)
 
         expect(armingStore.writeCount == writesBefore, "a rename never writes the arming record")
         expect(try! Data(contentsOf: armingURL) == armingBytesBefore, "the arming file is byte-for-byte unchanged")
@@ -244,7 +244,7 @@ func runPairedMachineRenameTests() async {
             device: device, reportedName: "Kestrel Laptop Pro", store: store,
             onDeviceApproved: { approvals.append($0) }
         )
-        PairedDeviceName.rename(device.publicKey, to: "Studio Mac", in: store)
+        PairedDeviceName.rename(device.publicKey, to: "Studio Laptop", in: store)
 
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
@@ -254,13 +254,13 @@ func runPairedMachineRenameTests() async {
         )
         _ = try! controller.handle(signedHello(device, deviceName: "Kestrel Laptop Air"))
         expect(store.name(for: device.publicKey) == "Kestrel Laptop Air", "a hello still updates the reported name")
-        expect(store.customName(for: device.publicKey) == "Studio Mac", "a hello never overwrites the chosen name")
+        expect(store.customName(for: device.publicKey) == "Studio Laptop", "a hello never overwrites the chosen name")
         expect(
-            ApprovedDeviceDisplayName.resolve(for: device.publicKey, in: store) == "Studio Mac",
+            ApprovedDeviceDisplayName.resolve(for: device.publicKey, in: store) == "Studio Laptop",
             "the host still shows the chosen name after a hello reporting another"
         )
         expect(
-            controller.authenticatedDeviceDisplayName == "Studio Mac",
+            controller.authenticatedDeviceDisplayName == "Studio Laptop",
             "the connection is named by the chosen name, not the hello's own"
         )
 
@@ -273,10 +273,10 @@ func runPairedMachineRenameTests() async {
         ) else {
             fatalError("pairing again was refused")
         }
-        expect(store.customName(for: device.publicKey) == "Studio Mac", "pairing again never overwrites the chosen name")
+        expect(store.customName(for: device.publicKey) == "Studio Laptop", "pairing again never overwrites the chosen name")
         expect(store.name(for: device.publicKey) == "Kestrel Laptop Max", "pairing again still records the reported name")
         expect(
-            approvals.last?.deviceName == "Studio Mac",
+            approvals.last?.deviceName == "Studio Laptop",
             "the pairing status names a machine paired again by its chosen name -- got \(approvals.last?.deviceName ?? "nil")"
         )
         expect(approvals.first?.deviceName == "Kestrel Laptop Pro", "a first pairing has only the reported name to show")
@@ -289,7 +289,7 @@ func runPairedMachineRenameTests() async {
         let device = try! DeviceIdentity.generate()
         let store = InMemoryApprovedDeviceStore()
         let pairing = pairedService(device: device, reportedName: "Kestrel Laptop Pro", store: store)
-        PairedDeviceName.rename(device.publicKey, to: "Studio Mac", in: store)
+        PairedDeviceName.rename(device.publicKey, to: "Studio Laptop", in: store)
         let controller = HostSessionController(
             sessions: surfaceZeroOnly(VirtualDisplaySession(adapter: FakeVirtualDisplayAdapter())),
             requireAuthentication: true,
@@ -309,7 +309,7 @@ func runPairedMachineRenameTests() async {
         }
         expect(identified, "a verified hello identifies the connection")
         expect(
-            presence.events.first == .identified(deviceName: "Studio Mac"),
+            presence.events.first == .identified(deviceName: "Studio Laptop"),
             "the connection is named by the chosen name -- got \(presence.events)"
         )
         session.stop()
@@ -361,7 +361,7 @@ func runPairedMachineRenameTests() async {
         let key = Data([0x0A])
         let store = InMemoryApprovedDeviceStore(keys: [key])
         store.setName("Kestrel Laptop Pro", for: key)
-        PairedDeviceName.rename(key, to: "Studio Mac", in: store)
+        PairedDeviceName.rename(key, to: "Studio Laptop", in: store)
         let armed = HostScreenDeviceArming.onPairing(devicePublicKey: key, approvedStore: store, now: Date())
         expect(
             armed.deviceName == "Kestrel Laptop Pro",
@@ -382,8 +382,8 @@ func runPairedMachineRenameTests() async {
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(devicePublicKey: key, deviceName: "Kestrel Laptop Pro", armedAt: Date())
         ])
-        let lines = HostScreenArmingPresentation.lines(for: arming, hostChosenName: { $0 == key ? "Studio Mac" : nil })
-        expect(lines.map(\.deviceName) == ["Studio Mac"], "the menu bar names a sharing machine by its chosen name")
+        let lines = HostScreenArmingPresentation.lines(for: arming, hostChosenName: { $0 == key ? "Studio Laptop" : nil })
+        expect(lines.map(\.deviceName) == ["Studio Laptop"], "the menu bar names a sharing machine by its chosen name")
         expect(
             HostScreenArmingPresentation.lines(for: arming).map(\.deviceName) == ["Kestrel Laptop Pro"],
             "with no chosen name, the menu bar keeps the arming record's own name"
@@ -398,7 +398,7 @@ func runPairedMachineRenameTests() async {
         let device = try! DeviceIdentity.generate()
         let store = InMemoryApprovedDeviceStore()
         let pairing = pairedService(device: device, reportedName: "Kestrel Laptop Pro", store: store)
-        PairedDeviceName.rename(device.publicKey, to: "Studio Mac", in: store)
+        PairedDeviceName.rename(device.publicKey, to: "Studio Laptop", in: store)
         let display = DisplaySnapshot(
             id: 7, pixelWidth: 5120, pixelHeight: 2880, modeWidth: 2560, modeHeight: 1440,
             modePixelWidth: 5120, modePixelHeight: 2880, bounds: CGRect(x: 0, y: 0, width: 2560, height: 1440),
@@ -430,8 +430,8 @@ func runPairedMachineRenameTests() async {
         guard case .hostScreenReady = response else {
             fatalError("the fixture's host-screen request was refused: \(response)")
         }
-        expect(gate.calls.first?.deviceName == "Studio Mac", "the ask-first prompt names the chosen name")
-        expect(controller.hostScreenDeviceName == "Studio Mac", "the indicator and session record name the chosen name")
+        expect(gate.calls.first?.deviceName == "Studio Laptop", "the ask-first prompt names the chosen name")
+        expect(controller.hostScreenDeviceName == "Studio Laptop", "the indicator and session record name the chosen name")
         expect(
             controller.hostScreenReportedDeviceName == "Kestrel Laptop Air",
             "the session record can keep the name the machine reported alongside -- got \(controller.hostScreenReportedDeviceName ?? "nil")"
@@ -450,8 +450,8 @@ func runPairedMachineRenameTests() async {
             badgeFactory: { _, _ in RenameBadgeDisplay() }
         )
         _ = media.makeMedia(.fullHiDPI, displayID: 7)
-        expect(media.badgeState?.content.deviceName == "Studio Mac", "the live indicator names the chosen name")
-        expect(log.lastRecord?.deviceName == "Studio Mac", "the session record names the chosen name")
+        expect(media.badgeState?.content.deviceName == "Studio Laptop", "the live indicator names the chosen name")
+        expect(log.lastRecord?.deviceName == "Studio Laptop", "the session record names the chosen name")
         expect(log.lastRecord?.reportedDeviceName == "Kestrel Laptop Air", "and keeps the reported name alongside")
         await media.stop()
         print("PASS: the ask-first prompt, the live indicator and the session record name the chosen name")
@@ -501,7 +501,7 @@ func runPairedMachineRenameTests() async {
                 devicePublicKey: Data([0x01]), deviceName: "Kestrel Laptop Air", isSharingRealScreen: false
             ),
             HostScreenArmingPresentation.PairedMachineRow(
-                devicePublicKey: rowKey, deviceName: "Studio Mac", isSharingRealScreen: true
+                devicePublicKey: rowKey, deviceName: "Studio Laptop", isSharingRealScreen: true
             )
         ])
         let pairedMachines: NSView = field("pairedMachines", of: controller, as: NSView.self)
@@ -517,7 +517,7 @@ func runPairedMachineRenameTests() async {
             "Rename is drawn the same way as Remove"
         )
         renameButton.performClick(nil)
-        expect(prompted == ["Studio Mac"], "Rename opens the prompt with this row's current name")
+        expect(prompted == ["Studio Laptop"], "Rename opens the prompt with this row's current name")
         finishPrompt?("Living Room")
         expect(
             renamed.count == 1 && renamed[0].0 == rowKey && renamed[0].1 == "Living Room",
@@ -531,14 +531,14 @@ func runPairedMachineRenameTests() async {
         var confirmed: [String] = []
         var cancelled = 0
         let sheet = PairedMachineRenameView(
-            currentName: "Studio Mac",
+            currentName: "Studio Laptop",
             onRename: { confirmed.append($0) },
             onCancel: { cancelled += 1 }
         )
         let textField: NSTextField = field("nameField", of: sheet, as: NSTextField.self)
         let renameButton: NSButton = field("renameButton", of: sheet, as: NSButton.self)
         let cancelButton: NSButton = field("cancelButton", of: sheet, as: NSButton.self)
-        expect(textField.stringValue == "Studio Mac", "the field starts with the current name")
+        expect(textField.stringValue == "Studio Laptop", "the field starts with the current name")
         expect(renameButton.title == "Rename" && renameButton.keyEquivalent == "\r", "Rename is the default, on Return")
         expect(cancelButton.title == "Cancel" && cancelButton.keyEquivalent == "\u{1b}", "Cancel answers Escape")
 

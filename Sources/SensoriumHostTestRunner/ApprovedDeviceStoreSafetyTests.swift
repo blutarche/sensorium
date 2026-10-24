@@ -200,7 +200,7 @@ func runApprovedDeviceStoreSafetyTests() async {
         let key = Data([0xF0])
         let encodedName = "Kestrel\\u202E\\nLaptop" + String(repeating: "y", count: 200)
         let json = "[{\"publicKey\":\"\(key.base64EncodedString())\",\"name\":\"\(encodedName)\","
-            + "\"customName\":\"Studio\\u200B\\u2066Mac\"}]"
+            + "\"customName\":\"Studio\\u200B\\u2066Laptop\"}]"
         try! json.write(to: url, atomically: true, encoding: .utf8)
         let store = FileApprovedDeviceStore(url: url)
         let name = store.name(for: key)
@@ -208,9 +208,9 @@ func runApprovedDeviceStoreSafetyTests() async {
             name?.count == 64 && name?.hasPrefix("Kestrel Laptop") == true,
             "a stored reported name is cleaned on read -- got \(name ?? "nil")"
         )
-        expect(store.customName(for: key) == "StudioMac", "a stored chosen name is cleaned on read")
+        expect(store.customName(for: key) == "StudioLaptop", "a stored chosen name is cleaned on read")
         expect(
-            ApprovedDeviceDisplayName.resolve(for: key, in: store) == "StudioMac",
+            ApprovedDeviceDisplayName.resolve(for: key, in: store) == "StudioLaptop",
             "and the host shows the cleaned name"
         )
         print("PASS: a hostile name already stored on disk is cleaned when read")
@@ -248,7 +248,7 @@ func runApprovedDeviceStoreSafetyTests() async {
     do {
         // The host's own rename goes through the same rule.
         expect(
-            PairedDeviceName.normalized("Studio\u{202E}\nMac") == "Studio Mac",
+            PairedDeviceName.normalized("Studio\u{202E}\nLaptop") == "Studio Laptop",
             "a typed host-side name is cleaned the same way"
         )
         expect(PairedDeviceName.maximumLength == DeviceName.maximumLength, "the host shares the one cap")

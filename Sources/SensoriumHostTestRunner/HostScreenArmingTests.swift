@@ -342,13 +342,13 @@ func runHostScreenArmingTests() async {
         )
         let rows = HostScreenArmingPresentation.pairedMachineRows(
             approvedDevices: [
-                (namedKey, "kestrel-mbp"),
+                (namedKey, "kestrel-laptop"),
                 (unnamedKey, nil)
             ],
             arming: HostScreenArming()
         )
         expect(
-            rows[0].deviceName == "kestrel-mbp" && rows[0].keyFingerprintLine == "Key 5DB742A2",
+            rows[0].deviceName == "kestrel-laptop" && rows[0].keyFingerprintLine == "Key 5DB742A2",
             "a named device's title is the name it gave, with its key fingerprint on a small secondary line -- got title \(rows[0].deviceName), line \(rows[0].keyFingerprintLine ?? "nil")"
         )
         expect(
