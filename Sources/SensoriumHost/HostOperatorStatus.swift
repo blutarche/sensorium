@@ -253,11 +253,11 @@ extension HostOperatorStatus {
             // its own detail, under a generic headline.
             switch problem {
             case HostStartupProblemCopy.noTailnetAddress:
-                headline = "Tailscale is not running"
+                headline = "Tailscale is not running."
             case HostStartupProblemCopy.tailscaleNotInstalled:
-                headline = "Tailscale is not installed"
+                headline = "Tailscale is not installed."
             default:
-                headline = "Could not start hosting"
+                headline = "Could not start hosting."
             }
             detail = problem ?? ""
             indicator = .attention
@@ -268,19 +268,19 @@ extension HostOperatorStatus {
             // seen there. It still must not instruct the operator to use a
             // Start Hosting control this app has never offered.
             eyebrow = "STATUS"
-            headline = "This machine is not hosting"
+            headline = "This machine is not hosting."
             detail = "No machine is connected."
             indicator = .idle
         case .hosting:
             eyebrow = "READY"
-            headline = "Waiting for a machine to connect"
+            headline = "Waiting for a machine to connect."
             // No detail: the headline already says this, and a pairing
             // request below fills the line in when there is one.
             detail = ""
             indicator = .idle
         case let .pairingApproved(deviceName):
             eyebrow = "WAITING"
-            headline = "Waiting for \(deviceName) to finish pairing"
+            headline = "Waiting for \(deviceName) to finish pairing."
             detail = "Code accepted. \(deviceName) is connecting."
             indicator = .waiting
         case let .serving(peerName):
@@ -347,7 +347,7 @@ extension HostOperatorStatus {
         // for anyone who is not, and has exactly one thing worth saying.
         if captureUnavailable {
             eyebrow = "CAPTURE STOPPED"
-            headline = "Quit Sensorium Host and open it again"
+            headline = "Quit Sensorium Host and open it again."
             detail = "This machine has stopped handing Sensorium Host any picture to send. "
                 + "Opening it again is the only thing that restores it."
             indicator = .attention
@@ -368,7 +368,7 @@ extension HostOperatorStatus {
         var detailIsWarning = false
         if !isConnected, let screenRecordingAlert = alerts.first(where: { $0.kind == .screenRecording }) {
             eyebrow = "SCREEN RECORDING NEEDED"
-            headline = "Screen Recording is not allowed"
+            headline = "Screen Recording is not allowed."
             detail = screenRecordingAlert.detail
             screenRecordingReplacesStatusCard = true
         }

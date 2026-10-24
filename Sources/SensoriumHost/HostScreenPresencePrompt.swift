@@ -147,7 +147,7 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         eyebrow.preferredMaxLayoutWidth = textWidth
         headline.font = CanvasDesign.font(.primary, size: 15, weight: .semibold)
         headline.stringValue = HostTextFlow.flow(
-            "\(content.deviceName) wants to see and control a display of this machine",
+            "\(content.deviceName) wants to see and control a display of this machine.",
             names: [content.deviceName],
             measure: HostTextFlow.Measure(attributes: [.font: headline.font as Any], width: textWidth)
         )

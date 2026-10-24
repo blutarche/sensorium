@@ -119,7 +119,7 @@ func runPairingCodeRevealTests() async {
             permissions: granted
         ).presentation(now: issuedAt.addingTimeInterval(1))
         expect(
-            named.eyebrow == "READY" && named.headline == "Waiting for a machine to connect",
+            named.eyebrow == "READY" && named.headline == "Waiting for a machine to connect.",
             "the eyebrow and headline stay exactly as they were before this field existed -- a code being asked for is not the same fact as a machine connecting"
         )
         expect(

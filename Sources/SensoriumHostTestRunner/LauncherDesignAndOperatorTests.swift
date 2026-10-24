@@ -747,7 +747,7 @@ func runLauncherDesignAndOperatorTests() async {
                 connection: .notHosting, permissions: granted, problem: "address already in use"
             ).presentation(now: Date())
             expect(
-                couldNotStart.headline == "Could not start hosting",
+                couldNotStart.headline == "Could not start hosting.",
                 "a headline never names the app it already lives in, the same as every sibling headline -- got: "
                     + "\(couldNotStart.headline)"
             )
@@ -758,8 +758,8 @@ func runLauncherDesignAndOperatorTests() async {
                 connection: .notHosting, permissions: granted, problem: HostStartupProblemCopy.tailscaleNotInstalled
             ).presentation(now: Date())
             expect(
-                tailscaleNotRunning.headline == "Tailscale is not running"
-                    && tailscaleNotInstalled.headline == "Tailscale is not installed"
+                tailscaleNotRunning.headline == "Tailscale is not running."
+                    && tailscaleNotInstalled.headline == "Tailscale is not installed."
                     && tailscaleNotRunning.eyebrow == "COULD NOT START"
                     && tailscaleNotInstalled.eyebrow == "COULD NOT START",
                 "a Tailscale problem's headline names the cause under the could-not-start eyebrow, so the card does not "
@@ -797,9 +797,9 @@ func runLauncherDesignAndOperatorTests() async {
                 permissions: granted
             ).presentation(now: Date())
             expect(
-                hosting.indicator == .idle && hosting.headline == "Waiting for a machine to connect"
+                hosting.indicator == .idle && hosting.headline == "Waiting for a machine to connect."
                     && hosting.pairingCode == nil && hosting.alerts.isEmpty,
-                "a bound listener with nobody connected reads Waiting for a machine to connect -- several tailnet addresses is not a failure, "
+                "a bound listener with nobody connected reads Waiting for a machine to connect. -- several tailnet addresses is not a failure, "
                     + "and the host listens on all of them, so no one address is named here"
             )
             expect(
@@ -848,7 +848,7 @@ func runLauncherDesignAndOperatorTests() async {
                 "an expired code is withdrawn rather than left on the menu bar to be read aloud"
             )
             expect(
-                expiredPairing.headline == "Waiting for a machine to connect",
+                expiredPairing.headline == "Waiting for a machine to connect.",
                 "an expired code leaves the status line unchanged -- no machine is connected either way -- and its own "
                     + "section falls back to a Show Pairing Code button instead of a second wording here"
             )
@@ -926,7 +926,7 @@ func runLauncherDesignAndOperatorTests() async {
             ).presentation(now: issuedAt)
             expect(
                 notReadyMissingCapture.eyebrow == "SCREEN RECORDING NEEDED"
-                    && notReadyMissingCapture.headline == "Screen Recording is not allowed",
+                    && notReadyMissingCapture.headline == "Screen Recording is not allowed.",
                 "before anyone is connected, a missing Screen Recording permission replaces the status card outright -- the host is not ready, and no Ready line says otherwise"
             )
             expect(
@@ -1033,7 +1033,7 @@ func runLauncherDesignAndOperatorTests() async {
                 permissions: granted
             ).presentation(now: issuedAt)
             expect(
-                waitingPresentation.headline == "Waiting for \(peerName) to finish pairing"
+                waitingPresentation.headline == "Waiting for \(peerName) to finish pairing."
                     && waitingPresentation.indicator == .waiting,
                 "an approved device that has not connected yet reads as waiting, named, not as Ready or Connected"
             )
@@ -1076,7 +1076,7 @@ func runLauncherDesignAndOperatorTests() async {
             problemStore.beginHosting(address: "100.100.0.9")
             expect(
                 problemStore.status.presentation(now: issuedAt).indicator == .idle
-                    && problemStore.status.presentation(now: issuedAt).headline == "Waiting for a machine to connect",
+                    && problemStore.status.presentation(now: issuedAt).headline == "Waiting for a machine to connect.",
                 "hosting starting successfully clears a problem reported before it"
             )
 

@@ -32,7 +32,7 @@ public struct HostIdentityFailureCopy: Equatable, Sendable {
     /// settings are keyed to a paired machine's own public key, not to this
     /// host's key.
     public static let cannotReadKey = HostIdentityFailureCopy(
-        headline: "Sensorium Host cannot read its own key",
+        headline: "Sensorium Host cannot read its own key.",
         detail: "The file that holds the key identifying this machine could not be read. Click "
             + "\(HostTextFlow.whole(retryTitle)). If that keeps failing, click \(HostTextFlow.whole(replaceTitle)).",
         retryButtonTitle: retryTitle,

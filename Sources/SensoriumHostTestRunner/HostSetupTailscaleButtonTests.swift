@@ -100,7 +100,7 @@ func runHostSetupTailscaleButtonTests() async {
                 + "\(HostStartupProblemCopy.tailscaleNotInstalled)"
         )
         expect(
-            statusPresentation(in: hostController).headline == "Tailscale is not installed",
+            statusPresentation(in: hostController).headline == "Tailscale is not installed.",
             "the not-installed case's headline names the cause, not the running case's -- got: "
                 + "\(statusPresentation(in: hostController).headline)"
         )
@@ -132,7 +132,7 @@ func runHostSetupTailscaleButtonTests() async {
                 + "reachable\" -- got: \(HostStartupProblemCopy.noTailnetAddress)"
         )
         expect(
-            statusPresentation(in: hostController).headline == "Tailscale is not running",
+            statusPresentation(in: hostController).headline == "Tailscale is not running.",
             "the installed case's headline names the cause -- got: \(statusPresentation(in: hostController).headline)"
         )
 

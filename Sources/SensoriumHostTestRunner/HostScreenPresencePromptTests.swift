@@ -134,7 +134,7 @@ func runHostScreenPresencePromptTests() async {
         let headline: NSTextField = field("headline", of: controller, as: NSTextField.self)
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            headline.stringValue == "Kestrel\(nbsp)Laptop wants to see and control a\(nbsp)display of this\(nbsp)machine",
+            headline.stringValue == "Kestrel\(nbsp)Laptop wants to see and control a\(nbsp)display of this\(nbsp)machine.",
             "the headline holds the device name whole and never ends a line on \"a\" -- got \(headline.stringValue.debugDescription)"
         )
         expect(
@@ -273,7 +273,7 @@ func runHostScreenPresencePromptTests() async {
         let headline: NSTextField = field("headline", of: controller, as: NSTextField.self)
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            plain(headline.stringValue) == "Kestrel Laptop Pro wants to see and control a display of this machine",
+            plain(headline.stringValue) == "Kestrel Laptop Pro wants to see and control a display of this machine.",
             "the headline asks for one display, the same thing the subtitle names, not this machine's whole screen "
                 + "-- got: \(headline.stringValue)"
         )

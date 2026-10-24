@@ -58,7 +58,7 @@ func runHostIdentityFailureTests() async {
         // The copy itself: worded for the host, not the viewer
         let copy = HostIdentityFailureCopy.cannotReadKey
         expect(
-            copy.headline == "Sensorium Host cannot read its own key",
+            copy.headline == "Sensorium Host cannot read its own key.",
             "the headline names Sensorium Host, not the viewer app -- got: \(copy.headline)"
         )
         expect(

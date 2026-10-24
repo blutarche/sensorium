@@ -1526,7 +1526,7 @@ struct sensoriumd {
                 } catch {
                     let alert = NSAlert()
                     alert.alertStyle = .warning
-                    alert.messageText = isOn ? "Could not turn on Open at Login" : "Could not turn off Open at Login"
+                    alert.messageText = isOn ? "Could not turn on Open at Login." : "Could not turn off Open at Login."
                     alert.informativeText = HostOperatorLog.describe(error)
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
@@ -1539,7 +1539,7 @@ struct sensoriumd {
                 } catch {
                     let alert = NSAlert()
                     alert.alertStyle = .warning
-                    alert.messageText = isOn ? "Could not turn on the private desktop" : "Could not turn off the private desktop"
+                    alert.messageText = isOn ? "Could not turn on the private desktop." : "Could not turn off the private desktop."
                     alert.informativeText = HostOperatorLog.describe(error)
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
@@ -1553,8 +1553,8 @@ struct sensoriumd {
                     let alert = NSAlert()
                     alert.alertStyle = .warning
                     alert.messageText = isOn
-                        ? "Could not allow connections from this network"
-                        : "Could not stop connections from this network"
+                        ? "Could not allow connections from this network."
+                        : "Could not stop connections from this network."
                     alert.informativeText = HostOperatorLog.describe(error)
                     alert.addButton(withTitle: "OK")
                     alert.runModal()
@@ -1581,8 +1581,8 @@ struct sensoriumd {
                     let alert = NSAlert()
                     alert.alertStyle = .warning
                     alert.messageText = isOn
-                        ? "Could not turn on automatic updates"
-                        : "Could not turn off automatic updates"
+                        ? "Could not turn on automatic updates."
+                        : "Could not turn off automatic updates."
                     alert.informativeText = HostOperatorLog.describe(error)
                     alert.addButton(withTitle: "OK")
                     alert.runModal()

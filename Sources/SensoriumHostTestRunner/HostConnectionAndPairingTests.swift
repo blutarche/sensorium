@@ -195,7 +195,7 @@ func runHostConnectionAndPairingTests() async {
 
         expect(presentation.pairingCode == nil, "an approved pairing takes its code off the screen")
         expect(
-            presentation.headline == "Waiting for \(peerName) to finish pairing",
+            presentation.headline == "Waiting for \(peerName) to finish pairing.",
             "the approval itself is what the window now reports -- got \"\(presentation.headline)\""
         )
 

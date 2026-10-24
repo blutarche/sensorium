@@ -168,7 +168,7 @@ func runCaptureUnavailableTests() async {
         store.recordCaptureUnavailable()
         let presentation = store.status.presentation(now: Date())
         expect(
-            presentation.headline == "Quit Sensorium Host and open it again",
+            presentation.headline == "Quit Sensorium Host and open it again.",
             "the host window says the one thing that fixes it, got \(presentation.headline)"
         )
         expect(
