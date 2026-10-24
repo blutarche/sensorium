@@ -41,12 +41,14 @@ enum ViewerFormControls {
         return field
     }
 
+    /// The muted token, not `muted2`: that one is under 4.5:1 on the field's fill,
+    /// and the placeholder is the only thing a person reads in an empty field.
     static func placeholder(_ text: String, mono: Bool, size: CGFloat) -> NSAttributedString {
         NSAttributedString(
             string: text,
             attributes: [
                 .font: ViewerDesign.font(mono: mono, size: size),
-                .foregroundColor: ViewerDesign.muted2.nsColor
+                .foregroundColor: ViewerDesign.muted.nsColor
             ]
         )
     }
@@ -242,6 +244,9 @@ final class ViewerPairingFieldCell: NSTextFieldCell {
     override func setUpFieldEditorAttributes(_ textObj: NSText) -> NSText {
         let editor = super.setUpFieldEditorAttributes(textObj)
         if let textView = editor as? NSTextView {
+            // The editor pads its lines by 2pt, which the cell's own drawing
+            // does not, so typed text would start right of the same text at rest.
+            textView.textContainer?.lineFragmentPadding = 0
             textView.insertionPointColor = ViewerDesign.accentHi.nsColor
             textView.selectedTextAttributes = [
                 .backgroundColor: ViewerDesign.selection.nsColor,

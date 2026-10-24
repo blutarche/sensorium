@@ -418,6 +418,15 @@ func testYourMachinesWindowTests() async {
             hasLabel("Name (optional)", in: content(of: controller)),
             "the optional name field is labelled as a sentence, not an uppercase eyebrow"
         )
+        expect(
+            hasLabel("Pairing code", in: content(of: controller)),
+            "the code field is labelled too, so it names itself once a typed digit has hidden its placeholder"
+        )
+        controller.showCodeStep(for: nil)
+        expect(
+            hasLabel("Pairing code", in: content(of: controller)),
+            "and so is the one under an address typed by hand"
+        )
         expect(button(titled: "Pair", in: content(of: controller)) != nil, "and the step's own button commits it")
 
         print("PASS: adding a machine is two steps inside the launch window, with a way back from each")
@@ -1617,5 +1626,126 @@ func testYourMachinesRowsShareOneStructureAndUseTheirWidthTests() {
     )
 
     print("PASS: every row has the same two lines, and a long row uses its width and keeps the dot on the first line")
+}
+/// What the code step's three fields draw as text, judged on the pixels at
+/// two to the point: the contrast of an empty field's placeholder, and the
+/// column where text starts whether it is at rest, being edited, or typed.
+@MainActor
+func testViewerPairingFieldTextTests() {
+    func luminance(_ color: NSColor) -> Double {
+        guard let c = color.usingColorSpace(.sRGB) else { return 0 }
+        func channel(_ v: CGFloat) -> Double {
+            let v = Double(v)
+            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(c.redComponent) + 0.7152 * channel(c.greenComponent) + 0.0722 * channel(c.blueComponent)
+    }
+
+    /// The field drawn at two pixels to the point.
+    func render(_ field: NSTextField) -> NSBitmapImageRep? {
+        field.displayIfNeeded()
+        guard let rep = field.bitmapImageRepForCachingDisplay(in: field.bounds) else { return nil }
+        field.cacheDisplay(in: field.bounds, to: rep)
+        return rep
+    }
+
+    /// The brightest pixel inside the border against the fill beside it, as a
+    /// contrast ratio.
+    func drawnContrast(_ field: NSTextField) -> Double? {
+        guard let rep = render(field) else { return nil }
+        let scale = CGFloat(rep.pixelsHigh) / field.bounds.height
+        let border = Int(3 * scale)
+        guard let fill = rep.colorAt(x: Int(4 * scale), y: rep.pixelsHigh / 2) else { return nil }
+        let background = luminance(fill)
+        var brightest = background
+        for y in border..<(rep.pixelsHigh - border) {
+            for x in border..<(rep.pixelsWide - border) {
+                if let color = rep.colorAt(x: x, y: y) { brightest = max(brightest, luminance(color)) }
+            }
+        }
+        return (brightest + 0.05) / (background + 0.05)
+    }
+
+    /// The first column, in pixels from the field's left edge, holding text,
+    /// past the border and left of any caret.
+    func firstInkColumn(_ field: NSTextField) -> Int? {
+        guard let rep = render(field) else { return nil }
+        let scale = CGFloat(rep.pixelsHigh) / field.bounds.height
+        let border = Int(3 * scale)
+        for x in border..<(rep.pixelsWide - border) {
+            for y in border..<(rep.pixelsHigh - border) {
+                guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if color.brightnessComponent > 0.3 { return x }
+            }
+        }
+        return nil
+    }
+
+    func type(_ text: String, into field: NSTextField) {
+        field.window?.makeFirstResponder(field)
+        (field.currentEditor() as? NSTextView)?.insertText(text, replacementRange: NSRange(location: 0, length: 0))
+    }
+
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+    let address = storedValue("addressField", of: controller, as: NSTextField.self)
+    let code = storedValue("codeField", of: controller, as: NSTextField.self)
+    let name = storedValue("nameField", of: controller, as: NSTextField.self)
+    // The address field takes focus when the step opens, which holds its placeholder aside.
+    address.window?.makeFirstResponder(nil)
+
+    // Placeholders are the muted token, which clears AA on the field's fill;
+    // the dimmer token this replaced did not.
+    for (title, field) in [("address", address), ("code", code), ("name", name)] {
+        let colour = field.placeholderAttributedString?
+            .attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        expect(
+            colour.map { abs(luminance($0) - luminance(ViewerDesign.muted.nsColor)) < 0.002 } == true,
+            "the \(title) placeholder is the muted token, got \(String(describing: colour))"
+        )
+        guard let ratio = drawnContrast(field) else {
+            expect(false, "the \(title) field draws its placeholder")
+            continue
+        }
+        expect(
+            ratio >= 4.5,
+            "the \(title) placeholder's brightest pixel is \(ratio):1 on the field's fill, under the 4.5:1 AA floor"
+        )
+    }
+
+    // Text starts at one inset: typed into a field it lands where the same
+    // glyph rests, and the two sans fields agree with each other. A glyph's own
+    // side bearing is compared against itself, never against another glyph's.
+    let restingZero = firstInkColumn(code)
+    type("000", into: code)
+    let typedZero = firstInkColumn(code)
+    expect(
+        restingZero != nil && typedZero != nil && abs(restingZero! - typedZero!) <= 1,
+        "the placeholder's zero and a typed zero start in the same column, got \(String(describing: restingZero)) "
+            + "and \(String(describing: typedZero)) px"
+    )
+
+    address.window?.makeFirstResponder(nil)
+    address.stringValue = "mini"
+    name.stringValue = "mini"
+    let restingAddress = firstInkColumn(address)
+    let restingName = firstInkColumn(name)
+    expect(
+        restingAddress != nil && restingAddress == restingName,
+        "the address and name fields start the same text in the same column, got "
+            + "\(String(describing: restingAddress)) and \(String(describing: restingName)) px"
+    )
+    type("mini", into: name)
+    let typedName = firstInkColumn(name)
+    expect(
+        restingName != nil && typedName != nil && abs(restingName! - typedName!) <= 1,
+        "name text starts where it did at rest once it is being edited, got \(String(describing: restingName)) "
+            + "and \(String(describing: typedName)) px"
+    )
+    name.window?.makeFirstResponder(nil)
+
+    print("PASS: the pairing fields' placeholders clear AA and their text starts at one inset")
 }
 #endif

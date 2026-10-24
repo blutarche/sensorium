@@ -907,7 +907,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
                 fieldHeight: 32
             ))
         }
-        views.append(fieldGroup(label: nil, field: codeField, hint: codeHint, fieldHeight: 44))
+        views.append(fieldGroup(label: "Pairing code", field: codeField, hint: codeHint, fieldHeight: 44))
         let message = column([messageHeadline, messageDetail], spacing: ViewerDesign.Space.xxs)
         for line in message.arrangedSubviews {
             line.widthAnchor.constraint(equalTo: message.widthAnchor).isActive = true
@@ -946,8 +946,8 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     }
 
     /// A field, its sentence label where it has one, and the hint or error
-    /// that belongs beside it. The code field needs no label: the heading
-    /// above it already says what is being typed.
+    /// that belongs beside it. Every field here is labelled: a placeholder
+    /// goes at the first typed character, and the label is what is left.
     private func fieldGroup(
         label: String?,
         field: NSTextField,
