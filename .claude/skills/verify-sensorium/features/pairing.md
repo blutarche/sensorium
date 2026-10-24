@@ -14,7 +14,7 @@ The person at the host reveals a six-digit pairing code in Sensorium Host; the p
 
 ## How to get to it (user POV)
 
-- Host: Sensorium Host window, Show pairing code. Also the host's menu-bar panel while a code is live.
+- Host: Sensorium Host window, Show Pairing Code. Also the host's menu-bar panel while a code is live.
 - Viewer: Your Machines, Add a Machine, pick a device or type an address, type the code.
 
 ## Driving it with verify-sensorium
@@ -24,7 +24,7 @@ Preconditions:
 - Baseline from `README.md`.
 - For `pair-live` only: an approved opt-in integration test and doctor's `preconditions met`.
 
-- **Reveal code at host.** Choose Show pairing code. Run `.claude/skills/verify-sensorium/scripts/render.sh pairing host-window-3-ready-no-machines-paired.png host-window-4-pairing-code-shown.png host-menu-panel-3-pairing.png viewer-add-1-picker.png viewer-add-1b-picker-loading.png viewer-add-1c-picker-tailscaled-unreachable.png viewer-add-1d-picker-tailscaled-unreachable-tailscale-installed.png viewer-add-1e-picker-tailscale-not-installed.png viewer-add-1f-picker-no-other-devices.png viewer-add-2-code.png viewer-add-3-code-manual.png viewer-add-4-pairing-failed.png`. All `ok:`. Compare `host-window-3-...` (button) with `host-window-4-...` (six digits and a countdown in its place).
+- **Reveal code at host.** Choose Show Pairing Code. Run `.claude/skills/verify-sensorium/scripts/render.sh pairing host-window-3-ready-no-machines-paired.png host-window-4-pairing-code-shown.png host-menu-panel-3-pairing.png viewer-add-1-picker.png viewer-add-1b-picker-loading.png viewer-add-1c-picker-tailscaled-unreachable.png viewer-add-1d-picker-tailscaled-unreachable-tailscale-installed.png viewer-add-1e-picker-tailscale-not-installed.png viewer-add-1f-picker-no-other-devices.png viewer-add-2-code.png viewer-add-3-code-manual.png viewer-add-4-pairing-failed.png`. All `ok:`. Compare `host-window-3-...` (button) with `host-window-4-...` (six digits and a countdown in its place).
 - **Pick a machine at viewer.** Choose Add a Machine. Read `viewer-add-1b-picker-loading.png` then `viewer-add-1-picker.png`. One online and two offline devices are listed.
 - **Picker failures.** Read `viewer-add-1c-...`, `-1d-...`, `-1e-...`, `-1f-...`. Each says what is wrong and offers the one way on (Open Tailscale where it is installed).
 - **Type the code.** Read `viewer-add-2-code.png`, and `viewer-add-3-code-manual.png` for the typed-address path. The manual path adds an address field above the code.

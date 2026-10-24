@@ -5,7 +5,7 @@ Opening Sensorium Host shows its one window: whether this machine is reachable o
 ## Sub-features
 
 - `host-no-address` no tailnet address found; Open Tailscale when it is installed.
-- `host-ready` reachable, nobody connected, Show pairing code offered, with the three setting checkboxes.
+- `host-ready` reachable, nobody connected, Show Pairing Code offered, with the three setting checkboxes.
 - `host-permission` Screen Recording not granted, with a button that opens the permission.
 - `host-connected` a connected viewer, virtual display or host screen, with Stop.
 - `host-paired-list` paired machines: empty, one blocked, two, named and unnamed, two displays with the same name, armed with no display list.
@@ -26,7 +26,7 @@ Preconditions:
 - Baseline from `README.md`.
 
 - **Window states.** Open the host. Run `.claude/skills/verify-sensorium/scripts/render.sh host-window host-window-1-no-address-found.png host-window-3-ready-no-machines-paired.png host-window-6-connected.png host-window-7-connected-host-screen.png host-window-8-screen-recording-not-granted.png host-window-9-paired-machines-none.png host-window-10-paired-machines-one-blocked.png host-window-11-paired-machines-two.png host-window-12-last-session-clean-stop.png host-window-13-last-session-not-clean.png host-window-14-no-address-tailscale-installed.png host-window-15-identity-needs-replacing.png host-window-17-paired-machines-named-and-unnamed.png host-window-18-paired-machines-same-name-displays.png host-window-19-paired-machines-armed-without-displays.png host-window-20-connected-with-pairing-code.png host-rename-sheet.png host-menu-panel-2-hosting.png host-menu-panel-3-pairing.png host-menu-panel-4-serving.png host-menu-panel-5-permission-missing.png`. All `ok:`.
-- **Missing permission.** Read `host-window-8-screen-recording-not-granted.png`. `Screen Recording is not allowed` under a `SCREEN RECORDING NEEDED` eyebrow, and an `Open Screen Recording settings` button above Show pairing code.
+- **Missing permission.** Read `host-window-8-screen-recording-not-granted.png`. `Screen Recording is not allowed.` under a `SCREEN RECORDING NEEDED` eyebrow, and an `Open Screen Recording Settings` button above Show Pairing Code.
 - **Connected and stop.** Read `host-window-6-connected.png` and `host-window-7-connected-host-screen.png`. Each names the connected machine and shows Stop; the host-screen one is visibly distinct.
 - **Paired machines.** Read `host-window-9-...` through `-11-...` and `-17-...` through `-19-...`. A blocked row says why on its own line; same-named displays are told apart by position.
 - **Rename.** Choose Rename on the first paired machine. Compare `host-window-11-paired-machines-two.png` with `host-rename-sheet.png`. The sheet's field holds that machine's current name.
