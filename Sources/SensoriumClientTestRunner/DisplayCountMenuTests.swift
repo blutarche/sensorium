@@ -48,9 +48,9 @@ func testDisplayCountMenuTests() async {
         )
         expect(
             unbound(DisplayCountRefusalCopy.line(reason: "host-screen-session-active", hostLabel: "studio-mini"))
-                == "Could not add a private desktop: private desktops cannot be added during a host-screen "
-                    + "session with studio-mini.",
-            "the host-screen refusal says no private desktop can be added during a host-screen session, naming "
+                == "Could not add a private desktop: a host-screen session with studio-mini shows only "
+                    + "that screen.",
+            "the host-screen refusal says the session shows only its screen, naming "
                 + "the machine, and never says \"another\" when no private desktop exists"
         )
         expect(

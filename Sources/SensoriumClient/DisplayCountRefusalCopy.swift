@@ -28,8 +28,8 @@ public enum DisplayCountRefusalCopy {
         case "host-screen-session-active":
             // No private desktop exists during a host-screen session, so this
             // is the one refusal that cannot say "another".
-            sentence = "Could not add a private desktop: private desktops cannot be added during a "
-                + "host-screen session with \(host)."
+            sentence = "Could not add a private desktop: a host-screen session with \(host) "
+                + "shows only that screen."
         case "display-count-exceeds-host-limit":
             sentence = "\(leadIn) \(host) allows only one display, and that limit "
                 + "cannot be changed from this machine."
