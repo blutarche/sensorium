@@ -1780,7 +1780,7 @@ func testViewerMenusNameThePrivateDesktopTests() {
     controller.attemptFailed(reason: "refused", offersConnectAsVirtualDisplayFallback: true)
     let rowActionTitles = rowMenuTitles(in: content(of: controller)).first ?? []
     expect(
-        rowActionTitles.last == "Connect with a Private Desktop",
+        rowActionTitles.last == "Connect to a Private Desktop",
         "a failed row's menu ends with the one explicit retry on a private desktop, got \(rowActionTitles)"
     )
 

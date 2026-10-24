@@ -42,7 +42,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     /// Stop the attempt currently out. Fired by a row's own Cancel, and by
     /// clicking a different machine while one is still dialling.
     public var onCancelConnecting: (() -> Void)?
-    /// A row's own "\u{2026}" menu offered "Connect with a Private Desktop"
+    /// A row's own "\u{2026}" menu offered "Connect to a Private Desktop"
     /// -- nothing here is automatic beyond that: the one explicit way a
     /// failed host-screen attempt this machine's own "Start with"
     /// preference started switches to a private desktop and tries again.
@@ -568,7 +568,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             // The same title `ViewerSessionAction.connectAsVirtualDisplay`
             // already carries for the live session panel's own button --
             // one action, reached from whichever ending is on screen.
-            actions.append(("Connect with a Private Desktop", #selector(connectAsVirtualDisplayFromRow(_:))))
+            actions.append(("Connect to a Private Desktop", #selector(connectAsVirtualDisplayFromRow(_:))))
         }
         for (title, action) in actions {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
