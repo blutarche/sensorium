@@ -561,6 +561,23 @@ func runHostScreenArmingTests() async {
             "a display whose name nothing else shares keeps the plain sentence, with no disambiguator appended"
         )
 
+        // The badge, the prompt and the session record name a display with
+        // the same list of labels the sentence above is built from, and a
+        // qualified label has one form wherever it is composed.
+        expect(
+            HostScreenArmingPresentation.displayLabels(for: [mainDisplay, leftExternal, rightExternal])
+                == [
+                    "Built-in Display",
+                    HostScreenArmingPresentation.qualifiedDisplayLabel("External Display", by: "left"),
+                    HostScreenArmingPresentation.qualifiedDisplayLabel("External Display", by: "right")
+                ],
+            "a display told apart from another is its label, a space and the qualifier in parentheses"
+        )
+        expect(
+            HostScreenArmingPresentation.qualifiedDisplayLabel("External Display", by: "left") == "External Display (left)",
+            "the form is the one the paired machines list reads, External Display (left)"
+        )
+
         print("PASS: sharedDisplaysLine tells two identically-named displays apart by pixel size, then position, then id, leaving a lone display's name alone")
     }
 

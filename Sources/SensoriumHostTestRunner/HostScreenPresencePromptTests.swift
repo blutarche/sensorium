@@ -106,7 +106,9 @@ func runHostScreenPresencePromptTests() async {
     do {
         // A display label containing its own commas must not be read
         // as more clauses of the surrounding sentence.
-        let longLabel = "LG UltraFine 5K Display, connected over Thunderbolt 3 (Left of Built-in Display)"
+        let longLabel = HostScreenArmingPresentation.qualifiedDisplayLabel(
+            "LG UltraFine 5K Display, connected over Thunderbolt 3", by: "left"
+        )
         let controller = HostScreenPresencePromptWindowController(
             content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: longLabel)
         )
@@ -146,7 +148,9 @@ func runHostScreenPresencePromptTests() async {
         let longLabel = HostScreenPresencePromptWindowController(
             content: HostScreenBadgeContent(
                 deviceName: "Kestrel Laptop",
-                displayLabel: "LG UltraFine 5K Display, connected over Thunderbolt 3 (Left of Built-in Display)"
+                displayLabel: HostScreenArmingPresentation.qualifiedDisplayLabel(
+                    "LG UltraFine 5K Display, connected over Thunderbolt 3", by: "left"
+                )
             )
         )
         let longSubtitle: NSTextField = field("subtitle", of: longLabel, as: NSTextField.self)

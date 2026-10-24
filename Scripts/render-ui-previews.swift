@@ -1117,7 +1117,9 @@ MainActor.assumeIsolated {
         (
             "host-screen-presence-prompt-3-long-display-label",
             "Kestrel Laptop",
-            "LG UltraFine 5K Display, connected over Thunderbolt 3 (Left of Built-in Display)",
+            HostScreenArmingPresentation.qualifiedDisplayLabel(
+                "LG UltraFine 5K Display, connected over Thunderbolt 3", by: "left"
+            ),
             "a display label long enough to test the subtitle's own three-line wrap"
         )
     ]

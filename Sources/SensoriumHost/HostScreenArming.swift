@@ -551,11 +551,19 @@ public enum HostScreenArmingPresentation {
             if display.name != nil {
                 ordinalsSeenByLabel[label, default: 0] += 1
                 let ordinal = ordinalsSeenByLabel[label]!
-                return ordinal == 1 ? label : "\(label) (\(ordinal))"
+                return ordinal == 1 ? label : qualifiedDisplayLabel(label, by: "\(ordinal)")
             }
             let group = zip(displays, baseLabels).filter { $0.1 == label }.map { $0.0 }
-            return "\(label) (\(disambiguator(for: display, in: group, mainDisplay: mainDisplay)))"
+            return qualifiedDisplayLabel(label, by: disambiguator(for: display, in: group, mainDisplay: mainDisplay))
         }
+    }
+
+    /// The one form a display label takes when it must be told apart from
+    /// another: the label, then the qualifier in parentheses, as in
+    /// "External Display (left)". Everything that composes such a label,
+    /// here and in the preview renders, goes through this.
+    public static func qualifiedDisplayLabel(_ label: String, by qualifier: String) -> String {
+        "\(label) (\(qualifier))"
     }
 
     private static func disambiguator(for display: DisplaySnapshot, in group: [DisplaySnapshot], mainDisplay: DisplaySnapshot?) -> String {
