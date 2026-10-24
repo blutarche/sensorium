@@ -79,13 +79,15 @@ func testGtkTextRoleColoursMatchMacOSTests() {
 /// looked up in an icon theme, so its size and stroke are the ones set here.
 /// Each expectation is measured on the macOS previews at 2x, in points from
 /// where the GTK link's box starts: where the title starts, and the box the
-/// SF Symbol's ink fills.
+/// SF Symbol's ink fills. macOS centres every symbol in one fixed slot, so
+/// every title starts at the same x whatever the symbol's width.
 func testGtkLinkIconMatchesMacOSGlyphBoxTests() {
     typealias Box = (minX: Double, minY: Double, maxX: Double, maxY: Double)
     let macOS: [(GtkViewerStyle.LinkIcon, String, titleOffset: Double, ink: Box)] = [
-        (.lookAgain, "arrow.clockwise", 19, (3.0, 2.67, 12.0, 13.67)),
+        (.lookAgain, "arrow.clockwise", 24, (5.5, 2.67, 14.5, 13.67)),
         (.enterManually, "keyboard", 24, (3.5, 4.17, 16.25, 12.17)),
-        (.back, "chevron.left", 16, (2.5, 3.67, 7.5, 12.67))
+        (.back, "chevron.left", 24, (6.5, 3.67, 11.5, 12.67)),
+        (.download, "arrow.down.circle", 24, (4.5, 2.72, 14.6, 13.17))
     ]
     expect(
         GtkViewerStyle.LinkIcon.allCases == macOS.map(\.0),
@@ -113,7 +115,7 @@ func testGtkLinkIconMatchesMacOSGlyphBoxTests() {
 /// A saved machine's "\u{2026}" is three dots drawn from this source, where
 /// macOS draws the glyph. Measured on the macOS preview at 2x, relative to
 /// the row: the middle dot's centre 20.225pt in from the row's right edge and
-/// 4.815pt below its centre, 4.865pt between centres, 2.68pt across. Each
+/// level with its centre, 4.865pt between centres, 2.68pt across. Each
 /// placement is whole device pixels at the window's own scale, so the three
 /// rasterise alike at any scale, fractional ones included.
 func testGtkMoreDotsMatchMacOSTests() {
@@ -122,7 +124,7 @@ func testGtkMoreDotsMatchMacOSTests() {
     expect(size == 24, "the button is 24pt square, as on macOS -- got \(size)")
     let fromRight = size + ViewerChromeMetrics.Space.xs - Dots.middle.x
     expect(abs(fromRight - 20.225) < 0.01, "the middle dot is 20.225pt in from the row's right edge -- got \(fromRight)")
-    expect(abs(Dots.middle.y - size / 2 - 4.815) < 0.01, "and 4.815pt below the row's centre -- got \(Dots.middle.y - size / 2)")
+    expect(abs(Dots.middle.y - size / 2) < 0.01, "and level with the row's centre, as Cancel is -- got \(Dots.middle.y - size / 2) below it")
     expect(Dots.pitch == 4.865 && Dots.diameter == 2.68, "4.865pt apart and 2.68pt across -- got \(Dots.pitch), \(Dots.diameter)")
 
     for scale in [1.0, 1.25, 1.5, 2.0] {
@@ -217,8 +219,13 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
     check(cssRule(".\(Class.hint)", in: css).contains("font-size: 12px"), "a field's hint is 12, as ViewerFormControls.hintLabel draws it")
     let subtitle = cssRule(".\(Class.deviceSubtitle)", in: css)
     check(
-        subtitle.contains("monospace") && subtitle.contains("font-size: 11px"),
-        "a tailnet device's subtitle is mono 11, as TailnetDeviceRowButton draws it"
+        !subtitle.contains("monospace") && subtitle.contains("font-size: 12px"),
+        "a tailnet device's subtitle is the interface face at 12, as TailnetDeviceRowButton draws it"
+    )
+    check(
+        cssRule(".\(Class.dotUnknown)", in: css).contains("background-color: \(palette.muted2.hexString)")
+            && css.contains(".\(Class.dotUnknown)") && cssRule(".\(Class.dotUnknown)", in: css).contains("min-width: 6px"),
+        "a machine nothing is known about draws a muted2 6x6 dot, as SavedMachineRowButton.dot draws kind nil"
     )
     check(
         cssRule(".\(Class.dotOffline)", in: css).contains("background-color: \(palette.bad.hexString)"),

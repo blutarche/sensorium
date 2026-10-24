@@ -29,6 +29,7 @@ public enum GtkViewerStyle {
         public static let dotOnline = "sensorium-dot-online"
         public static let dotOffline = "sensorium-dot-offline"
         public static let dotActivity = "sensorium-dot-activity"
+        public static let dotUnknown = "sensorium-dot-unknown"
         public static let primary = "sensorium-primary"
         /// The outlined counterpart to `primary`: `ViewerFormControls.style`'s
         /// `isPrimary: false` case on macOS, same size and radius.
@@ -70,6 +71,7 @@ public enum GtkViewerStyle {
         case lookAgain = 1
         case enterManually
         case back
+        case download
 
         public enum Shape: Sendable {
             case polyline([(x: Double, y: Double)], width: Double)
@@ -79,14 +81,10 @@ public enum GtkViewerStyle {
             case fill(x: Double, y: Double, width: Double, height: Double)
         }
 
-        /// Points from the link's leading edge to where its title starts.
-        public var titleOffset: Double {
-            switch self {
-            case .lookAgain: 19
-            case .enterManually: 24
-            case .back: 16
-            }
-        }
+        /// Points from the link's leading edge to where its title starts: the
+        /// same for every icon, since each is centred in one fixed slot, so a
+        /// column of links starts its titles at one x.
+        public var titleOffset: Double { 24 }
 
         // Strokes as heavy as a small SF Symbol's beside 13pt text.
         private static let stroke = 1.1
@@ -98,13 +96,13 @@ public enum GtkViewerStyle {
             case .lookAgain:
                 // A circle open at the top right, with an open head at its
                 // end pointing on round, clockwise.
-                let centre = (x: 7.5, y: 9.17)
+                let centre = (x: 10.0, y: 9.17)
                 let radius = 3.95
                 let top = centre.y - radius
                 return [
                     .arc(x: centre.x, y: centre.y, radius: radius, from: 0, to: 1.5 * .pi, width: Self.stroke),
-                    .polyline([(centre.x, top), (9.6, top)], width: Self.stroke),
-                    .polyline([(7.6, top - 2), (9.6, top), (7.6, top + 2)], width: Self.stroke)
+                    .polyline([(centre.x, top), (12.1, top)], width: Self.stroke),
+                    .polyline([(10.1, top - 2), (12.1, top), (10.1, top + 2)], width: Self.stroke)
                 ]
             case .enterManually:
                 // A keyboard: an outline, two rows of keys, and a row with a
@@ -120,9 +118,17 @@ public enum GtkViewerStyle {
                     + keys(9.6, [0, 5])
                     + [.fill(x: columns[1] - half, y: 9.6 - half, width: columns[4] - columns[1] + Self.key, height: Self.key)]
             case .back:
-                let tip = (x: 3.05, y: 8.17)
+                let tip = (x: 7.05, y: 8.17)
                 let reach = 3.95
                 return [.polyline([(tip.x + reach, tip.y - reach), tip, (tip.x + reach, tip.y + reach)], width: Self.stroke)]
+            case .download:
+                // A circle with an arrow pointing down inside it.
+                let centre = (x: 9.55, y: 7.95)
+                return [
+                    .arc(x: centre.x, y: centre.y, radius: 4.6, from: 0, to: 2 * .pi, width: Self.outline),
+                    .polyline([(centre.x, 5.4), (centre.x, 10.3)], width: Self.outline),
+                    .polyline([(centre.x - 1.95, 8.4), (centre.x, 10.3), (centre.x + 1.95, 8.4)], width: Self.outline)
+                ]
             }
         }
 
@@ -160,7 +166,7 @@ public enum GtkViewerStyle {
     public enum MoreDots {
         public static let buttonSize = 24.0
         /// The middle dot's centre.
-        public static let middle = (x: 11.775, y: 16.815)
+        public static let middle = (x: 11.775, y: 12.0)
         /// From one dot's centre to the next.
         public static let pitch = 4.865
         public static let diameter = 2.68
@@ -373,7 +379,7 @@ public enum GtkViewerStyle {
         .\(Class.rowName) { font-size: 14px; \(weight(Weight.rowName)) color: \(ink); }
         .\(Class.rowName).\(Class.offline) { color: \(muted); }
         .\(Class.rowDetail) { \(text(12)); \(weight(Weight.rowDetail)) color: \(muted); }
-        .\(Class.deviceSubtitle) { \(monoText(11)); \(weight(Weight.deviceSubtitle)) color: \(muted); }
+        .\(Class.deviceSubtitle) { \(text(12)); \(weight(Weight.deviceSubtitle)) color: \(muted); }
         .\(Class.deviceSubtitle).\(Class.offline) { color: \(muted2); }
         .\(Class.row) {
             background-color: \(chromeBg2);
@@ -382,13 +388,14 @@ public enum GtkViewerStyle {
         }
         .\(Class.row).\(Class.rowSelected) { border-color: \(accent); }
         .\(Class.row):focus-visible { border-color: \(accent); }
-        .\(Class.dotOnline), .\(Class.dotOffline), .\(Class.dotActivity) {
+        .\(Class.dotOnline), .\(Class.dotOffline), .\(Class.dotActivity), .\(Class.dotUnknown) {
             border-radius: \(rowDotRadius)px;
             min-width: \(rowDotSize)px;
             min-height: \(rowDotSize)px;
         }
         .\(Class.dotOnline) { background-color: \(palette.ok.hexString); }
         .\(Class.dotOffline) { background-color: \(palette.bad.hexString); }
+        .\(Class.dotUnknown) { background-color: \(muted2); }
         .\(Class.dotActivity) { background-color: \(palette.warn.hexString); animation: sensorium-pulse 0.7s ease-in-out infinite alternate; }
         @keyframes sensorium-pulse { from { opacity: 1; } to { opacity: 0.35; } }
         .\(Class.primary), .\(Class.secondary), .\(Class.messageSecondary) {
