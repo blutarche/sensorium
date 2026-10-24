@@ -269,7 +269,7 @@ public enum GtkViewerStyle {
             box-shadow: none;
         }
         window.sensorium menubar > item {
-            padding: 0 \(Int(MenuMetrics.itemPaddingX))px;
+            padding: 0 \(Int(MenuMetrics.compactItemPaddingX))px;
             margin: \(Int(MenuMetrics.titleInsetY))px 0;
             border: none;
             border-radius: \(radius)px;

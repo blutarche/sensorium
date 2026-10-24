@@ -112,12 +112,14 @@ public enum ViewerChromeMetrics {
         public static let sparklineHeight: CGFloat = 14
     }
 
-    /// The Linux menu bar: the one GTK draws across Your Machines and the one
-    /// the session window paints, which must look the same.
+    /// The Linux menu bars share typography and surfaces; Your Machines uses
+    /// compact title spacing within its fixed-width window.
     public enum MenuBar {
         public static let height: CGFloat = 26
         public static let barPaddingX: CGFloat = 4
-        public static let itemPaddingX: CGFloat = 5
+        public static let itemPaddingX: CGFloat = 9
+        /// Your Machines retains a compact row within its fixed 460-point window.
+        public static let compactItemPaddingX: CGFloat = 5
         /// How far the open title's pill sits in from the bar's top and
         /// bottom: a whole pixel at 1x, 1.5x and 2x.
         public static let titleInsetY: CGFloat = 4

@@ -442,8 +442,8 @@ func cssPixels(_ property: String, in body: String) -> Double {
 }
 
 /// The Your Machines menu bar is styled to look like the one the session
-/// window paints: same height, padding, colours, font size, highlight and
-/// checkmark.
+/// window paints: same height, colours, font size, highlight and checkmark,
+/// with compact title padding for its fixed-width window.
 @MainActor
 func testGtkMenuBarMatchesPaintedBarTests() {
     let css = GtkViewerStyle.stylesheet
@@ -456,9 +456,9 @@ func testGtkMenuBarMatchesPaintedBarTests() {
     )
     let item = cssRule("window.sensorium menubar > item", in: css)
     expect(
-        item.contains("font-size: \(Int(Metrics.fontSize))px") && item.contains("padding: 0 \(Int(Metrics.itemPaddingX))px")
+        item.contains("font-size: \(Int(Metrics.fontSize))px") && item.contains("padding: 0 \(Int(Metrics.compactItemPaddingX))px")
             && item.contains("margin: \(Int(Metrics.titleInsetY))px 0"),
-        "a title is the painted size and padding: \(item)"
+        "a title uses the shared size and compact horizontal padding: \(item)"
     )
     expect(cssRule("window.sensorium menubar > item:first-child", in: css).contains("font-weight: bold"), "the app menu's title is bold")
     expect(
