@@ -556,17 +556,23 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         limited.contains { $0.title == "FIDELITY" } && !limited.contains { $0.title == "RESOLUTION" },
         "the section is named for everything it now reports, not for the one thing it used to"
     )
-    // Neither row is a setting a person chose. Both are measured limits, and
-    // the words say so on the row itself rather than leaving the number to be
-    // read as somebody's preference.
+    // Both rows read the same whether or not the host limited them: the
+    // number, in its own unit. The LIMITED BY row below says that something
+    // did and what, so a limit is said once rather than rephrased in each
+    // value.
     expect(
-        hudRow(limited, "FRAME RATE")?.value == "limited to 30 fps",
-        "a frame rate the host was forced down to says it was forced, not just what it is"
+        hudRow(limited, "FRAME RATE")?.value == "30 fps",
+        "a limited frame rate is still just the rate"
     )
     expect(
-        hudRow(limited, "QUALITY")?.value == "limited to 75%",
-        "a quality below full says it was limited rather than reading as a chosen level"
+        hudRow(limited, "QUALITY")?.value == "75%",
+        "a quality below full is still just the percentage"
     )
+    let unlimited = sections(sample(
+        appliedStreamScale: 2.0, appliedFramesPerSecond: 60, qualityScale: 1.0, fidelityLimitReason: nil
+    ))
+    expect(hudRow(unlimited, "QUALITY")?.value == "100%", "a quality at full is the same shape as one below it")
+    expect(hudRow(unlimited, "FRAME RATE")?.value == "60 fps", "so is an unlimited frame rate")
     expect(
         hudRow(limited, "LIMITED BY")?.value == "the link",
         "the reason is said in the panel's own words, not in the wire's token"

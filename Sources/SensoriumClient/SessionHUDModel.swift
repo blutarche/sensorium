@@ -618,13 +618,8 @@ public enum SessionHUDPanel {
         // The explanation goes after both numbers, never between them: these
         // two rows exist to be read against each other, and a sentence in the
         // gap breaks the rhythm exactly where the eye is comparing.
-        // Neither the frame rate nor the quality is a setting a person chose:
-        // both are limits the host measured, and the row says so in words so
-        // the number is never read as somebody's preference. The frame rate
-        // has no "full" value the viewer knows -- the rungs are the host's --
-        // so a reported reason is what marks it limited; the quality's own
-        // full value is 1.0, so it marks itself.
-        let isLimited = sample?.fidelityLimitReason != nil
+        // The frame rate and the quality are each just their number: whether
+        // the host limited them, and by what, is the LIMITED BY row's to say.
         return SessionHUDSection(title: "FIDELITY", rows: [
             SessionHUDRow(label: "SIZE", value: pixels, isStale: isSessionDown),
             SessionHUDRow(
@@ -649,13 +644,12 @@ public enum SessionHUDPanel {
             ),
             SessionHUDRow(
                 label: "FRAME RATE",
-                value: sample?.appliedFramesPerSecond
-                    .map { isLimited ? "limited to \($0) fps" : "\($0) fps" } ?? nothingToReport,
+                value: sample?.appliedFramesPerSecond.map { "\($0) fps" } ?? nothingToReport,
                 isStale: isStale
             ),
             SessionHUDRow(
                 label: "QUALITY",
-                value: sample?.qualityScale.map(qualityText) ?? nothingToReport,
+                value: sample?.qualityScale.map { String(format: "%.0f%%", $0 * 100) } ?? nothingToReport,
                 isStale: isStale
             ),
             SessionHUDRow(
@@ -789,11 +783,6 @@ public enum SessionHUDPanel {
         case .unknown: return "not reported"
         case nil: return unavailable
         }
-    }
-
-    private static func qualityText(_ qualityScale: Double) -> String {
-        let percentage = String(format: "%.0f%%", qualityScale * 100)
-        return qualityScale < 1 ? "limited to \(percentage)" : percentage
     }
 
     private static func scaleText(_ scale: Double) -> String {
