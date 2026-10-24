@@ -8,6 +8,21 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Buttons read in Title Case in both apps, and headings in sentence case.
+  Cancel sits left of the default button.
+- The viewer calls a session-owned virtual display a private desktop
+  everywhere, as the host does.
+- Status panels and notices keep a machine name whole and never leave one
+  word alone on a line. Each panel's text says what its main button does.
+- Every machine in Your machines shows a status dot. A machine that cannot
+  be reached says so in plain words.
+- The stream diagnostics line their figures up on one grid, and the lost
+  session panel no longer covers them.
+- The host window says what to do when no machine has paired yet, and the
+  rename sheet dims the window behind it.
+
 ## [0.5.8] - 2026-10-24
 
 ### Changed
