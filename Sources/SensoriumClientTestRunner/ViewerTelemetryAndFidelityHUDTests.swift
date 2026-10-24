@@ -660,10 +660,33 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         fidelityLimitReason: nil
     ))
     expect(
-        hudRow(old, "FRAME RATE")?.value == "\u{2014}"
-            && hudRow(old, "QUALITY")?.value == "\u{2014}"
-            && hudRow(old, "LIMITED BY")?.value == "\u{2014}",
+        hudRow(old, "FRAME RATE")?.value == "\u{2014}" && hudRow(old, "QUALITY")?.value == "\u{2014}",
         "a host that predates the fields reports nothing rather than a fabricated full-quality reading"
+    )
+    // Held at a ceiling the host measured, with no reason token: the ceiling is
+    // what holds it, so the row says that rather than reading as nothing under
+    // an applied scale already shown as held.
+    expect(
+        hudRow(old, "LIMITED BY")?.value == "Studio\u{2019}s ceiling" && hudRow(old, "LIMITED BY")?.tone == .warn,
+        "a scale held at the host's measured ceiling names that ceiling, got "
+            + "\(String(describing: hudRow(old, "LIMITED BY")?.value))"
+    )
+    // Held with no ceiling and no reason, nothing names the holder, and a row
+    // reading "none" beside a warned scale would say the opposite of the hold.
+    let unexplained = sections(SurfaceTelemetrySample(
+        surfaceID: 0,
+        capture: nil,
+        encode: nil,
+        send: nil,
+        framesPerSecond: 29.8,
+        encoderInputDropped: 0,
+        globalAdmissionDropped: 0,
+        sendQueueDropped: 0,
+        appliedStreamScale: 1.5
+    ))
+    expect(
+        hudRow(unexplained, "APPLIED")?.tone == .warn && hudRow(unexplained, "LIMITED BY") == nil,
+        "a held scale nothing can name leaves no LIMITED BY row at all"
     )
     expect(
         hudRow(old, "REQUESTED")?.note.map(unbound)

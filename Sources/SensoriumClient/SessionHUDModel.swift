@@ -620,7 +620,7 @@ public enum SessionHUDPanel {
         // gap breaks the rhythm exactly where the eye is comparing.
         // The frame rate and the quality are each just their number: whether
         // the host limited them, and by what, is the LIMITED BY row's to say.
-        return SessionHUDSection(title: "FIDELITY", rows: [
+        var rows = [
             SessionHUDRow(label: "SIZE", value: pixels, isStale: isSessionDown),
             SessionHUDRow(
                 label: "APPLIED",
@@ -651,14 +651,29 @@ public enum SessionHUDPanel {
                 label: "QUALITY",
                 value: sample?.qualityScale.map { String(format: "%.0f%%", $0 * 100) } ?? nothingToReport,
                 isStale: isStale
-            ),
-            SessionHUDRow(
+            )
+        ]
+        let namesReason = sample?.fidelityLimitReason?.isEmpty == false
+        if namesReason || appliedTone == nil {
+            rows.append(SessionHUDRow(
                 label: "LIMITED BY",
                 value: limitText(sample?.fidelityLimitReason, hostName: telemetry.hostName),
                 tone: !isStale && sample?.fidelityLimitReason != nil ? .warn : nil,
                 isStale: isStale
-            )
-        ])
+            ))
+        } else if sample?.sustainableScaleCeiling != nil {
+            // Held with no reason token, but at a ceiling the host measured:
+            // that ceiling, shown in the CEILING row, is what holds it.
+            rows.append(SessionHUDRow(
+                label: "LIMITED BY",
+                value: "\(hostReference(telemetry.hostName))\u{2019}s ceiling",
+                tone: .warn
+            ))
+        }
+        // Otherwise the scale is held and nothing names what holds it. A row
+        // reading "none" under a warned APPLIED would say the opposite, so
+        // there is no row.
+        return SessionHUDSection(title: "FIDELITY", rows: rows)
     }
 
     private static func choiceText(_ preference: StreamScalePreference) -> String {
