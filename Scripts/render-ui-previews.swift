@@ -1586,7 +1586,7 @@ MainActor.assumeIsolated {
     var failedFirstConnect = ViewerSessionStateMachine(hostName: "Workstation")
     failedFirstConnect.handle(.connectStarted)
     let connectingAfterFailure = failedFirstConnect.handle(
-        .attemptFailed(reasonLine: ViewerSessionFailureCopy.line(for: .unreachable, hostLabel: "Workstation"))
+        .attemptFailed(reasonLine: ViewerSessionFailureCopy.panelLine(for: .unreachable, hostLabel: "Workstation"))
     )
     viewerStates.append((
         "viewer-status-1b-connecting-after-failure",
