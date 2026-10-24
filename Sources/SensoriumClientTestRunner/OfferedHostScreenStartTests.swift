@@ -86,7 +86,7 @@ func testOfferedHostScreenStartTests() async {
         expect(await sentNoCanvasRequest(transport), "an empty offer never falls back to a canvas")
         expect(
             HostScreenRefusalCopy.line(reason: HostScreenRefusalCopy.noneAvailableReason)
-                == "The host has no screen available to share right now.",
+                == "That machine has no screen to share right now.",
             "and says so in the words the person reads"
         )
         print("PASS: no host screen and no canvas ends the start with the no-screen message")

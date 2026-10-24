@@ -43,7 +43,7 @@ public enum ClientShortcutPermissionReport {
             )
             lines.append(
                 "Still forwarded without it: \(applicationLevelNames), and all ordinary typing. Cmd-Q and Cmd-H " +
-                "are this viewer's own menu chords as well; a forwarding canvas takes them before the menu does, " +
+                "are this viewer\u{2019}s own menu chords as well; a forwarding canvas takes them before the menu does, " +
                 "so quit or hide the viewer itself from its menu."
             )
         }

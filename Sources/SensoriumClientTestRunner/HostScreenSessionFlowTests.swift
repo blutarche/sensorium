@@ -95,7 +95,7 @@ func testHostScreenSessionFlowTests() async {
         )
         expect(
             HostScreenRefusalCopy.line(reason: "a-future-reason")
-                == "That machine gave a reason this version of Sensorium does not know:\u{00A0}"
+                == "That machine gave a reason this version of Sensorium does not know: "
                     + "\u{201C}a\u{2011}future\u{2011}reason\u{201D}. Update both apps, then try again.",
             "an unknown reason's remedy never promises a fresh Host screen pick this build cannot honour, "
                 + "since it does not know what went wrong -- a session canvas may not even be offered -- and "

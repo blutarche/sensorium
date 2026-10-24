@@ -39,7 +39,7 @@ public enum DisplayCountRefusalCopy {
             // The closing quote and the stop after it ride with the token, so
             // neither can begin a line.
             sentence = "\(leadIn) \(host) gave a reason this version of Sensorium "
-                + "does not know:\u{00A0}\(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
+                + "does not know: \(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
         }
         return ViewerCopyWrapping.keepingTailTogether(sentence)
     }

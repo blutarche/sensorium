@@ -64,7 +64,7 @@ func testSoftwareDecodeGuideRowTests() {
     let guide = ViewerRelease.fasterVideoGuide
 
     let offered = decoderRow(.softwareFallback, guide: guide)
-    expect(offered?.note == "Video decoded on the CPU.", "the row says where video is decoded, got \(String(describing: offered?.note))")
+    expect(offered?.note.map(unbound) == "Video decoded on the CPU.", "the row says where video is decoded, got \(String(describing: offered?.note))")
     expect(
         offered?.link == SessionHUDLink(title: "Faster video", url: guide),
         "the row links to the guide, got \(String(describing: offered?.link))"
@@ -74,7 +74,7 @@ func testSoftwareDecodeGuideRowTests() {
     let notOffered = decoderRow(.softwareFallback, guide: nil)
     expect(notOffered?.link == nil, "no guide, no link")
     expect(
-        notOffered?.note == "No hardware decoder was available; this machine is decoding in software.",
+        notOffered?.note.map(unbound) == "No hardware decoder was available; this machine is decoding in software.",
         "without a guide the row keeps its own note"
     )
 

@@ -95,8 +95,8 @@ func testDisplayCountMenuTests() async {
         let heldReason = "a\u{2011}reason\u{2011}this\u{2011}build\u{2011}has\u{2011}never\u{2011}seen"
         expect(
             unknown == "Could not add another private desktop: the other machine gave a reason this version of "
-                + "Sensorium does not know:\u{00A0}\u{201C}\(heldReason)\u{201D}. Update both apps,\u{00A0}then\u{00A0}try\u{00A0}again.",
-            "the period sits outside the closing quote, the quote and token ride together after the colon, "
+                + "Sensorium does not know: \u{201C}\(heldReason)\u{201D}. Update both apps,\u{00A0}then\u{00A0}try\u{00A0}again.",
+            "the period sits outside the closing quote, the token rides whole with its quotes after the colon, "
                 + "and the notice ends with the one step that can fix a token this build does not know -- got: \(unknown)"
         )
 

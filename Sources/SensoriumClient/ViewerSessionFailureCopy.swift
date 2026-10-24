@@ -88,11 +88,11 @@ public enum ViewerSessionFailureCopy {
         let hostLabel = ViewerCopyWrapping.name(hostLabel)
         switch failure {
         case .unreachable:
-            return "Could not reach \(hostLabel). Nothing answered at that address. Check that the "
-                + "other machine is awake, that Sensorium Host is running on it, and that both "
+            return "Could not reach \(hostLabel). Nothing answered at that address. Check that "
+                + "\(hostLabel) is awake, that Sensorium Host is running on it, and that both "
                 + "machines are on the same network. If you connect by a name ending in .local, also turn on "
                 + "\u{201C}\(ViewerCopyWrapping.control("Allow connections from this network"))\u{201D} in "
-                + "Sensorium Host on the other machine."
+                + "Sensorium Host on \(hostLabel)."
         case .unverifiedHost:
             // Security-relevant, and the one failure where trying again is the
             // wrong reflex: pairing again would pin whatever answered.
@@ -240,7 +240,7 @@ public enum ViewerSessionFailureCopy {
                 + "or choose one of its screens from \(ViewerCopyWrapping.control(HostScreenRefusalCopy.screenControlName))."
         default:
             return "\(hostLabel) would not open a private desktop. It gave a reason this version of "
-                + "Sensorium does not know:\u{00A0}\(ViewerCopyWrapping.quoted(reason)). Try again, and if it keeps "
+                + "Sensorium does not know: \(ViewerCopyWrapping.quoted(reason)). Try again, and if it keeps "
                 + "failing, update Sensorium on both machines."
         }
     }

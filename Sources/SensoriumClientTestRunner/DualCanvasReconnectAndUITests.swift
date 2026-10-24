@@ -2386,7 +2386,7 @@ func testDualCanvasReconnectAndUITests() async {
                     + " headline, got: \(hudRow(backedOffSections, "STATE")?.note ?? "nil")"
             )
             expect(
-                hudRow(backedOffSections, "REQUESTED")?.note
+                hudRow(backedOffSections, "REQUESTED")?.note.map(unbound)
                     == "Held to 1.50x. Automatic asked for 2.00x, which Studio measured as unsustainable.",
                 "the single most useful line on the panel: the host is holding this viewer below what it asked "
                     + "for, and says so in the same one-sentence shape the fixed-choice clamp uses, got: "
@@ -2422,7 +2422,7 @@ func testDualCanvasReconnectAndUITests() async {
                 session: liveStatus
             )
             expect(
-                hudRow(clampedByHostSections, "REQUESTED")?.note
+                hudRow(clampedByHostSections, "REQUESTED")?.note.map(unbound)
                     == "Held to 1.75x. You asked for 2.00x, which Studio measured as unsustainable.",
                 "the host's own clamp reads as one plain sentence, not two clauses joined by a double hyphen,"
                     + " and names the machine by its own name"
@@ -2492,7 +2492,7 @@ func testDualCanvasReconnectAndUITests() async {
                     + " the generic word \"HOST\""
             )
             expect(
-                hudRow(backedOffSections, "FPS")?.note == "Encoded on Studio.",
+                hudRow(backedOffSections, "FPS")?.note.map(unbound) == "Encoded on Studio.",
                 "every viewer surface names the machine; the HUD does too, once it has been told the name, got: "
                     + "\(hudRow(backedOffSections, "FPS")?.note ?? "nil")"
             )
@@ -2680,7 +2680,7 @@ func testDualCanvasReconnectAndUITests() async {
                     "a reading that arrived a moment ago is still the last one there will be while the session is down"
                 )
                 expect(
-                    hudRow(downSections, "READINGS")?.note
+                    hudRow(downSections, "READINGS")?.note.map(unbound)
                         == "The session is down, so nothing more is arriving. Every reading below is the last one measured.",
                     "the session-down caption covers every reading, not only the host's, since this machine's own "
                         + "rows go stale too, got: \(hudRow(downSections, "READINGS")?.note ?? "nil")"

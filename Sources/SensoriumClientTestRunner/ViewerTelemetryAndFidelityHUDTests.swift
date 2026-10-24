@@ -121,7 +121,7 @@ private func heldBackSentenceNamesNoStageWithoutACeilingOrAClampedChoice() {
         "the ceiling this sentence would need is what the row already says is absent"
     )
     expect(
-        hudRow(sections, "REQUESTED")?.note
+        hudRow(sections, "REQUESTED")?.note.map(unbound)
             == "Held to 1.50x at 30 fps. Automatic asked for 1.75x, but Studio is streaming a different scale.",
         "with no measured ceiling and no clamped user choice, the sentence names no stage -- "
             + "got \(hudRow(sections, "REQUESTED")?.note ?? "nil")"
@@ -176,7 +176,7 @@ private func heldBackSentenceNamesBothMachinesNumbersWhenTheHostsEchoDisagrees()
             + "\(hudRow(sections, "REQUESTED")?.value ?? "nil")"
     )
     expect(
-        hudRow(sections, "REQUESTED")?.note
+        hudRow(sections, "REQUESTED")?.note.map(unbound)
             == "Held to 1.50x at 30 fps. This machine asked for 1.75x from 3584x2016 px. "
             + "blut-macminim4 derived 1.50x.",
         "the two machines' own numbers are said, naming no stage, got "
@@ -581,14 +581,14 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
     // them together measured it -- and names them the way the rest of the
     // panel already does, where "this machine" is the one the panel is drawn on.
     expect(
-        hudRow(limited, "REQUESTED")?.note
+        hudRow(limited, "REQUESTED")?.note.map(unbound)
             == "Held to 1.50x at 30 fps. Automatic asked for 2.00x, "
                 + "which exceeds the link capacity measured by both machines.",
         "the sentence names the frame rate, what cannot keep up, and whose measurement says so"
     )
 
     for (token, words, clause) in [
-        (FidelityLimitReason.encoder, "Studio's encoder", "which Studio's encoder cannot keep up with"),
+        (FidelityLimitReason.encoder, "Studio\u{2019}s encoder", "which Studio\u{2019}s encoder cannot keep up with"),
         (FidelityLimitReason.viewer, "this machine", "which this machine cannot keep up with")
     ] {
         let rows = sections(sample(
@@ -602,7 +602,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
             "the \(token) limit reads as \"\(words)\""
         )
         expect(
-            hudRow(rows, "REQUESTED")?.note
+            hudRow(rows, "REQUESTED")?.note.map(unbound)
                 == "Held to 1.50x at 30 fps. Automatic asked for 2.00x, \(clause).",
             "the \(token) limit is named in the sentence too"
         )
@@ -631,7 +631,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         session: nil
     )
     expect(
-        hudRow(anonymousHost, "LIMITED BY")?.value == "the host's encoder",
+        hudRow(anonymousHost, "LIMITED BY")?.value == "the host\u{2019}s encoder",
         "a session that has not learned the other machine's name yet still says whose encoder it is"
     )
 
@@ -666,7 +666,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         "a host that predates the fields reports nothing rather than a fabricated full-quality reading"
     )
     expect(
-        hudRow(old, "REQUESTED")?.note
+        hudRow(old, "REQUESTED")?.note.map(unbound)
             == "Held to 1.50x. Automatic asked for 2.00x, which Studio measured as unsustainable.",
         "the sentence a host with nothing new to say produces is exactly the one it always produced"
     )
@@ -722,7 +722,7 @@ private func latencySectionNamesTheHoldThisMachineAdded() {
         "the panel names the hold in the same units as every other stage, got: \(hudRow(holding, "HOLD")?.value ?? "nil")"
     )
     expect(
-        hudRow(holding, "HOLD")?.note == "Added on this machine to steady the motion.",
+        hudRow(holding, "HOLD")?.note.map(unbound) == "Added on this machine to steady the motion.",
         "and says whose latency it is, got: \(hudRow(holding, "HOLD")?.note ?? "nil")"
     )
     let labels = holding.flatMap(\.rows).map(\.label)

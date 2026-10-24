@@ -217,7 +217,7 @@ public struct SessionHUDRow: Equatable, Sendable {
         self.value = value
         self.tone = tone
         self.isStale = isStale
-        self.note = note
+        self.note = note.map(ViewerCopyWrapping.keepingTailTogether)
         self.trend = trend
         self.link = link
     }
@@ -260,7 +260,7 @@ public struct SessionHUDSection: Equatable, Sendable {
 
     public init(title: String, note: String? = nil, rows: [SessionHUDRow]) {
         self.title = title
-        self.note = note
+        self.note = note.map(ViewerCopyWrapping.keepingTailTogether)
         self.rows = rows
     }
 }
@@ -465,7 +465,7 @@ public enum SessionHUDPanel {
     private static func limitClause(_ reason: String?, hostName: String?) -> String? {
         switch reason {
         case FidelityLimitReason.encoder:
-            return "which \(hostReference(hostName))'s encoder cannot keep up with"
+            return "which \(hostReference(hostName))\u{2019}s encoder cannot keep up with"
         case FidelityLimitReason.link:
             return "which exceeds the link capacity measured by both machines"
         case FidelityLimitReason.viewer:
@@ -481,7 +481,7 @@ public enum SessionHUDPanel {
     /// of the two.
     private static func limitText(_ reason: String?, hostName: String?) -> String {
         switch reason {
-        case FidelityLimitReason.encoder: return "\(hostReference(hostName))'s encoder"
+        case FidelityLimitReason.encoder: return "\(hostReference(hostName))\u{2019}s encoder"
         case FidelityLimitReason.link: return "the link"
         case FidelityLimitReason.viewer: return "this machine"
         case let .some(other) where !other.isEmpty: return other

@@ -47,7 +47,7 @@ public enum HostScreenRefusalCopy {
         let subject = isGeneric ? "That machine" : host
         switch reason {
         case noneAvailableReason:
-            return "The host has no screen available to share right now."
+            return "\(subject) has no screen to share right now."
         case "canvas-session-active":
             return "An earlier private desktop session was still active. It has now ended. "
                 + "Trying again asks for the host screen once more."
@@ -97,7 +97,7 @@ public enum HostScreenRefusalCopy {
                 + "window here is showing its screen, use that one. Otherwise it clears within thirty "
                 + "seconds, and trying again then asks for the screen."
         default:
-            return "\(subject) gave a reason this version of Sensorium does not know:\u{00A0}"
+            return "\(subject) gave a reason this version of Sensorium does not know: "
                 + "\(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
         }
     }
@@ -121,7 +121,7 @@ public enum HostScreenRefusalCopy {
             line = "\(host) is no longer showing this machine its screen, so its resolution did not change."
         default:
             line = "\(host) would not change its screen\u{2019}s resolution, and gave a reason this version "
-                + "of Sensorium does not know:\u{00A0}\(ViewerCopyWrapping.quoted(reason)). "
+                + "of Sensorium does not know: \(ViewerCopyWrapping.quoted(reason)). "
                 + "Update both apps, then try again."
         }
         return ViewerCopyWrapping.keepingTailTogether(line)
