@@ -38,6 +38,10 @@ grep -F 'lock_typing_field_cleared=yes' "$SMOKE" >/dev/null
 # once the host is stopped.
 grep -F 'mode_applied' "$SMOKE" >/dev/null
 grep -F 'mode_restored' "$SMOKE" >/dev/null
+# A sleeping display can report a stale arrangement, so the baseline is taken
+# only once the displays are awake and two readings agree.
+grep -F 'caffeinate -u' "$SMOKE" >/dev/null
+grep -F 'settled_display_inventory "$STATE/display-inventory-pre.json"' "$SMOKE" >/dev/null
 grep -F 'the display mode change did not apply' "$SMOKE" >/dev/null
 grep -F 'the display was not restored to the mode it was on before' "$SMOKE" >/dev/null
 grep -F 'Scripts/display_inventory.swift' "$SMOKE" >/dev/null

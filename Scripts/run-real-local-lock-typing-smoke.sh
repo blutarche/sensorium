@@ -170,8 +170,28 @@ test -n "$ADDRESS"
 rm -rf "$STATE"
 mkdir -p "$HOST_HOME" "$CLIENT_HOME" "$SHOT_DIR"
 
-# The displays as they stand before anything runs, to compare once the host stops.
-swift Scripts/display_inventory.swift > "$STATE/display-inventory-pre.json"
+# The displays as they stand before anything runs, to compare once the host
+# stops. A sleeping display can report a stale arrangement: a monitor that only
+# joins on wake changes the set and the modes. So the displays are woken first
+# (a user-activity assertion, the same public power management the host uses)
+# and the baseline is the first of two identical readings a few seconds apart.
+settled_display_inventory() {
+  caffeinate -u -t 3
+  previous="$STATE/display-inventory-settle.json"
+  swift Scripts/display_inventory.swift > "$previous"
+  tries=0
+  while [ "$tries" -lt 10 ]; do
+    sleep 3
+    swift Scripts/display_inventory.swift > "$1"
+    if cmp -s "$previous" "$1"; then
+      return 0
+    fi
+    cp "$1" "$previous"
+    tries=$((tries + 1))
+  done
+  fail "the display arrangement did not settle within 30 seconds"
+}
+settled_display_inventory "$STATE/display-inventory-pre.json"
 
 require_host_port_free 7783 || fail "test-host port is already occupied"
 /usr/bin/open -n -W --stdout "$HOST_LOG" --stderr "$HOST_LOG" --env HOME="$HOST_HOME" --env CFFIXED_USER_HOME="$HOST_HOME" "$HOST_APP" --args pair "$ADDRESS" 7783 --transport tcp-local-verification &
