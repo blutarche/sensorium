@@ -110,6 +110,20 @@ public enum ViewerChromeMetrics {
         public static let narrowLabelColumnWidth: CGFloat = 70
         public static let sparklineWidth: CGFloat = 64
         public static let sparklineHeight: CGFloat = 14
+        /// The scroll thumb is drawn by the panel itself rather than by a
+        /// scroll view, so its place is stated once for both the drawing and
+        /// the layout that keeps content clear of it.
+        public static let scrollThumbWidth: CGFloat = 3
+        public static let scrollThumbTrailingInset: CGFloat = 4
+        /// Clear space between the thumb and the frame of anything else on the
+        /// panel. A sparkline's stroke runs about 1 pt past its frame, and the
+        /// ink should still end 8 pt short of the thumb.
+        public static let scrollThumbClearance: CGFloat = 10
+        /// The right margin content stays out of, so nothing sits against the
+        /// thumb. It is wider than the left one, which has no thumb beside it.
+        public static var contentTrailingInset: CGFloat {
+            scrollThumbTrailingInset + scrollThumbWidth + scrollThumbClearance
+        }
     }
 
     /// The Linux menu bars share typography and surfaces; Your Machines uses

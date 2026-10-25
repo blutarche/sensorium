@@ -821,7 +821,7 @@ func testHUDSparklineDrawsTests() {
         guard let size = pngSize(at: url) else { return -1 }
         var pink = 0
         for y in 0..<size.height {
-            for x in (12 + 232)..<(12 + 296) {
+            for x in (12 + 227)..<(12 + 291) {
                 if let p = pngPixel(at: url, x: x, y: y), p.r > 0.6, p.g < 0.8, p.b > 0.5, p.r > p.g + 0.15 {
                     pink += 1
                 }
@@ -1140,7 +1140,87 @@ func testShortcutStripConfirmRowMatchesMacOSTests() {
     print("PASS: the strip's pills are bg4 and its confirm row is question, Cancel, then an accent default")
 }
 
+/// The scroll thumb sits where `SessionHUDView` draws it, and what the panel
+/// holds ends at least 8 points short of it, so the two never read as one
+/// mark. Content gets the same right margin the macOS panel gives it.
+@MainActor
+func testSessionHUDScrollThumbClearsContentTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-hud-thumb-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let metrics = ViewerChromeMetrics.Diagnostics.self
+    let thumbMinX = Int(metrics.width - metrics.scrollThumbTrailingInset - metrics.scrollThumbWidth)
+
+    let sections: [SessionHUDBlock] = (0..<12).map { index in
+        .section(SessionHUDSection(title: "SECTION \(index)", rows: [SessionHUDRow(label: "VALUE", value: "\(index)")]))
+    }
+    let scrolled = directory.appendingPathComponent("scrolled.png")
+    let height = 160.0
+    let measured = SessionChromeRenderPreview.diagnosticsSize(blocks: sections)
+    expect(
+        SessionChromeRenderPreview.renderDiagnosticsViewport(
+            blocks: sections, width: Double(metrics.width), height: height, offset: 0, to: scrolled
+        ),
+        "a scrolling panel renders"
+    )
+    let viewport = DiagnosticsViewport(contentHeight: measured.height, viewportHeight: height, offset: 0)
+    guard let thumb = viewport.thumb else {
+        expect(false, "a panel taller than its viewport shows a thumb")
+        return
+    }
+    let centreY = Int(thumb.y + thumb.height / 2)
+    expect(
+        matches(pngPixel(at: scrolled, x: thumbMinX + 1, y: centreY), ViewerPalette.muted),
+        "the thumb is drawn from x=\(thumbMinX), as SessionHUDView.scrollThumbMinX has it"
+    )
+    expect(
+        !matches(pngPixel(at: scrolled, x: thumbMinX - 2, y: centreY), ViewerPalette.muted)
+            && !matches(pngPixel(at: scrolled, x: thumbMinX + Int(metrics.scrollThumbWidth) + 1, y: centreY), ViewerPalette.muted),
+        "and is only \(Int(metrics.scrollThumbWidth)) wide"
+    )
+
+    // A panel that fits has no thumb; the nearest ink to where it goes is the
+    // sparkline's stroke, which runs a point past the frame that holds it.
+    let trend: [Double] = [38, 40, 41.5, 39, 42, 41.5]
+    let tall = directory.appendingPathComponent("tall.png")
+    expect(
+        SessionChromeRenderPreview.renderOverlay(
+            .diagnostics(
+                blocks: [.section(SessionHUDSection(title: "STREAM", rows: [
+                    SessionHUDRow(label: "VIDEO IN", value: "41.5 Mbit/s", trend: trend)
+                ]))],
+                isFlagged: false
+            ),
+            scale: 1, to: tall
+        ),
+        "a panel with a sparkline renders"
+    )
+    guard let size = pngSize(at: tall) else {
+        expect(false, "the panel PNG could not be read back")
+        return
+    }
+    var nearestInk = 0
+    for y in 6..<(size.height - 6) {
+        for x in stride(from: thumbMinX - 1, to: 200, by: -1) {
+            guard let pixel = pngPixel(at: tall, x: x, y: y) else { continue }
+            let fill = ViewerPalette.chromeBg2
+            if abs(pixel.r - fill.red) > 0.02 || abs(pixel.g - fill.green) > 0.02 || abs(pixel.b - fill.blue) > 0.02 {
+                nearestInk = max(nearestInk, x)
+                break
+            }
+        }
+    }
+    let clearance = thumbMinX - nearestInk - 1
+    expect(nearestInk > 230 && clearance >= 8, "ink ends \(clearance) pt short of the thumb (at x=\(nearestInk)), under the 8 that keeps them apart")
+    print("PASS: the HUD's scroll thumb sits where macOS draws it, with 8 points of clear space before the content")
+}
+
 #else
+@MainActor
+func testSessionHUDScrollThumbClearsContentTests() {}
 @MainActor
 func testShortcutStripConfirmRowMatchesMacOSTests() {}
 @MainActor

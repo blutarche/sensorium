@@ -275,6 +275,13 @@ enum SessionChromePainter {
 
     static let diagnosticsWidth: Double = Double(ViewerChromeMetrics.Diagnostics.width)
 
+    /// What a row, note or sparkline has to lay out in on a panel `panelWidth`
+    /// wide: the left inset, and on the right the room the scroll thumb and its
+    /// clearance take -- `SessionHUDView.contentWidth` on macOS.
+    private static func diagnosticsContentWidth(_ panelWidth: Double) -> Double {
+        panelWidth - gap - Double(ViewerChromeMetrics.Diagnostics.contentTrailingInset)
+    }
+
     static func diagnosticsSize(blocks: [SessionHUDBlock], width: Double = diagnosticsWidth) -> (width: Double, height: Double) {
         var height = gap
         for block in blocks {
@@ -286,13 +293,13 @@ enum SessionChromePainter {
             }
             switch block {
             case let .section(section):
-                height += sectionHeight(section, width: width - gap * 2, isNarrow: false)
+                height += sectionHeight(section, width: diagnosticsContentWidth(width), isNarrow: false)
             case let .columns(_, left, right):
                 // The same halved, gutter-short column `drawDiagnostics`
                 // actually draws into -- a note here still measured against
                 // the full panel width would wrap to fewer lines than the
                 // narrower column really holds, undersizing the panel below.
-                let columnWidth = (width - gap * 2 - columnGutter) / 2
+                let columnWidth = (diagnosticsContentWidth(width) - columnGutter) / 2
                 height += max(
                     sectionHeight(left, width: columnWidth, isNarrow: true),
                     sectionHeight(right, width: columnWidth, isNarrow: true)
@@ -423,12 +430,12 @@ enum SessionChromePainter {
                     in: context,
                     x: bounds.x + gap,
                     y: y,
-                    width: bounds.width - gap * 2,
+                    width: diagnosticsContentWidth(bounds.width),
                     isNarrow: false,
                     links: &links
                 )
             case let .columns(_, left, right):
-                let columnWidth = (bounds.width - gap * 2 - columnGutter) / 2
+                let columnWidth = (diagnosticsContentWidth(bounds.width) - columnGutter) / 2
                 let leftBottom = drawSection(
                     left, in: context, x: bounds.x + gap, y: y, width: columnWidth, isNarrow: true, links: &links
                 )
@@ -444,8 +451,13 @@ enum SessionChromePainter {
         if let thumb = viewport.thumb {
             CairoChromeText.fill(
                 context,
-                ViewerChromeRect(x: bounds.x + bounds.width - 5, y: bounds.y + thumb.y + 2,
-                                 width: 3, height: max(0, thumb.height - 4)),
+                ViewerChromeRect(
+                    x: bounds.x + bounds.width - Double(ViewerChromeMetrics.Diagnostics.scrollThumbTrailingInset
+                        + ViewerChromeMetrics.Diagnostics.scrollThumbWidth),
+                    y: bounds.y + thumb.y + 2,
+                    width: Double(ViewerChromeMetrics.Diagnostics.scrollThumbWidth),
+                    height: max(0, thumb.height - 4)
+                ),
                 radius: 1.5, color: ViewerPalette.muted
             )
         }

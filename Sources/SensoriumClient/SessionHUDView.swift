@@ -27,20 +27,18 @@ public final class SessionHUDView: NSView {
     /// The scroll thumb is drawn here rather than by the scroll view, so its
     /// place is stated once for both the drawing and the layout that keeps
     /// content clear of it.
-    static let scrollThumbWidth: CGFloat = 3
-    static let scrollThumbTrailingInset: CGFloat = 4
+    static let scrollThumbWidth: CGFloat = ViewerChromeMetrics.Diagnostics.scrollThumbWidth
+    static let scrollThumbTrailingInset: CGFloat = ViewerChromeMetrics.Diagnostics.scrollThumbTrailingInset
     public static var scrollThumbMinX: CGFloat { panelWidth - scrollThumbTrailingInset - scrollThumbWidth }
 
     /// Clear space kept between the thumb and the frame of anything else on
     /// the panel. A sparkline's stroke runs about 1 pt past its frame, and the
     /// ink should still end 8 pt (16 px at 2x) short of the thumb.
-    static let scrollThumbClearance: CGFloat = 10
+    static let scrollThumbClearance: CGFloat = ViewerChromeMetrics.Diagnostics.scrollThumbClearance
 
     /// The right margin content stays out of, so nothing sits against the
     /// thumb. It is wider than the left one, which has no thumb beside it.
-    public static var contentTrailingInset: CGFloat {
-        scrollThumbTrailingInset + scrollThumbWidth + scrollThumbClearance
-    }
+    public static var contentTrailingInset: CGFloat { ViewerChromeMetrics.Diagnostics.contentTrailingInset }
 
     /// What a row, note or sparkline has to lay out in.
     static var contentWidth: CGFloat {
