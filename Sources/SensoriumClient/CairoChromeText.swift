@@ -184,6 +184,13 @@ enum CairoChromeText {
         cairo_fill(context)
     }
 
+    /// A border on the device pixel grid. At a fractional backing scale a
+    /// point is a fraction of a pixel -- one and a half at 1.5x -- and a line
+    /// that wide lights one row fully and the next by half. So the width is
+    /// a whole number of device pixels, `max(1, round(lineWidth * scale))`,
+    /// and the outer edges are pushed out to whole pixels: the line then
+    /// sits on the pixels it covers, and over the soft edge of the fill
+    /// under it.
     static func stroke(
         _ context: OpaquePointer,
         _ rect: ViewerChromeRect,
@@ -191,18 +198,38 @@ enum CairoChromeText {
         color: ViewerColor,
         lineWidth: Double = 1
     ) {
-        // Half a line width in, so a one-pixel border lands on the pixel
-        // rather than straddling two and drawing at half strength.
+        var matrix = cairo_matrix_t()
+        cairo_get_matrix(context, &matrix)
+        let scale = matrix.xx > 0 ? matrix.xx : 1
+        var left = rect.x
+        var top = rect.y
+        var right = rect.x + rect.width
+        var bottom = rect.y + rect.height
+        cairo_user_to_device(context, &left, &top)
+        cairo_user_to_device(context, &right, &bottom)
+        // Float noise on an edge that is already a whole pixel must not
+        // push the border out a pixel further.
+        let noise = 1e-6
+        let outerLeft = (left + noise).rounded(.down)
+        let outerTop = (top + noise).rounded(.down)
+        let outerRight = (right - noise).rounded(.up)
+        let outerBottom = (bottom - noise).rounded(.up)
+        let width = max(1, (lineWidth * scale).rounded())
+        // Half the width in from the outer edge, so a one-pixel border lands
+        // on the pixel's centre rather than straddling two.
         let inset = ViewerChromeRect(
-            x: rect.x + lineWidth / 2,
-            y: rect.y + lineWidth / 2,
-            width: max(0, rect.width - lineWidth),
-            height: max(0, rect.height - lineWidth)
+            x: outerLeft + width / 2,
+            y: outerTop + width / 2,
+            width: max(0, outerRight - outerLeft - width),
+            height: max(0, outerBottom - outerTop - width)
         )
-        addRoundedRect(context, inset, radius: radius)
+        cairo_save(context)
+        cairo_identity_matrix(context)
+        addRoundedRect(context, inset, radius: radius * scale)
         setSource(context, color)
-        cairo_set_line_width(context, lineWidth)
+        cairo_set_line_width(context, width)
         cairo_stroke(context)
+        cairo_restore(context)
     }
 
     /// A plain X, drawn as two crossing strokes rather than a character --

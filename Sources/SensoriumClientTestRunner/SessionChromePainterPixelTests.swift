@@ -327,6 +327,34 @@ func testNoticeBorderAndDismissGlyphTests() {
         "the dismiss cross is the ink the macOS notice draws its \u{2715} in, not a muted one"
     )
 
+    // A one-point border is a whole number of device pixels wide at any
+    // backing scale, sitting on the pixel grid: at 1.5x a point is one and a
+    // half pixels, and drawn as is it lights one row and half of the next.
+    for hairlineScale in [1.0, 1.25, 1.5, 2.0] {
+        let borderURL = directory.appendingPathComponent("notice-\(hairlineScale).png")
+        expect(
+            SessionChromeRenderPreview.renderOverlay(.notice("A short refusal line."), scale: hairlineScale, to: borderURL),
+            "the notice renders at \(hairlineScale)x"
+        )
+        guard let borderSize = pngSize(at: borderURL) else {
+            expect(false, "the \(hairlineScale)x notice PNG could not be read back")
+            continue
+        }
+        let thickness = max(1, Int(hairlineScale.rounded()))
+        let middleX = borderSize.width / 2
+        let middleY = borderSize.height / 2
+        func isBorder(_ x: Int, _ y: Int) -> Bool { matches(pngPixel(at: borderURL, x: x, y: y), ViewerPalette.warn) }
+        for offset in 0..<(thickness + 1) {
+            let inside = offset < thickness
+            expect(
+                isBorder(middleX, offset) == inside && isBorder(middleX, borderSize.height - 1 - offset) == inside
+                    && isBorder(offset, middleY) == inside && isBorder(borderSize.width - 1 - offset, middleY) == inside,
+                "at \(hairlineScale)x the border is \(thickness) whole pixels wide on every edge, "
+                    + "and the pixel \(offset) in from the edge is \(inside ? "" : "not ")border"
+            )
+        }
+    }
+
     print("PASS: the notice draws its warn border and a genuine stroked cross, not a box or blank")
 }
 
