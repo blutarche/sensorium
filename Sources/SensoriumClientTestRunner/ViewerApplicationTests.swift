@@ -135,6 +135,12 @@ nonisolated final class FakeViewerSessionWindow: ViewerSessionWindow, @unchecked
         return closes
     }
 
+    var hasDecodedFrameHandler: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return decodedFrameHandler != nil
+    }
+
     // SessionCanvasWindow
 
     func startDecoding(
@@ -415,6 +421,18 @@ private struct ViewerApplicationHarness {
         }
         return condition()
     }
+
+    func reportFirstDecodedFrame(in window: FakeViewerSessionWindow) async {
+        expect(
+            await settle(until: { !window.appliedStatuses.isEmpty }),
+            "and the connect is reported to it"
+        )
+        expect(
+            await settle(until: { window.hasDecodedFrameHandler }),
+            "the decoder observer is installed before reporting the first picture"
+        )
+        window.reportDecodedFrame()
+    }
 }
 
 private func savedTestMachine(
@@ -573,15 +591,7 @@ private func testViewerApplicationLiveSessionAndHostEnding() async {
     ))
 
     let connection = GatedControlConnection(responses: [
-        .control(.hostScreenRefused(reason: "host-screen-not-armed")),
-        .control(.canvasReady(
-            displayID: 42,
-            logicalWidth: 1920,
-            logicalHeight: 1200,
-            hostSignature: signature,
-            surfaceID: 0,
-            hostName: "Studio Mac"
-        ))
+        .control(.hostScreenRefused(reason: "host-screen-not-armed"))
     ])
     let harness = ViewerApplicationHarness(directory: directory) { connection }
     defer { harness.cleanUp() }
@@ -602,7 +612,25 @@ private func testViewerApplicationLiveSessionAndHostEnding() async {
     )
     expect(window.showCount == 0, "and it is not on screen before there is a picture in it")
 
-    window.reportDecodedFrame()
+    // Hold the signed reply until the frame reporter has started: a connect
+    // status is already visible, but the runner cannot install its decoder
+    // observer until this reply has been verified.
+    var reportingStarted = false
+    let firstPicture = Task { @MainActor in
+        reportingStarted = true
+        await harness.reportFirstDecodedFrame(in: window)
+    }
+    expect(await harness.settle(until: { reportingStarted }), "the first-picture reporter starts")
+    expect(!window.hasDecodedFrameHandler, "the decoder observer is absent while canvasReady is withheld")
+    await connection.push(.control(.canvasReady(
+        displayID: 42,
+        logicalWidth: 1920,
+        logicalHeight: 1200,
+        hostSignature: signature,
+        surfaceID: 0,
+        hostName: "Studio Mac"
+    )))
+    await firstPicture.value
     expect(
         await harness.settle(until: { window.showCount > 0 }),
         "the canvas window goes on screen at the first picture"
@@ -611,7 +639,10 @@ private func testViewerApplicationLiveSessionAndHostEnding() async {
         window.appliedStatuses.contains(where: { $0.phase == ViewerSessionPhase.live }),
         "and the window is told the session is live"
     )
-    expect(harness.launch.hideCount > 0, "and the launch window steps aside")
+    expect(
+        await harness.settle(until: { harness.launch.hideCount > 0 }),
+        "and the launch window steps aside"
+    )
     expect(
         window.appliedTitles.contains(ViewerWindowTitle.resolve(
             hostMachineName: "Studio Mac", savedHost: "studio.tail1234.ts.net", fallback: "Studio"
@@ -689,11 +720,7 @@ private func withHostStoppedSessionWhoseSendsStall(
         "the canvas window is built for the attempt"
     )
     let window = harness.windowFactory.made[0]
-    expect(
-        await harness.settle(until: { !window.appliedStatuses.isEmpty }),
-        "and the connect is reported to it"
-    )
-    window.reportDecodedFrame()
+    await harness.reportFirstDecodedFrame(in: window)
     expect(
         await harness.settle(until: { window.showCount > 0 }),
         "the canvas window goes on screen at the first picture"
