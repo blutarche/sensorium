@@ -169,6 +169,13 @@ public enum SessionChromeRenderPreview {
                     SessionChromePainter.drawNotice(line: line, in: context, bounds: bounds)
                 }
             }
+            if let tooltip = SessionChromePainter.stripTooltipLayout(
+                state: state, hostName: hostName, windowWidth: windowWidth, windowHeight: windowHeight, barTop: barTop
+            ) {
+                drawAt(tooltip.rect, in: context) { bounds in
+                    SessionChromePainter.drawTooltip(text: tooltip.text, in: context, bounds: bounds)
+                }
+            }
             if !menuTitles.isEmpty {
                 drawAt(WaylandOverlayLayout.menuBar(windowWidth: windowWidth), in: context) { bounds in
                     SessionChromePainter.drawMenuBar(titles: menuTitles, openIndex: nil, in: context, bounds: bounds)
@@ -225,6 +232,19 @@ public enum SessionChromeRenderPreview {
 
     public static func menuChordLabel(for item: ViewerMenuItem) -> String? {
         SessionChromePainter.menuChordLabel(for: item)
+    }
+
+    package static func stripTooltipTarget(
+        atX x: Double, y: Double, visibility: ShortcutStripVisibility, hostName: String, width: Double
+    ) -> ShortcutStripTooltipTarget? {
+        SessionChromePainter.stripTooltipTarget(atX: x, y: y, visibility: visibility, hostName: hostName, width: width)
+    }
+
+    package static func stripTooltipRect(
+        state: SessionChromeState, hostName: String, windowWidth: Double, windowHeight: Double
+    ) -> ViewerChromeRect? {
+        SessionChromePainter.stripTooltipLayout(state: state, hostName: hostName, windowWidth: windowWidth,
+                                               windowHeight: windowHeight, barTop: 0)?.rect
     }
 
     // MARK: - Measuring and drawing one overlay

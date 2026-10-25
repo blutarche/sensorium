@@ -59,6 +59,60 @@ enum SessionChromePainter {
     private static let dotSize: Double = Double(ViewerChromeMetrics.StatusDot.size)
     private static let dotRadius: Double = Double(ViewerChromeMetrics.StatusDot.radius)
 
+    static func tooltipSize(text: String, maxWidth: Double) -> (width: Double, height: Double) {
+        let available = max(1, maxWidth - tightGap * 2)
+        let textSize = CairoChromeText.measure(text, pointSize: stripTextSize, maxWidth: available)
+        return (min(maxWidth, ceil(textSize.width) + tightGap * 2), ceil(textSize.height) + tightGap * 2)
+    }
+
+    static func drawTooltip(text: String, in context: OpaquePointer, bounds: ViewerChromeRect) {
+        CairoChromeText.fill(context, bounds, radius: radius, color: ViewerPalette.chromeBg2)
+        CairoChromeText.stroke(context, bounds, radius: radius, color: ViewerPalette.chromeBorder2)
+        CairoChromeText.draw(text, in: context, x: tightGap, y: tightGap,
+                             pointSize: stripTextSize, color: ViewerPalette.ink,
+                             maxWidth: max(1, bounds.width - tightGap * 2))
+    }
+
+    static func stripTooltipTarget(
+        atX x: Double, y: Double, visibility: ShortcutStripVisibility, hostName: String, width: Double
+    ) -> ShortcutStripTooltipTarget? {
+        guard let hit = stripLayout(visibility: visibility, hostName: hostName, originX: 0, originY: 0, width: width)
+            .first(where: { $0.rect.contains(x: x, y: y) })?.hit else { return nil }
+        switch hit {
+        case let .action(action): return .action(action)
+        case .pin: return .pin
+        case .confirm, .cancel: return nil
+        }
+    }
+
+    static func stripTooltipLayout(
+        state: SessionChromeState, hostName: String, windowWidth: Double, windowHeight: Double, barTop: Double
+    ) -> (text: String, rect: ViewerChromeRect)? {
+        guard let target = state.stripTooltip else { return nil }
+        let item: ViewerChromeRect
+        switch target {
+        case .handle:
+            item = WaylandOverlayLayout.stripHandle(windowWidth: windowWidth, contentWidth: handleWidth,
+                                                    contentHeight: handleHeight).offset(y: barTop)
+        case .action, .pin:
+            let strip = WaylandOverlayLayout.shortcutStrip(windowWidth: windowWidth, contentHeight: stripHeight)
+                .offset(y: barTop)
+            guard let entry = stripLayout(visibility: state.strip.visibility, hostName: hostName,
+                                          originX: strip.x, originY: strip.y, width: strip.width).first(where: {
+                switch ($0.hit, target) {
+                case let (.action(action), .action(expected)): return action == expected
+                case (.pin, .pin): return true
+                default: return false
+                }
+            }) else { return nil }
+            item = entry.rect
+        }
+        let text = target.text(hostName: hostName, isPinned: state.strip.isPinned)
+        let size = tooltipSize(text: text, maxWidth: max(1, windowWidth - WaylandOverlayLayout.tooltipGap * 2))
+        return (text, WaylandOverlayLayout.tooltip(below: item, width: size.width, height: size.height,
+                                                  windowWidth: windowWidth, windowHeight: windowHeight))
+    }
+
     // MARK: - Status panel
 
     /// How far the eyebrow's own text reaches below `top`, once the square

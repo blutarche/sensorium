@@ -158,6 +158,30 @@ public enum WaylandOverlayLayout {
         )
     }
 
+    /// Between a strip tooltip and the item it names, and between the
+    /// tooltip and the window's side edges.
+    public static let tooltipGap: Double = Double(ViewerChromeMetrics.Space.xxs)
+
+    /// A strip tooltip: centred below `item`, above it when the window has no
+    /// room below, and held inside the window's side edges. On whole logical
+    /// units, as a subsurface's own position is, so the rect drawn into is
+    /// the rect on screen.
+    public static func tooltip(
+        below item: ViewerChromeRect,
+        width: Double,
+        height: Double,
+        windowWidth: Double,
+        windowHeight: Double
+    ) -> ViewerChromeRect {
+        let centred = item.x + (item.width - width) / 2
+        let x = max(tooltipGap, min(centred, windowWidth - tooltipGap - width))
+        var y = item.y + item.height + tooltipGap
+        if y + height > windowHeight {
+            y = item.y - tooltipGap - height
+        }
+        return ViewerChromeRect(x: x.rounded(.down), y: y.rounded(.down), width: width, height: height)
+    }
+
     /// Whether a point in the window's logical units is on the spot the handle
     /// takes while the strip is closed. An open strip hides the handle, but
     /// the spot stays the pointer's way in -- see

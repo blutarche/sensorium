@@ -122,8 +122,8 @@ func testShortcutStripTests() {
         )
     }
     expect(
-        ShortcutStripAction.missionControl.tooltip(hostName: "Studio") == "Sends Control-Up to Studio",
-        "the tooltip says what is sent and where it goes"
+        ShortcutStripAction.missionControl.tooltip(hostName: "Studio") == "Mission Control on Studio (Control-Up)",
+        "the tooltip says what the button does, where, and the chord it sends"
     )
 
     // A four-finger swipe moves between the host's desktops, and that gesture
@@ -138,11 +138,11 @@ func testShortcutStripTests() {
         "Desktop Left and Desktop Right sit right after App Windows"
     )
     expect(
-        ShortcutStripAction.desktopLeft.tooltip(hostName: "Studio") == "Sends Control-Left to Studio",
+        ShortcutStripAction.desktopLeft.tooltip(hostName: "Studio") == "Desktop Left on Studio (Control-Left)",
         "Desktop Left sends Control-Left"
     )
     expect(
-        ShortcutStripAction.desktopRight.tooltip(hostName: "Studio") == "Sends Control-Right to Studio",
+        ShortcutStripAction.desktopRight.tooltip(hostName: "Studio") == "Desktop Right on Studio (Control-Right)",
         "Desktop Right sends Control-Right"
     )
     expect(
@@ -761,7 +761,7 @@ func testShortcutStripButtonAppearanceTests() {
 
     var buttons: [NSButton] = []
     func collect(_ view: NSView) {
-        if let button = view as? NSButton, button.toolTip?.hasPrefix("Sends") == true {
+        if let button = view as? NSButton, button.toolTip.map(isActionToolTip) == true {
             buttons.append(button)
         }
         for subview in view.subviews {
@@ -846,7 +846,7 @@ func testShortcutStripPinButtonAppearanceTests() {
         "the pin button shows an icon like every other button on the strip"
     )
 
-    let actionButtons = collectButtonsWithToolTipPrefix("Sends")(strip)
+    let actionButtons = collectButtons(whereToolTip: isActionToolTip)(strip)
     let actionFrames = actionButtons.map { strip.convert($0.bounds, from: $0) }
     let actionMaxX = actionFrames.map(\.maxX).max() ?? 0
     let pinFrame = strip.convert(pinButton.bounds, from: pinButton)
@@ -882,7 +882,7 @@ func testShortcutStripConfirmationOrderAndDefaultTests() {
     strip.toggleRequested()
     container.layoutSubtreeIfNeeded()
 
-    guard let lockShortcut = collectButtonsWithToolTipPrefix("Sends Control-Command-Q")(strip).first else {
+    guard let lockShortcut = collectButtons(whereToolTip: { $0 == ShortcutStripAction.lockScreen.tooltip(hostName: "Studio") })(strip).first else {
         expect(false, "the strip has a Lock Screen button")
         return
     }
@@ -944,7 +944,7 @@ func testShortcutStripIconsSitOnTheirButtonCentreTests() {
     strip.toggleRequested()
     container.layoutSubtreeIfNeeded()
 
-    let buttons = collectButtonsWithToolTipPrefix("")(strip).filter { $0.subviews.contains { $0 is NSImageView } }
+    let buttons = collectButtons(whereToolTip: { _ in true })(strip).filter { $0.subviews.contains { $0 is NSImageView } }
     expect(buttons.count == ShortcutStripAction.allCases.count + 1, "every action and the pin were found")
     // Device pixels at 2x. Three quarters of a point is the most any symbol's
     // own optical balance is allowed to move it from the middle of its button.
@@ -992,7 +992,7 @@ func testShortcutStripIconsShareOneOpticalSizeTests() {
     strip.toggleRequested()
     container.layoutSubtreeIfNeeded()
 
-    let buttons = collectButtonsWithToolTipPrefix("")(strip).filter { $0.subviews.contains { $0 is NSImageView } }
+    let buttons = collectButtons(whereToolTip: { _ in true })(strip).filter { $0.subviews.contains { $0 is NSImageView } }
     expect(buttons.count == ShortcutStripAction.allCases.count + 1, "every action and the pin were found")
     var sizes: [(name: String, side: Double)] = []
     for button in buttons {
@@ -1082,11 +1082,17 @@ func testShortcutStripClusterPillsContrastWithTheBarTests() {
     print("PASS: each group's pill shows against the bar")
 }
 
+/// An action button's tooltip, as opposed to the pin's or the handle's: every
+/// action names the machine it acts on, then its chord.
+private func isActionToolTip(_ toolTip: String) -> Bool {
+    toolTip.contains(" on Studio (")
+}
+
 @MainActor
-private func collectButtonsWithToolTipPrefix(_ prefix: String) -> (NSView) -> [NSButton] {
+private func collectButtons(whereToolTip matches: @escaping (String) -> Bool) -> (NSView) -> [NSButton] {
     func collect(_ view: NSView) -> [NSButton] {
         var found: [NSButton] = []
-        if let button = view as? NSButton, button.toolTip?.hasPrefix(prefix) == true {
+        if let button = view as? NSButton, button.toolTip.map(matches) == true {
             found.append(button)
         }
         for subview in view.subviews {
@@ -1126,7 +1132,7 @@ func testShortcutStripAccessibilityLabelsTests() {
         return found
     }
 
-    let actionButtons = collectButtonsWithToolTipPrefix("Sends")(strip)
+    let actionButtons = collectButtons(whereToolTip: isActionToolTip)(strip)
     expect(actionButtons.count == ShortcutStripAction.allCases.count, "every action button was found")
     for button in actionButtons {
         expect(
@@ -1142,6 +1148,13 @@ func testShortcutStripAccessibilityLabelsTests() {
     expect(
         pinButton.accessibilityLabel() == pinButton.toolTip,
         "the pin button's accessibility label matches its tooltip"
+    )
+
+    func views(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
+    let handleToolTip = ShortcutStripTooltipTarget.handle.text(hostName: "Studio", isPinned: false)
+    expect(
+        views(strip).contains { $0.toolTip == handleToolTip },
+        "the handle's tooltip is the shared one, naming the machine and the chord that opens the strip"
     )
 
     print("PASS: every icon-only button on the strip carries an accessibility label matching its tooltip")

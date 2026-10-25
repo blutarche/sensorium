@@ -21,6 +21,7 @@ public struct SessionChromeState: Equatable, Sendable {
     public private(set) var isDiagnosticsVisible = false
     public private(set) var transientNotice: String?
     private var noticeExpiresAt: TimeInterval?
+    private var tooltip = ShortcutStripTooltip()
     public var controls = SessionControlsWindowModel()
 
     public init(isStripPinned: Bool = false) {
@@ -32,12 +33,16 @@ public struct SessionChromeState: Equatable, Sendable {
         self.init(isStripPinned: pinMemoryStore.isPinned())
     }
 
-    /// When `tick(now:)` next has something to do -- the earlier of the
-    /// strip's own deadline and the notice's. `nil` when neither is waiting,
-    /// so a live video window wakes exactly once rather than polling.
+    /// When `tick(now:)` next has something to do -- the earliest of the
+    /// strip's own deadline, the notice's and a tooltip's. `nil` when none is
+    /// waiting, so a live video window wakes exactly once rather than polling.
     public var nextDeadline: TimeInterval? {
-        [strip.nextDeadline, noticeExpiresAt].compactMap { $0 }.min()
+        [strip.nextDeadline, noticeExpiresAt, tooltip.deadline].compactMap { $0 }.min()
     }
+
+    /// The strip item whose tooltip is on screen: the one the pointer has
+    /// rested on for `ShortcutStripTooltip.delaySeconds`.
+    public var stripTooltip: ShortcutStripTooltipTarget? { tooltip.shown }
 
     public var isStatusPanelVisible: Bool { status?.isOverlayVisible ?? false }
     /// Whether a scrim belongs behind the status panel -- shown for every
@@ -59,6 +64,7 @@ public struct SessionChromeState: Equatable, Sendable {
     public mutating func apply(status: ViewerSessionStatus, now: TimeInterval) {
         self.status = status
         strip.phaseChanged(status.phase, now: now)
+        settleTooltip()
     }
 
     public mutating func apply(telemetry: SessionHUDSnapshot) {
@@ -79,14 +85,23 @@ public struct SessionChromeState: Equatable, Sendable {
     public mutating func toggleStripRequested(now: TimeInterval) {
         strip.toggleRequested()
         _ = now
+        settleTooltip()
     }
 
     public mutating func pointerOverHandle(_ isOver: Bool, now: TimeInterval) {
         strip.pointerOverHandle(isOver, now: now)
+        settleTooltip()
     }
 
     public mutating func pointerOverStrip(_ isOver: Bool, now: TimeInterval) {
         strip.pointerOverStrip(isOver, now: now)
+        settleTooltip()
+    }
+
+    /// The strip item under the pointer, or `nil` when the pointer is on none
+    /// of them. An item that is not on screen right now has no tooltip.
+    public mutating func pointerRests(onTooltipTarget target: ShortcutStripTooltipTarget?, now: TimeInterval) {
+        tooltip.pointerRests(on: target.flatMap { isOnScreen($0) ? $0 : nil }, now: now)
     }
 
     /// The pointer is somewhere on the open strip. The open strip hides the
@@ -98,6 +113,7 @@ public struct SessionChromeState: Equatable, Sendable {
     public mutating func pointerOnStrip(isOnHandleSpot: Bool, now: TimeInterval) {
         strip.pointerOverHandle(isOnHandleSpot && strip.isHandleVisible, now: now)
         strip.pointerOverStrip(true, now: now)
+        settleTooltip()
     }
 
     /// The pointer left the open strip for the picture or another overlay,
@@ -105,37 +121,53 @@ public struct SessionChromeState: Equatable, Sendable {
     public mutating func pointerLeftStrip(now: TimeInterval) {
         strip.pointerOverHandle(false, now: now)
         strip.pointerOverStrip(false, now: now)
+        settleTooltip()
     }
 
     public mutating func handleClicked() {
+        tooltip.pressed()
         strip.handleClicked()
+        settleTooltip()
     }
 
     public mutating func pressStrip(_ action: ShortcutStripAction) -> ShortcutStripPress? {
-        strip.press(action)
+        tooltip.pressed()
+        defer { settleTooltip() }
+        return strip.press(action)
     }
 
     public mutating func confirmPendingStripAction() -> ShortcutStripAction? {
-        strip.confirmPending()
+        tooltip.pressed()
+        defer { settleTooltip() }
+        return strip.confirmPending()
     }
 
     public mutating func cancelPendingStripAction() {
+        tooltip.pressed()
         strip.cancelPending()
+        settleTooltip()
     }
 
     public mutating func togglePinRequested(now: TimeInterval) {
+        tooltip.pressed()
         strip.togglePinRequested(now: now)
+        settleTooltip()
     }
 
     /// The pin button: toggles the pin and writes the result to `store`, so
     /// the next session starts the same way.
     public mutating func togglePinRequested(now: TimeInterval, remembering store: any ShortcutStripPinMemoryStoring) {
-        strip.togglePinRequested(now: now)
+        togglePinRequested(now: now)
         store.remember(isPinned: strip.isPinned)
     }
 
     public mutating func escapePressed() -> Bool {
-        strip.escapePressed()
+        defer { settleTooltip() }
+        return strip.escapePressed()
+    }
+
+    public mutating func stripPointerPressed() {
+        tooltip.pressed()
     }
 
     /// One sentence about a request that did not go through, over a session
@@ -154,6 +186,70 @@ public struct SessionChromeState: Equatable, Sendable {
         strip.tick(now: now)
         if let expiry = noticeExpiresAt, now >= expiry {
             dismissNotice()
+        }
+        settleTooltip()
+        tooltip.tick(now: now)
+    }
+
+    /// Forgets the item under the pointer once it has left the screen -- the
+    /// strip closed, a question replaced its actions, or the open strip
+    /// covered the handle -- so its tooltip neither stays up over nothing nor
+    /// comes back without a fresh rest.
+    private mutating func settleTooltip() {
+        guard let hovered = tooltip.hovered, !isOnScreen(hovered) else { return }
+        tooltip = ShortcutStripTooltip()
+    }
+
+    private func isOnScreen(_ target: ShortcutStripTooltipTarget) -> Bool {
+        switch target {
+        case .action:
+            if case .confirming = strip.visibility { return false }
+            return strip.isVisible
+        case .pin:
+            return strip.isVisible
+        case .handle:
+            return strip.showsHandle
+        }
+    }
+}
+
+/// When a strip tooltip is on screen. Reads no clock, like
+/// `ShortcutStripModel`: every call is handed the time to judge against.
+public struct ShortcutStripTooltip: Equatable, Sendable {
+    /// How long the pointer rests on one item before its tooltip appears.
+    public static let delaySeconds: TimeInterval = 0.5
+
+    /// The item under the pointer, whether or not its tooltip shows yet.
+    private(set) var hovered: ShortcutStripTooltipTarget?
+    private(set) var shown: ShortcutStripTooltipTarget?
+    /// When `hovered`'s tooltip is due.
+    private(set) var deadline: TimeInterval?
+    /// Set by a press and cleared when the pointer moves to another item, so
+    /// a tooltip does not come back over a button that was just used.
+    private var isSuppressed = false
+
+    public init() {}
+
+    /// Moving to another item, or off them all, starts the wait again.
+    mutating func pointerRests(on target: ShortcutStripTooltipTarget?, now: TimeInterval) {
+        guard target != hovered else { return }
+        hovered = target
+        shown = nil
+        isSuppressed = false
+        deadline = target == nil ? nil : now + Self.delaySeconds
+    }
+
+    mutating func pressed() {
+        shown = nil
+        deadline = nil
+        isSuppressed = true
+    }
+
+    mutating func tick(now: TimeInterval) {
+        guard let due = deadline, now >= due else { return }
+        deadline = nil
+        if !isSuppressed {
+            shown = hovered
         }
     }
 }

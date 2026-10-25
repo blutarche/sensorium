@@ -141,7 +141,7 @@ public final class ShortcutStripView: NSView {
         confirmRow.isHidden = true
         bar.addSubview(confirmRow)
 
-        handle.toolTip = "Shortcuts for \(hostName)"
+        handle.toolTip = ShortcutStripTooltipTarget.handle.text(hostName: hostName, isPinned: model.isPinned)
         handle.onPress = { [weak self] in self?.handleClicked() }
         addSubview(handle)
 
@@ -316,7 +316,7 @@ public final class ShortcutStripView: NSView {
 
     private func updatePinAppearance() {
         pinButton.setSymbol(model.isPinned ? "pin.fill" : "pin")
-        let label = model.isPinned ? "Let close" : "Keep open"
+        let label = ShortcutStripTooltipTarget.pin.text(hostName: hostName, isPinned: model.isPinned)
         pinButton.toolTip = label
         pinButton.setAccessibilityLabel(label)
     }

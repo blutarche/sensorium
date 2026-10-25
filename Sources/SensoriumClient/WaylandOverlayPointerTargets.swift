@@ -16,6 +16,7 @@ public enum WaylandOverlayKind: CaseIterable, Sendable {
     case notice
     case shortcutStrip
     case stripHandle
+    case stripTooltip
     case menuBar
 }
 

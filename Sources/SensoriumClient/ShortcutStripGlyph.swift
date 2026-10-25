@@ -135,13 +135,17 @@ public struct ShortcutStripGlyph: Equatable, Sendable {
 
     /// Unpinned is an outline; pinned is filled, as `pin` and `pin.fill` are.
     public static func pin(filled: Bool) -> ShortcutStripGlyph {
-        let left = [
-            Point(4.5, 1.2), Point(7, 3.9), Point(6.95, 7.2), Point(5.5, 8.2),
-            Point(4.4, 9.2), Point(3.8, 10.3), Point(3.55, 11.7)
+        let body = [
+            Point(4.15, 1.8), Point(13.55, 1.8), Point(13.55, 2.7),
+            Point(11.34, 3.7), Point(10.88, 3.9), Point(10.88, 7.2),
+            Point(11.92, 7.7), Point(12.97, 8.5), Point(13.78, 9.5),
+            Point(14.24, 10.6), Point(14.36, 11.7), Point(3.34, 11.7),
+            Point(3.46, 10.6), Point(3.92, 9.5), Point(4.73, 8.5),
+            Point(5.78, 7.7), Point(6.82, 7.2), Point(6.82, 3.9),
+            Point(6.36, 3.7), Point(4.15, 2.7)
         ]
-        let right = left.map { Point(17.7 - $0.x, $0.y) }
         return ShortcutStripGlyph(lineWidth: 1.3, shapes: [
-            .path(left.reversed() + right, closed: true, filled: filled),
+            .path(body, closed: true, filled: filled),
             .path([Point(8.85, 11.7), Point(8.85, 16.75)], closed: false, filled: false)
         ])
     }

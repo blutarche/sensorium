@@ -49,7 +49,8 @@ final class WaylandOverlaySurface {
         subcompositor: OpaquePointer,
         parent: OpaquePointer,
         shm: OpaquePointer,
-        viewporter: OpaquePointer?
+        viewporter: OpaquePointer?,
+        acceptsInput: Bool = true
     ) {
         guard let surface = wl_compositor_create_surface(compositor) else { return nil }
         guard let subsurface = wl_subcompositor_get_subsurface(subcompositor, surface, parent) else {
@@ -57,6 +58,10 @@ final class WaylandOverlaySurface {
             return nil
         }
         self.surface = surface
+        if !acceptsInput, let region = wl_compositor_create_region(compositor) {
+            wl_surface_set_input_region(surface, region)
+            wl_region_destroy(region)
+        }
         self.subsurface = subsurface
         self.shm = shm
         viewport = viewporter.flatMap { wp_viewporter_get_viewport($0, surface) }

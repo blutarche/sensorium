@@ -104,3 +104,27 @@ func testShortcutStripGlyphInkMarginTests() {
     }
     print("PASS: every strip glyph keeps half a device pixel of margin at 1x, 1.25x, 1.5x and 2x")
 }
+
+func testShortcutStripPinCapAndBaseTests() {
+    for filled in [false, true] {
+        let glyph = ShortcutStripGlyph.pin(filled: filled)
+        let outlines = glyph.shapes.compactMap { shape -> [ShortcutStripGlyph.Point]? in
+            if case let .path(points, closed, _) = shape, closed { return points }
+            return nil
+        }
+        guard let body = outlines.first else { expect(false, "a pin has a closed body"); return }
+        let top = body.map(\.y).min()!
+        let cap = body.filter { $0.y == top }
+        let capWidth = (cap.map(\.x).max() ?? 0) - (cap.map(\.x).min() ?? 0)
+        expect(capWidth >= 8, "both pin forms have a broad horizontal crossbar")
+        let lowerCap = body.filter { $0.y > top && $0.y <= top + 1.1 }
+        let lowerCapWidth = (lowerCap.map(\.x).max() ?? 0) - (lowerCap.map(\.x).min() ?? 0)
+        expect(lowerCapWidth >= 8, "the crossbar has a broad lower edge before the neck narrows")
+        let neck = body.filter { $0.y >= 3.8 && $0.y <= 7.3 }
+        let neckWidth = (neck.map(\.x).max() ?? 0) - (neck.map(\.x).min() ?? 0)
+        let base = body.filter { $0.y >= 10 }
+        let baseWidth = (base.map(\.x).max() ?? 0) - (base.map(\.x).min() ?? 0)
+        expect(baseWidth > neckWidth * 2, "the domed base spreads wider than the neck")
+    }
+    print("PASS: outline and filled pins have a broad crossbar, narrow neck and domed base")
+}

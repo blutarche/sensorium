@@ -1,5 +1,6 @@
 #if canImport(CWayland) && canImport(CEGL) && canImport(CAVCodec) && canImport(CCairo) && canImport(CGtk4)
 import CWayland
+import CGtk4
 import Foundation
 import SensoriumCore
 
@@ -39,9 +40,11 @@ struct WaylandSessionChrome {
     var videoTopInset: Double = 0
     /// Whether the overlays are committing with the picture across a resize.
     var syncGate = WaylandOverlaySyncGate()
-    /// The host this session is working on, as every strip tooltip and every
-    /// confirmation names it.
+    /// The host named by strip confirmations and the tooltips Cairo draws
+    /// after the pointer rests on one item for half a second.
     var hostName = ""
+    var deadlineTimerID: UInt32 = 0
+    var scheduledDeadline: TimeInterval?
     var hasShown = false
     /// Whether the painted menu bar is up, which full screen decides.
     var menuBar = SessionMenuBarVisibility()
@@ -224,6 +227,11 @@ extension WaylandSessionWindow: SessionWindowChrome {
     }
 
     func tearDownChrome() {
+        if chrome.deadlineTimerID != 0 {
+            g_source_remove(chrome.deadlineTimerID)
+            chrome.deadlineTimerID = 0
+            chrome.scheduledDeadline = nil
+        }
         closeMenuPopups(from: 0)
         for overlay in chrome.overlays.values {
             overlay.tearDown()
@@ -235,6 +243,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
     /// One pass, so an overlay can never be left drawn at a size the window
     /// no longer has.
     func relayoutChrome() {
+        defer { scheduleChromeDeadline() }
         guard !chrome.overlays.isEmpty else { return }
         let size = logicalSize
         let scale = surfaceScale
@@ -359,6 +368,16 @@ extension WaylandSessionWindow: SessionWindowChrome {
             }
         } else {
             chrome.overlays[.stripHandle]?.hide()
+        }
+
+        if let tooltip = SessionChromePainter.stripTooltipLayout(
+            state: state, hostName: chrome.hostName, windowWidth: size.width, windowHeight: size.height, barTop: barTop
+        ) {
+            place(.stripTooltip, at: tooltip.rect, scale: scale) { context, bounds in
+                SessionChromePainter.drawTooltip(text: tooltip.text, in: context, bounds: bounds)
+            }
+        } else {
+            chrome.overlays[.stripTooltip]?.hide()
         }
 
         if chrome.menuBar.isVisible {
@@ -608,16 +627,20 @@ extension WaylandSessionWindow: SessionWindowChrome {
             // pointer being on it is no longer true.
             chrome.state.pointerOverStrip(false, now: chromeNow())
             chrome.state.pointerOverHandle(false, now: chromeNow())
+            chrome.state.pointerRests(onTooltipTarget: nil, now: chromeNow())
             relayoutChrome()
             return false
         }
         chrome.overlayPointerX = x
         chrome.overlayPointerY = y
         setStripHover(kind, isOver: true)
+        updateStripTooltipTarget(kind)
         return true
     }
 
     func chromePointerLeft(surface: OpaquePointer?) {
+        chrome.state.pointerRests(onTooltipTarget: nil, now: chromeNow())
+        relayoutChrome()
         guard let kind = overlayKind(for: surface) else { return }
         setStripHover(kind, isOver: false)
     }
@@ -638,6 +661,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             chrome.state.pointerOnStrip(isOnHandleSpot: isPointerOnHandleSpot(), now: chromeNow())
             if chrome.state.strip.visibility != before { relayoutChrome() }
         }
+        updateStripTooltipTarget(overlayKind(for: surface))
         _ = menuPointerMoved(surface: surface, x: x, y: y)
         return true
     }
@@ -654,6 +678,8 @@ extension WaylandSessionWindow: SessionWindowChrome {
     /// A press the policy already decided is the chrome's. Which control it
     /// landed on is decided by the same layout that drew them.
     func chromePressed(surface: OpaquePointer?, button: CanvasPointerButton) {
+        chrome.state.stripPointerPressed()
+        relayoutChrome()
         guard !menuPressed(surface: surface, button: button) else { return }
         guard button == .left, let kind = overlayKind(for: surface) else { return }
         switch kind {
@@ -668,7 +694,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             pressNotice()
         case .diagnostics:
             pressDiagnostics()
-        case .canvasScrim, .menuBar:
+        case .canvasScrim, .menuBar, .stripTooltip:
             break
         }
     }
@@ -761,6 +787,59 @@ extension WaylandSessionWindow: SessionWindowChrome {
         }
     }
 
+    private func scheduleChromeDeadline() {
+        let deadline = chrome.state.nextDeadline
+        guard chrome.scheduledDeadline != deadline else { return }
+        if chrome.deadlineTimerID != 0 {
+            g_source_remove(chrome.deadlineTimerID)
+            chrome.deadlineTimerID = 0
+        }
+        chrome.scheduledDeadline = deadline
+        guard let deadline else { return }
+        let milliseconds = max(1, ceil((deadline - chromeNow()) * 1_000))
+        chrome.deadlineTimerID = g_timeout_add(
+            UInt32(min(milliseconds, Double(UInt32.max))),
+            { data in
+                guard let data else { return 0 }
+                let window = Unmanaged<WaylandSessionWindow>.fromOpaque(data).takeUnretainedValue()
+                MainActor.assumeIsolated {
+                    window.chrome.deadlineTimerID = 0
+                    window.chrome.scheduledDeadline = nil
+                    window.serviceChrome()
+                    window.scheduleChromeDeadline()
+                    // Subsurface positions take effect on a parent commit,
+                    // even when the video has no new frame to present.
+                    if !window.chrome.syncGate.isSynchronised, let surface = window.surface {
+                        wl_surface_commit(surface)
+                    }
+                    wl_display_flush(window.display)
+                }
+                return 0
+            },
+            Unmanaged.passUnretained(self).toOpaque()
+        )
+    }
+
+    private func updateStripTooltipTarget(_ kind: WaylandOverlayKind?) {
+        let before = chrome.state.stripTooltip
+        let target: ShortcutStripTooltipTarget?
+        switch kind {
+        case .stripHandle:
+            target = .handle
+        case .shortcutStrip:
+            target = SessionChromePainter.stripTooltipTarget(
+                atX: chrome.overlayPointerX, y: chrome.overlayPointerY,
+                visibility: chrome.state.strip.visibility, hostName: chrome.hostName,
+                width: chrome.overlays[.shortcutStrip]?.rect?.width ?? 0
+            )
+        default:
+            target = nil
+        }
+        chrome.state.pointerRests(onTooltipTarget: target, now: chromeNow())
+        if chrome.state.stripTooltip != before { relayoutChrome() }
+        scheduleChromeDeadline()
+    }
+
     private func setStripHover(_ kind: WaylandOverlayKind, isOver: Bool) {
         let now = chromeNow()
         switch kind {
@@ -772,7 +851,7 @@ extension WaylandSessionWindow: SessionWindowChrome {
             } else {
                 chrome.state.pointerLeftStrip(now: now)
             }
-        case .statusPanel, .notice, .diagnostics, .canvasScrim, .menuBar:
+        case .statusPanel, .notice, .diagnostics, .canvasScrim, .menuBar, .stripTooltip:
             return
         }
         relayoutChrome()
@@ -851,7 +930,8 @@ extension WaylandSessionWindow: SessionWindowChrome {
                 subcompositor: subcompositor,
                 parent: surface,
                 shm: shm,
-                viewporter: viewporter
+                viewporter: viewporter,
+                acceptsInput: kind != .stripTooltip
             ) else {
                 continue
             }

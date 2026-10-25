@@ -83,10 +83,10 @@ public enum ShortcutStripAction: CaseIterable, Equatable, Sendable {
         }
     }
 
-    /// Names both halves of what a press does, because neither is obvious from
-    /// a two-word label: which keys go out, and which machine receives them.
+    /// Names what a press does, which machine it does it on, and the chord
+    /// that goes out, since an icon-only button shows none of the three.
     public func tooltip(hostName: String) -> String {
-        "Sends \(chordDescription) to \(hostName)"
+        "\(title) on \(hostName) (\(chordDescription))"
     }
 
     /// Locking the far machine, or quitting the app in front of it, is disruptive
@@ -154,6 +154,27 @@ public enum ShortcutStripAction: CaseIterable, Equatable, Sendable {
         case VirtualKey.shift: .shift
         case VirtualKey.option: .option
         default: []
+        }
+    }
+}
+
+/// Something on the strip a tooltip names: one of its actions, its pin, or
+/// the handle that opens it. Both platforms take the words from here, so the
+/// macOS tooltips and the ones the Linux chrome draws cannot drift apart.
+public enum ShortcutStripTooltipTarget: Equatable, Sendable {
+    case action(ShortcutStripAction)
+    case pin
+    case handle
+
+    public func text(hostName: String, isPinned: Bool) -> String {
+        switch self {
+        case let .action(action):
+            action.tooltip(hostName: hostName)
+        case .pin:
+            // What pressing it would do, not what it is now.
+            isPinned ? "Let close" : "Keep open"
+        case .handle:
+            "Shortcuts for \(hostName) (\(ViewerKeyNames.shortcutStrip))"
         }
     }
 }

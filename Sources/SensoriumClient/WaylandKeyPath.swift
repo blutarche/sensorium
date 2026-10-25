@@ -56,6 +56,17 @@ public enum WaylandKeyDestination: Equatable, Sendable {
 /// it held there.
 public struct WaylandForwardedKeys: Equatable, Sendable {
     private var held: Set<UInt32> = []
+    private var consumedEscape = false
+
+    mutating func consumeEscape(isDown: Bool, allowsClosing: Bool, chrome: inout SessionChromeState) -> Bool {
+        if consumedEscape {
+            if !isDown { consumedEscape = false }
+            return true
+        }
+        guard isDown, allowsClosing, chrome.escapePressed() else { return false }
+        consumedEscape = true
+        return true
+    }
 
     public init() {}
 
@@ -74,6 +85,7 @@ public struct WaylandForwardedKeys: Equatable, Sendable {
     /// leaves the window.
     public mutating func removeAll() {
         held.removeAll()
+        consumedEscape = false
     }
 }
 
@@ -97,6 +109,28 @@ public enum WaylandKeyPath {
         return destination(evdev: evdev, isDown: isDown, keyboard: keyboard, menu: menu, forwarded: &none)
     }
 
+    /// Escape closes eligible chrome before any host input is considered.
+    /// Its repeat and release stay local even after the strip has closed.
+    @MainActor
+    public static func destination(
+        evdev: UInt32,
+        isDown: Bool,
+        keyboard: WaylandKeyTranslating?,
+        menu: WaylandSessionMenuKeys?,
+        forwarded: inout WaylandForwardedKeys,
+        chrome: inout SessionChromeState
+    ) -> WaylandKeyDestination {
+        if !isDown, let release = forwardedRelease(evdev: evdev, keyboard: keyboard, forwarded: &forwarded) {
+            return release
+        }
+        guard let keyboard, let event = keyboard.key(evdev: evdev, isDown: isDown) else { return .dropped }
+        if evdev == 1, case let .key(_, _, modifiers, _) = event,
+           forwarded.consumeEscape(isDown: isDown, allowsClosing: modifiers.isEmpty, chrome: &chrome) {
+            return .dropped
+        }
+        return destination(event: event, evdev: evdev, isDown: isDown, keyboard: keyboard, menu: menu)
+    }
+
     /// The same order, after the one rule that comes before it: the release
     /// of a key the far machine saw pressed goes to the far machine.
     @MainActor
@@ -113,6 +147,14 @@ public enum WaylandKeyPath {
         guard let keyboard, let event = keyboard.key(evdev: evdev, isDown: isDown) else {
             return .dropped
         }
+        return destination(event: event, evdev: evdev, isDown: isDown, keyboard: keyboard, menu: menu)
+    }
+
+    @MainActor
+    private static func destination(
+        event: CanvasSurfaceEvent, evdev: UInt32, isDown: Bool,
+        keyboard: any WaylandKeyTranslating, menu: WaylandSessionMenuKeys?
+    ) -> WaylandKeyDestination {
         let destination = destination(for: event)
         guard case let .key(keyCode, _, modifiers, _) = event,
               destination != .shortcutStrip(isDown: isDown),

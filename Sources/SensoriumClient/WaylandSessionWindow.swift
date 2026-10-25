@@ -991,8 +991,14 @@ public final class WaylandSessionWindow:
             isDown: isDown,
             keyboard: keyboardState,
             menu: menuKeys,
-            forwarded: &forwardedKeys
+            forwarded: &forwardedKeys,
+            chrome: &chrome.state
         )
+        if destination == .dropped {
+            cancelKeyRepeat()
+            keyRepeat.focusLost()
+            relayoutChrome()
+        }
         if apply(destination), isDown {
             forwardedKeys.noteForwarded(evdev: evdev)
         }
@@ -1114,7 +1120,10 @@ public final class WaylandSessionWindow:
     private func fireKeyRepeat() -> gboolean {
         repeatTimerID = 0
         guard let due = keyRepeat.fire() else { return 0 }
-        let destination = WaylandKeyPath.destination(evdev: due.key, isDown: true, keyboard: keyboardState, menu: menuKeys)
+        let destination = WaylandKeyPath.destination(
+            evdev: due.key, isDown: true, keyboard: keyboardState, menu: menuKeys,
+            forwarded: &forwardedKeys, chrome: &chrome.state
+        )
         // A key with nowhere to go stops repeating rather than repeating
         // into nothing.
         guard destination != .dropped else { return 0 }
