@@ -38,7 +38,7 @@ Top to bottom:
 4. **Last host screen session.** Machine, display, and when, if there has been one.
 5. **Open at login.** A checkbox, on by default, so an unattended host comes back reachable after a restart; turning it off is the person at the host's own choice and stands until they change it again.
 6. **Install updates automatically.** A checkbox, on by default. Beneath it, one line says where updates stand:
-   - *Sensorium Host `<version>` is up to date.*
+   - *Sensorium Host `<version>` is up to date.*, once a check during this launch has found nothing newer. Until a check answers, there is no line.
    - *Sensorium Host `<new version>` will install when no machine is connected*.
    - *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.* The only line drawn in the warning colour.
    - *Move Sensorium Host to Applications and open it again to receive updates.*

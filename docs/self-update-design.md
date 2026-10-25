@@ -31,7 +31,8 @@ The host window shows one line under **Install updates automatically**:
 
 | State | Line |
 | --- | --- |
-| Current | *Sensorium Host `<version>` is up to date.* |
+| Not checked yet this launch | No line. |
+| Current, after a check this launch | *Sensorium Host `<version>` is up to date.* |
 | Waiting | *Sensorium Host `<new version>` will install when no machine is connected* |
 | Failed | *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.* |
 | Not updatable | *Move Sensorium Host to Applications and open it again to receive updates.* |
