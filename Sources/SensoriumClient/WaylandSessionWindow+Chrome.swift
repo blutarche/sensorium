@@ -274,7 +274,8 @@ extension WaylandSessionWindow: SessionWindowChrome {
                 windowWidth: size.width,
                 windowHeight: size.height - barTop,
                 contentWidth: measured.width,
-                contentHeight: measured.height
+                contentHeight: measured.height,
+                leadingKeepClear: state.isDiagnosticsVisible ? SessionHUDClearance.keepClear : 0
             ).offset(y: barTop)
             place(.statusPanel, at: rect, scale: scale) { context, bounds in
                 SessionChromePainter.drawStatusPanel(status: status, in: context, bounds: bounds)

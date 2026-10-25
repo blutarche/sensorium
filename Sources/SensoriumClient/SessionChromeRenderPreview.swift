@@ -126,7 +126,8 @@ public enum SessionChromeRenderPreview {
                     windowWidth: windowWidth,
                     windowHeight: windowHeight - barTop,
                     contentWidth: measured.width,
-                    contentHeight: measured.height
+                    contentHeight: measured.height,
+                    leadingKeepClear: state.isDiagnosticsVisible ? SessionHUDClearance.keepClear : 0
                 ).offset(y: barTop)
                 drawAt(rect, in: context) { bounds in
                     SessionChromePainter.drawStatusPanel(status: status, in: context, bounds: bounds)

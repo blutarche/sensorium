@@ -38,6 +38,22 @@ func testWaylandOverlayLayoutTests() {
     expect(panel.x == 440 && panel.y == 300, "the status panel is centred on both axes")
     expect(panel.width == 400 && panel.height == 200, "a panel that fits keeps the size it asked for")
 
+    let beside = WaylandOverlayLayout.statusPanel(
+        windowWidth: 960, windowHeight: 800, contentWidth: 400, contentHeight: 200,
+        leadingKeepClear: SessionHUDClearance.keepClear
+    )
+    expect(
+        beside.x == SessionHUDClearance.statusPanelOriginX(
+            canvasWidth: 960, panelWidth: 400, keepClear: SessionHUDClearance.keepClear
+        ) && beside.x >= SessionHUDClearance.keepClear,
+        "with the diagnostics panel up the status panel moves right of it when the window has room, got \(beside.x)"
+    )
+    let tight = WaylandOverlayLayout.statusPanel(
+        windowWidth: 700, windowHeight: 800, contentWidth: 400, contentHeight: 200,
+        leadingKeepClear: SessionHUDClearance.keepClear
+    )
+    expect(tight.x == 150, "with no room beside the diagnostics panel the status panel stays centred, got \(tight.x)")
+
     let wide = WaylandOverlayLayout.statusPanel(
         windowWidth: 320, windowHeight: 200, contentWidth: 400, contentHeight: 240
     )

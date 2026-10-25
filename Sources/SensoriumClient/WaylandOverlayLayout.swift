@@ -62,12 +62,16 @@ public enum WaylandOverlayLayout {
     }
 
     /// Centred on both axes: the panel is the only thing on screen worth
-    /// reading while it is up.
+    /// reading while it is up. `leadingKeepClear` is how much of the window's
+    /// leading edge the diagnostics panel holds while it is shown: the panel
+    /// moves right of it when the window has room, as
+    /// `SessionHUDClearance.statusPanelOriginX` has it on macOS.
     public static func statusPanel(
         windowWidth: Double,
         windowHeight: Double,
         contentWidth: Double,
-        contentHeight: Double
+        contentHeight: Double,
+        leadingKeepClear: Double = 0
     ) -> ViewerChromeRect {
         let size = fitted(
             contentWidth: contentWidth,
@@ -75,8 +79,11 @@ public enum WaylandOverlayLayout {
             windowWidth: windowWidth,
             windowHeight: windowHeight
         )
+        let originX = SessionHUDClearance.statusPanelOriginX(
+            canvasWidth: windowWidth, panelWidth: size.width, keepClear: leadingKeepClear
+        )
         return ViewerChromeRect(
-            x: centredX(size.width, in: windowWidth),
+            x: max(edgeMargin, originX),
             y: max(edgeMargin, (windowHeight - size.height) / 2),
             width: size.width,
             height: size.height
