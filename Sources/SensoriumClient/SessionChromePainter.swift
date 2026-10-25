@@ -600,11 +600,9 @@ enum SessionChromePainter {
     /// `ShortcutStripIconButton.size` and `ShortcutStripView.clusterHeight`
     /// on macOS.
     private static let stripButtonHeight: Double = Double(ViewerChromeMetrics.Strip.actionButtonHeight)
-    /// Confirm and cancel are always this tall and never accented, whichever
-    /// of the two proceeds -- `ShortcutStripButton` on macOS draws both the
-    /// same way.
+    /// Confirm and cancel are always this tall -- `ShortcutStripButton` on
+    /// macOS -- and the one that goes ahead is the accent-filled default.
     private static let confirmButtonHeight: Double = Double(ViewerChromeMetrics.Strip.confirmButtonHeight)
-    private static let stripButtonMinimumWidth: Double = 56
     /// The question's own face -- `ShortcutStripView.question` is 12, regular.
     private static let stripTextSize: Double = 12
     /// The host name label at the bar's leading edge -- `hostNameLabel` on
@@ -665,19 +663,24 @@ enum SessionChromePainter {
             let confirmRight = stripLayout(visibility: visibility, hostName: hostName, originX: 0, originY: 0)
                 .filter { $0.hit != .pin }
                 .map { $0.rect.x + $0.rect.width }
-                .max() ?? stripButtonMinimumWidth
+                .max() ?? 0
             return (max(clustersWidth, confirmRight + gap), stripHeight)
         }
         return (clustersWidth, stripHeight)
     }
 
-    private static func confirmButtonWidth(_ title: String) -> Double {
-        let text = CairoChromeText.measure(title, pointSize: buttonTitleSize).width
-        return max(stripButtonMinimumWidth, text + tightGap * 2)
+    /// Only as wide as the title and the padding either side of it need, as
+    /// `ShortcutStripButton.intrinsicContentSize` has it: no minimum, so a
+    /// short title like "Lock" gives a narrow button.
+    private static func confirmButtonWidth(_ title: String, isDefault: Bool) -> Double {
+        let text = CairoChromeText.measure(
+            title, pointSize: buttonTitleSize, weight: isDefault ? buttonWeight : .regular
+        ).width
+        return text.rounded(.up) + gap * 2
     }
 
-    /// The confirm row's own left edge -- question, then confirm, then
-    /// cancel -- centred as one group across `width` when the real bar width
+    /// The confirm row's own left edge -- question, then Cancel, then the
+    /// action that goes ahead -- centred as one group across `width` when the real bar width
     /// is known, the way `confirmRow` is centred on `bar` on macOS; held to
     /// the strip's own leading edge, as every other row on it is, when only
     /// the row's natural width is being measured (`stripSize`, sizing an
@@ -808,8 +811,8 @@ enum SessionChromePainter {
         let clusters = stripClusters(hostName: hostName, originX: originX, originY: originY, width: width).clusters
         if case let .confirming(action) = visibility, let question = action.confirmation(hostName: hostName) {
             let questionWidth = CairoChromeText.measure(question.question, pointSize: stripTextSize).width
-            let confirmWidth = confirmButtonWidth(question.confirmTitle)
-            let cancelWidth = confirmButtonWidth(question.cancelTitle)
+            let confirmWidth = confirmButtonWidth(question.confirmTitle, isDefault: true)
+            let cancelWidth = confirmButtonWidth(question.cancelTitle, isDefault: false)
             let groupLeft = originX + confirmRowLeft(
                 questionWidth: questionWidth, confirmWidth: confirmWidth, cancelWidth: cancelWidth, width: width
             )
@@ -817,20 +820,20 @@ enum SessionChromePainter {
             // `ShortcutStripView.confirmRow.spacing` -- `ViewerDesign.Space.xs`,
             // the same 8 this row already carries as `tightGap` -- between
             // every one of the row's three pieces, question included.
-            let confirmX = groupLeft + questionWidth + tightGap
-            let cancelX = confirmX + confirmWidth + tightGap
+            let cancelX = groupLeft + questionWidth + tightGap
+            let confirmX = cancelX + cancelWidth + tightGap
             let pin: [(hit: ShortcutStripHit, rect: ViewerChromeRect, title: String)] =
                 (clusters.last?.buttons ?? []).map { ($0.hit, $0.rect, $0.title) }
             return [
                 (
-                    .confirm,
-                    ViewerChromeRect(x: confirmX, y: top, width: confirmWidth, height: confirmButtonHeight),
-                    question.confirmTitle
-                ),
-                (
                     .cancel,
                     ViewerChromeRect(x: cancelX, y: top, width: cancelWidth, height: confirmButtonHeight),
                     question.cancelTitle
+                ),
+                (
+                    .confirm,
+                    ViewerChromeRect(x: confirmX, y: top, width: confirmWidth, height: confirmButtonHeight),
+                    question.confirmTitle
                 )
             ] + pin
         }
@@ -875,7 +878,7 @@ enum SessionChromePainter {
         // stays, as it does on macOS.
         let clusters = confirmation == nil ? layout.clusters : Array(layout.clusters.suffix(1))
         for cluster in clusters {
-            CairoChromeText.fill(context, cluster.pill, radius: clusterRadius, color: ViewerPalette.chromeBg.withAlpha(0.55))
+            CairoChromeText.fill(context, cluster.pill, radius: clusterRadius, color: ViewerPalette.bg4)
             for entry in cluster.buttons {
                 guard let glyph = stripGlyph(for: entry.hit, isPinned: isPinned) else { continue }
                 let box = ShortcutStripGlyph.box
@@ -890,8 +893,8 @@ enum SessionChromePainter {
         }
         guard let question = confirmation else { return }
         let size = CairoChromeText.measure(question.question, pointSize: stripTextSize)
-        let confirmWidth = confirmButtonWidth(question.confirmTitle)
-        let cancelWidth = confirmButtonWidth(question.cancelTitle)
+        let confirmWidth = confirmButtonWidth(question.confirmTitle, isDefault: true)
+        let cancelWidth = confirmButtonWidth(question.cancelTitle, isDefault: false)
         let left = bounds.x + confirmRowLeft(
             questionWidth: size.width, confirmWidth: confirmWidth, cancelWidth: cancelWidth, width: bounds.width
         )
@@ -906,18 +909,25 @@ enum SessionChromePainter {
         for entry in stripLayout(
             visibility: visibility, hostName: hostName, originX: bounds.x, originY: bounds.y, width: bounds.width
         ) where entry.hit == .confirm || entry.hit == .cancel {
-            // Never accented, whichever of the two proceeds.
+            // The action that goes ahead is filled with the accent, as the
+            // default button is on every other step.
+            let isDefault = entry.hit == .confirm
+            let weight: CairoFontWeight = isDefault ? buttonWeight : .regular
             CairoChromeText.fill(
-                context, entry.rect, radius: Double(ViewerChromeMetrics.Radius.base), color: ViewerPalette.bg4
+                context,
+                entry.rect,
+                radius: Double(ViewerChromeMetrics.Radius.base),
+                color: isDefault ? ViewerPalette.accent : ViewerPalette.bg4
             )
-            let titleSize = CairoChromeText.measure(entry.title, pointSize: buttonTitleSize)
+            let titleSize = CairoChromeText.measure(entry.title, pointSize: buttonTitleSize, weight: weight)
             CairoChromeText.draw(
                 entry.title,
                 in: context,
                 x: entry.rect.x + (entry.rect.width - titleSize.width) / 2,
                 y: entry.rect.y + (entry.rect.height - titleSize.height) / 2,
                 pointSize: buttonTitleSize,
-                color: ViewerPalette.ink
+                color: isDefault ? ViewerPalette.chromeBg : ViewerPalette.ink,
+                weight: weight
             )
         }
     }

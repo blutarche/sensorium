@@ -110,6 +110,7 @@ struct SensoriumClientTestRunner {
         testShortcutStripOverflowNeverOverlapsTests()
         testNoticeBorderAndDismissGlyphTests()
         testNoticeIsAsWideAsMacOSWhateverItSaysTests()
+        testShortcutStripConfirmRowMatchesMacOSTests()
         testSessionHUDLongValueStaysOnOneLineTests()
         testSessionHUDNarrowLatencyLabelsNeverWrapTests()
         testChromeTextScaleParityTests()

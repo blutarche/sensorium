@@ -16,7 +16,7 @@ enum RenderChromeVerb {
     private static let hostName = "workshop"
     private static let windowWidth: Double = 1280
     private static let windowHeight: Double = 800
-    private static let scales: [Double] = [1.0, 1.5]
+    private static let scales: [Double] = [1.0, 1.5, 2.0]
 
     static func runIfRequested() {
         let arguments = Array(CommandLine.arguments.dropFirst())

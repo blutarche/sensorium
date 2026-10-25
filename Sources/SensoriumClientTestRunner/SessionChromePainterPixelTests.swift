@@ -217,7 +217,7 @@ func testShortcutStripLongHostNameNeverDrawsUnderPillTests() {
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let hostName = "workshop-in-the-back-annex-that-never-gets-a-shorter-name"
+    let hostName = "workshop-in-the-back-annex-that-never-gets-a-shorter-name-and-keeps-on-going-well-past-any-bar"
     let width = 420.0
     let url = directory.appendingPathComponent("strip-long-hostname.png")
     expect(
@@ -232,18 +232,22 @@ func testShortcutStripLongHostNameNeverDrawsUnderPillTests() {
     expect(pin != nil, "the pin still draws at a narrow width")
     guard let pin else { return }
 
-    let pillLeft = Int(pin.x)
+    // The pill is opaque, so a name drawn under it would be hidden rather
+    // than seen: what shows a missing cap is the name's ink in the gap before
+    // the pill, which the layout keeps clear.
+    let pillLeft = Int(pin.x - Double(ViewerChromeMetrics.Space.xxs))
+    let gap = Int(ViewerChromeMetrics.Space.sm) - 2
     let top = Int(pin.y)
     let bottom = Int(pin.y + pin.height)
-    var foundHostNameInkUnderPill = false
+    var foundHostNameInkBeforePill = false
     for y in top..<bottom {
-        for x in pillLeft..<Int(width) {
+        for x in (pillLeft - gap)..<pillLeft {
             if matches(pngPixel(at: url, x: x, y: y), ViewerPalette.muted) {
-                foundHostNameInkUnderPill = true
+                foundHostNameInkBeforePill = true
             }
         }
     }
-    expect(!foundHostNameInkUnderPill, "the host name's own ink reaches under the pin pill at x=\(pillLeft)")
+    expect(!foundHostNameInkBeforePill, "the host name's own ink reaches into the gap before the pin pill at x=\(pillLeft)")
 
     print("PASS: a very long host name is truncated before the trailing pin pill, never drawn under it")
 }
@@ -1085,7 +1089,60 @@ func testNoticeIsAsWideAsMacOSWhateverItSaysTests() {
     print("PASS: a notice is one width whatever it says, and as tall as its text")
 }
 
+/// The strip's pills are the lighter bg4 surface macOS fills them with, and
+/// its confirm row reads question, Cancel, then the action that goes ahead:
+/// that one filled with the accent, as the default button is on every other
+/// step, and each button only as wide as its title and padding need.
+@MainActor
+func testShortcutStripConfirmRowMatchesMacOSTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-strip-confirm-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let hostName = "Studio"
+    let width = 1100.0
+    let url = directory.appendingPathComponent("confirming.png")
+    let confirming = ShortcutStripVisibility.confirming(.lockScreen)
+    expect(
+        SessionChromeRenderPreview.renderOverlay(
+            .strip(visibility: confirming, hostName: hostName, isPinned: false), scale: 1, width: width, to: url
+        ),
+        "the confirm row renders"
+    )
+    let rects = SessionChromeRenderPreview.stripButtonRects(hostName: hostName, width: width, visibility: confirming)
+    guard let cancel = rects.first(where: { $0.title == "Cancel" }),
+          let lock = rects.first(where: { $0.title == "Lock" }),
+          let pin = rects.first(where: { $0.title == "Pin" }) else {
+        expect(false, "the confirm row has Cancel, Lock and the pin")
+        return
+    }
+    expect(cancel.x + cancel.width <= lock.x, "Cancel is left of the action that goes ahead, as on macOS")
+    expect(lock.width < 56, "a button is as wide as its title and padding need, with no minimum, got \(lock.width)")
+    expect(cancel.width > lock.width, "Cancel, the longer title, is the wider button")
+
+    func pixel(_ x: Double, _ y: Double) -> (r: Double, g: Double, b: Double, a: Double)? {
+        pngPixel(at: url, x: Int(x), y: Int(y))
+    }
+    expect(
+        matches(pixel(lock.x + 3, lock.y + lock.height / 2), ViewerPalette.accent),
+        "the action that goes ahead is filled with the accent"
+    )
+    expect(
+        matches(pixel(cancel.x + 3, cancel.y + cancel.height / 2), ViewerPalette.bg4),
+        "Cancel is the quieter bg4 button"
+    )
+    // The pin's pill: inside its left padding, clear of the glyph.
+    let pill = pixel(pin.x - 2, pin.y + pin.height / 2)
+    expect(matches(pill, ViewerPalette.bg4), "a pill is filled with bg4, as on macOS")
+    expect((pill?.a ?? 0) > 0.99, "and opaquely, so it reads lighter than the bar behind it")
+    print("PASS: the strip's pills are bg4 and its confirm row is question, Cancel, then an accent default")
+}
+
 #else
+@MainActor
+func testShortcutStripConfirmRowMatchesMacOSTests() {}
 @MainActor
 func testNoticeIsAsWideAsMacOSWhateverItSaysTests() {}
 @MainActor
