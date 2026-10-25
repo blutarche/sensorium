@@ -46,6 +46,14 @@ once it reaches 1.0.
   button order, status dots, notices, shortcut strip and diagnostics. A
   shortcut strip closed with Escape stays closed while the pointer rests
   where its handle was.
+- The private desktop launcher says Escape leaves it. The host's update
+  line stays empty until a check answers, its menu offers Open Screen
+  Recording Settings once, and the ask-first checkbox sits under Share host
+  screen.
+- The stream diagnostics tell the target frame rate from the measured one,
+  keep an address's port whole, and leave out a limit with no reason.
+  Status panels say what Try Again does when no one answered or a session
+  could not resume, and an empty Your machines list has a heading.
 
 ## [0.5.8] - 2026-10-24
 

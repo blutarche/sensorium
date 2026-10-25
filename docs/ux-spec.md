@@ -67,7 +67,7 @@ Each machine row shows:
 | Address | The paired address |
 | State | *online*, *offline*, or *status unknown* for a machine the tailnet does not mention |
 
-Rows are ordered most recently connected first. With nothing paired yet, the list is replaced by *No machine is paired with this one yet. Choose Add a Machine to pair with one.*, and **Add a Machine** is the only action.
+Rows are ordered most recently connected first. With nothing paired yet, the list is replaced by the heading *Nothing paired yet.* and, beneath it, *Choose Add a Machine to pair with one.*, and **Add a Machine** is the only action.
 
 Nothing is dialled until a row is clicked. One click connects. Return connects the selected row. While an attempt is out, the row appends *connecting…* or *stopping…* with a pulsing dot and offers **Cancel**. Other rows stay clickable, and clicking one stops the attempt already out. A failed attempt keeps a short reason and adds *trying again…* while it retries, with the full explanation in the status panel. That panel, like the reconnecting one, offers **Cancel** to stop retrying.
 
@@ -84,7 +84,7 @@ When a newer Sensorium has downloaded, the window shows one line beneath the lis
 Two steps, in that same window, with a **Back** link returning from each:
 
 1. **Add a machine.** Every machine on the tailnet, online first, this one excluded, each with the same status dot as a row in *Your machines*, with **Look Again** beneath the list. **Enter Address Manually…** is one click away, never shown first. When Tailscale cannot be asked, the step says so and offers **Open Tailscale** or **Download Tailscale**. With no other machine on the tailnet, it reads *Nothing else is on your tailnet yet.* and what to do about it.
-2. **Type the code.** *Type the code shown on `<name>`*, or *Type the machine’s address and code* above an address field when the address is typed by hand. Then a *Pairing code* field, six digits hinted by where that machine shows them, an optional *Name (optional)* field, and **Pair**. A failure appears under the field.
+2. **Type the code.** *Type the code shown on `<name>`*, or *Type the machine’s address and code* above an address field when the address is typed by hand. Then a *Pairing code* field, six digits hinted by where that machine shows them, an optional *Name (optional)* field whose placeholder reads *Uses the name it reports*, and **Pair**. A failure appears under the field.
 
 Pairing succeeds, the new machine joins the list, and Sensorium connects to it. **Pair Again** on a row goes straight to the code step.
 
