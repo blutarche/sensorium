@@ -42,7 +42,7 @@ Top to bottom:
    - *Sensorium Host `<new version>` will install when no machine is connected*.
    - *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.* The only line drawn in the warning colour.
    - *Move Sensorium Host to Applications and open it again to receive updates.*
-7. **Offer a private desktop.** A checkbox, off by default. While it is off, the host creates no session canvas, and a viewer can only work on a host screen. A host with no monitor still creates its sharp screen for a host-screen session, as [Host screen mode](host-screen-design.md#10-a-host-with-no-monitor) explains. A viewer sees it as a host screen.
+7. **Offer a private desktop.** A checkbox, off by default. While it is off, the host creates no session canvas, and a viewer can only work on a host screen. A host with no monitor still creates its sharp screen for a host-screen session, as [Host screen mode](host-screen-design.md#10-a-host-with-no-monitor) explains. A viewer sees it as a host screen. If this machine cannot create a private desktop, hosting continues with host screens alone. A warning beneath this checkbox explains why no private desktop is offered for this run.
 8. **Allow connections from this network.** A checkbox, off by default. It lets a viewer on the same Wi-Fi or wired network connect by name, such as `mini.local`, without Tailscale. Anyone on that network can then ask to pair.
 
 ### Menu bar
@@ -83,8 +83,8 @@ When a newer Sensorium has downloaded, the window shows one line beneath the lis
 
 Two steps, in that same window, with a **Back** link returning from each:
 
-1. **Add a machine.** Every machine on the tailnet, online first, this one excluded, each with the same status dot as a row in *Your machines*, with **Look Again** beneath the list. **Enter Address Manually…** is one click away, never shown first. When Tailscale cannot be asked, the step says so: *Tailscale is not running. Start Tailscale and sign in, then choose Look Again.*, with **Open Tailscale** where a Tailscale app is installed, or *Tailscale is not installed. Download Tailscale and sign in, then choose Look Again.*, with **Download Tailscale**. With no other machine on the tailnet, it reads *Nothing else is on your tailnet yet.* and what to do about it.
-2. **Type the code.** *Type the code shown on `<name>`*, or *Type the machine’s address and code* above an address field when the address is typed by hand. Then a *Pairing code* field, six digits hinted by where that machine shows them, an optional *Name (optional)* field whose placeholder reads *Uses the name it reports*, and **Pair**. A failure appears under the field.
+1. **Add a machine.** Every machine on the tailnet, online first, this one excluded, each with the same status dot as a row in *Your machines*, with **Look Again** beneath the list. **Enter Address Manually…** is one click away, never shown first. When Tailscale cannot be asked, the step says so: *Tailscale is not running. Start Tailscale and sign in, then choose Look Again.*, with **Open Tailscale** where a Tailscale app is installed, or *Tailscale is not installed. Download Tailscale and sign in, then choose Look Again.*, with **Download Tailscale**. Open Tailscale or Download Tailscale sits above Look Again, in the same order as the sentence. With no other machine on the tailnet, it reads *Nothing else is on your tailnet yet.* and what to do about it.
+2. **Type the code.** *Type the code shown on `<name>`.*, or *Type the machine’s address and code.* above an address field when the address is typed by hand. Then a *Pairing code* field, six digits with the hint *The six digits Sensorium Host shows on that machine.*, an optional *Name (optional)* field whose placeholder reads *Uses its address*, and **Pair**. A failure appears under the field.
 
 Pairing succeeds, the new machine joins the list, and Sensorium connects to it. **Pair Again** on a row goes straight to the code step.
 

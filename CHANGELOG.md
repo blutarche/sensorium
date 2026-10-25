@@ -8,6 +8,8 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-10-25
+
 ### Changed
 
 - Buttons read in Title Case in both apps, and headings in sentence case.
@@ -58,6 +60,16 @@ once it reaches 1.0.
   same way on both viewers. On Fedora, borders stay crisp at 1.5x, the
   About window uses the app's own look, a field reached with Tab shows a
   focus ring, and the diagnostics and empty Your machines list match macOS.
+
+- A host that cannot create a private desktop continues to share host
+  screens and explains the limitation beneath its private desktop setting.
+- A refused host-screen connection offers Try Again alongside the explicit
+  private desktop choice. Retry messages distinguish a dropped connection
+  from a session someone ended.
+- Pairing labels describe the address fallback accurately, and recovery
+  messages name the controls that perform the next step.
+- The Linux shortcut strip shows delayed tooltips, handles Escape locally,
+  and remembers acknowledgement of the software video decoding notice.
 
 ## [0.5.8] - 2026-10-24
 
