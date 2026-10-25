@@ -4,6 +4,16 @@
 The audit prints only paths and rule categories; it never echoes matching content.
 Use it before staging or publishing.  It checks tracked files plus nonignored
 untracked files so accidental additions are caught early.
+
+A maintainer can also keep a list of private terms (machine names, display
+models, addresses) that this public script cannot carry itself. The list is
+`info/private-terms` inside the git common directory, so it is never tracked,
+committed or pushed, and linked worktrees share it. One term per line; blank
+lines and lines starting with `#` are ignored. Each term is matched as a
+case-insensitive literal against every candidate path, every candidate file
+(binary files included, no size cap), and, when the branch has an upstream,
+the message and patch of every commit not yet on it. A missing file means no
+check.
 """
 
 from __future__ import annotations
@@ -74,8 +84,55 @@ def candidate_paths() -> list[str]:
     return sorted(set(tracked + untracked))
 
 
+def git_output(*args: str) -> bytes | None:
+    """Raw stdout of a git command run in ROOT, or None if it fails."""
+    result = subprocess.run(
+        ["git", *args], cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
+    return result.stdout if result.returncode == 0 else None
+
+
+def private_terms() -> list[bytes]:
+    """Lowercased terms from the git directory's `info/private-terms`, if any."""
+    common = git_output("rev-parse", "--git-common-dir")
+    if common is None:
+        return []
+    location = ROOT / common.decode("utf-8", "surrogateescape").strip() / "info" / "private-terms"
+    try:
+        text = location.read_bytes().decode("utf-8-sig", "replace")
+    except OSError:
+        return []
+    stripped = (line.strip() for line in text.splitlines())
+    return [line.encode("utf-8").lower() for line in stripped if line and not line.startswith("#")]
+
+
+def has_private_term(data: bytes, terms: list[bytes]) -> bool:
+    lowered = data.lower()
+    return any(term in lowered for term in terms)
+
+
+def unpushed_commits() -> list[tuple[str, str]]:
+    """(full, abbreviated) hashes of the commits not yet on the upstream branch."""
+    if git_output("rev-parse", "--abbrev-ref", "@{upstream}") is None:
+        return []
+    listing = git_output("log", "--format=%H %h", "@{upstream}..HEAD")
+    if listing is None:
+        return []
+    pairs = [line.split() for line in listing.decode("ascii", "replace").splitlines()]
+    return [(pair[0], pair[1]) for pair in pairs]
+
+
+def commit_text(full: str) -> bytes | None:
+    """A commit's message and patch; binary files are diffed as text and a
+    merge shows only what it changed against its parents."""
+    return git_output(
+        "log", "-1", "-p", "--cc", "--text", "--no-ext-diff", "--no-textconv", "--format=%B", full
+    )
+
+
 def main() -> int:
     findings: list[tuple[str, str]] = []
+    terms = private_terms()
     for relative in candidate_paths():
         for category, pattern in PATH_RULES:
             if pattern.search(relative):
@@ -83,12 +140,18 @@ def main() -> int:
 
         path = ROOT / relative
         try:
-            if not path.is_file() or path.stat().st_size > MAX_BYTES:
-                continue
-            raw = path.read_bytes()
+            readable = path.is_file()
+            size = path.stat().st_size if readable else 0
+            # Only the private-term check reads past the size cap.
+            raw = path.read_bytes() if readable and (terms or size <= MAX_BYTES) else b""
         except OSError:
-            continue
-        if b"\0" in raw:
+            readable, size, raw = False, 0, b""
+        if terms and (
+            has_private_term(relative.encode("utf-8", "surrogateescape"), terms)
+            or has_private_term(raw, terms)
+        ):
+            findings.append((relative, "private term"))
+        if not readable or size > MAX_BYTES or b"\0" in raw:
             continue
         text = raw.decode("utf-8", "replace")
         for category, pattern in CONTENT_RULES:
@@ -109,6 +172,12 @@ def main() -> int:
                 continue
             if pattern.search(text):
                 findings.append((relative, category))
+
+    if terms:
+        for full, short in unpushed_commits():
+            text_of_commit = commit_text(full)
+            if text_of_commit is not None and has_private_term(text_of_commit, terms):
+                findings.append((f"commit {short}", "private term"))
 
     if findings:
         print("FAIL: public-repository audit found sensitive candidates (content redacted):")
