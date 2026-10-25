@@ -24,7 +24,7 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 
 ## Pre-publish gate
 
-`Scripts/audit-public-repo.py` runs first, before any runner, as part of `run-unit-tests.sh`. It fails safely if a public-bound repository candidate contains sensitive material, checking tracked files and any nonignored untracked file, and prints only paths and rule categories, never matching content.
+`Scripts/audit-public-repo.py` runs first, before any runner, as part of `run-unit-tests.sh`. It fails safely if a public-bound repository candidate contains sensitive material, checking tracked files and any nonignored untracked file, and prints only paths and rule categories, never matching content. A maintainer can also keep a list of private terms, such as their own machine names and addresses, in `.git/info/private-terms`, one per line. That file is never committed. The audit then also fails on any candidate path or file, binary files included, and on any line an unpushed commit adds, that contains one of them.
 
 ## Other verification scripts
 
