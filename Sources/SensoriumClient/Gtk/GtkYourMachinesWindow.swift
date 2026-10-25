@@ -629,7 +629,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         let host = store.load(hostPublicKey: hostPublicKey)
         GtkWidgets.append(
             GtkWidgets.onTextLine(
-                GtkWidgets.label(YourMachinesWindowModel.renameHeading, cssClass: GtkViewerStyle.Class.heading),
+                GtkWidgets.label(
+                    YourMachinesWindowModel.renameHeading(for: host?.displayName ?? ""),
+                    cssClass: GtkViewerStyle.Class.heading
+                ),
                 size: 20
             ),
             to: renamePage
@@ -784,13 +787,15 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         let content = GtkWidgets.box(vertical: true, spacing: Int32(ViewerChromeMetrics.Space.xxs))
         let title = GtkWidgets.label(row.title, cssClass: GtkViewerStyle.Class.rowName, wraps: false)
         let subtitle = GtkWidgets.label(row.subtitle, cssClass: GtkViewerStyle.Class.deviceSubtitle, wraps: false)
-        if !row.peer.isOnline {
-            gtk_widget_add_css_class(sensorium_gtk_widget(title), GtkViewerStyle.Class.offline)
-            gtk_widget_add_css_class(sensorium_gtk_widget(subtitle), GtkViewerStyle.Class.offline)
-        }
         gtk_label_set_ellipsize(sensorium_gtk_label(title), PANGO_ELLIPSIZE_END)
         GtkWidgets.append(GtkWidgets.onTextLine(title, size: 14), to: content)
-        GtkWidgets.append(GtkWidgets.onTextLine(subtitle, size: 12), to: content)
+        // The address line is built as a saved machine's is, dot first.
+        let subtitleRow = GtkWidgets.box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.xxs))
+        GtkWidgets.append(GtkWidgets.dotSlot(cssClass: Self.cssClass(for: row.dot), lineSize: 12), to: subtitleRow)
+        let subtitleLine = GtkWidgets.onTextLine(subtitle, size: 12)
+        gtk_widget_set_valign(sensorium_gtk_widget(subtitleLine), GTK_ALIGN_START)
+        GtkWidgets.append(subtitleLine, to: subtitleRow)
+        GtkWidgets.append(subtitleRow, to: content)
         let button = gtkRef(gtk_button_new())
         GtkWidgets.takesNoKeyboardFocus(button)
         gtk_button_set_child(sensorium_gtk_button(button), sensorium_gtk_widget(content))
@@ -820,7 +825,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         GtkWidgets.append(
             GtkWidgets.onTextLine(
                 GtkWidgets.label(
-                    device.map { "Type the code shown on \($0.label)" } ?? "Type the code shown on that machine",
+                    device.map { "Type the code shown on \($0.label)" } ?? "Type the machine\u{2019}s address and code",
                     cssClass: GtkViewerStyle.Class.heading
                 ),
                 size: 20

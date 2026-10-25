@@ -35,7 +35,7 @@ public enum GtkViewerStyle {
         /// `isPrimary: false` case on macOS, same size and radius.
         public static let secondary = "sensorium-secondary"
         /// A row's own compact action -- `SavedMachineRowButton.cancelButton`
-        /// on macOS: half `primary`'s height, tight horizontal padding.
+        /// on macOS: `secondary`'s fill and border at half `primary`'s height.
         public static let rowAction = "sensorium-row-action"
         /// A bare square icon button with no fill of its own -- the row menu's
         /// "…", `SavedMachineRowButton.moreButton` on macOS.
@@ -56,8 +56,6 @@ public enum GtkViewerStyle {
         /// smaller than a sentence.
         public static let hint = "sensorium-hint"
         public static let deviceSubtitle = "sensorium-device-subtitle"
-        /// A tailnet device that is not online, drawn dimmer.
-        public static let offline = "sensorium-offline"
         /// A field whose text cannot be edited while a pairing is out.
         public static let readOnly = "sensorium-read-only"
     }
@@ -376,10 +374,8 @@ public enum GtkViewerStyle {
         .\(Class.detail) { \(text(12)); \(weight(Weight.detail)) color: \(muted); }
         .\(Class.hint) { \(text(12)); \(weight(Weight.hint)) }
         .\(Class.rowName) { font-size: 14px; \(weight(Weight.rowName)) color: \(ink); }
-        .\(Class.rowName).\(Class.offline) { color: \(muted); }
         .\(Class.rowDetail) { \(text(12)); \(weight(Weight.rowDetail)) color: \(muted); }
         .\(Class.deviceSubtitle) { \(text(12)); \(weight(Weight.deviceSubtitle)) color: \(muted); }
-        .\(Class.deviceSubtitle).\(Class.offline) { color: \(muted2); }
         .\(Class.row) {
             background-color: \(chromeBg2);
             border: \(border)px solid \(palette.chromeBorder2.hexString);
@@ -410,10 +406,11 @@ public enum GtkViewerStyle {
         .\(Class.secondary) { background-color: \(chromeBg2); border: \(border)px solid \(line); }
         .\(Class.messageSecondary) { background-color: \(chromeBg2); border: \(border)px solid \(line); }
         .\(Class.rowAction) {
-            background-color: transparent;
-            border: none;
-            min-height: 24px;
-            min-width: 64px;
+            background-color: \(chromeBg2);
+            border: \(border)px solid \(line);
+            border-radius: \(radius)px;
+            min-height: \(24 - 2 * border)px;
+            min-width: \(64 - 2 * border)px;
             \(text(13));
             \(weight(Weight.button))
         }

@@ -153,7 +153,11 @@ public struct YourMachinesWindowModel: Equatable, Sendable {
     public static let addTitle = "Add a Machine"
     /// A row's own menu item, above Forget, and the words of the step it opens.
     public static let renameTitle = "Rename\u{2026}"
-    public static let renameHeading = "Rename this machine"
+    /// Names the machine being renamed, which is the remote one: the hint
+    /// beneath says "this machine" for the local one.
+    public static func renameHeading(for name: String) -> String {
+        name.isEmpty ? "Rename" : "Rename \(ViewerCopyWrapping.name(name))"
+    }
     public static let renameHint = ViewerCopyWrapping.keepingTailTogether(
         "Only this machine uses this name. Leave it empty to use the name it had when it was paired."
     )

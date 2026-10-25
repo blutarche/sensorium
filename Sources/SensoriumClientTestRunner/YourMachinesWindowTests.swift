@@ -286,8 +286,12 @@ func testYourMachinesWindowTests() async {
         chooseRename(mini.hostPublicKey, in: controller)
         let field = storedValue("renameField", of: controller, as: NSTextField.self)
         expect(
-            hasLabel(YourMachinesWindowModel.renameHeading, in: content(of: controller)),
-            "choosing Rename\u{2026} opens the rename step in this window"
+            hasLabel("Rename Loft", in: content(of: controller)),
+            "choosing Rename\u{2026} opens the rename step in this window, headed with the machine it renames"
+        )
+        expect(
+            !hasLabel("Rename this machine", in: content(of: controller)),
+            "the heading names the remote machine, so it no longer says this machine, which the hint beneath uses for the local one"
         )
         expect(field.stringValue == "Loft", "the field starts with the name shown now, got \(field.stringValue)")
 
@@ -300,9 +304,13 @@ func testYourMachinesWindowTests() async {
         expect(store.load(hostPublicKey: mini.hostPublicKey)?.displayName == "Attic", "Rename stores the trimmed name")
         expect(store.load(hostPublicKey: studio.hostPublicKey)?.displayName == "Studio", "and no other machine changes")
         expect(hasLabel("Attic", in: content(of: controller)), "the row shows the new name")
-        expect(!hasLabel(YourMachinesWindowModel.renameHeading, in: content(of: controller)), "and the list is back")
+        expect(!hasLabel("Rename Loft", in: content(of: controller)), "and the list is back")
 
         chooseRename(mini.hostPublicKey, in: controller)
+        expect(
+            hasLabel("Rename Attic", in: content(of: controller)),
+            "the next rename is headed with the name the row shows now"
+        )
         field.stringValue = "Different"
         guard let cancel = button(titled: "Cancel", in: content(of: controller)) else {
             print("FAIL: the rename step offers no Cancel button")
@@ -324,7 +332,7 @@ func testYourMachinesWindowTests() async {
             "Escape is taken by the rename field"
         )
         expect(store.load(hostPublicKey: mini.hostPublicKey)?.displayName == "Attic", "and cancels")
-        expect(!hasLabel(YourMachinesWindowModel.renameHeading, in: content(of: controller)), "back on the list")
+        expect(!hasLabel("Rename Attic", in: content(of: controller)), "back on the list")
 
         chooseRename(mini.hostPublicKey, in: controller)
         field.stringValue = "   "
@@ -426,6 +434,14 @@ func testYourMachinesWindowTests() async {
         expect(
             hasLabel("Pairing code", in: content(of: controller)),
             "and so is the one under an address typed by hand"
+        )
+        expect(
+            hasLabel("Type the machine\u{2019}s address and code", in: content(of: controller)),
+            "with the address field on the step, the heading asks for the address too, since no machine was picked"
+        )
+        expect(
+            !hasLabel("Type the code shown on that machine", in: content(of: controller)),
+            "and never points at a machine nothing has named"
         )
         expect(button(titled: "Pair", in: content(of: controller)) != nil, "and the step's own button commits it")
 
@@ -1438,9 +1454,30 @@ func testYourMachinesWindowUpdateLineTests() {
     tap(restart)
     expect(restarts == 1, "Restart Now asks for the restart")
 
+    let updateLabel = storedValue("updateLabel", of: controller, as: NSTextField.self)
+    expect(
+        updateLabel.textColor == ViewerDesign.muted.nsColor,
+        "a ready line is drawn in the muted ink, got \(String(describing: updateLabel.textColor))"
+    )
+
     controller.setUpdateLine(ViewerUpdateLine(text: ready, offersRestartNow: false))
     expect(isShown(line), "during a session the line stays")
     expect(!isShown(restart), "and Restart Now does not")
+
+    controller.setUpdateLine(ViewerUpdateLine(
+        text: "Sensorium could not update: the download did not match the release. It keeps running 0.4.0.",
+        offersRestartNow: false,
+        isFailure: true
+    ))
+    expect(
+        updateLabel.textColor == ViewerDesign.warn.nsColor,
+        "a failure line is drawn in the warning colour, got \(String(describing: updateLabel.textColor))"
+    )
+    controller.setUpdateLine(ViewerUpdateLine(text: ready, offersRestartNow: false))
+    expect(
+        updateLabel.textColor == ViewerDesign.muted.nsColor,
+        "and the next line that is not a failure is muted again, got \(String(describing: updateLabel.textColor))"
+    )
 
     controller.showAddAMachine()
     expect(
@@ -1464,6 +1501,124 @@ private func savedMachineRows(in view: NSView) -> [NSButton] {
         found += savedMachineRows(in: subview)
     }
     return found.sorted { $0.convert($0.bounds, to: nil).maxY > $1.convert($1.bounds, to: nil).maxY }
+}
+
+/// Every shown button titled `title` under `view`, in tree order.
+@MainActor
+private func shownButtons(titled title: String, in view: NSView) -> [NSButton] {
+    var found: [NSButton] = []
+    for subview in view.subviews {
+        if let candidate = subview as? NSButton, candidate.attributedTitle.string == title, isShown(candidate) {
+            found.append(candidate)
+        }
+        found += shownButtons(titled: title, in: subview)
+    }
+    return found
+}
+
+/// A row's Cancel is a button, filled and outlined as the secondary
+/// "Add a Machine" is, not bare text on the row's own fill.
+@MainActor
+func testYourMachinesRowCancelDrawsLikeASecondaryButtonTests() {
+    let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
+    let studio = testMachine("Studio", key: 2, host: "studio.tail1234.ts.net")
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore(hosts: [mini, studio]))
+
+    for (state, begin) in [
+        ("while the row is dialling", { controller.connectStarted(hostPublicKey: mini.hostPublicKey) }),
+        ("after an attempt failed", { controller.attemptFailed(reason: "no answer") })
+    ] as [(String, () -> Void)] {
+        begin()
+        let root = content(of: controller)
+        root.layoutSubtreeIfNeeded()
+        guard let add = shownButtons(titled: "Add a Machine", in: root).first, let addLayer = add.layer else {
+            expect(false, "the list offers Add a Machine \(state)")
+            return
+        }
+        let cancels = shownButtons(titled: "Cancel", in: root)
+        expect(cancels.count == 1, "exactly one Cancel is on the list \(state), got \(cancels.count)")
+        guard let layer = cancels.first?.layer else {
+            expect(false, "the row's Cancel has a layer to draw its fill and border on \(state)")
+            return
+        }
+        expect(
+            layer.backgroundColor == ViewerDesign.chromeBg2.cgColor && layer.backgroundColor == addLayer.backgroundColor,
+            "Cancel \(state) is filled as Add a Machine is"
+        )
+        expect(
+            layer.borderWidth == 1 && layer.borderWidth == addLayer.borderWidth
+                && layer.borderColor == ViewerDesign.line.cgColor && layer.borderColor == addLayer.borderColor,
+            "Cancel \(state) has the same 1 px border, got \(layer.borderWidth)"
+        )
+        expect(
+            layer.cornerRadius == ViewerDesign.Radius.base,
+            "and the same corner radius, got \(layer.cornerRadius)"
+        )
+    }
+
+    print("PASS: a row's Cancel draws with the secondary button's fill and 1 px border")
+}
+
+/// The picker's rows read as the list's do: a status dot beside the address,
+/// the name in ink and the address muted whether the device is online or not,
+/// and every row still takes the click.
+@MainActor
+func testYourMachinesPickerRowsShareTheListsDotAndDoNotDimTests() {
+    func peerRow(_ name: String, address: String, isOnline: Bool) -> TailnetDevicePickerRow {
+        TailnetDevicePickerRow(peer: TailnetPeer(
+            id: name, displayName: name, magicDNSName: address,
+            tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: isOnline, isThisMachine: false
+        ))
+    }
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.apply(deviceList: .devices([
+        peerRow("Workstation", address: "mini.tail1234.ts.net", isOnline: true),
+        peerRow("Studio", address: "studio.tail1234.ts.net", isOnline: false)
+    ]))
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+
+    for (name, address, dotColor, kind) in [
+        ("Workstation", "mini.tail1234.ts.net", ViewerDesign.ok, "online"),
+        ("Studio", "studio.tail1234.ts.net", ViewerDesign.bad, "offline")
+    ] {
+        guard let title = label(containing: name, in: root),
+              let subtitle = label(containing: address, in: root) else {
+            expect(false, "the picker shows the \(kind) device's name and address")
+            return
+        }
+        expect(
+            title.textColor == ViewerDesign.ink.nsColor,
+            "an \(kind) device's name is in ink, got \(String(describing: title.textColor))"
+        )
+        expect(
+            subtitle.textColor == ViewerDesign.muted.nsColor,
+            "an \(kind) device's address is the list's muted ink, got \(String(describing: subtitle.textColor))"
+        )
+        guard let dot = rowDot(besideLabel: subtitle) else {
+            expect(false, "an \(kind) device's row draws a status dot before its address")
+            return
+        }
+        expect(
+            dot.layer?.backgroundColor == dotColor.cgColor,
+            "an \(kind) device's dot is the list's \(kind) colour"
+        )
+        var row: NSView? = subtitle
+        while let candidate = row, String(describing: type(of: candidate)) != "TailnetDeviceRowButton" {
+            row = candidate.superview
+        }
+        guard let rowButton = row as? NSButton, let parent = rowButton.superview else {
+            expect(false, "the \(kind) device's row is a button")
+            return
+        }
+        let centre = dot.convert(NSPoint(x: dot.bounds.midX, y: dot.bounds.midY), to: parent)
+        expect(
+            rowButton.isEnabled && rowButton.hitTest(centre) === rowButton,
+            "an \(kind) device's row stays clickable, over its dot too"
+        )
+    }
+
+    print("PASS: the picker's rows carry the list's dot, muted address and ink name, offline or not, and stay clickable")
 }
 
 /// The add flow's closing buttons read left to right as leaving, then going on.

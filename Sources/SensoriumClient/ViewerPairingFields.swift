@@ -146,6 +146,9 @@ enum ViewerFormControls {
     }
 
     static func style(_ button: NSButton, title: String, isPrimary: Bool, isEnabled: Bool) {
+        // The fill and border below are the layer's; set on a button that has
+        // none yet they are dropped.
+        button.wantsLayer = true
         button.isEnabled = isEnabled
         let filled = isPrimary && isEnabled
         button.layer?.backgroundColor = filled

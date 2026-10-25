@@ -129,9 +129,46 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         let (window, root) = show { $0.showCodeStep(for: nil) }
         defer { window.hide() }
         expect(
-            visibleLabels(under: root).first?.text == "Type the code shown on that machine",
-            "the heading for an address typed by hand is sentence case"
+            visibleLabels(under: root).first?.text == "Type the machine\u{2019}s address and code",
+            "the heading for an address typed by hand asks for the address too, in sentence case"
         )
+    }
+
+    // The rename step is headed with the machine it renames.
+    do {
+        let host = SavedHost(
+            displayName: "Workstation", host: "mini.tail1234.ts.net", port: 7777,
+            hostPublicKey: Data([1]), tlsCertificateHash: Data([1, 1]), lastConnectedAt: Date(timeIntervalSince1970: 9_000)
+        )
+        let (window, root) = show(hosts: [host]) { $0.beginRename(hostPublicKey: host.hostPublicKey) }
+        defer { window.hide() }
+        let first = visibleLabels(under: root).first?.text
+        expect(first == "Rename Workstation", "the rename step is headed with the machine it renames, got \(first ?? "nothing")")
+    }
+
+    // The picker's rows carry the same status dot as the list, and an offline
+    // device is not dimmed.
+    do {
+        func device(_ id: String, _ name: String, online: Bool) -> TailnetDevicePickerRow {
+            TailnetDevicePickerRow(peer: TailnetPeer(
+                id: id, displayName: name, magicDNSName: "\(name.lowercased()).tail1234.ts.net",
+                tailnetIPv4: "100.64.1.\(id)", tailnetIPv6: nil, isOnline: online, isThisMachine: false
+            ))
+        }
+        let (window, root) = show {
+            $0.apply(deviceList: .devices([device("2", "Workstation", online: true), device("3", "Studio", online: false)]))
+        }
+        defer { window.hide() }
+        let rows = descendants(of: root).filter { widgetHasClass($0, Class.row) }
+        expect(rows.count == 2, "both devices are listed, got \(rows.count)")
+        let dotClasses = [Class.dotOnline, Class.dotOffline, Class.dotActivity, Class.dotUnknown]
+        for (row, expected) in zip(rows, [Class.dotOnline, Class.dotOffline]) {
+            let dots = descendants(of: row).filter { node in dotClasses.contains { widgetHasClass(node, $0) } }
+            expect(
+                dots.count == 1 && dots.allSatisfy { widgetHasClass($0, expected) },
+                "each device's row carries the one dot Your Machines draws for it, got \(dots.count)"
+            )
+        }
     }
 
     // The list: every machine has a status dot, the unknown one included.

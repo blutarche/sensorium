@@ -29,15 +29,23 @@ final class TailnetDeviceRowButton: NSButton {
 
         let title = NSTextField(labelWithString: row.title)
         title.font = ViewerDesign.font(mono: false, size: 14, weight: .medium)
-        title.textColor = (row.peer.isOnline ? ViewerDesign.ink : ViewerDesign.muted).nsColor
+        title.textColor = ViewerDesign.ink.nsColor
         title.translatesAutoresizingMaskIntoConstraints = false
 
         let subtitle = NSTextField(labelWithString: row.subtitle)
         subtitle.font = ViewerDesign.font(mono: false, size: 12)
-        subtitle.textColor = (row.peer.isOnline ? ViewerDesign.muted : ViewerDesign.muted2).nsColor
+        subtitle.textColor = ViewerDesign.muted.nsColor
         subtitle.translatesAutoresizingMaskIntoConstraints = false
 
-        let stack = NSStackView(views: [title, subtitle])
+        // Built as a saved machine's address line is, so the same device reads
+        // alike here and in the list.
+        let subtitleRow = NSStackView(views: [SavedMachineRowButton.dotSlot(for: row.dot, lineOf: subtitle), subtitle])
+        subtitleRow.orientation = .horizontal
+        subtitleRow.alignment = .top
+        subtitleRow.spacing = ViewerDesign.Space.xxs
+        subtitleRow.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [title, subtitleRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = ViewerDesign.Space.xxs

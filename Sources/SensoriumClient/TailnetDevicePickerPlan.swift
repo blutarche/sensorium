@@ -20,6 +20,10 @@ public struct TailnetDevicePickerRow: Equatable, Sendable {
         let address = peer.magicDNSName ?? peer.tailnetIPv4 ?? peer.tailnetIPv6 ?? ""
         self.subtitle = "\(address) \u{2014} \(peer.isOnline ? "online" : "offline")"
     }
+
+    /// The dot Your Machines draws beside the same device's address, so a
+    /// device reads alike in the picker and in the list.
+    public var dot: YourMachinesRow.RowDot { peer.isOnline ? .online : .offline }
 }
 
 /// Everything the device-picker window can be showing, decided from a single

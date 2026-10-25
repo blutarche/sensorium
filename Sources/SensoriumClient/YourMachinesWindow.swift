@@ -234,6 +234,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     /// The one line about updates, or none.
     public func setUpdateLine(_ line: ViewerUpdateLine?) {
         updateLabel.stringValue = line?.text ?? ""
+        updateLabel.textColor = (line?.isFailure == true ? ViewerDesign.warn : ViewerDesign.muted).nsColor
         restartNowButton.isHidden = line?.offersRestartNow != true
         updateLabel.preferredMaxLayoutWidth = restartNowButton.isHidden
             ? Self.contentWidth
@@ -671,7 +672,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         buttonRow.spacing = ViewerDesign.Space.md
 
         let stack = column(
-            [heading(YourMachinesWindowModel.renameHeading), field, hint, buttonRow],
+            [heading(YourMachinesWindowModel.renameHeading(for: currentRenameName)), field, hint, buttonRow],
             spacing: ViewerDesign.Space.md
         )
         for view in stack.arrangedSubviews where view !== buttonRow {
@@ -679,6 +680,12 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         }
         field.heightAnchor.constraint(equalToConstant: 32).isActive = true
         return stack
+    }
+
+    /// The name the row being renamed shows now.
+    private var currentRenameName: String {
+        guard case let .rename(key) = step else { return "" }
+        return store.load(hostPublicKey: key)?.displayName ?? ""
     }
 
     /// The name an empty field would fall back to, shown as its placeholder.
@@ -893,7 +900,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         var views: [NSView] = [
             heading(
                 device.map { "Type the code shown on \($0.label)" }
-                    ?? "Type the code shown on that machine"
+                    ?? "Type the machine\u{2019}s address and code"
             )
         ]
         if isPairingAgain {
@@ -1252,7 +1259,6 @@ final class SavedMachineRowButton: NSButton {
 
         ViewerFormControls.style(cancelButton, title: "Cancel", isPrimary: false, isEnabled: true)
         cancelButton.isBordered = false
-        cancelButton.wantsLayer = true
         cancelButton.layer?.cornerRadius = ViewerDesign.Radius.base
         cancelButton.translatesAutoresizingMaskIntoConstraints = false
         cancelButton.isHidden = !row.offersCancel
@@ -1310,7 +1316,7 @@ final class SavedMachineRowButton: NSButton {
     /// The dot in a slot as tall as one line of `label`, centred in it, so the
     /// stack that holds both can top-align them and the dot sits beside the
     /// label's first line however many lines the label wraps to.
-    private static func dotSlot(for kind: YourMachinesRow.RowDot?, lineOf label: NSTextField) -> NSView {
+    static func dotSlot(for kind: YourMachinesRow.RowDot?, lineOf label: NSTextField) -> NSView {
         let line = NSTextField(labelWithString: "x")
         line.font = label.font
         let dot = dot(for: kind)

@@ -33,6 +33,12 @@ func testTailnetDevicePickerTests() async {
             "an offline device falls back to its IPv4 address and says so, got: \(offlineRow.subtitle)"
         )
 
+        expect(
+            onlineRow.dot == .online && offlineRow.dot == .offline,
+            "a row's dot is the one Your Machines draws for an online or offline machine, got "
+                + "\(onlineRow.dot) and \(offlineRow.dot)"
+        )
+
         print("PASS: a device-picker row shows a peer's name and address, and names an offline device as such")
     }
 

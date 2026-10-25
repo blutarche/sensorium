@@ -56,8 +56,13 @@ func testYourMachinesWindowModelTests() {
             "the heading is the window's own title, in sentence case, got \(YourMachinesWindowModel.heading)"
         )
         expect(
-            YourMachinesWindowModel.renameHeading == "Rename this machine",
-            "the rename step's heading is a sentence, got \(YourMachinesWindowModel.renameHeading)"
+            YourMachinesWindowModel.renameHeading(for: "Loft") == "Rename Loft",
+            "the rename step's heading names the machine being renamed, got \(YourMachinesWindowModel.renameHeading(for: "Loft"))"
+        )
+        expect(
+            YourMachinesWindowModel.renameHeading(for: "Kestrel Laptop-2")
+                == "Rename Kestrel\u{00A0}Laptop\u{2011}2",
+            "and holds the name whole, got \(YourMachinesWindowModel.renameHeading(for: "Kestrel Laptop-2"))"
         )
 
         expect(

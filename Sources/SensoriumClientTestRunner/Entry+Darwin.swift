@@ -75,6 +75,8 @@ func runDarwinClientTests() async {
     testYourMachinesOpenTailscaleStacksWithTheOtherLinksTests()
     testYourMachinesAddressFieldIsNotMonospacedTests()
     testYourMachinesRowsShareOneStructureAndUseTheirWidthTests()
+    testYourMachinesRowCancelDrawsLikeASecondaryButtonTests()
+    testYourMachinesPickerRowsShareTheListsDotAndDoNotDimTests()
     await testYourMachinesCodeFieldIsNotSelectedAfterAFailedPairingTests()
     await testYourMachinesPairingMessageHeadlineAndDetailSitTogetherTests()
     testYourMachinesWindowUpdateLineTests()

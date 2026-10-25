@@ -47,9 +47,9 @@ func testGtkViewerStylesheetTests() {
 }
 
 /// Each text role takes the token macOS draws it in: ink for primary text,
-/// `muted` for secondary and for a placeholder, `warn` for the startup-failure
-/// eyebrow, and the dimmed colours an offline device's name and address take in
-/// `TailnetDeviceRow`.
+/// `muted` for secondary and for a placeholder, and `warn` for the
+/// startup-failure eyebrow. An offline device's row takes the same colours as
+/// an online one's.
 func testGtkTextRoleColoursMatchMacOSTests() {
     let css = GtkViewerStyle.stylesheet
     typealias Class = GtkViewerStyle.Class
@@ -63,9 +63,7 @@ func testGtkTextRoleColoursMatchMacOSTests() {
         (".\(Class.rowDetail)", palette.muted, "secondary: a saved machine's address"),
         (".\(Class.deviceSubtitle)", palette.muted, "secondary: a device's address"),
         (".\(Class.eyebrow)", palette.warn, "warning: the startup-failure eyebrow"),
-        ("window.sensorium entry > text > placeholder", palette.muted, "secondary: a placeholder, which muted2 would leave under 4.5:1 on the field"),
-        (".\(Class.rowName).\(Class.offline)", palette.muted, "dimmed: an offline device's name"),
-        (".\(Class.deviceSubtitle).\(Class.offline)", palette.muted2, "dimmed: an offline device's address")
+        ("window.sensorium entry > text > placeholder", palette.muted, "secondary: a placeholder, which muted2 would leave under 4.5:1 on the field")
     ]
     for (selector, token, role) in roles {
         let colour = cssValue("color", in: cssRule(selector, in: css))
@@ -193,10 +191,17 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         cssRule(".\(Class.row)", in: css).contains("background-color: \(palette.chromeBg2.hexString)"),
         "a row is the chromeBg2 surface SavedMachineRowButton draws"
     )
+    let rowAction = cssRule(".\(Class.rowAction)", in: css)
     check(
-        cssRule(".\(Class.rowAction)", in: css).contains("background-color: transparent")
-            && cssRule(".\(Class.rowAction)", in: css).contains("border: none"),
-        "a row's Cancel is bare text, as SavedMachineRowButton.cancelButton draws it"
+        rowAction.contains("background-color: \(palette.chromeBg2.hexString)")
+            && rowAction.contains("border: 1px solid \(palette.line.hexString)")
+            && cssRule(".\(Class.secondary)", in: css).contains("background-color: \(palette.chromeBg2.hexString)")
+            && cssRule(".\(Class.secondary)", in: css).contains("border: 1px solid \(palette.line.hexString)"),
+        "a row's Cancel is filled and outlined as the secondary button is, as SavedMachineRowButton.cancelButton draws it"
+    )
+    check(
+        rowAction.contains("min-height: 22px") && rowAction.contains("min-width: 62px"),
+        "and stays 24 by 64 outside its border, the size the row reserves for it"
     )
     check(
         cssRule(".\(Class.primary):disabled", in: css).contains("background-color: \(palette.chromeBg2.hexString)")
