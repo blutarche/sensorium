@@ -1802,6 +1802,8 @@ MainActor.assumeIsolated {
     // trend history: 30 ticks, oldest first, so `viewer-hud-1-healthy.png`
     // shows all three sparklines rather than the two-sample minimum.
     let previewHostAddress = "mini.tail1234.ts.net:7777"
+    // A host name too long for the ADDRESS row, whose port has to survive.
+    let previewLongHostAddress = "render-node-west-wing-07.tail1234.ts.net:7777"
     let healthyEndToEndLatencyTrend = (0..<30).map { 20.0 + 3.0 * sin(Double($0) / 4.0) }
     let healthyVideoInBitrateTrend = (0..<30).map { 41_800_000.0 + 2_500_000.0 * sin(Double($0) / 5.0 + 1) }
     let healthyFpsTrend = (0..<30).map { 59.0 - 1.5 * sin(Double($0) / 6.0 + 2) }
@@ -2012,6 +2014,26 @@ MainActor.assumeIsolated {
                 presentationHoldNanoseconds: presentationHoldNanoseconds,
                 hostName: "Workstation",
                 hostAddress: previewHostAddress,
+                endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
+                videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
+                fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)
+            )
+        ),
+        (
+            "viewer-hud-13-long-address",
+            "a host address too wide for its row — the middle of the host name gives way and the :7777 port stays whole",
+            SessionHUDSnapshot(
+                surfaceID: 0,
+                availability: .fresh(hostSample(appliedStreamScale: 2.0, sustainableScaleCeiling: nil)),
+                clientMetrics: clientMetrics,
+                stream: streamReading(scale: 2.0),
+                requestedStreamScale: 2.0,
+                streamScalePreference: .automatic,
+                decoder: .hardwareAccelerated,
+                presentCompletionP50Nanoseconds: presentCompletionP50Nanoseconds,
+                presentationHoldNanoseconds: presentationHoldNanoseconds,
+                hostName: "Workstation",
+                hostAddress: previewLongHostAddress,
                 endToEndLatencyTrend: SessionHUDTrend(samples: healthyEndToEndLatencyTrend),
                 videoInBitrateTrend: SessionHUDTrend(samples: healthyVideoInBitrateTrend),
                 fpsTrend: SessionHUDTrend(samples: healthyFpsTrend)

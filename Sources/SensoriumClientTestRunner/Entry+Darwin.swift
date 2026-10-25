@@ -93,6 +93,7 @@ func runDarwinClientTests() async {
     runSessionHUDSparklineAndAddressTests()
     testSessionHUDViewMatchesRowLayoutTests()
     testSessionHUDScrollClipsAtThePanelPaddingTests()
+    testSessionHUDAddressKeepsItsPortInTheViewTests()
     testViewerStatusEyebrowContrastTests()
     testSessionHUDSmallTextContrastTests()
     testSessionHUDLatencyGroupsShareTheValueGridTests()

@@ -5,7 +5,7 @@ import SensoriumCore
 /// The same reading `RenderChromeVerb`'s own diagnostics fixture builds, so
 /// this checks the labels and values a real render actually carries rather
 /// than an invented row.
-private func fixtureSnapshot() -> SessionHUDSnapshot {
+private func fixtureSnapshot(hostAddress: String = "workshop.tail1234.ts.net:7777") -> SessionHUDSnapshot {
     var clientMetrics = SessionMetrics()
     clientMetrics.record(stage: .receive, startedAtNanoseconds: 0, endedAtNanoseconds: 3_200_000)
     clientMetrics.record(stage: .decode, startedAtNanoseconds: 0, endedAtNanoseconds: 4_100_000)
@@ -46,7 +46,7 @@ private func fixtureSnapshot() -> SessionHUDSnapshot {
         presentCompletionP50Nanoseconds: 4_600_000,
         presentationHoldNanoseconds: 2_300_000,
         hostName: "workshop",
-        hostAddress: "workshop.tail1234.ts.net:7777",
+        hostAddress: hostAddress,
         endToEndLatencyTrend: SessionHUDTrend(samples: [14, 16, 15, 19, 18.5, 17, 18.5]),
         videoInBitrateTrend: SessionHUDTrend(samples: [38, 40, 41.5, 39, 42, 41.5]),
         fpsTrend: SessionHUDTrend(samples: [59, 58, 60, 57, 58.4]),
@@ -309,6 +309,62 @@ func testSessionHUDViewMatchesRowLayoutTests() {
     expect(document.visibleRect.maxY >= document.bounds.maxY - 1, "scrolling reaches the final HUD reading")
 
     print("PASS: the macOS HUD's VIDEO IN value and sparkline sit where the shared row layout puts them")
+}
+
+/// A host name too long for the ADDRESS row is shortened in its middle on the
+/// drawn panel, and the ":port" after it is never cut off.
+@MainActor
+func testSessionHUDAddressKeepsItsPortInTheViewTests() {
+    func descendants(_ view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
+    }
+    func addressField(in view: SessionHUDView) -> NSTextField? {
+        let fields = descendants(view).compactMap { $0 as? NSTextField }
+        guard let label = fields.first(where: { $0.stringValue == "ADDRESS" }),
+              let line = label.superview as? NSStackView,
+              line.arrangedSubviews.count == 2 else { return nil }
+        return line.arrangedSubviews[1] as? NSTextField
+    }
+
+    let view = SessionHUDView()
+    let long = "render-node-west-wing-07.tail1234.ts.net:7777"
+    view.apply(telemetry: fixtureSnapshot(hostAddress: long))
+    view.layoutSubtreeIfNeeded()
+    guard let field = addressField(in: view) else {
+        expect(false, "the macOS HUD shows an ADDRESS row")
+        return
+    }
+    expect(
+        field.stringValue.hasSuffix(":7777") && field.stringValue.contains("\u{2026}") && field.stringValue != long,
+        "a host name too long for the row is shortened with an ellipsis and keeps its whole port, got "
+            + "\(field.stringValue)"
+    )
+    expect(
+        field.intrinsicContentSize.width <= field.frame.width + 0.5,
+        "the shortened address fits its row, so AppKit has nothing left to cut: needs "
+            + "\(field.intrinsicContentSize.width) of \(field.frame.width)"
+    )
+    expect(
+        field.stringValue.hasPrefix("render") && field.stringValue.contains("ts.net"),
+        "both ends of the host name stay legible, got \(field.stringValue)"
+    )
+
+    view.apply(telemetry: fixtureSnapshot(hostAddress: long))
+    view.layoutSubtreeIfNeeded()
+    expect(
+        addressField(in: view)?.stringValue == field.stringValue,
+        "the same address on the next tick is shortened to the same text"
+    )
+
+    let short = "mini.tail1234.ts.net:7777"
+    view.apply(telemetry: fixtureSnapshot(hostAddress: short))
+    view.layoutSubtreeIfNeeded()
+    expect(
+        addressField(in: view)?.stringValue == short,
+        "a shorter address afterwards is shown whole again, got \(addressField(in: view)?.stringValue ?? "nil")"
+    )
+
+    print("PASS: a HUD address too long for its row is shortened in the middle and keeps its port whole")
 }
 
 /// A scrolled panel clips its readings at the same padding it keeps above its

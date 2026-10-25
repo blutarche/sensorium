@@ -17,6 +17,7 @@ func runSessionHUDSparklineAndAddressTests() {
     sparklineLayoutScalesMinToMaxOldestFirst()
     sparklinesShareOneTrailingColumn()
     scrollThumbStaysClearOfContent()
+    addressShortensInTheMiddleAndKeepsItsPort()
     print("PASS: the HUD names the host's address and maps its trends to sparkline points")
 }
 
@@ -68,6 +69,76 @@ private func hudNamesTheHostsAddressUnderState() {
     expect(
         hudRow(noAddress, "ADDRESS")?.value == SessionHUDPanel.unavailable,
         "a session with no known address says so rather than showing nothing"
+    )
+
+    expect(
+        hudRow(rows, "ADDRESS")?.truncation == .middleKeepingPort
+            && rows.filter { $0.label != "ADDRESS" }.allSatisfy { $0.truncation == .tail },
+        "only the address gives up its middle when it is too wide; every other value is cut at its end"
+    )
+}
+
+/// An address too wide for its row loses characters from the middle of its
+/// host; the ":port" at the end is what tells two services on one machine
+/// apart, so it is never cut.
+private func addressShortensInTheMiddleAndKeepsItsPort() {
+    let measure: (String) -> Double = { Double($0.count) * 9 }
+    let long = "render-node-west-wing-07.tail1234.ts.net:7777"
+    let ellipsis = "\u{2026}"
+
+    expect(
+        SessionHUDAddressFit.fitting("mini.tail1234.ts.net:7777", width: 300, measure: measure)
+            == "mini.tail1234.ts.net:7777",
+        "an address that fits is shown exactly as dialled"
+    )
+    expect(
+        SessionHUDAddressFit.fitting(long, width: Double(long.count) * 9, measure: measure) == long,
+        "an address exactly as wide as its room is not shortened"
+    )
+
+    for room in stride(from: 70.0, through: 400.0, by: 10) {
+        let fitted = SessionHUDAddressFit.fitting(long, width: room, measure: measure)
+        expect(fitted.hasSuffix(":7777"), "at \(room) wide the port is whole, got \(fitted)")
+        if room < Double(long.count) * 9 {
+            expect(fitted.contains(ellipsis), "at \(room) wide the host part is shortened with an ellipsis, got \(fitted)")
+            expect(
+                measure(fitted) <= room || fitted == ellipsis + ":7777",
+                "at \(room) wide the result fits, got \(fitted)"
+            )
+            // One more kept character would not have fit: nothing is thrown
+            // away that the row had room for.
+            expect(
+                measure(fitted) + 9 > room || fitted == ellipsis + ":7777",
+                "at \(room) wide no character is dropped needlessly, got \(fitted)"
+            )
+            let opening = String(fitted.prefix { String($0) != ellipsis })
+            expect(
+                !opening.isEmpty && long.hasPrefix(opening),
+                "the shortened address still opens with the start of its host name, got \(fitted)"
+            )
+        }
+    }
+    let shortened = SessionHUDAddressFit.fitting(long, width: 190, measure: measure)
+    expect(
+        shortened.count == 21 && shortened.hasSuffix("ts.net:7777"),
+        "a 190pt row keeps 21 characters, the end of the host's domain and the whole port, got \(shortened)"
+    )
+
+    expect(
+        SessionHUDAddressFit.fitting(long, width: 10, measure: measure) == ellipsis + ":7777",
+        "even with no room for anything else the port stays whole"
+    )
+    let bracketed = SessionHUDAddressFit.fitting("[fd7a:115c:a1e0::1]:7777", width: 100, measure: measure)
+    expect(
+        bracketed.hasSuffix(":7777") && bracketed.contains(ellipsis) && measure(bracketed) <= 100,
+        "an address with colons in its host keeps the port after the last one, got \(bracketed)"
+    )
+
+    let noPort = "a-very-long-host-name-with-no-port.tail1234.ts.net"
+    let noPortFitted = SessionHUDAddressFit.fitting(noPort, width: 200, measure: measure)
+    expect(
+        noPortFitted.contains(ellipsis) && measure(noPortFitted) <= 200 && noPortFitted.hasPrefix("a-very"),
+        "an address with no port is shortened in the middle as well, got \(noPortFitted)"
     )
 }
 

@@ -181,11 +181,21 @@ public enum SessionHUDSparklineLayout {
     }
 }
 
+/// What a value does when it is wider than the room its row gives it.
+public enum SessionHUDValueTruncation: Equatable, Sendable {
+    /// Cut at the end with an ellipsis.
+    case tail
+    /// An address: the middle of the host gives way and the ":port" stays
+    /// whole (`SessionHUDAddressFit`).
+    case middleKeepingPort
+}
+
 /// One line of the panel: a mono label, its value, and optionally the one
 /// sentence that explains a value the user would otherwise misread.
 public struct SessionHUDRow: Equatable, Sendable {
     public let label: String
     public let value: String
+    public let truncation: SessionHUDValueTruncation
     /// `nil` for an ordinary reading. A tone is spent only where it changes
     /// what the user should do.
     public let tone: ViewerStatusTone?
@@ -207,6 +217,7 @@ public struct SessionHUDRow: Equatable, Sendable {
     public init(
         label: String,
         value: String,
+        truncation: SessionHUDValueTruncation = .tail,
         tone: ViewerStatusTone? = nil,
         isStale: Bool = false,
         note: String? = nil,
@@ -215,6 +226,7 @@ public struct SessionHUDRow: Equatable, Sendable {
     ) {
         self.label = label
         self.value = value
+        self.truncation = truncation
         self.tone = tone
         self.isStale = isStale
         self.note = note.map(ViewerCopyWrapping.keepingTailTogether)
@@ -541,7 +553,11 @@ public enum SessionHUDPanel {
                 note: "This host has sent no measurements. It may predate them."
             )
         }
-        let addressRow = SessionHUDRow(label: "ADDRESS", value: hostAddress ?? unavailable)
+        let addressRow = SessionHUDRow(
+            label: "ADDRESS",
+            value: hostAddress ?? unavailable,
+            truncation: .middleKeepingPort
+        )
         let pointerRow = SessionHUDRow(
             label: "POINTER",
             value: isPointerCaptured ? "captured" : "free",

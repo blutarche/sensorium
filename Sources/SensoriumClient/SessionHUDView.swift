@@ -534,6 +534,18 @@ private final class SessionHUDRowView: NSView {
             sparkline.lineColor = ViewerDesign.accent2.nsColor
             sparkline.samples = trend
         }
+
+        if row.truncation == .middleKeepingPort {
+            // Measured by the field itself, padding included, against the
+            // width its constraint allows, so what is set always fits and
+            // the tail truncation above never gets to cut the port.
+            value.stringValue = SessionHUDAddressFit.fitting(
+                row.value, width: Double(valueWidthConstraint.constant)
+            ) { candidate in
+                value.stringValue = candidate
+                return Double(value.intrinsicContentSize.width)
+            }
+        }
     }
 
     /// The AppKit equivalent of `font-variant-numeric: tabular-nums`. The mono
