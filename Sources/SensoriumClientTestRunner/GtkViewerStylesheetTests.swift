@@ -258,9 +258,14 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
             && !css.contains("sensorium-mono-field"),
         "a field's text sits a point above centre, and no field but the code field is set in the mono face, as on macOS"
     )
+    // A Tab onto a field has to show where focus went. GTK puts a field's
+    // focus on its inner text node, so the field itself is styled by what it
+    // contains, and the ring is the one a focused row draws.
+    let fieldFocus = cssRule("window.sensorium entry:focus-within", in: css)
+        .split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     check(
-        !css.contains("entry:focus"),
-        "a focused field draws no ring or border of its own, as ViewerFormControls.textField sets focusRingType none"
+        fieldFocus == ["border-color: \(palette.accent.hexString)"],
+        "a focused field draws the focused row's accent border and nothing else, got \(fieldFocus)"
     )
     let selection = cssRule("window.sensorium entry > text > selection", in: css)
     check(
@@ -332,9 +337,9 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
         )
     }
 
-    // macOS draws no focus ring and no hover on any of these controls: the
-    // form buttons and the row's "\u{2026}" never take keyboard focus there,
-    // and a row shows focus only as its selected border.
+    // macOS draws no hover on any of these controls, and the form buttons and
+    // the row's "\u{2026}" never take keyboard focus there. Focus shows as a
+    // row's selected border and as a field's.
     let outlines = css.matches(of: /outline: ([^;]+);/).map { String($0.1) }
     check(outlines.allSatisfy { $0 == "none" }, "no rule draws an outline, got \(outlines)")
     check(!css.contains(":hover"), "nothing changes under the pointer, as on macOS")
