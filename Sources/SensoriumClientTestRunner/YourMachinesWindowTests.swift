@@ -427,6 +427,11 @@ func testYourMachinesWindowTests() async {
             "the optional name field is labelled as a sentence, not an uppercase eyebrow"
         )
         expect(
+            storedValue("nameField", of: controller, as: NSTextField.self).placeholderAttributedString?.string
+                == "Uses the name it reports",
+            "an empty name field says what it will use, instead of a sample that reads as a name already typed"
+        )
+        expect(
             hasLabel("Pairing code", in: content(of: controller)),
             "the code field is labelled too, so it names itself once a typed digit has hidden its placeholder"
         )
@@ -1192,7 +1197,10 @@ func testViewerPairingFieldSelectionColoursTests() {
 func testViewerPairingFieldAccessibilityPlaceholderTests() {
     let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
     controller.showCodeStep(for: nil)
-    for (name, placeholder) in [("codeField", "000 000"), ("addressField", "mini.local"), ("nameField", "Studio")] {
+    let placeholders = [
+        ("codeField", "000 000"), ("addressField", "mini.local"), ("nameField", "Uses the name it reports")
+    ]
+    for (name, placeholder) in placeholders {
         let field = storedValue(name, of: controller, as: NSTextField.self)
         field.window?.makeFirstResponder(field)
         expect(field.currentEditor() != nil, "\(name) is being edited once it has focus")
