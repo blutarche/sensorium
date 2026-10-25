@@ -144,6 +144,15 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         defer { window.hide() }
         let first = visibleLabels(under: root).first?.text
         expect(first == "Rename Workstation", "the rename step is headed with the machine it renames, got \(first ?? "nothing")")
+        guard let rename = firstDescendant(of: root, where: { widgetHasClass($0, Class.primary) }),
+              let cancel = firstDescendant(of: root, where: { widgetHasClass($0, Class.secondary) }) else {
+            expect(false, "the rename step has Cancel and Rename")
+            return
+        }
+        expect(
+            horizontalPosition(of: cancel, in: root) < horizontalPosition(of: rename, in: root),
+            "Cancel comes before Rename, as on macOS"
+        )
     }
 
     // The picker's rows carry the same status dot as the list, and an offline

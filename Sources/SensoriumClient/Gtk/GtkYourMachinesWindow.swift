@@ -653,13 +653,13 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         )
 
         let buttons = GtkWidgets.box(vertical: false, spacing: Int32(ViewerChromeMetrics.Space.md))
+        let cancel = GtkWidgets.button(YourMachinesWindowModel.renameCancelTitle, cssClass: GtkViewerStyle.Class.secondary)
+        onClick(cancel) { [weak self] in self?.cancelRename() }
+        GtkWidgets.append(cancel, to: buttons)
         let rename = GtkWidgets.button(YourMachinesWindowModel.renameConfirmTitle, cssClass: GtkViewerStyle.Class.primary)
         gtk_widget_set_receives_default(sensorium_gtk_widget(rename), 1)
         onClick(rename) { [weak self] in self?.confirmRename() }
         GtkWidgets.append(rename, to: buttons)
-        let cancel = GtkWidgets.button(YourMachinesWindowModel.renameCancelTitle, cssClass: GtkViewerStyle.Class.secondary)
-        onClick(cancel) { [weak self] in self?.cancelRename() }
-        GtkWidgets.append(cancel, to: buttons)
         GtkWidgets.append(buttons, to: renamePage)
         gtk_window_set_default_widget(sensorium_gtk_window(window), sensorium_gtk_widget(rename))
     }
