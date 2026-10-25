@@ -123,6 +123,13 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         let labels = visibleLabels(under: root).map(\.text)
         expect(labels.first == "Type the code shown on Studio", "the code step is headed in sentence case, got \(labels.first ?? "nothing")")
         expect(labels.contains("Pairing code"), "the code field is labelled, as every field is")
+        let placeholders = descendants(of: root)
+            .filter { String(cString: gtk_widget_get_css_name(sensorium_gtk_widget($0))) == "entry" }
+            .compactMap { gtk_entry_get_placeholder_text(sensorium_gtk_entry($0)).map { String(cString: $0) } }
+        expect(
+            placeholders.contains("Uses the name it reports") && !placeholders.contains("Studio"),
+            "an empty name field says what it will use, instead of a sample that reads as a name already typed, got \(placeholders)"
+        )
         guard let back = link(titled: "Back", under: root),
               let pair = firstDescendant(of: root, where: { widgetHasClass($0, Class.primary) }) else {
             expect(false, "the code step has Back and Pair")

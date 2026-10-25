@@ -885,7 +885,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         messageGroup = message
         GtkWidgets.append(message, to: codePage)
 
-        let name = GtkWidgets.entry(placeholder: "Studio", cssClass: nil)
+        let name = GtkWidgets.entry(placeholder: "Uses the name it reports", cssClass: nil)
         GtkWidgets.setText(form.name, on: name)
         nameEntry = name
         onChanged(name) { [weak self] in self?.formDidChange() }
