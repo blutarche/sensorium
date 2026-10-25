@@ -161,6 +161,40 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         }
     }
 
+    // A machine whose attempt failed and is being retried keeps the pulsing
+    // dot, and says so, with Cancel beside it to stop the retries.
+    do {
+        let host = SavedHost(
+            displayName: "Workstation", host: "mini.tail1234.ts.net", port: 7777,
+            hostPublicKey: Data([1]), tlsCertificateHash: Data([1, 1]), lastConnectedAt: Date(timeIntervalSince1970: 9_000)
+        )
+        let (window, root) = show(hosts: [host]) {
+            $0.connectRequested(hostPublicKey: host.hostPublicKey)
+            $0.connectStarted(hostPublicKey: host.hostPublicKey)
+            $0.attemptFailed(
+                reason: ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Workstation"),
+                offersConnectAsVirtualDisplayFallback: false
+            )
+        }
+        defer { window.hide() }
+        let rows = descendants(of: root).filter { widgetHasClass($0, Class.row) }
+        expect(rows.count == 1, "the machine is listed, got \(rows.count)")
+        if let row = rows.first {
+            expect(
+                descendants(of: row).contains { widgetHasClass($0, Class.dotActivity) },
+                "a failed attempt that will be retried draws the pulsing dot"
+            )
+            expect(
+                visibleLabels(under: row).map(\.text).contains("mini.tail1234.ts.net \u{2014}\u{00A0}couldn\u{2019}t reach it, trying\u{00A0}again\u{2026}"),
+                "and the line reads as the shared model words it, got \(visibleLabels(under: row).map(\.text))"
+            )
+            expect(
+                descendants(of: root).contains { widgetHasClass($0, Class.rowAction) && linkTitle($0) == "Cancel" },
+                "and offers Cancel for the retries, over the row"
+            )
+        }
+    }
+
     print("PASS: Your Machines puts the same words, links and controls on each step in the order macOS does")
 }
 
