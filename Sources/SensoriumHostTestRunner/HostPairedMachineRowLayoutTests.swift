@@ -158,6 +158,87 @@ func runHostPairedMachineRowLayoutTests() async {
     }
 
     do {
+        // The ask-first checkbox belongs to Share host screen, so its box
+        // starts where that label's text does, not at the card's own inset.
+        // Measured on the drawn row: the first column of ink in each, since a
+        // frame says nothing about the padding a control draws inside it.
+        let host = controller(rows: [row("Kestrel Laptop", sharing: true)])
+        field("window", of: host, as: NSWindow.self).contentView?.layoutSubtreeIfNeeded()
+        let rowView = firstRow(of: host)
+        let label: NSTextField = field("toggleLabel", of: rowView, as: NSTextField.self)
+        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
+        guard let rep = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) else {
+            expect(false, "AppKit gave no bitmap to measure the row in")
+            return
+        }
+        rowView.cacheDisplay(in: rowView.bounds, to: rep)
+        let pixelsPerPoint = CGFloat(rep.pixelsWide) / rowView.bounds.width
+        let background = rep.colorAt(x: 1, y: 1)?.usingColorSpace(.deviceRGB)
+
+        /// The left edge, in points from the row's own left edge, of the first
+        /// column inside `frame` that is not the card's fill.
+        func firstInk(in frame: NSRect) -> CGFloat? {
+            guard let background else { return nil }
+            let top = Int(((rowView.bounds.height - frame.maxY) * pixelsPerPoint).rounded(.down))
+            let bottom = Int(((rowView.bounds.height - frame.minY) * pixelsPerPoint).rounded(.up))
+            let first = Int((frame.minX * pixelsPerPoint).rounded(.down))
+            let last = min(rep.pixelsWide - 1, Int((frame.maxX * pixelsPerPoint).rounded(.up)))
+            for x in first...last {
+                for y in max(0, top)..<min(rep.pixelsHigh, bottom) {
+                    guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                    let difference = abs(color.redComponent - background.redComponent)
+                        + abs(color.greenComponent - background.greenComponent)
+                        + abs(color.blueComponent - background.blueComponent)
+                    if difference > 0.3 {
+                        return CGFloat(x) / pixelsPerPoint
+                    }
+                }
+            }
+            return nil
+        }
+
+        let labelFrame = rowView.convert(label.bounds, from: label)
+        let checkboxFrame = rowView.convert(askFirst.bounds, from: askFirst)
+        if let labelInk = firstInk(in: labelFrame), let boxInk = firstInk(in: checkboxFrame) {
+            expect(
+                abs(labelInk - boxInk) <= 1,
+                "the checkbox's box starts where the Share host screen text does -- text at \(labelInk), box at \(boxInk), "
+                    + "label frame \(labelFrame), checkbox frame \(checkboxFrame)"
+            )
+        } else {
+            expect(false, "no ink found to measure -- label frame \(labelFrame), checkbox frame \(checkboxFrame)")
+        }
+        print("PASS: the ask-first checkbox sits under the Share host screen text")
+    }
+
+    do {
+        // Indented under the label, the checkbox's title still wraps inside the
+        // card when the card is too narrow for it on one line.
+        let host = controller(rows: [row("Kestrel Laptop", sharing: true)])
+        let root: NSStackView = field("root", of: host, as: NSStackView.self)
+        let window: NSWindow = field("window", of: host, as: NSWindow.self)
+        guard let widthConstraint = root.constraints.first(where: {
+            $0.firstItem === root && $0.firstAttribute == .width && $0.secondItem == nil
+        }) else {
+            expect(false, "the window's content has no fixed width to narrow")
+            return
+        }
+        window.contentView?.layoutSubtreeIfNeeded()
+        let rowView = firstRow(of: host)
+        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
+        let oneLine = askFirst.frame.height
+        widthConstraint.constant = 240
+        window.contentView?.layoutSubtreeIfNeeded()
+        let frame = rowView.convert(askFirst.bounds, from: askFirst)
+        expect(
+            frame.maxX <= rowView.bounds.width - CanvasDesign.Space.md + 0.5 && frame.height > oneLine * 1.5,
+            "in a card \(rowView.bounds.width)pt wide the checkbox wraps to a second line inside the card's trailing inset"
+                + " -- frame \(frame), one line is \(oneLine)pt"
+        )
+        print("PASS: the ask-first checkbox wraps inside a narrow card")
+    }
+
+    do {
         // One gap between the sections of the window, whichever follows the
         // machines.
         let section: NSView = field("pairedMachines", of: controller(rows: []), as: NSView.self)

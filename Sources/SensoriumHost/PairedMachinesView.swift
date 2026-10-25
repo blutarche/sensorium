@@ -298,6 +298,8 @@ private final class PairedMachineRowView: NSView {
     private let askFirstCheckbox = NSButton(
         checkboxWithTitle: HostScreenArmingPresentation.asksWhenInUseLabel, target: nil, action: nil
     )
+    /// Holds the checkbox, indented under the switch's label.
+    private let askFirstRow = NSStackView()
     private let metaLabel = PairedMachinesView.label("", color: CanvasDesign.muted)
     private let renameButton = NSButton()
     private let removeButton = NSButton()
@@ -380,7 +382,19 @@ private final class PairedMachineRowView: NSView {
         askFirstCheckbox.target = self
         askFirstCheckbox.action = #selector(askFirstToggled)
 
-        for view: NSView in [nameRow, toggleRow, askFirstCheckbox, metaLabel] {
+        // The checkbox is a setting of the switch above it, so its box starts
+        // where that switch's label does: past the switch and the gap.
+        askFirstRow.orientation = .horizontal
+        askFirstRow.alignment = .top
+        askFirstRow.edgeInsets = NSEdgeInsets(
+            top: 0,
+            left: HostScreenSharingToggleControl.size.width + CanvasDesign.Space.sm,
+            bottom: 0,
+            right: 0
+        )
+        askFirstRow.addArrangedSubview(askFirstCheckbox)
+
+        for view: NSView in [nameRow, toggleRow, askFirstRow, metaLabel] {
             stack.addArrangedSubview(view)
             view.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
         }
@@ -402,6 +416,7 @@ private final class PairedMachineRowView: NSView {
         toggleLabel.alphaValue = 1
         askFirstCheckbox.state = row.asksWhenInUse ? .on : .off
         askFirstCheckbox.isHidden = !row.isSharingRealScreen
+        askFirstRow.isHidden = askFirstCheckbox.isHidden
         let meta = Self.metaLine(for: row)
         metaLabel.stringValue = meta ?? ""
         metaLabel.isHidden = meta == nil
