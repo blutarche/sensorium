@@ -47,6 +47,7 @@ struct SensoriumHostTestRunner {
             { await runHostCapabilityAndSettingsTests() },
             { runHostPrivateDesktopSettingTests() },
             { runHostPrivateDesktopRefusalTests() },
+            { runHostPrivateDesktopProbeFailureTests() },
             { runHostLocalNetworkSettingTests() },
             { runHostLocalNetworkConnectionRegistryTests() },
             { await runCanvasReleaseAccountingTests() },

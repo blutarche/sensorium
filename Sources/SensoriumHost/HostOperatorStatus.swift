@@ -119,6 +119,12 @@ public struct HostOperatorStatus: Equatable {
     /// window must go on saying so rather than returning to a status that
     /// implies a machine ready to serve.
     public var captureUnavailable: Bool = false
+    /// Why this machine cannot make a private desktop, found by the launch
+    /// probe while "Offer a private desktop" was on. Holds for the rest of
+    /// the run. Never a reason hosting is not running: host screen needs no
+    /// private desktop, so the status card ignores it and only the line
+    /// under the switch shows it.
+    public var privateDesktopUnavailableReason: String?
     /// The viewer's own reported round trip for the live session, already
     /// smoothed and staleness-checked by `HostPingDisplay` -- `nil` whenever
     /// there is no session to measure or none has reported a usable sample
@@ -222,6 +228,12 @@ public struct HostOperatorPresentation: Equatable, Sendable {
 }
 
 extension HostOperatorStatus {
+    /// What a viewer is told about a private desktop: the person's switch,
+    /// unless this run found the machine cannot make one.
+    public func offersPrivateDesktop(whenSwitchedOn switchedOn: Bool) -> Bool {
+        switchedOn && privateDesktopUnavailableReason == nil
+    }
+
     public func presentation(now: Date) -> HostOperatorPresentation {
         var alerts = Self.alerts(for: permissions)
         var eyebrow: String
@@ -610,6 +622,14 @@ public final class HostOperatorStatusStore {
     /// untrue while this process runs.
     public func recordCaptureUnavailable() {
         status.captureUnavailable = true
+        notify()
+    }
+
+    /// The launch probe found this machine cannot make a private desktop.
+    /// Recorded like `recordCaptureUnavailable`, for the rest of the run,
+    /// and left alone by everything that starts, stops or fails hosting.
+    public func recordPrivateDesktopUnavailable(_ reason: String) {
+        status.privateDesktopUnavailableReason = reason
         notify()
     }
 

@@ -1385,17 +1385,25 @@ struct sensoriumd {
             }
         }
 
-        // A machine that cannot create a canvas, find its tailnet address,
-        // or read its identity must say so on screen instead of listening.
-        // Called at launch and after an identity replacement, so both paths
-        // start hosting the same way.
+        // A machine that cannot find its tailnet address or read its identity
+        // must say so on screen instead of listening. One that cannot make a
+        // private desktop still hosts, since host screen needs none: the
+        // probe's reason goes under the switch, and for the rest of the run
+        // no viewer is offered a private desktop and no later start probes
+        // again. Called at launch and after an identity replacement, so both
+        // paths start hosting the same way.
         func startHosting() {
-            switch HostVirtualDisplayCapability.startupCheck(
+            HostHostingStartup.begin(
                 offersPrivateDesktop: privateDesktopSettingStore.load().offersPrivateDesktop,
-                log: { HostSessionLog.record($0) },
-                shutdown: operatorBox.canvas
+                status: operatorBox.status,
+                probe: {
+                    HostVirtualDisplayCapability.probe(
+                        log: { HostSessionLog.record($0) },
+                        shutdown: operatorBox.canvas
+                    )
+                },
+                log: { HostSessionLog.record($0) }
             ) {
-            case .supported, .notOffered:
                 switch TailnetAddressEnumerator.autoSelect() {
                 case let .single(address):
                     do {
@@ -1426,7 +1434,11 @@ struct sensoriumd {
                             hostScreenSessionLog: sessionLog,
                             hostScreenLiveSessionRegistry: hostScreenLiveSessionRegistry,
                             deviceConnectionRegistry: deviceConnectionRegistry,
-                            privateDesktopOffered: { privateDesktopSettingStore.load().offersPrivateDesktop },
+                            privateDesktopOffered: {
+                                operatorBox.status.status.offersPrivateDesktop(
+                                    whenSwitchedOn: privateDesktopSettingStore.load().offersPrivateDesktop
+                                )
+                            },
                             localNetworkConnections: localNetworkConnections,
                             listenerBox: listenerBox,
                             onListenerReady: onListenerReady
@@ -1441,9 +1453,6 @@ struct sensoriumd {
                 case .none:
                     operatorBox.status.reportProblem(HostStartupProblemCopy.noTailnetAddress)
                 }
-            case let .unsupported(reason):
-                HostSessionLog.record("Sensorium host: \(reason)")
-                operatorBox.status.reportProblem(reason)
             }
         }
 

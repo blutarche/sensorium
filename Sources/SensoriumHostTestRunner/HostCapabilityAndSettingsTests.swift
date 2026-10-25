@@ -146,7 +146,7 @@ func runHostCapabilityAndSettingsTests() async {
             CoreGraphicsVirtualDisplayAdapter(surface: surfaceZero, creator: refusingEverything, log: log)
         })
         guard case let .unsupported(exhaustedReason) = exhausted else {
-            expect(false, "a machine that refuses every identity cannot host")
+            expect(false, "a machine that refuses every identity cannot make a private desktop")
             return
         }
         expect(
@@ -154,12 +154,10 @@ func runHostCapabilityAndSettingsTests() async {
             "the probe succeeds if any identity in the sequence works, so it tries all of them"
         )
         expect(
-            exhaustedReason.contains("every identity") && exhaustedReason.contains("left behind"),
-            "the reason names the step that failed: creation refused for every identity, most likely a leftover canvas"
-        )
-        expect(
-            exhaustedReason.contains("machine"),
-            "the reason speaks of this machine, the word the rest of the host app's copy uses"
+            exhaustedReason == "macOS would not make a private desktop. One left behind by an earlier Sensorium Host "
+                + "is the likely cause; restarting this machine clears it.",
+            "the reason names what failed, its likely cause, and the restart that clears it, calling the display "
+                + "a private desktop as the rest of the host app does -- got: \(exhaustedReason)"
         )
 
         let noRuntime = FakeVirtualDisplayCreator()
@@ -171,7 +169,7 @@ func runHostCapabilityAndSettingsTests() async {
             CoreGraphicsVirtualDisplayAdapter(surface: surfaceZero, creator: noRuntime, log: log)
         })
         guard case let .unsupported(hardwareReason) = unsupportedHardware else {
-            expect(false, "a machine without the runtime classes cannot host")
+            expect(false, "a machine without the runtime classes cannot make a private desktop")
             return
         }
         expect(
@@ -179,12 +177,10 @@ func runHostCapabilityAndSettingsTests() async {
             "a missing runtime class is not something another identity can get past, so nothing else is tried"
         )
         expect(
-            hardwareReason.contains("arm64") && !hardwareReason.contains("every identity"),
-            "the reason tells the operator this is the machine itself, not a display an earlier host left behind"
-        )
-        expect(
-            hardwareReason.contains("cannot host from this machine"),
-            "the reason says what this machine cannot do, in the words the rest of the host app's copy uses"
+            hardwareReason == "This machine cannot make a private desktop: the part of macOS that makes one is not "
+                + "present here.",
+            "the reason tells the operator this is the machine itself, not a display an earlier host left behind "
+                + "-- got: \(hardwareReason)"
         )
     }
 

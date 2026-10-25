@@ -68,6 +68,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// of its own screens. Reflects the stored setting, which is off unless
     /// the person here turned it on.
     private let privateDesktopCheckbox = NSButton(checkboxWithTitle: "Offer a private desktop", target: nil, action: nil)
+    /// Why this machine cannot make a private desktop, when the launch probe
+    /// found that it cannot. A warning, not a problem: hosting goes on, so
+    /// the status card above does not mention it.
+    private let privateDesktopUnavailableLabel = NSTextField(labelWithString: "")
     private let privateDesktopExplanationLabel = NSTextField(
         labelWithString: "Lets a viewer open a separate desktop that isn\u{2019}t shown on this machine\u{2019}s screens."
     )
@@ -364,6 +368,13 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         privateDesktopCheckbox.action = #selector(privateDesktopToggled)
         privateDesktopCheckbox.translatesAutoresizingMaskIntoConstraints = false
 
+        privateDesktopUnavailableLabel.font = CanvasDesign.font(.primary, size: 12)
+        privateDesktopUnavailableLabel.textColor = CanvasDesign.warn.nsColor
+        privateDesktopUnavailableLabel.lineBreakMode = .byWordWrapping
+        privateDesktopUnavailableLabel.maximumNumberOfLines = 0
+        privateDesktopUnavailableLabel.translatesAutoresizingMaskIntoConstraints = false
+        privateDesktopUnavailableLabel.isHidden = true
+
         privateDesktopExplanationLabel.font = CanvasDesign.font(.primary, size: 12)
         privateDesktopExplanationLabel.textColor = CanvasDesign.muted.nsColor
         privateDesktopExplanationLabel.lineBreakMode = .byWordWrapping
@@ -393,7 +404,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             retryIdentityButton, replaceIdentityButton, revealButton, pairingCodeView, hideCodeButton,
             pairedMachines,
             autoLoginCheckbox, autoLoginStatusLabel, automaticUpdatesCheckbox, updateLineLabel,
-            privateDesktopCheckbox, privateDesktopExplanationLabel,
+            privateDesktopCheckbox, privateDesktopUnavailableLabel, privateDesktopExplanationLabel,
             localNetworkCheckbox, localNetworkExplanationLabel
         ]
         for view in groups {
@@ -414,6 +425,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.setCustomSpacing(CanvasDesign.Space.xs, after: automaticUpdatesCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: updateLineLabel)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: privateDesktopCheckbox)
+        root.setCustomSpacing(CanvasDesign.Space.xs, after: privateDesktopUnavailableLabel)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: privateDesktopExplanationLabel)
         root.setCustomSpacing(CanvasDesign.Space.xs, after: localNetworkCheckbox)
         root.setCustomSpacing(CanvasDesign.Space.lg, after: localNetworkExplanationLabel)
@@ -534,6 +546,8 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             automaticUpdatesCheckbox.state = installsUpdatesAutomatically() ? .on : .off
         }
         privateDesktopCheckbox.state = offersPrivateDesktop() ? .on : .off
+        privateDesktopUnavailableLabel.stringValue = status.privateDesktopUnavailableReason.map { HostTextFlow.flow($0) } ?? ""
+        privateDesktopUnavailableLabel.isHidden = status.privateDesktopUnavailableReason == nil
         localNetworkCheckbox.state = allowsLocalNetwork() ? .on : .off
 
         refreshPairingSection(presentation)

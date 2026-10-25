@@ -1078,6 +1078,35 @@ MainActor.assumeIsolated {
         )
     }
 
+    // Offer a private desktop is on, but the launch probe found this machine
+    // cannot make one: hosting goes on, and the reason sits under the switch.
+    do {
+        var status = HostOperatorStatus(connection: .hosting(address: "100.64.1.5"), permissions: granted)
+        status.privateDesktopUnavailableReason = HostVirtualDisplayCapability.everyIdentityRefusedReason
+        let controller = HostSetupWindowController(
+            status: status,
+            onRevealPairingCode: {},
+            onStop: {},
+            onOpenPermissionSettings: { _ in },
+            tailscaleAppURLLookup: { nil },
+            onOpenTailscaleApp: { _ in },
+            onToggleSharing: { _, _ in },
+            onRemovePairedDevice: { _ in },
+            autoLoginStatus: { .enabled },
+            offersPrivateDesktop: { true },
+            installsUpdatesAutomatically: { true }
+        )
+        controller.updatePairedMachines(onePairedRow)
+        write(
+            render(hostWindowContent(controller)),
+            named: "host-window-26-private-desktop-unavailable.png",
+            state: "HostSetupWindowController — ready and hosting with Offer a private desktop on, after the launch"
+                + " probe found this machine cannot make one: the reason in warning colour beneath the switch, the"
+                + " status card unchanged; 360pt wide at the height its content needs; no stream pass, it never"
+                + " leaves the host"
+        )
+    }
+
     // The "last screen session" line, with a history, in its two distinct
     // outcomes.
     let lastSessionStates: [(String, String, String?)] = [

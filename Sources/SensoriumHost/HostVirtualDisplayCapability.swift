@@ -3,10 +3,10 @@ import Foundation
 /// Whether this machine can actually create the session canvas, checked the only
 /// honest way there is: there is no public capability query for the private
 /// runtime classes `CoreGraphicsVirtualDisplayAdapter` resolves by name, so
-/// a model-name or architecture guess would be a guess. Every observation so far is
-/// arm64-only; this is what lets
-/// the host refuse honestly on hardware that has never once run it, instead
-/// of hitting an unexplained failure partway into a session.
+/// a model-name or architecture guess would be a guess. A machine that fails
+/// it offers no private desktop for the rest of the run, instead of hitting
+/// an unexplained failure partway into a session, and still hosts its own
+/// screens.
 @MainActor
 public enum HostVirtualDisplayCapability {
     public enum Verdict: Equatable, Sendable {
@@ -75,16 +75,13 @@ public enum HostVirtualDisplayCapability {
     }
 
     /// The two reasons name the step that failed, because they call for
-    /// different things from whoever reads them: nothing will ever make the
-    /// first machine host, while the second is usually one restart away from
-    /// working.
+    /// different things from whoever reads them: nothing will ever give the
+    /// first machine a private desktop, while the second is usually one
+    /// restart away from having one.
     static let runtimeMissingReason =
-        "This machine cannot create the virtual display Sensorium needs to host a session: the "
-            + "macOS component that creates it is not present here. This has only ever been "
-            + "observed working on arm64; Sensorium Host cannot host from this machine."
+        "This machine cannot make a private desktop: the part of macOS that makes one is not present here."
 
     static let everyIdentityRefusedReason =
-        "macOS refused to create the virtual display Sensorium needs to host a session, under "
-            + "every identity it tried. The most likely cause is a session canvas an earlier host "
-            + "left behind when it stopped unexpectedly; restarting this machine clears it."
+        "macOS would not make a private desktop. One left behind by an earlier Sensorium Host is the "
+            + "likely cause; restarting this machine clears it."
 }
