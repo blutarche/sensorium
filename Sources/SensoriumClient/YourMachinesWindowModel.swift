@@ -146,9 +146,11 @@ public enum YourMachinesClickOutcome: Equatable, Sendable {
 /// AppKit.
 public struct YourMachinesWindowModel: Equatable, Sendable {
     public static let heading = "Your machines"
-    /// What is empty, and the one thing to do about it.
+    /// What is empty, as the heading over the line that says what to do.
+    public static let emptyHeading = "Nothing paired yet."
+    /// The one thing to do about it.
     public static let emptySentence = ViewerCopyWrapping.keepingTailTogether(
-        "No machine is paired with this one yet. Choose \(ViewerCopyWrapping.control(addTitle)) to pair with one."
+        "Choose \(ViewerCopyWrapping.control(addTitle)) to pair with one."
     )
     public static let addTitle = "Add a Machine"
     /// A row's own menu item, above Forget, and the words of the step it opens.

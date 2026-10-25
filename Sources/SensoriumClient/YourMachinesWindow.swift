@@ -522,6 +522,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
         var views: [NSView] = [heading(YourMachinesWindowModel.heading)]
         if model.isEmpty {
+            views.append(emptyHeading(YourMachinesWindowModel.emptyHeading))
             views.append(sentence(YourMachinesWindowModel.emptySentence))
             // With nothing paired, adding a machine is the only thing this window
             // does, so it is also what Return means.

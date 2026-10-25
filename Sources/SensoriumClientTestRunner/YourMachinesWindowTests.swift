@@ -158,14 +158,29 @@ func testYourMachinesWindowTests() async {
 
     do {
         // The launch window is the list. With nothing paired it says
-        // so in one sentence and offers the one thing to do; with
-        // machines saved it draws a row each and no eyebrow above them.
+        // what is empty, then what to do, and offers the one thing to do;
+        // with machines saved it draws a row each and no eyebrow above them.
         let empty = YourMachinesWindowController(store: InMemorySavedHostStore())
         expect(hasLabel("Your machines", in: content(of: empty)), "the window's heading names the window")
         expect(
-            hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: empty)),
-            "the empty state says what is empty and what to do about it"
+            hasLabel(YourMachinesWindowModel.emptyHeading, in: content(of: empty)),
+            "the empty state names what is empty in a heading of its own"
         )
+        expect(
+            hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: empty)),
+            "and the line under it says what to do about it"
+        )
+        let pickerEmpty = YourMachinesWindowController(store: InMemorySavedHostStore())
+        pickerEmpty.apply(deviceList: .noOtherDevices)
+        if let heading = label(containing: YourMachinesWindowModel.emptyHeading, in: content(of: empty)),
+           let pickerHeading = label(containing: "Nothing else is on your tailnet yet.", in: content(of: pickerEmpty)) {
+            expect(
+                heading.font == pickerHeading.font && heading.textColor == pickerHeading.textColor,
+                "the empty list's heading is drawn in the same style as the picker's"
+            )
+        } else {
+            expect(false, "both empty states have a heading to compare")
+        }
         expect(
             button(titled: "Add a Machine", in: content(of: empty)) != nil,
             "and offers the only thing that changes it"
@@ -183,8 +198,9 @@ func testYourMachinesWindowTests() async {
             "the line under each name is where that machine is, and says when that is not known"
         )
         expect(
-            !hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: listed)),
-            "the empty sentence is gone once there is a list"
+            !hasLabel(YourMachinesWindowModel.emptySentence, in: content(of: listed))
+                && !hasLabel(YourMachinesWindowModel.emptyHeading, in: content(of: listed)),
+            "the empty heading and sentence are gone once there is a list"
         )
         expect(
             label(containing: "Loft", in: content(of: listed))?.lineBreakMode == .byTruncatingTail,

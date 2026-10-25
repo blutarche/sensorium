@@ -23,15 +23,19 @@ func testYourMachinesWindowModelTests() {
     let studio = savedMachineRow("Studio", key: 2, host: "100.64.1.7", lastConnectedAt: Date(timeIntervalSince1970: 1_000))
 
     do {
-        // With nothing paired the list is one sentence, and adding a
-        // machine is the only thing to do -- so it is the accent. With
-        // machines saved it steps back to a secondary action.
+        // With nothing paired the list is a heading saying what is empty,
+        // then what to do, and adding a machine is the only thing to do --
+        // so it is the accent. With machines saved it steps back to a
+        // secondary action.
         let empty = YourMachinesWindowModel(hosts: [])
         expect(empty.isEmpty, "no saved machines means the empty state")
         expect(
-            unbound(YourMachinesWindowModel.emptySentence)
-                == "No machine is paired with this one yet. Choose Add a Machine to pair with one.",
-            "the empty state says what is empty and what to do about it, got \(YourMachinesWindowModel.emptySentence)"
+            YourMachinesWindowModel.emptyHeading == "Nothing paired yet.",
+            "the empty state's heading says what is empty, got \(YourMachinesWindowModel.emptyHeading)"
+        )
+        expect(
+            unbound(YourMachinesWindowModel.emptySentence) == "Choose Add a Machine to pair with one.",
+            "and the line under it says what to do about it, got \(YourMachinesWindowModel.emptySentence)"
         )
         expect(
             YourMachinesWindowModel.emptySentence.contains("Add\u{00A0}a\u{00A0}Machine")
