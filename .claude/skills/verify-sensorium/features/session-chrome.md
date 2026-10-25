@@ -7,7 +7,7 @@ Everything the viewer draws on its own screen over a live session: the status ov
 - `chrome-status` connecting, connecting after a failure, lost, reconnecting, gave up, unverified host.
 - `chrome-hud` healthy, held below the asked scale, old host, stale, software decoder, pointer captured, clamped choice, fidelity limited by link or by encoder.
 - `chrome-hud-layering` the HUD over the canvas, and under the status panel when the session is lost.
-- `chrome-shortcuts` handle only, opened, pinned, confirming Lock Screen.
+- `chrome-shortcuts` the tab alone, opened, pinned, confirming Lock Screen.
 - `chrome-notices` refusal banners: host screen active, over the host's limit, creation in progress, change failed, unknown reason.
 
 ## How to get to it (user POV)
@@ -28,7 +28,7 @@ Preconditions:
 - **Unverified host.** Read `viewer-status-15-unverified-host-natural.png`. `Could not connect to Workstation.` explains the key did not match the one saved at pairing; the only buttons are Quit Sensorium, Your Machines and Pair Again, with no way to connect anyway.
 - **HUD.** Choose View, Session Diagnostics. Read `viewer-hud-1-healthy.png`, `-5-software-decoder.png`, `-10-fidelity-limited.png`. Each names the decode path and what limits the picture.
 - **Layering.** Read `viewer-hud-6-over-canvas.png` and `-7-under-session-panel.png`. The status panel and its buttons sit above the HUD.
-- **Shortcut strip.** Hover the handle, open, pin, press Lock Screen. Read `viewer-shortcuts-0-...` through `-2-...` in order. The last replaces the row with one confirmation question.
+- **Shortcut strip.** Hover the tab, open, pin, press Lock Screen. Read `viewer-shortcuts-0-...` through `-2-...` in order. The last replaces the row with one confirmation question.
 - **Banners.** Read `viewer-notice-1-...` and `-4-...`. One sentence each, sized to fit.
 - **Live chrome (opt-in).** No smoke drives the overlays on a window. The HUD, strip and overlay logic is covered by `./Scripts/run-unit-tests.sh` (unsandboxed, no `FAIL`): `SessionHUDRowLayoutTests`, `ShortcutStripTests`, `SessionChromeLayoutTests`.
 

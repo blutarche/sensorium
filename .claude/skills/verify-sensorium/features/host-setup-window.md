@@ -37,5 +37,5 @@ Preconditions:
 
 - `host-window-2` and `-16` do not exist; numbering has gaps. Use the names in `index.txt`.
 - These are renders. The live window on the owner's host is never opened, clicked, or quit for verification.
-- The four checkboxes `Open at login`, `Install updates automatically`, `Offer a private desktop` and `Allow connections from this network` render in every state. In the ready states the first two are checked and the last two are not; `Offer a private desktop` is checked in the connected renders. What toggling them stores is proven only by the Host runner.
+- The four checkboxes `Open at login`, `Install updates automatically`, `Offer a private desktop` and `Allow connections from this network` render in every state. In the ready states the first two are checked and the last two are not; `Offer a private desktop` is checked in `host-window-6` and `-20`, the renders of a connected private desktop session. What toggling them stores is proven only by the Host runner.
 - The window is 360 pt wide at its content height; a clipped row in the PNG is a real layout defect.
