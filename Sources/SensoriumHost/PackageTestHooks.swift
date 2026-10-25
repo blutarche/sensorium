@@ -109,6 +109,26 @@ package enum CanvasHostTestHooks {
         return (view.editor.string, view.editor.font)
     }
 
+    /// The column the editor's opening text is set in: the width its text
+    /// container allows, and what the opening text lays out to -- the widest
+    /// line and how many lines.
+    @MainActor
+    package static func workspaceEditorTextColumn(
+        frame: NSRect,
+        canvas: CanvasWorkspacePlacement
+    ) -> (containerWidth: CGFloat, usedWidth: CGFloat, lineCount: Int) {
+        let view = WorkspaceContentView(frame: frame, canvas: canvas)
+        guard let container = view.editor.textContainer, let layout = view.editor.layoutManager else {
+            fatalError("expected WorkspaceContentView's editor to have a text container and layout manager")
+        }
+        layout.ensureLayout(for: container)
+        var lineCount = 0
+        layout.enumerateLineFragments(forGlyphRange: layout.glyphRange(for: container)) { _, _, _, _, _ in
+            lineCount += 1
+        }
+        return (container.size.width, layout.usedRect(for: container).width, lineCount)
+    }
+
     /// The launcher's own status row and the hint below it, laid out for a
     /// status applied directly through `testApplyStatus`, bypassing the
     /// relay's async hop.

@@ -407,13 +407,16 @@ public final class NativeCanvasWorkspace: CanvasWorkspacePresenting {
 
 @MainActor
 final class WorkspaceContentView: NSView, NSTextViewDelegate {
-    /// How to reach the launcher and how to come back. Chrome, not editor
+    /// How to reach the launcher and how to leave it. Chrome, not editor
     /// content: the text view below is editable, and select-all followed by
     /// one keystroke would otherwise erase the only reminder of this
     /// window's keyboard, permanently and with nothing to restore it.
-    private static let keyboardHint = "\u{2318}L focuses the launcher · Esc returns to the editor"
+    private static let keyboardHint = "\u{2318}L focuses the launcher · Esc leaves it"
     /// The margin the whole workspace column stands in.
     private static let inset: CGFloat = 48
+    /// The widest the editor's text runs before it wraps, so the welcome
+    /// sentence reads at a comfortable line length on a wide canvas.
+    private static let textColumnWidth: CGFloat = 640
 
     let editor: NSTextView
     private let launcher: CanvasLauncherView
@@ -474,6 +477,11 @@ final class WorkspaceContentView: NSView, NSTextViewDelegate {
         editor.backgroundColor = CanvasDesign.bg2.nsColor
         editor.textContainerInset = NSSize(width: 0, height: CanvasDesign.Space.md)
         editor.textContainer?.lineFragmentPadding = 0
+        editor.textContainer?.widthTracksTextView = false
+        editor.textContainer?.containerSize = NSSize(
+            width: min(Self.textColumnWidth, innerWidth),
+            height: .greatestFiniteMagnitude
+        )
         editor.insertionPointColor = CanvasDesign.accentHi.nsColor
         editor.selectedTextAttributes = [
             .backgroundColor: CanvasDesign.selection.nsColor,

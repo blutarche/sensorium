@@ -21,5 +21,28 @@ func runHostWorkspaceEditorContentTests() async {
         "the editor names the surface by the product's own term, a private desktop -- got \(editor.text)"
     )
 
-    print("PASS: the workspace editor opens with body-face prose that names the private desktop")
+    // The welcome sentence is one long line across a wide canvas; held to a
+    // readable measure it wraps.
+    let column = CanvasHostTestHooks.workspaceEditorTextColumn(
+        frame: NSRect(x: 0, y: 0, width: 1920, height: 1200),
+        canvas: placement
+    )
+    expect(
+        column.containerWidth <= 640 && column.usedWidth <= 640,
+        "the editor's text column is no wider than 640pt -- container \(column.containerWidth), used \(column.usedWidth)"
+    )
+    expect(
+        column.lineCount > 1,
+        "the welcome sentence wraps at that measure instead of running across the panel -- \(column.lineCount) line(s)"
+    )
+    let narrow = CanvasHostTestHooks.workspaceEditorTextColumn(
+        frame: NSRect(x: 0, y: 0, width: 1200, height: 800),
+        canvas: placement
+    )
+    expect(
+        narrow.containerWidth <= 640 && narrow.usedWidth <= narrow.containerWidth,
+        "a smaller canvas keeps the column within its panel -- container \(narrow.containerWidth), used \(narrow.usedWidth)"
+    )
+
+    print("PASS: the workspace editor opens with body-face prose that names the private desktop, wrapped at 640pt")
 }

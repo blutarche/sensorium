@@ -14,10 +14,10 @@ func runHostWorkspaceKeyboardHintTests() async {
         canvas: placement
     )
     expect(
-        hint == "\u{2318}L focuses the launcher \u{b7} Esc returns to the editor",
+        hint == "\u{2318}L focuses the launcher \u{b7} Esc leaves it",
         // \u{2318} is the command-key glyph macOS itself shows in menus; \u{b7} is the middle dot the source string itself uses.
-        "the keyboard hint names the shortcut with the \u{2318} glyph and says the launcher takes focus, naming where Esc lands rather than a \"here\" that is ambiguous once the launcher is up -- got: \(hint)"
+        "the keyboard hint names the shortcut with the \u{2318} glyph, says the launcher takes focus and that Esc leaves it, without naming an editor nothing on screen looks like -- got: \(hint)"
     )
 
-    print("PASS: the workspace's keyboard hint reads \"\u{2318}L focuses the launcher · Esc returns to the editor\"")
+    print("PASS: the workspace's keyboard hint reads \"\u{2318}L focuses the launcher · Esc leaves it\"")
 }
