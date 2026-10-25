@@ -375,6 +375,13 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         if model.isEmpty {
             GtkWidgets.append(
                 GtkWidgets.onTextLine(
+                    GtkWidgets.label(YourMachinesWindowModel.emptyHeading, cssClass: GtkViewerStyle.Class.headline),
+                    size: 13
+                ),
+                to: listPage
+            )
+            GtkWidgets.append(
+                GtkWidgets.onTextLine(
                     GtkWidgets.label(YourMachinesWindowModel.emptySentence, cssClass: GtkViewerStyle.Class.muted),
                     size: 13
                 ),

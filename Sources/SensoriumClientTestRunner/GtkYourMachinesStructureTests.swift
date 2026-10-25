@@ -94,6 +94,28 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         )
     }
 
+    // The empty list says what is empty, in the heading style the add step uses
+    // for an empty tailnet, and then what to do about it.
+    do {
+        let (window, root) = show { _ in }
+        defer { window.hide() }
+        let labels = visibleLabels(under: root)
+        expect(
+            labels.map(\.text) == [
+                YourMachinesWindowModel.heading, YourMachinesWindowModel.emptyHeading, YourMachinesWindowModel.emptySentence
+            ],
+            "the empty list is headed, says what is empty, then what to do, got \(labels.map(\.text))"
+        )
+        expect(
+            labels.contains { $0.text == YourMachinesWindowModel.emptyHeading && $0.classes.contains(Class.headline) },
+            "what is empty is in the headline style, got \(labels.map(\.classes))"
+        )
+        expect(
+            labels.contains { $0.text == YourMachinesWindowModel.emptySentence && $0.classes.contains(Class.muted) },
+            "and what to do stays in the muted line under it"
+        )
+    }
+
     // The code step.
     do {
         let (window, root) = show { $0.showCodeStep(for: studio) }
