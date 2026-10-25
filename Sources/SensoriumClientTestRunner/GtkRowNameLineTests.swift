@@ -75,8 +75,8 @@ func testGtkYourMachinesTextSitsOnMacLinesTests() {
     )
     // An address long enough that the row's detail wraps onto a second line.
     let long = SavedHost(
-        displayName: "Alexandria-Whitfield-Sinclairs-Laptop-16-inch-M4-Max",
-        host: "alexandria-whitfield-sinclairs-laptop.tail1234.ts.net", port: 7777,
+        displayName: "Workstation-West-Annex-Render-Node-07-Rack-B-Gpu-Bay",
+        host: "workstation-west-annex-render-node-07.tail1234.ts.net", port: 7777,
         hostPublicKey: Data([4]), tlsCertificateHash: Data([4, 4]), lastConnectedAt: Date(timeIntervalSince1970: 500)
     )
     let devices = [

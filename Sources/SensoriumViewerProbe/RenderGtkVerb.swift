@@ -80,7 +80,7 @@ enum RenderGtkVerb {
     )
     private static let longNamedHost = SavedHost(
         displayName: "Kestrel-Field-Station-Long-Range-Research-Notebook",
-        host: "alexandria-whitfield-sinclairs-laptop.tail1234.ts.net",
+        host: "workstation-west-annex-render-node-07.tail1234.ts.net",
         port: 7777,
         hostPublicKey: Data([4]),
         tlsCertificateHash: Data([4, 4]),
