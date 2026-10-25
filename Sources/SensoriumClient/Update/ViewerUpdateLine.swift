@@ -20,10 +20,14 @@ public struct ViewerUpdateLine: Equatable, Sendable {
 
     public let text: String
     public let offersRestartNow: Bool
+    /// True for the one line that reports a failure, which is drawn apart
+    /// from the rest.
+    public let isFailure: Bool
 
-    public init(text: String, offersRestartNow: Bool) {
+    public init(text: String, offersRestartNow: Bool, isFailure: Bool = false) {
         self.text = text
         self.offersRestartNow = offersRestartNow
+        self.isFailure = isFailure
     }
 
     /// Nil when there is nothing to say. **Restart Now** is offered only
@@ -38,16 +42,19 @@ public struct ViewerUpdateLine: Equatable, Sendable {
         restartFailureReason: String?
     ) -> ViewerUpdateLine? {
         if let restartFailureReason {
-            return failed(restartFailureReason)
+            return failed(restartFailureReason, runningVersion: runningVersion)
         }
         switch status {
         case let .ready(version):
+            let offersRestartNow = !sessionInProgress && !isRestarting
             return ViewerUpdateLine(
-                text: "Sensorium \(version) is ready.",
-                offersRestartNow: !sessionInProgress && !isRestarting
+                text: offersRestartNow
+                    ? "Sensorium \(version) is ready."
+                    : "Sensorium \(version) is ready. It installs the next time Sensorium quits.",
+                offersRestartNow: offersRestartNow
             )
         case let .failed(reason):
-            return failed(reason)
+            return failed(reason, runningVersion: runningVersion)
         case .notUpdatable:
             return ViewerUpdateLine(
                 text: "Move Sensorium to Applications and open it again to receive updates.",
@@ -62,8 +69,12 @@ public struct ViewerUpdateLine: Equatable, Sendable {
         }
     }
 
-    private static func failed(_ reason: String) -> ViewerUpdateLine {
-        ViewerUpdateLine(text: "Sensorium could not update: \(reason).", offersRestartNow: false)
+    private static func failed(_ reason: String, runningVersion: UpdateVersion) -> ViewerUpdateLine {
+        ViewerUpdateLine(
+            text: "Sensorium could not update: \(reason). It keeps running \(runningVersion).",
+            offersRestartNow: false,
+            isFailure: true
+        )
     }
 }
 #endif

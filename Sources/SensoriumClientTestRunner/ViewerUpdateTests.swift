@@ -227,12 +227,18 @@ func testViewerUpdateLineTests() {
         "a staged update says so, with Restart Now, got \(String(describing: line(.ready(next))))"
     )
     expect(
-        line(.ready(next), sessionInProgress: true) == ViewerUpdateLine(text: "Sensorium 0.5.0 is ready.", offersRestartNow: false),
-        "while a session runs or a session window is open, the line stays and Restart Now does not"
+        line(.ready(next), sessionInProgress: true)
+            == ViewerUpdateLine(
+                text: "Sensorium 0.5.0 is ready. It installs the next time Sensorium quits.", offersRestartNow: false
+            ),
+        "while a session runs or a session window is open, the line stays, Restart Now does not, and the line says when it installs"
     )
     expect(
-        line(.ready(next), isRestarting: true)?.offersRestartNow == false,
-        "nor while a restart is already under way"
+        line(.ready(next), isRestarting: true)
+            == ViewerUpdateLine(
+                text: "Sensorium 0.5.0 is ready. It installs the next time Sensorium quits.", offersRestartNow: false
+            ),
+        "nor while a restart is already under way, and the line says the same"
     )
     expect(ViewerUpdateLine.restartNowTitle == "Restart Now", "the button says Restart Now")
 
@@ -253,15 +259,29 @@ func testViewerUpdateLineTests() {
     expect(line(.waiting(next)) == nil, "an update waiting for its next try says nothing")
 
     expect(
-        line(.failed(reason: "the download did not match the release"))?.text
-            == "Sensorium could not update: the download did not match the release.",
-        "a failure names its reason"
+        line(.failed(reason: "the download did not match the release"))
+            == ViewerUpdateLine(
+                text: "Sensorium could not update: the download did not match the release. It keeps running 0.4.0.",
+                offersRestartNow: false,
+                isFailure: true
+            ),
+        "a failure names its reason and the version that keeps running, and is the one line drawn as a failure"
     )
     expect(
         line(.ready(next), restartFailureReason: "the new version did not start in time")
-            == ViewerUpdateLine(text: "Sensorium could not update: the new version did not start in time.", offersRestartNow: false),
+            == ViewerUpdateLine(
+                text: "Sensorium could not update: the new version did not start in time. It keeps running 0.4.0.",
+                offersRestartNow: false,
+                isFailure: true
+            ),
         "a Restart Now that did not take says why, whatever the status"
     )
+    for other in [
+        line(.ready(next)), line(.ready(next), sessionInProgress: true), line(.notUpdatable),
+        line(.checking, manualCheck: .pending), line(.current, manualCheck: .answered(upToDate: true))
+    ] {
+        expect(other?.isFailure == false, "only the failure line is a failure, got \(String(describing: other))")
+    }
     expect(
         line(.notUpdatable)?.text == "Move Sensorium to Applications and open it again to receive updates.",
         "an app that cannot replace itself says where to move it"
@@ -429,7 +449,10 @@ func testViewerUpdaterRestartNowTests() async {
 
         harness.updater.sessionRunChanged(true)
         expect(harness.updater.line?.offersRestartNow == false, "a session in progress takes Restart Now away")
-        expect(harness.updater.line?.text == "Sensorium 0.5.0 is ready.", "and leaves the line")
+        expect(
+            harness.updater.line?.text == "Sensorium 0.5.0 is ready. It installs the next time Sensorium quits.",
+            "and leaves the line, saying when it installs"
+        )
         await harness.updater.restartNow()
         expect(harness.installer.handOffs.isEmpty, "Restart Now does nothing while a session runs")
         harness.updater.sessionRunChanged(false)
@@ -452,7 +475,11 @@ func testViewerUpdaterRestartNowTests() async {
         )
         expect(harness.terminations == 0, "a refused handoff does not quit")
         expect(
-            harness.updater.line == ViewerUpdateLine(text: "Sensorium could not update: the new version did not start in time.", offersRestartNow: false),
+            harness.updater.line == ViewerUpdateLine(
+                text: "Sensorium could not update: the new version did not start in time. It keeps running 0.4.0.",
+                offersRestartNow: false,
+                isFailure: true
+            ),
             "and the line says why, got \(String(describing: harness.updater.line))"
         )
         harness.updater.installAtQuit()
@@ -481,7 +508,8 @@ func testViewerUpdaterRestartNowTests() async {
         await harness.updater.restartNow()
         expect(harness.terminations == 0, "a refused version that could not be swapped back out does not quit this one")
         expect(
-            harness.updater.line?.text == "Sensorium could not update: the new version is not signed like this one.",
+            harness.updater.line?.text
+                == "Sensorium could not update: the new version is not signed like this one. It keeps running 0.4.0.",
             "and the line says why, got \(String(describing: harness.updater.line))"
         )
     }
@@ -630,7 +658,8 @@ func testViewerUpdaterQuitDuringRestartNowTests() async {
         expect(harness.installer.quitInstalls.isEmpty, "and is not installed again at quit")
         expect(harness.terminations == 0, "the quit already under way is the only one, got \(harness.terminations)")
         expect(
-            harness.updater.line?.text == "Sensorium could not update: the new version did not start in time.",
+            harness.updater.line?.text
+                == "Sensorium could not update: the new version did not start in time. It keeps running 0.4.0.",
             "the line says why, got \(String(describing: harness.updater.line))"
         )
     }
@@ -726,7 +755,8 @@ func testViewerUpdaterManualCheckTests() async {
     harness.checkResult = .failed(.signatureInvalid)
     await harness.updater.checkForUpdates()
     expect(
-        harness.updater.line?.text == "Sensorium could not update: the download did not match the release.",
+        harness.updater.line?.text
+            == "Sensorium could not update: the download did not match the release. It keeps running 0.4.0.",
         "a failed check says why, got \(String(describing: harness.updater.line))"
     )
     expect(!harness.updater.checksAutomatically, "and a chosen check leaves automatic updates off")
