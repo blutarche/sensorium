@@ -267,7 +267,7 @@ enum SessionChromePainter {
             centreX: dismissRect.x + dismissRect.width / 2,
             centreY: dismissRect.y + dismissRect.height / 2,
             size: 8,
-            color: ViewerPalette.muted
+            color: ViewerPalette.ink
         )
     }
 

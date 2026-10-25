@@ -318,6 +318,15 @@ func testNoticeBorderAndDismissGlyphTests() {
         "no vertical or horizontal stroke crosses the midpoints -- a filled box or square glyph would leave ink there"
     )
 
+    // macOS draws the same cross in the ink its text uses, near white, not
+    // in the muted grey of a secondary label. A pixel on the crossing of the
+    // two strokes is covered by both, so it holds the stroke's own colour.
+    let crossing = (-1...1).flatMap { dx in (-1...1).map { dy in pngPixel(at: url, x: centreX + dx, y: centreY + dy) } }
+    expect(
+        crossing.contains { matches($0, ViewerPalette.ink) },
+        "the dismiss cross is the ink the macOS notice draws its \u{2715} in, not a muted one"
+    )
+
     print("PASS: the notice draws its warn border and a genuine stroked cross, not a box or blank")
 }
 
