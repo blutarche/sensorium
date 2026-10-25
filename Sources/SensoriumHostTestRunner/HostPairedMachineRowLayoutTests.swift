@@ -65,6 +65,37 @@ func runHostPairedMachineRowLayoutTests() async {
     }
 
     do {
+        // Inset like every sibling card, a row still holds its widest content
+        // inside the card: a long name wraps beside Rename and Remove rather
+        // than running under them, and the ask-first checkbox and the key
+        // line stay inside the card's trailing inset.
+        let longName = "Kestrel Laptop Pro Max Studio Edition North Annex Workstation"
+        let host = controller(rows: [row(longName, sharing: true)])
+        field("window", of: host, as: NSWindow.self).contentView?.layoutSubtreeIfNeeded()
+        let rowView = firstRow(of: host)
+        let name: NSTextField = field("nameLabel", of: rowView, as: NSTextField.self)
+        let rename: NSButton = field("renameButton", of: rowView, as: NSButton.self)
+        let remove: NSButton = field("removeButton", of: rowView, as: NSButton.self)
+        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
+        let meta: NSTextField = field("metaLabel", of: rowView, as: NSTextField.self)
+        let trailingLimit = rowView.bounds.width - CanvasDesign.Space.md + 0.5
+        func rightEdge(of view: NSView) -> CGFloat {
+            rowView.convert(view.bounds, from: view).maxX
+        }
+        expect(
+            name.frame.maxX <= rename.frame.minX && name.frame.height > (name.font?.boundingRectForFont.height ?? 0) * 1.5,
+            "a long name wraps before it reaches Rename -- name \(name.frame), Rename \(rename.frame)"
+        )
+        expect(
+            rightEdge(of: remove) <= trailingLimit && rightEdge(of: askFirst) <= trailingLimit
+                && rightEdge(of: meta) <= trailingLimit,
+            "the row's widest content stays inside the card's 16pt trailing inset in a \(rowView.bounds.width)pt-wide row"
+                + " -- Remove \(rightEdge(of: remove)), checkbox \(rightEdge(of: askFirst)), key line \(rightEdge(of: meta))"
+        )
+        print("PASS: a paired machine's long name and controls stay inside the card's inset")
+    }
+
+    do {
         // The label of a switch that is on reads as live, in the same ink as
         // the checkbox under it.
         let host = controller(rows: [row("Kestrel Laptop", sharing: true)])

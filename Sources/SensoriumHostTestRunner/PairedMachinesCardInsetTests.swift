@@ -49,9 +49,9 @@ func runPairedMachinesCardInsetTests() async {
     }
 
     do {
-        // A paired machine's own card insets its text by 12pt, tighter
-        // than the 16pt every other card in this window uses -- this row
-        // was made to fit four lines compactly, not to match them.
+        // A paired machine's own card insets its text by the same 16pt
+        // every other card in this window uses, so row text lines up with
+        // the text of the cards around it.
         let row = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
@@ -65,12 +65,12 @@ func runPairedMachinesCardInsetTests() async {
         let innerStack: NSStackView = field("stack", of: rowView, as: NSStackView.self)
 
         expect(
-            leadingInset(of: innerStack, in: rowView) == CanvasDesign.Space.sm,
-            "a paired machine's own card insets its text by 12pt, tighter than the 16pt every other card in this "
-                + "window uses -- got: \(String(describing: leadingInset(of: innerStack, in: rowView)))"
+            leadingInset(of: innerStack, in: rowView) == CanvasDesign.Space.md,
+            "a paired machine's own card insets its text by the same 16pt every other card in this window uses "
+                + "-- got: \(String(describing: leadingInset(of: innerStack, in: rowView)))"
         )
 
-        print("PASS: a paired machine's own card insets its text by 12pt")
+        print("PASS: a paired machine's own card insets its text by 16pt")
     }
 
     do {

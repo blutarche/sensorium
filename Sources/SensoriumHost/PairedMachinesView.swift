@@ -388,7 +388,7 @@ private final class PairedMachineRowView: NSView {
         // every other line merely wraps under whatever width it needs.
         nameRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
 
-        let inset = CanvasDesign.Space.sm
+        let inset = CanvasDesign.Space.md
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
@@ -462,9 +462,7 @@ private final class PairedMachineRowView: NSView {
 
     /// A row's small bordered text button. Sized from the label itself, not
     /// left to the bordered-off cell's own tight fit: without this the title
-    /// all but touches the border on every side. Insets match this row's own
-    /// outer padding horizontally and the row's tightest vertical gap
-    /// otherwise.
+    /// all but touches the border on every side.
     private static func styleRowButton(_ button: NSButton, title: String, color: DesignColor) {
         button.isBordered = false
         button.wantsLayer = true
