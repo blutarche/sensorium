@@ -27,7 +27,7 @@ When it is ready, *Your Machines* shows one line: *Sensorium `<version>` is read
 
 The host checks on the same schedule. It installs on its own when it is idle: no session live, no pairing in progress. It stops listening, starts the new version beside itself, and quits only once the new version is serving with the same identity, paired machines and address. If the new version does not come up that way, the old one takes its place back and keeps serving. A viewer that tries to connect during those seconds is refused and connects on a later try.
 
-The host window shows one line at the bottom, under **Open at login**:
+The host window shows one line under **Install updates automatically**:
 
 | State | Line |
 | --- | --- |
@@ -269,7 +269,7 @@ Still to test:
 
 - The Linux viewer's own update. It updates through its package.
 - A machine whose user cannot write to Applications. The app shows the *Not updatable* line.
-- An Intel Mac as the host. The host is built for Apple silicon only, as before.
+- An Intel machine as the host. The host is built for Apple silicon only, as before.
 - Delta updates, beta channels, and key rotation.
 
 ---
