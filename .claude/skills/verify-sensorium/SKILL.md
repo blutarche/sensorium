@@ -76,7 +76,7 @@ Run one only when the task explicitly approves an opt-in macOS integration test.
 
 Every smoke points each process at a throwaway home with both `HOME` and `CFFIXED_USER_HOME` (`HOME` alone does not move Foundation's Application Support directory), and none binds 7777; `Scripts/assert-smoke-isolated.sh` enforces both in every smoke's contract test. Pick the smoke that matches the claim. `Scripts/run-real-local-host-screen-smoke.sh` binds port 7783, pairs a probe, writes the arming record inside that throwaway home, streams this machine's display, moves the pointer, types into a probe window, changes the display mode, restores it, and compares the display inventory before and after.
 
-The other four are session-canvas smokes: `video` (port 7782, capture to presented frame), `workspace-input` (7781, typing lands in the canvas workspace), `resize` (7787, viewer-driven stream resolution) and `focus-release` (7788, no key left held after a session). Each creates a virtual display. A host stopped mid-session can leave that display behind until logout, so let each script end on its own and never interrupt it. Before running any smoke, confirm `Scripts/assert-smoke-isolated.sh <smoke>` exits 0.
+The other four are private desktop (session canvas) smokes: `video` (port 7782, capture to presented frame), `workspace-input` (7781, typing lands in the canvas workspace), `resize` (7787, viewer-driven stream resolution) and `focus-release` (7788, no key left held after a session). Each creates a private desktop. A host stopped mid-session can leave that display behind until logout, so let each script end on its own and never interrupt it. Before running any smoke, confirm `Scripts/assert-smoke-isolated.sh <smoke>` exits 0.
 
 After any smoke, before anything else:
 
@@ -99,7 +99,7 @@ Proof standards:
 ## Cleanup
 
 - Renders and loopback leave no process. Nothing to stop.
-- Smokes stop their own host through an exit trap. Afterwards `keep-smoke-evidence.sh` must report `no repo-built Sensorium process running`. If it lists a pid this run started, first check its log: the last `connected` line must be followed by `disconnected` (stopping a host mid-session can strand a virtual display until logout). Then `kill -TERM <that pid>` and rerun the helper. Never kill by name, never use SIGKILL, never touch an `/Applications/...` process or a pid you did not start.
+- Smokes stop their own host through an exit trap. Afterwards `keep-smoke-evidence.sh` must report `no repo-built Sensorium process running`. If it lists a pid this run started, first check its log: the last `connected` line must be followed by `disconnected` (stopping a host mid-session can strand a private desktop until logout). Then `kill -TERM <that pid>` and rerun the helper. Never kill by name, never use SIGKILL, never touch an `/Applications/...` process or a pid you did not start.
 - Smoke state under `.build/real-local-*-smoke` may stay; the next run of that smoke wipes it. Never delete `Artifacts/verify/`.
 - If a display mode or display count changed and was not put back, stop and report it. Do not try to repair a display.
 

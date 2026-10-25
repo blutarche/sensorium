@@ -12,9 +12,9 @@ Everything the viewer draws on its own screen over a live session: the status ov
 
 ## How to get to it (user POV)
 
-- Connect to a machine from Your Machines; the status overlay shows until the first frame.
+- Connect to a machine from Your Machines. The session window opens at the first picture; the status overlay appears over it when the session drops.
 - View menu, Session Diagnostics, for the HUD.
-- Hover the handle at the top centre of the session window for the shortcut strip.
+- Hover the small tab at the top centre of the session window for the shortcut strip.
 - Displays or Resolution menu, a choice the host cannot honour, for a banner.
 
 ## Driving it with verify-sensorium
@@ -23,9 +23,9 @@ Preconditions:
 
 - Baseline from `README.md`.
 
-- **Connecting.** Pick a machine. Run `.claude/skills/verify-sensorium/scripts/render.sh chrome viewer-status-1-connecting-natural.png viewer-status-1b-connecting-after-failure-natural.png viewer-status-2-lost-natural.png viewer-status-3-reconnecting-natural.png viewer-status-4-gave-up-natural.png viewer-status-15-unverified-host-natural.png viewer-hud-1-healthy.png viewer-hud-5-software-decoder.png viewer-hud-6-over-canvas.png viewer-hud-7-under-session-panel.png viewer-hud-10-fidelity-limited.png viewer-shortcuts-0-handle.png viewer-shortcuts-1-shown.png viewer-shortcuts-1b-pinned.png viewer-shortcuts-2-confirming-lock.png viewer-notice-1-host-screen-active.png viewer-notice-4-change-failed.png`. All `ok:`. `viewer-status-1-...` reads "Connecting to workstation…" (the renderer names its machine "workstation").
-- **Drop and recover.** Read `viewer-status-2-lost-...`, `-3-reconnecting-...`, `-4-gave-up-...` in order. The last frame stays underneath; the words move from lost to reconnecting to cannot reach.
-- **Unverified host.** Read `viewer-status-15-unverified-host-natural.png`. `Could not connect to workstation.` explains the key did not match the one saved at pairing; the only buttons are Quit Sensorium, Your Machines and Pair Again, with no way to connect anyway.
+- **Connecting.** Pick a machine. Run `.claude/skills/verify-sensorium/scripts/render.sh chrome viewer-status-1-connecting-natural.png viewer-status-1b-connecting-after-failure-natural.png viewer-status-2-lost-natural.png viewer-status-3-reconnecting-natural.png viewer-status-4-gave-up-natural.png viewer-status-15-unverified-host-natural.png viewer-hud-1-healthy.png viewer-hud-5-software-decoder.png viewer-hud-6-over-canvas.png viewer-hud-7-under-session-panel.png viewer-hud-10-fidelity-limited.png viewer-shortcuts-0-handle.png viewer-shortcuts-1-shown.png viewer-shortcuts-1b-pinned.png viewer-shortcuts-2-confirming-lock.png viewer-notice-1-host-screen-active.png viewer-notice-4-change-failed.png`. All `ok:`. `viewer-status-1-...` reads "Connecting to Workstation…" (the renderer names its machine "Workstation").
+- **Drop and recover.** Read `viewer-status-2-lost-...`, `-3-reconnecting-...`, `-4-gave-up-...` in order. The last frame stays underneath; the headline moves from *Connection to Workstation lost.* to *Reconnecting to Workstation…* to *Cannot reach Workstation.*
+- **Unverified host.** Read `viewer-status-15-unverified-host-natural.png`. `Could not connect to Workstation.` explains the key did not match the one saved at pairing; the only buttons are Quit Sensorium, Your Machines and Pair Again, with no way to connect anyway.
 - **HUD.** Choose View, Session Diagnostics. Read `viewer-hud-1-healthy.png`, `-5-software-decoder.png`, `-10-fidelity-limited.png`. Each names the decode path and what limits the picture.
 - **Layering.** Read `viewer-hud-6-over-canvas.png` and `-7-under-session-panel.png`. The status panel and its buttons sit above the HUD.
 - **Shortcut strip.** Hover the handle, open, pin, press Lock Screen. Read `viewer-shortcuts-0-...` through `-2-...` in order. The last replaces the row with one confirmation question.
@@ -35,6 +35,6 @@ Preconditions:
 ## Gotchas
 
 - Files with `-natural` sit over a synthetic frame; `-stream1.0x`/`-stream1.5x` versions exist for canvas content only. Viewer-local chrome never crosses the wire, so cite the single-pass file.
-- The connecting overlay is opaque, so its stream passes are identical to the natural one by design.
+- The connecting overlay is opaque, so its stream passes are identical to the natural one by design. No window shows it: a first dial is reported on the machine's row in Your Machines, and the session window opens at the first picture.
 - Menus (View, Resolution, Displays, Screen) have no render. Do not claim one was looked at.
 - "private desktop" is the product's only name for a session-owned display; "virtual display" and "canvas" must never appear in a PNG. Seeing either is a defect.

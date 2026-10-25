@@ -7,7 +7,7 @@ A paired, armed viewer sees and controls one of the host's own displays. While i
 - `hs-start` the session starts on the host screen and frames reach the viewer.
 - `hs-input` the viewer's pointer and keys reach the host display.
 - `hs-indicator` the on-host badge: expanded at start, shrunk, collapsed to a pill.
-- `hs-ask-first` the presence prompt: Allow / Don't Allow, thirty-second timeout.
+- `hs-ask-first` the presence prompt: Allow / Don’t Allow, thirty-second timeout.
 - `hs-refusals` the viewer's sentence when a host-screen connect never becomes a session.
 - `hs-mode` a requested display mode is applied and the previous one restored.
 - `hs-record` the host's last-session record, clean or reconciled after a crash.
@@ -26,7 +26,7 @@ Preconditions:
 - For `hs-start`, `hs-input`, `hs-mode` live: an approved opt-in integration test, doctor's `preconditions met`, and the packaged host holding Screen Recording and Accessibility.
 
 - **Indicator.** A session starts. Run `.claude/skills/verify-sensorium/scripts/render.sh host-screen host-screen-badge-1-expanded.png host-screen-badge-2-shrunk.png host-screen-badge-3-collapsed.png host-screen-presence-prompt-1-short.png host-screen-presence-prompt-2-long-device-name.png host-screen-presence-prompt-3-long-display-label.png host-window-7-connected-host-screen.png host-window-12-last-session-clean-stop.png host-window-13-last-session-not-clean.png viewer-status-6-ended-not-allowed-natural.png viewer-status-7-ended-presence-check-required-natural.png viewer-status-8-ended-presence-declined-natural.png viewer-status-10-ended-display-unavailable-natural.png viewer-status-13-ended-session-active-natural.png`. All `ok:`. The badge names the viewer and offers Stop in each of its three sizes.
-- **Ask first.** Read the three `host-screen-presence-prompt-*` files. Each names the device and display, offers Allow and Don't Allow (the default), and says `Don’t Allow will be chosen automatically in 0:30.`; long names wrap inside the panel.
+- **Ask first.** Read the three `host-screen-presence-prompt-*` files. Each names the device and display, offers Allow and Don’t Allow (the default), and says `Don’t Allow will be chosen automatically in 0:30.`; long names wrap inside the panel.
 - **Refusals at viewer.** Read the `viewer-status-*-ended-*` files. Each says in plain words why nothing is shown (not allowed, declined, display unavailable, already in use).
 - **Record.** Read `host-window-12-...` and `-13-...`. Device, display and times; the crash case says it has no stop time rather than inventing one.
 - **Live stream, input and mode (opt-in).** Run `Scripts/run-real-local-host-screen-smoke.sh` unsandboxed, then `.claude/skills/verify-sensorium/scripts/keep-smoke-evidence.sh host-screen live`. Exit 0 and `PASS: real local host screen smoke`. `host.log` contains `host screen started for` and `host-screen capture started`; the script prints `host_screen_frames=` above 0, `pointer_moved=yes`, `text_typed=yes`, `mode_applied=` not `no`, `mode_restored=` not `no`; `display-inventory-pre.json` and `-post.json` match.

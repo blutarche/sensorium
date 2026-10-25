@@ -4,14 +4,14 @@ Opening Sensorium on the viewer shows Your Machines: every host this machine has
 
 ## Sub-features
 
-- `machines-empty` nothing paired yet: one sentence and the accent Add a Machine button.
+- `machines-empty` nothing paired yet: *No machine is paired with this one yet. Choose Add a Machine to pair with one.* and the accent Add a Machine button.
 - `machines-list` saved machines, most recent first, with address and tailnet status.
 - `machines-connecting` the dialling row's status reads connecting… and it offers Cancel; other rows stay usable.
-- `machines-failed` a failed attempt says why (for example, no answer) and keeps Cancel while the retry is pending.
-- `machines-rename` Rename puts the current name in a field with Rename and Cancel beneath.
+- `machines-failed` a failed attempt says why (for example, couldn’t reach it), adds trying again… and keeps Cancel while the retry is pending.
+- `machines-rename` Rename… puts the current name in a field with Cancel and Rename beneath.
 - `machines-unnamed` a machine paired without a name shows its address instead.
 - `machines-long-name` names and addresses longer than the row truncate inside it.
-- `identity-unreadable` an unreadable key file offers Try again, then Make a new key.
+- `identity-unreadable` an unreadable key file offers Try Again, then Make a New Key.
 
 ## How to get to it (user POV)
 
@@ -26,13 +26,13 @@ Preconditions:
 - Baseline from `README.md`.
 - Nothing else; renders need no paired machine and no host.
 
-- **Empty list.** First launch with nothing paired. Run `.claude/skills/verify-sensorium/scripts/render.sh machines viewer-machines-1-empty.png viewer-machines-2-list.png viewer-machines-3-connecting.png viewer-machines-4-failed.png viewer-rename-1.png viewer-machines-5-one-unnamed.png viewer-machines-6-several-selected.png viewer-machines-7-long-name.png viewer-identity-1-key-unreadable.png`. Every line of `expected.txt` reads `ok:`. `viewer-machines-1-empty.png` shows one sentence and Add a Machine.
+- **Empty list.** First launch with nothing paired. Run `.claude/skills/verify-sensorium/scripts/render.sh machines viewer-machines-1-empty.png viewer-machines-2-list.png viewer-machines-3-connecting.png viewer-machines-4-failed.png viewer-rename-1.png viewer-machines-5-one-unnamed.png viewer-machines-6-several-selected.png viewer-machines-7-long-name.png viewer-identity-1-key-unreadable.png`. Every line of `expected.txt` reads `ok:`. `viewer-machines-1-empty.png` shows *No machine is paired with this one yet. Choose Add a Machine to pair with one.* and Add a Machine.
 - **List.** Two saved machines. Read `viewer-machines-2-list.png`. Two rows, each with a name, an invented `*.tail1234.ts.net` address and online/offline status, newest first, each with a `…` menu button; Add a Machine below.
 - **Connect, then cancel.** Choose a row. Read `viewer-machines-3-connecting.png`. That row's status reads `connecting…` with a yellow dot, and a Cancel button appears beside its `…` button.
-- **Failed dial.** Read `viewer-machines-4-failed.png`. The row's status reads `no answer` and Cancel stays until the retry dials.
+- **Failed dial.** Read `viewer-machines-4-failed.png`. The row's status reads `couldn’t reach it, trying again…` and Cancel stays until the retry dials.
 - **Rename.** From the list, choose Rename… in the first row's menu. Compare `viewer-machines-2-list.png` (before) with `viewer-rename-1.png` (after). Heading `Rename this machine`, the field holding the current name, a line saying only this machine uses the name, Cancel and Rename beneath.
 - **Rename persists.** Run `./Scripts/run-unit-tests.sh` (unsandboxed). Its Client runner includes `SavedHostRenameTests` and prints no `FAIL`; it is the only check that the new name is written to the saved-host store, since no live window can be driven here.
-- **Key unreadable.** Read `viewer-identity-1-key-unreadable.png`. Try again and Make a new key are offered; no command-line flag is named.
+- **Key unreadable.** Read `viewer-identity-1-key-unreadable.png`. Try Again and Make a New Key are offered; no command-line flag is named.
 
 ## Gotchas
 
