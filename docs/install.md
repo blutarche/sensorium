@@ -66,14 +66,14 @@ See [macOS permissions](macos-permissions.md) for what each permission is for, a
 ## Pair the two apps
 
 1. On the host machine, in `Sensorium Host.app`, click **Show Pairing Code**. It shows a temporary six-digit code.
-2. On the machine you work from, open `Sensorium.app`. Pick the host from the tailnet list, or click **Enter Address Manually…** if it is not listed.
-3. Type the six-digit code shown on the host.
+2. On the machine you work from, open `Sensorium.app`. Click **Add a Machine**. Pick the host from the tailnet list, or click **Enter Address Manually…** if it is not listed.
+3. Type the six-digit code shown on the host, then click **Pair**.
 
 ## Start a session
 
-1. Once paired, `Sensorium.app` shows a ready state naming the host.
-2. Press Connect to start a session. The session window opens, named after the host.
-3. Its Stop control, or quitting the app, ends the session at once and releases anything the session was holding.
+1. Pairing connects at once. The host joins the list in **Your Machines**, and the session window opens, named after the host.
+2. Next time, click the host in **Your Machines** to start a session.
+3. Quitting `Sensorium.app`, or closing the session window, ends the session at once and releases anything the session was holding. **Stop** in `Sensorium Host.app` ends it from the host.
 
 ## Linux (Fedora 44, KDE Plasma on Wayland)
 
@@ -95,7 +95,8 @@ On Linux, Sensorium is the viewer only. The host runs on macOS.
 5. Launch Sensorium from the application menu. The first window is the list of
    machines this one is paired with.
 6. Pair with the host exactly as above: **Show Pairing Code** on the host, then
-   pick the host in the viewer's list and type the six-digit code.
+   **Add a Machine** in the viewer, pick the host in its list and type the
+   six-digit code.
 
 The RPM is the only Linux package. Flatpak, AppImage and Debian packages are
 out of scope.
