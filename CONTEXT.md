@@ -36,10 +36,10 @@ _Avoid_: PIN, passcode, token
 **Start with**:
 A per-machine viewer setting naming which target a fresh connection to that
 machine opens on: *Host Screen When Offered* (the default), one of its host
-screens, or *Virtual Display*. *Host Screen When Offered* starts on the screen
+screens, or *Private Desktop*. *Host Screen When Offered* starts on the screen
 that machine last showed a picture on, or on the first screen the host offers
 if that one is not offered. If the host offers no screen, the viewer says so
-and streams nothing. *Virtual Display* is listed only when the host has turned
+and streams nothing. *Private Desktop* is listed only when the host has turned
 on "Offer a private desktop".
 _Avoid_: start target, default target, launch preference, last used
 
@@ -53,8 +53,8 @@ _Avoid_: stream, link, call
 A virtual display the host creates for a session and removes at its end. It
 exists only when the person at the host has turned on "Offer a private
 desktop", which is off by default. A session starts on it only when the viewer
-asks for it by name. On screen it is called a "virtual display"; "canvas" never
-appears in a window.
+asks for it by name. On screen it is called a "private desktop"; "canvas" and
+"virtual display" never appear in a window.
 _Avoid_: virtual screen, canvas display, workspace display
 
 **Host screen**:
@@ -82,8 +82,9 @@ _Avoid_: remote unlock, screen unlock, password injection
 **Waking the screen**:
 What the host does to a sleeping display when a session starts, and keeps doing
 for as long as that session runs. macOS draws nothing to a sleeping display, so
-a session that did not do this would stream nothing at all. On screen it is
-called "waking the screen".
+a session that did not do this would stream nothing at all. The viewer mentions
+it only when the screens did not wake: Sensorium "asked that machine to wake
+them".
 _Avoid_: power assertion, caffeinate, keep-awake, idle inhibit
 
 **Ask me first**:
