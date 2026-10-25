@@ -84,19 +84,22 @@ public final class SessionHUDView: NSView {
         addSubview(scrollView)
 
         let inset = ViewerDesign.Space.sm
+        // The panel's padding is where the scrolled readings are clipped, not
+        // space inside the document: a row scrolling past the top or bottom
+        // edge is cut at the padding, never at the border.
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: Self.panelWidth),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor, constant: inset),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset),
             document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: inset),
             stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -Self.contentTrailingInset),
-            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: inset),
-            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -inset)
+            stack.topAnchor.constraint(equalTo: document.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor)
         ])
-        let contentHeight = heightAnchor.constraint(equalTo: document.heightAnchor)
+        let contentHeight = heightAnchor.constraint(equalTo: document.heightAnchor, constant: inset * 2)
         contentHeight.priority = .defaultLow
         contentHeight.isActive = true
     }

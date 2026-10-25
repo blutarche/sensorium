@@ -310,4 +310,83 @@ func testSessionHUDViewMatchesRowLayoutTests() {
 
     print("PASS: the macOS HUD's VIDEO IN value and sparkline sit where the shared row layout puts them")
 }
+
+/// A scrolled panel clips its readings at the same padding it keeps above its
+/// first row, so no row ever touches the border however far it is scrolled.
+@MainActor
+func testSessionHUDScrollClipsAtThePanelPaddingTests() {
+    let canvas = NSView(frame: NSRect(x: 0, y: 0, width: 960, height: 360))
+    let window = NSWindow(contentRect: canvas.frame, styleMask: [.titled], backing: .buffered, defer: false)
+    window.isReleasedWhenClosed = false
+    window.contentView = canvas
+    defer { window.close() }
+    let hud = SessionHUDView()
+    hud.apply(telemetry: fixtureSnapshot())
+    canvas.addSubview(hud)
+    NSLayoutConstraint.activate([
+        canvas.widthAnchor.constraint(equalToConstant: 960),
+        canvas.heightAnchor.constraint(equalToConstant: 360),
+        hud.leadingAnchor.constraint(equalTo: canvas.leadingAnchor, constant: 8),
+        hud.topAnchor.constraint(equalTo: canvas.topAnchor, constant: 8),
+        hud.bottomAnchor.constraint(lessThanOrEqualTo: canvas.bottomAnchor, constant: -8)
+    ])
+    canvas.layoutSubtreeIfNeeded()
+
+    func descendants(_ view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap(descendants)
+    }
+    guard let scroll = descendants(hud).compactMap({ $0 as? NSScrollView }).first,
+          let document = scroll.documentView else {
+        expect(false, "an oversized HUD has a scrollable document")
+        return
+    }
+    let padding = Double(ViewerChromeMetrics.Space.sm)
+    expect(
+        abs(Double(scroll.frame.minY) - padding) < 0.5
+            && abs(Double(hud.bounds.height - scroll.frame.maxY) - padding) < 0.5,
+        "the readings are clipped \(padding)pt inside the panel at the top and the bottom, got \(scroll.frame) in "
+            + "\(hud.bounds)"
+    )
+    expect(document.frame.height > scroll.contentView.bounds.height, "the full HUD stays taller than its viewport")
+
+    // In points: past the border's stroke and the rounded corners, and clear of
+    // the scroll thumb, which sits right of 300.
+    let columns = 10.0...300.0
+    let height = Double(hud.bounds.height)
+    let furthest = Double(document.frame.height - scroll.contentView.bounds.height)
+    var checked = 0
+    for offset in stride(from: 0.0, through: furthest + 7, by: 7) {
+        document.scroll(NSPoint(x: 0, y: offset))
+        scroll.reflectScrolledClipView(scroll.contentView)
+        let scrolledTo = Double(document.visibleRect.minY)
+        guard let rep = hud.bitmapImageRepForCachingDisplay(in: hud.bounds) else {
+            expect(false, "the HUD can be drawn into a bitmap")
+            return
+        }
+        hud.cacheDisplay(in: hud.bounds, to: rep)
+        let scale = Double(rep.pixelsHigh) / height
+        func pixel(_ x: Int, _ y: Int) -> [CGFloat] {
+            guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { return [] }
+            return [color.redComponent, color.greenComponent, color.blueComponent]
+        }
+        let background = pixel(Int(10 * scale), Int(6 * scale))
+        for band in [2.0...(padding - 1), (height - padding + 1)...(height - 2)] {
+            var stray = 0
+            for y in Int(band.lowerBound * scale)...Int(band.upperBound * scale) {
+                for x in Int(columns.lowerBound * scale)...Int(columns.upperBound * scale) where pixel(x, y) != background {
+                    stray += 1
+                }
+            }
+            expect(
+                stray == 0,
+                "scrolled \(scrolledTo)pt down, \(stray) pixels of a row sit in the \(padding)pt padding "
+                    + "(\(band.lowerBound)...\(band.upperBound)pt)"
+            )
+        }
+        checked += 1
+    }
+    expect(checked >= 8, "the panel was checked at several scroll positions, got \(checked)")
+
+    print("PASS: a scrolled HUD never draws a row into the padding between its readings and its border")
+}
 #endif

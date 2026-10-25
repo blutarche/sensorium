@@ -92,6 +92,7 @@ func runDarwinClientTests() async {
     testViewerPairingFieldObserverLifetimeTests()
     runSessionHUDSparklineAndAddressTests()
     testSessionHUDViewMatchesRowLayoutTests()
+    testSessionHUDScrollClipsAtThePanelPaddingTests()
     testViewerStatusEyebrowContrastTests()
     testSessionHUDSmallTextContrastTests()
     testSessionHUDLatencyGroupsShareTheValueGridTests()
