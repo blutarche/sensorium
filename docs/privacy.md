@@ -50,7 +50,7 @@ No screen contents, keystrokes, or input history reach disk. Opt-in local latenc
 
 ## Clipboard sharing
 
-On by default. The viewer decides: turn it off from the viewer's View menu, live during a session. The host shares nothing on a new connection until the viewer has said it wants sharing on.
+On by default. The viewer decides: turn it off with **Share Clipboard** in the viewer's View menu, live during a session. The host shares nothing on a new connection until the viewer has said it wants sharing on.
 
 A pasteboard often holds a credential a password manager put there. Honoring the markers that flag one is best effort, not a guarantee. Turn sharing off before copying anything that must stay on one machine.
 

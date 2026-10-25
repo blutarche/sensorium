@@ -12,7 +12,7 @@ Sensorium Host needs three permissions, and can use a fourth macOS service for o
 
 | Permission or service | Used for | Checked by the app |
 |---|---|---|
-| Screen Recording | Capturing the session canvas it streams | Yes |
+| Screen Recording | Capturing the screen it streams | Yes |
 | Accessibility | Injecting mouse and keyboard input | Yes |
 | Remote Desktop | Apple's gate on unattended remote access | No. macOS has no API for it. |
 
@@ -66,6 +66,6 @@ Without the grant, these still forward in a remote mode, since they need no perm
 
 These reserved shortcuts stay on the viewer machine without the Accessibility grant, or in `local` mode: Cmd-Tab, Cmd-Shift-Tab, Cmd-Space, Cmd-` and Cmd-Shift-`, and Ctrl-Up, Ctrl-Down, Ctrl-Left, Ctrl-Right.
 
-**Control-Option-Command-Escape** returns the person to the machine in front of them. It leaves fullscreen, hides the viewer, and releases anything the session canvas still holds. No mode forwards it.
+**Control-Option-Command-Escape** returns the person to the machine in front of them. It leaves fullscreen, hides the viewer, and releases anything the session still holds. No mode forwards it.
 
 Cmd-Q forwards under the same condition as the shortcuts above: whenever a viewer window has key focus by default, or only while fullscreen if the mode was changed to `remote-in-fullscreen`. In `local` mode it stays on the viewer machine.

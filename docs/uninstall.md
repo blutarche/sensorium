@@ -3,7 +3,7 @@
 Reversible by design. Nothing installs a launch agent or background service, so there is nothing hidden to find. Each macOS app checks for its own updates while it runs, and there is no separate updater. The only login item is the host's own **Open at login**, which is on by default. There is no dedicated uninstaller, so these steps are manual.
 
 1. **Turn off Open at login** in Sensorium Host, so the host app leaves Login Items.
-2. **Stop both apps.** Quitting the host releases its canvas. If it was killed instead, the canvas releases when the process exits and its handle drops.
+2. **Stop both apps.** Quitting the host releases any private desktop it created. If it was killed instead, the private desktop releases when the process exits and its handle drops.
 3. **Remove the optional PF firewall anchor**, only if you added it yourself.
    ```sh
    ./Scripts/install-pf-rule.sh --uninstall
