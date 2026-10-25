@@ -415,33 +415,27 @@ private final class PairedMachineRowView: NSView {
     /// The key fingerprint and which display may be shared (or why not),
     /// joined into the one secondary line this row has room for -- each
     /// piece already reads as a plain sentence fragment on its own, so
-    /// " \u{00B7} " between them is the only punctuation this needs.
+    /// " \u{00B7} " between them is the only punctuation this needs. A
+    /// display name stays whole wherever the line wraps.
     private static func metaLine(for row: HostScreenArmingPresentation.PairedMachineRow) -> String? {
         var parts: [String] = []
         if let keyFingerprintLine = row.keyFingerprintLine {
             parts.append(keyFingerprintLine)
         }
         if let sharedDisplaysLine = row.sharedDisplaysLine {
-            parts.append(bareDisplayList(from: sharedDisplaysLine))
+            parts.append(withoutClosingFullStop(sharedDisplaysLine))
         } else if let notOfferedReason = row.notOfferedReason {
             parts.append(notOfferedReason)
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+        guard !parts.isEmpty else { return nil }
+        return HostTextFlow.flow(parts.joined(separator: " \u{00B7} "), names: row.sharedDisplayLabels)
     }
 
-    /// Drops `sharedDisplaysLine`'s own "May share " lead-in and trailing
-    /// period, leaving the bare display list -- "Built-in Display" rather
-    /// than "May share Built-in Display." -- to sit as one segment beside
-    /// this row's other segments rather than reading as its own sentence.
-    private static func bareDisplayList(from sharedDisplaysLine: String) -> String {
-        var text = sharedDisplaysLine
-        if text.hasPrefix("May share ") {
-            text.removeFirst("May share ".count)
-        }
-        if text.hasSuffix(".") {
-            text.removeLast()
-        }
-        return text
+    /// `sharedDisplaysLine` without its trailing period, so "May share
+    /// Built-in Display" sits as one segment beside this row's other
+    /// segments rather than reading as its own sentence.
+    private static func withoutClosingFullStop(_ sharedDisplaysLine: String) -> String {
+        sharedDisplaysLine.hasSuffix(".") ? String(sharedDisplaysLine.dropLast()) : sharedDisplaysLine
     }
 
     @objc private func toggled() {

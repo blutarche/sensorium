@@ -96,6 +96,51 @@ func runHostPairedMachineRowLayoutTests() async {
     }
 
     do {
+        // The line under a sharing machine says what its display list is
+        // ("May share"), and keeps each display name on one line whatever
+        // the width: a break may fall between names, never inside one.
+        let key = Data([0xEE, 0x47, 0x92, 0xC1])
+        let mainDisplay = DisplaySnapshot(
+            id: 1, pixelWidth: 1920, pixelHeight: 1080, modeWidth: 1920, modeHeight: 1080,
+            modePixelWidth: 1920, modePixelHeight: 1080, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+            online: true, builtin: true, main: true, vendorNumber: 0x01, modelNumber: 0x01
+        )
+        let leftDisplay = DisplaySnapshot(
+            id: 2, pixelWidth: 1920, pixelHeight: 1080, modeWidth: 1920, modeHeight: 1080,
+            modePixelWidth: 1920, modePixelHeight: 1080, bounds: CGRect(x: -1920, y: 0, width: 1920, height: 1080),
+            online: true, builtin: false, main: false, vendorNumber: 0x02, modelNumber: 0x02
+        )
+        let rightDisplay = DisplaySnapshot(
+            id: 3, pixelWidth: 1920, pixelHeight: 1080, modeWidth: 1920, modeHeight: 1080,
+            modePixelWidth: 1920, modePixelHeight: 1080, bounds: CGRect(x: 1920, y: 0, width: 1920, height: 1080),
+            online: true, builtin: false, main: false, vendorNumber: 0x03, modelNumber: 0x03
+        )
+        let rows = HostScreenArmingPresentation.pairedMachineRows(
+            approvedDevices: [(key, "Kestrel Laptop")],
+            arming: HostScreenArming(devices: [
+                HostScreenDeviceArming(devicePublicKey: key, deviceName: "Kestrel Laptop", armedAt: Date())
+            ]),
+            activeDisplays: [mainDisplay, leftDisplay, rightDisplay]
+        )
+        let rowView = firstRow(of: controller(rows: rows))
+        let meta: NSTextField = field("metaLabel", of: rowView, as: NSTextField.self)
+        let shown = meta.stringValue
+        let labels = ["Built-in Display", "External Display (left)", "External Display (right)"]
+        let plainText = shown
+            .replacingOccurrences(of: HostTextFlow.noBreakSpace, with: " ")
+            .replacingOccurrences(of: HostTextFlow.nonBreakingHyphen, with: "-")
+        expect(
+            plainText == "Key EE4792C1 \u{00B7} May share Built-in Display, External Display (left), and External Display (right)",
+            "the line reads the key, then May share and the displays, without the closing full stop -- got \(plainText)"
+        )
+        expect(
+            labels.allSatisfy { shown.contains(HostTextFlow.whole($0)) },
+            "every display name is held whole, so no line break can fall inside one -- got \(shown.debugDescription)"
+        )
+        print("PASS: a paired machine's display line keeps May share and never splits a display name")
+    }
+
+    do {
         // The label of a switch that is on reads as live, in the same ink as
         // the checkbox under it.
         let host = controller(rows: [row("Kestrel Laptop", sharing: true)])

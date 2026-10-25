@@ -428,6 +428,10 @@ public enum HostScreenArmingPresentation {
         /// Names the displays this machine could hand this machine right now,
         /// since arming is per machine; `nil` when there are none.
         public let sharedDisplaysLine: String?
+        /// The display names `sharedDisplaysLine` lists, one each, so a view
+        /// that wraps the line can keep each name whole. Empty when there is
+        /// no line.
+        public let sharedDisplayLabels: [String]
         /// Why this row has no `sharedDisplaysLine`: this machine has displays,
         /// but none of them can be shared right now. `nil` whenever
         /// `sharedDisplaysLine` has something to say instead, this row is
@@ -444,6 +448,7 @@ public enum HostScreenArmingPresentation {
             keyFingerprintLine: String? = nil,
             isSharingRealScreen: Bool,
             sharedDisplaysLine: String? = nil,
+            sharedDisplayLabels: [String] = [],
             notOfferedReason: String? = nil,
             asksWhenInUse: Bool = false
         ) {
@@ -452,6 +457,7 @@ public enum HostScreenArmingPresentation {
             self.keyFingerprintLine = keyFingerprintLine
             self.isSharingRealScreen = isSharingRealScreen
             self.sharedDisplaysLine = sharedDisplaysLine
+            self.sharedDisplayLabels = sharedDisplayLabels
             self.notOfferedReason = notOfferedReason
             self.asksWhenInUse = asksWhenInUse
         }
@@ -480,7 +486,8 @@ public enum HostScreenArmingPresentation {
             let resolvedName = device.name ?? unnamedMachineTitle
             let keyFingerprintLine = "Key \(ApprovedDeviceDisplayName.hex(of: device.publicKey))"
             if let armed = arming.devices.first(where: { $0.devicePublicKey == device.publicKey }) {
-                let sharedDisplaysLine = sharedDisplaysLine(activeDisplays: activeDisplays)
+                let sharedDisplayLabels = offeredDisplayLabels(activeDisplays: activeDisplays)
+                let sharedDisplaysLine = sharedDisplaysLine(labels: sharedDisplayLabels)
                 let notOfferedReason = sharedDisplaysLine == nil && !activeDisplays.isEmpty
                     ? noShareableDisplayNotice
                     : nil
@@ -490,6 +497,7 @@ public enum HostScreenArmingPresentation {
                     keyFingerprintLine: keyFingerprintLine,
                     isSharingRealScreen: true,
                     sharedDisplaysLine: sharedDisplaysLine,
+                    sharedDisplayLabels: sharedDisplayLabels,
                     notOfferedReason: notOfferedReason,
                     asksWhenInUse: armed.asksWhenSomeoneIsUsingThisMachine
                 )
@@ -510,12 +518,16 @@ public enum HostScreenArmingPresentation {
     /// never actually shareable, so it is left out here exactly as
     /// `offerHostScreenList` leaves it out. An empty sentence is worse than
     /// no sentence.
-    private static func sharedDisplaysLine(activeDisplays: [DisplaySnapshot]) -> String? {
+    private static func sharedDisplaysLine(labels: [String]) -> String? {
+        labels.isEmpty ? nil : "May share \(oxfordList(labels))."
+    }
+
+    /// The labels of the displays an armed machine could be handed right
+    /// now, told apart where two collide; empty when there are none.
+    private static func offeredDisplayLabels(activeDisplays: [DisplaySnapshot]) -> [String] {
         let matched = HostScreenOfferEligibility.offerable(from: activeDisplays)
-        guard !matched.isEmpty else { return nil }
-        let mainDisplay = activeDisplays.first { $0.main }
-        let labels = disambiguatedLabels(for: matched, mainDisplay: mainDisplay)
-        return "May share \(oxfordList(labels))."
+        guard !matched.isEmpty else { return [] }
+        return disambiguatedLabels(for: matched, mainDisplay: activeDisplays.first { $0.main })
     }
 
     /// A caller with a full list of displays to offer at once -- the wire's
