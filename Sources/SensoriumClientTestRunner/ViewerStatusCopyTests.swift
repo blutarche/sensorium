@@ -208,7 +208,7 @@ func testViewerStatusCopyTests() {
         ViewerSessionStateMachine.buttonRows.contains(["Quit Sensorium", "Connect to a Private Desktop", "Your Machines"]),
         "the panel is sized for that row"
     )
-    let privateDesktopSentence = "It offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
+    let privateDesktopSentence = "Workstation offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
     var offeredNoScreen = ViewerSessionStateMachine(hostName: "Workstation")
     let offeredNoScreenStatus = offeredNoScreen.handle(.hostScreenConnectEnded(
         reasonLine: HostScreenRefusalCopy.line(

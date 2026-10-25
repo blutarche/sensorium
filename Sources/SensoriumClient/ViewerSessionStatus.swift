@@ -289,7 +289,9 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 headline: sessionEnded
                     ? "The host-screen session with \(hostName) ended."
                     : "Could not show a host screen from \(hostName).",
-                detail: offersVirtualDisplay ? "\(reasonLine) \(Self.privateDesktopExplanation)" : reasonLine,
+                detail: offersVirtualDisplay
+                    ? "\(reasonLine) \(Self.privateDesktopExplanation(hostName: hostName))"
+                    : reasonLine,
                 buttons: offersVirtualDisplay ? Self.endedButtons : Self.endedWithoutVirtualDisplayButtons
             )
         case let .unverifiedHostConnectEnded(reasonLine):
@@ -348,9 +350,12 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     ]
 
     /// Said beside the reason whenever the panel carries Connect to a Private
-    /// Desktop, so the button names something the person has already been told about.
-    private static let privateDesktopExplanation =
-        "It offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
+    /// Desktop, so the button names something the person has already been told
+    /// about. It names the machine because the reason before it may be about a
+    /// person there, not the machine.
+    private static func privateDesktopExplanation(hostName: String) -> String {
+        "\(hostName) offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
+    }
 
     /// How the Try Again button is named inside a sentence.
     private static let tryAgainName = ViewerCopyWrapping.control("Try Again")
