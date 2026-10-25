@@ -123,11 +123,23 @@ def unpushed_commits() -> list[tuple[str, str]]:
 
 
 def commit_text(full: str) -> bytes | None:
-    """A commit's message and patch; binary files are diffed as text and a
-    merge shows only what it changed against its parents."""
-    return git_output(
-        "log", "-1", "-p", "--cc", "--text", "--no-ext-diff", "--no-textconv", "--format=%B", full
+    """A commit's message and the lines its patch adds; binary files are
+    diffed as text and a merge shows only what it changed against its
+    parents. Context and removed lines are left out: a term the upstream
+    already carries is no new leak when a commit only shows or removes it."""
+    message = git_output("log", "-1", "--format=%B", full)
+    patch = git_output(
+        "log", "-1", "-p", "--cc", "--text", "--no-ext-diff", "--no-textconv", "--format=", full
     )
+    if message is None or patch is None:
+        return None
+    # A merge's combined diff marks an added line with "+" in any of its
+    # leading parent columns.
+    added = [
+        line for line in patch.splitlines()
+        if line.startswith(b"+") or line.startswith(b" +")
+    ]
+    return message + b"\n".join(added)
 
 
 def main() -> int:

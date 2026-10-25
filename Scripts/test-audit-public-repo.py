@@ -365,4 +365,17 @@ code, lines = audit(work)
 assert lines.count(f"  commit {twice_sha}: private term") == 1, \
     f"a commit with the term in both message and patch is reported once: {lines}"
 
+# A term the upstream already carries is no new leak: an unpushed commit that
+# only shows it as diff context, or removes it, passes.
+published = new_repo()
+write(published, "list.txt", f"first\n{TERM}\nlast\n")
+commit_all(published, "Publish a list")
+work = clone(published)
+set_terms(work, TERM + "\n")
+write(work, "list.txt", f"first\n{TERM}\nchanged last\n")
+commit_all(work, "Edit the line after the term")
+write(work, "list.txt", "first\nchanged last\n")
+commit_all(work, "Remove the term")
+assert_passes(work, "a term only in unpushed diff context and removed lines")
+
 print("PASS: audit-public-repo private-term fixtures")
