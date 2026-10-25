@@ -479,13 +479,12 @@ public enum SessionHUDPanel {
     /// is repeated as it arrived: the host plainly did report one, and
     /// showing nothing would be the viewer covering up that it is the older
     /// of the two.
-    private static func limitText(_ reason: String?, hostName: String?) -> String {
+    private static func limitText(_ reason: String, hostName: String?) -> String {
         switch reason {
         case FidelityLimitReason.encoder: return "\(hostReference(hostName))\u{2019}s encoder"
         case FidelityLimitReason.link: return "the link"
         case FidelityLimitReason.viewer: return "this machine"
-        case let .some(other) where !other.isEmpty: return other
-        default: return nothingToReport
+        default: return reason
         }
     }
 
@@ -653,15 +652,14 @@ public enum SessionHUDPanel {
                 isStale: isStale
             )
         ]
-        let namesReason = sample?.fidelityLimitReason?.isEmpty == false
-        if namesReason || appliedTone == nil {
+        if let reason = sample?.fidelityLimitReason, !reason.isEmpty {
             rows.append(SessionHUDRow(
                 label: "LIMITED BY",
-                value: limitText(sample?.fidelityLimitReason, hostName: telemetry.hostName),
-                tone: !isStale && sample?.fidelityLimitReason != nil ? .warn : nil,
+                value: limitText(reason, hostName: telemetry.hostName),
+                tone: isStale ? nil : .warn,
                 isStale: isStale
             ))
-        } else if sample?.sustainableScaleCeiling != nil {
+        } else if appliedTone != nil, sample?.sustainableScaleCeiling != nil {
             // Held with no reason token, but at a ceiling the host measured:
             // that ceiling, shown in the CEILING row, is what holds it.
             rows.append(SessionHUDRow(
@@ -670,9 +668,10 @@ public enum SessionHUDPanel {
                 tone: .warn
             ))
         }
-        // Otherwise the scale is held and nothing names what holds it. A row
-        // reading "none" under a warned APPLIED would say the opposite, so
-        // there is no row.
+        // Otherwise there is no reason to name: either nothing is held back,
+        // or the scale is held and nothing names what holds it. A row reading
+        // "none" or a bare dash would say the opposite under a warned APPLIED
+        // and nothing at all under a healthy one, so there is no row.
         return SessionHUDSection(title: "FIDELITY", rows: rows)
     }
 

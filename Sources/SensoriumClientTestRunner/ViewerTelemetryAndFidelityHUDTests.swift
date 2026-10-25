@@ -706,9 +706,38 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         "a session giving nothing up says what it is running at, with no word about being limited"
     )
     expect(
-        hudRow(healthy, "LIMITED BY")?.value == "\u{2014}" && hudRow(healthy, "REQUESTED")?.note == nil,
-        "a host holding nothing back names no reason, and explains nothing it is not doing"
+        hudRow(healthy, "LIMITED BY") == nil && hudRow(healthy, "REQUESTED")?.note == nil,
+        "a host holding nothing back names no reason, so the panel has no LIMITED BY row to leave blank, "
+            + "and explains nothing it is not doing"
     )
+    // A reading that went stale, and a host that never sent a scale, have no
+    // reason to name either: the row is left out rather than shown as a dash.
+    let staleHealthy = SessionHUDPanel.sections(
+        telemetry: SessionHUDSnapshot(
+            surfaceID: 0,
+            availability: .stale(sample(
+                appliedStreamScale: 2.0, appliedFramesPerSecond: 60, qualityScale: 1.0, fidelityLimitReason: nil
+            )),
+            clientMetrics: SessionMetrics(),
+            stream: ClientStreamReading(pixelWidth: 2880, pixelHeight: 1800, bitsPerSecond: 8_000_000),
+            requestedStreamScale: 2.0,
+            streamScalePreference: .automatic,
+            decoder: .hardwareAccelerated,
+            hostName: "Studio"
+        ),
+        session: nil
+    )
+    expect(hudRow(staleHealthy, "LIMITED BY") == nil, "a stale reading with no reason has no LIMITED BY row")
+    let noScale = sections(sample(
+        appliedStreamScale: nil, appliedFramesPerSecond: nil, qualityScale: nil, fidelityLimitReason: nil
+    ))
+    expect(hudRow(noScale, "LIMITED BY") == nil, "a host that sent no scale has no LIMITED BY row")
+    for rows in [healthy, staleHealthy, noScale, old, limited] {
+        expect(
+            !rows.flatMap(\.rows).contains { $0.label == "LIMITED BY" && $0.value == "\u{2014}" },
+            "no LIMITED BY row ever reads as a bare dash"
+        )
+    }
 }
 
 
