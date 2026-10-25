@@ -33,6 +33,10 @@ once it reaches 1.0.
   pair again.
 - A paired machine with no name reads Unnamed machine, and every row shows
   its key.
+- The Fedora viewer matches the macOS one: the same headings, labels,
+  button order, status dots, notices, shortcut strip and diagnostics. A
+  shortcut strip closed with Escape stays closed while the pointer rests
+  where its handle was.
 
 ## [0.5.8] - 2026-10-24
 

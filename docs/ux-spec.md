@@ -82,7 +82,7 @@ When a newer Sensorium has downloaded, the window shows one line beneath the lis
 Two steps, in that same window, with a **Back** link returning from each:
 
 1. **Pick a machine.** Every machine on the tailnet, online first, this one excluded. *Enter Address Manually* is one click away, never shown first.
-2. **Code.** *Type the Code Shown on `<name>`*, six digits hinted by where that machine shows them, plus an optional rename field. A failure appears under the field.
+2. **Code.** *Type the code shown on `<name>`*, six digits hinted by where that machine shows them, plus an optional rename field. A failure appears under the field.
 
 Pairing succeeds, the new machine joins the list, and Sensorium connects to it. **Pair again** on a row goes straight to the code step.
 
