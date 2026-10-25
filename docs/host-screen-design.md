@@ -1,6 +1,6 @@
 # Host screen mode
 
-Sensorium streams one of two targets. Session canvas is the default: a virtual display the host creates for the session and removes when the session ends. Host screen is the second target: one display the host already had, captured as it is. Capturing a display is allowed. Configuring one is not. No private display APIs. No resolution, arrangement, or mirroring change. No display created or destroyed, except the sharp screen a host with no monitor streams in place of macOS's placeholder (§10). The capability is ScreenCaptureKit capturing an `SCDisplay` under a granted Screen Recording permission.
+Sensorium streams one of two targets. Host screen is the default: one display the host already had, captured as it is. Session canvas is the second target: a virtual display the host creates for the session and removes when the session ends. It exists only while the person at the host has turned on **Offer a private desktop**, and the apps call it a private desktop. Capturing a display is allowed. Configuring one is not. No private display APIs. No resolution, arrangement, or mirroring change. No display created or destroyed, except the sharp screen a host with no monitor streams in place of macOS's placeholder (§10). The capability is ScreenCaptureKit capturing an `SCDisplay` under a granted Screen Recording permission.
 
 A session may wake this machine's displays and keep them awake while it runs. macOS draws nothing at all to a sleeping display, virtual displays included, so a session that starts against a sleeping machine captures a picture that never arrives. Section 8 says what that permits and what it still forbids.
 
@@ -26,27 +26,27 @@ Host screen is armed by pairing. A machine that pairs is armed at once. Arming n
 
 ### 2.1 Arming, at pairing, persistently
 
-Pairing arms a paired machine for screen control at once. A machine that pairs again after the person at the host turned this off for it is not re-armed by pairing again. The person at the host can turn screen control off or back on for one paired machine, through the host app's own interface. The record persists across restarts, so an unattended host stays reachable without anyone standing in front of it.
+Pairing arms a paired machine for host screen at once. A machine that pairs again after the person at the host turned this off for it is not re-armed by pairing again. The person at the host can turn **Share host screen** off or back on for one paired machine, through the host app's own interface. The record persists across restarts, so an unattended host stays reachable without anyone standing in front of it.
 
 - **Host-set only.** Only a pairing ceremony the person at the host started, completed with a signed request carrying the code shown there, can create an arming record; nothing else on the wire can create, re-arm, or widen it. A `pairRequest` without a signature over `sensorium-pair-request-v2` is refused as malformed before the code is read, and one whose signature does not verify against the key it names ends the connection. Beyond that ceremony, only the host's own interface writes the arming store, and the session controller and coordinator hold a read-only view.
-- **Named machines.** Arming names the machine's public key. Pairing a second machine does not extend screen control to it.
+- **Named machines.** Arming names the machine's public key. Pairing a second machine does not arm it for host screen.
 - **Per machine, not per display.** Arming names no display. A display qualifies when the host has it at session time and Sensorium did not create it, so a monitor attached after the host started can be shared, exactly as it can with the screen sharing macOS ships. A session canvas the host created never qualifies. The sharp screen of §10 is the one display Sensorium created that does.
 
 The record lives at `~/Library/Application Support/Sensorium/host-screen-arming.json`, owner-readable only. It holds armed machine keys and the arming time. A record written by an earlier version that also named displays still loads; the display list is ignored and dropped when the record is written back. This is a separate file from `approved-devices.json`. That file means "this machine may connect." This file means "this machine may drive my screen." It sits beside the identity files in the same directory and is owner-readable in the same way. Its owner can read it with `cat` and revoke it with `rm`. A file that is there but cannot be decoded arms nothing and is named once in the host's log: it is never read as an empty record, which would let the one-time arming below run again and re-arm machines the person at the host had turned off.
 
 ### 2.2 Seeing and revoking it later
 
-The menu bar shows the state at all times: "Screen control: ON for `<machine>`", with a one-click "Turn off screen control". The Host Setup window shows the same as a switch, with the date it was armed and the last host-screen session. Removing a paired machine removes its arming with it.
+The menu bar shows the state at all times: "Sharing host screen with `<machine>`", with a one-click "Turn Off Share Host Screen for `<machine>`". The Host Setup window shows the same as the **Share host screen** switch on that machine's row, and the last host-screen session. Removing a paired machine removes its arming with it.
 
-Turning screen control off for a machine ends that machine's live host-screen session at once. It ends the way the host's own Stop control ends it: the viewer is told `stopped-by-host` and does not redial, and the teardown, relock and session record all run. A session canvas of that machine is not ended by turning screen control off.
+Turning **Share host screen** off for a machine ends that machine's live host-screen session at once. It ends the way the host's own Stop control ends it: the viewer is told `stopped-by-host` and does not redial, and the teardown, relock and session record all run. A session canvas of that machine is not ended by turning **Share host screen** off.
 
 Removing a paired machine ends every connection it has at once, session canvas and host screen alike, the same way. The running host stops admitting its key immediately, so its next connection is refused as not paired without a restart. Connections that have not yet authenticated, and pairing connections, are not affected.
 
 ### 2.3 The viewer side
 
-A real host offers its host-screen list unprompted. It sends this right after a successful authenticated hello, before any other host-initiated message. The list holds every display this host can share right now, or an empty list when it has none to share. The session chooser lists "Private canvas (default)" and each offered display, plus a "Connect to Host Screen" item that reconnects. A connection's target is fixed for its whole life. Choosing host screen opens a fresh connection naming the display's own `displayIdentity`. No message upgrades an open canvas connection into a host-screen one.
+A real host offers its host-screen list unprompted. It sends this right after a successful authenticated hello, before any other host-initiated message. The list holds every display this host can share right now, or an empty list when it has none to share. The viewer's Screen menu lists each offered display, and "Private Desktop" when the host offers one. A connection's target is fixed for its whole life. Choosing host screen opens a fresh connection naming the display's own `displayIdentity`. No message upgrades an open canvas connection into a host-screen one.
 
-A machine that is not armed is refused with the reason `host-screen-not-allowed`, shown as "This machine's owner has not enabled screen control for you." It does not fall back to a canvas silently. A display can be missing from the offer for several reasons: it is offline, asleep, or mirroring another display. Each case is logged with the reason. A canvas the host itself created is never a candidate and is not logged. The Host Setup window's paired-machine row says when nothing can be shared.
+A machine that is not armed is refused with the reason `host-screen-not-allowed`, shown as "`<Host name>` has “Share host screen” turned off for this machine. Someone there can turn it on. Trying again then asks for its screen." It does not fall back to a canvas silently. A display can be missing from the offer for several reasons: it is offline, asleep, or mirroring another display. Each case is logged with the reason. A canvas the host itself created is never a candidate and is not logged. The Host Setup window's paired-machine row says when nothing can be shared.
 
 ### 2.4 What the person at the host sees
 
@@ -112,11 +112,11 @@ The host owes a changed display its earlier mode until a restore succeeds, and k
 
 ### 5.7 Starting on the same screen next time
 
-The viewer keeps one more per-machine setting, **Start with**. Its options are a private canvas, a host screen named by its own `displayIdentity`, or host screen when offered, the default.
+The viewer keeps one more per-machine setting, **Start with**. Its options are **Private Desktop**, a host screen named by its own `displayIdentity`, or **Host Screen When Offered**, the default.
 
-The default always starts on a host screen, on the same connection that received the offer from §2.3. It picks the screen this machine last reached when the fresh offer still has it, and the first one offered otherwise. A session that last ran on a private canvas counts as nothing remembered. The viewer never falls back to a private canvas on its own. A private canvas starts only from a person's own pick in the Screen menu, or from Start with set to it.
+The default always starts on a host screen, on the same connection that received the offer from §2.3. It picks the screen this machine last reached when the fresh offer still has it, and the first one offered otherwise. A session that last ran on a private desktop counts as nothing remembered. The viewer never falls back to a private desktop on its own. A private desktop starts only from a person's own pick in the Screen menu, or from **Start with** set to it.
 
-The offer also says whether the host opens a private canvas at all. The person at the host turns this on with **Offer a private desktop**, which is off by default. An offer without the field means one is available. When the host opens none, the viewer hides every private canvas choice and offers no button for one.
+The offer also says whether the host opens a private desktop at all. The person at the host turns this on with **Offer a private desktop**, which is off by default. An offer without the field means one is available. When the host opens none, the viewer hides every private desktop choice and offers no button for one.
 
 | Offer | What the viewer does |
 | --- | --- |
@@ -124,7 +124,7 @@ The offer also says whether the host opens a private canvas at all. The person a
 | No screen | Ends the attempt and says, naming the host, "Workstation has no screen to share right now." |
 | Refused, as for a machine that is not armed | Ends the attempt with the host's reason |
 
-A refusal ends the attempt the ordinary way. Trying again, or choosing a private canvas the host offers, is a person's own decision.
+A refusal ends the attempt the ordinary way. Trying again, or choosing a private desktop the host offers, is a person's own decision.
 
 ---
 
@@ -142,14 +142,14 @@ A failure of any of these refuses the whole session, video included.
 
 ### 6.2 The host-presence rule
 
-Arming a machine is itself the consent this control exists to obtain. A session starts immediately with no prompt by default. A person arming a machine may switch on **Ask me first** for that machine alone. With no local activity at the host for several minutes, the session still starts without a prompt. With recent local activity, the person at the host is asked. No answer within thirty seconds denies, and the viewer is told the machine is in use and did not respond.
+Arming a machine is itself the consent this control exists to obtain. A session starts immediately with no prompt by default. A person arming a machine may switch on **Ask me first if this machine is in use** for that machine alone. With no local activity at the host for several minutes, the session still starts without a prompt. With recent local activity, the person at the host is asked. No answer within thirty seconds denies, and the viewer is told that no one there answered.
 
 ### 6.3 What the person at the host sees
 
 - **A badge.** An always-on-top panel above the Dock and menu bar, on every Space and over full-screen apps, naming the connected machine and display with a Stop button. It can be dragged anywhere on the display and stays fully inside it, and appears in the captured stream itself. A session that starts without a prompt opens the badge expanded for a few seconds before it shrinks.
 - **The menu bar** shows a distinct icon and title text while a host-screen session is live.
 - **Stop**, in three places: badge button, menu item, global chord. Always releases held input, ends the surface, and disarms the mode.
-- **A local record** at `~/Library/Application Support/Sensorium/host-screen-sessions.log`: machine name, display, and start and stop times, never input content. Shown in Host Setup as "Last screen session: `<machine>`, `<date>` `<start>`–`<end>`."
+- **A local record** at `~/Library/Application Support/Sensorium/host-screen-sessions.log`: machine name, display, and start and stop times, never input content. Shown in Host Setup under "Last host screen session" as "`<machine>` used `<display>` from `<date>`, `<start>` to `<end>`."
 
 This applies everywhere else privacy is claimed in the product: the operator status line, the operator log, the setup window, the README, and the threat-model documents. Each states which mode it describes, instead of promising privacy unconditionally.
 
@@ -165,7 +165,7 @@ A grant belongs to a host-screen session, not to a transport connection, and the
 
 ### 6.5 Threat model
 
-Stated in `docs/threat-model.md`. A stolen viewer key from a machine that has never been armed for host screen buys an attacker a private, empty canvas. A stolen key from any armed machine buys control of a logged-in machine, with nobody necessarily present to refuse, unless the person at the host has turned screen control off for that machine. The compensating controls, in order: arming is per-machine, arming is host-local and nothing on the wire can create, re-arm, or widen it, the tailnet requirement stands, the badge and Stop make a live session obvious to anyone in the room, and the session log makes a past session provable afterward.
+Stated in `docs/threat-model.md`. A stolen viewer key from a machine that has never been armed for host screen buys an attacker a private, empty canvas. A stolen key from any armed machine buys control of a logged-in machine, with nobody necessarily present to refuse, unless the person at the host has turned **Share host screen** off for that machine. The compensating controls, in order: arming is per-machine, arming is host-local and nothing on the wire can create, re-arm, or widen it, the tailnet requirement stands, the badge and Stop make a live session obvious to anyone in the room, and the session log makes a past session provable afterward.
 
 ---
 
