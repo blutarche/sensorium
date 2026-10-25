@@ -24,8 +24,8 @@
 #   --plan SPEC       pointer plan, for example move:20,still:40,move:20
 #                     (default)
 #   --seconds N       how long each viewer session runs (default 85)
-#   --width N         virtual output width in pixels (default 2560)
-#   --height N        virtual output height in pixels (default 1440)
+#   --width N         virtual output width in logical pixels (default 2560)
+#   --height N        virtual output height in logical pixels (default 1440)
 #   --scale F         virtual output scale (default 1.0)
 #   --ab              each run makes two sessions, one with the viewer's
 #                     release-on-interaction behaviour and one without it

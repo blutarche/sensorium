@@ -12,9 +12,10 @@
 # Usage:
 #   Scripts/linux-headless-session.sh [options] -- <command> [arguments...]
 #
-#   --width N       virtual output width in pixels (default 1280)
-#   --height N      virtual output height in pixels (default 800)
-#   --scale F       virtual output scale (default 1.0)
+#   --width N       virtual output width in logical pixels (default 1280)
+#   --height N      virtual output height in logical pixels (default 800)
+#   --scale F       virtual output scale (default 1.0); the output is
+#                   width x scale by height x scale device pixels
 #   --seconds N     how long the command is left running before the
 #                   screenshot is taken (default 8)
 #   --shot PATH     where the screenshot is written (default
@@ -47,6 +48,15 @@ if [ "${1-}" = "--inner" ]; then
         exit 1
     fi
     echo "harness: nested compositor on $WAYLAND_DISPLAY"
+    # KWin 6.7 grows the virtual output's framebuffer by --scale but leaves
+    # the output itself at scale 1, so a client would draw at 1x. Set the
+    # scale on the output, as the display settings would.
+    if [ "$SENSORIUM_HARNESS_SCALE" != "1" ] && [ "$SENSORIUM_HARNESS_SCALE" != "1.0" ]; then
+        if ! kscreen-doctor "output.Virtual-0.scale.$SENSORIUM_HARNESS_SCALE" >/dev/null 2>&1; then
+            echo "harness: could not set the virtual output's scale to $SENSORIUM_HARNESS_SCALE" >&2
+            exit 1
+        fi
+    fi
 
     sh -c "$SENSORIUM_HARNESS_COMMAND" >"$SENSORIUM_HARNESS_LOG" 2>&1 &
     command_pid=$!
@@ -142,6 +152,7 @@ export SENSORIUM_HARNESS_SHOT="$shot"
 export SENSORIUM_HARNESS_LOG="$log"
 export SENSORIUM_HARNESS_SECONDS="$seconds"
 export SENSORIUM_HARNESS_WAIT="$wait_after_shot"
+export SENSORIUM_HARNESS_SCALE="$scale"
 export SENSORIUM_HARNESS_OUTER_WAYLAND_DISPLAY="${WAYLAND_DISPLAY-}"
 inner_command="$(printf '%q' "$self") --inner"
 # A nested compositor of its own, never the one the person is looking at.
