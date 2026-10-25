@@ -924,15 +924,17 @@ MainActor.assumeIsolated {
 
     // A packaged host's Install updates automatically checkbox and the
     // update line under it, in each of the line's states, with the words
-    // `HostUpdateStatusLine` gives them.
+    // `HostUpdateStatusLine` gives them. `checkAnswered` is whether a check
+    // this launch has answered up to date; the line claims that only then.
     let runningHostVersion = UpdateVersion("0.4.0")!
     let idleHostStatus = HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted)
-    let hostUpdateStates: [(String, String, Bool, UpdateStatus, HostOperatorStatus, [HostScreenArmingPresentation.PairedMachineRow])] = [
+    let hostUpdateStates: [(String, String, Bool, UpdateStatus, Bool, HostOperatorStatus, [HostScreenArmingPresentation.PairedMachineRow])] = [
         (
             "host-window-21-update-up-to-date",
-            "automatic updates on, and the running version is the latest",
+            "automatic updates on, and a check this launch found the running version the latest",
             true,
             .current,
+            true,
             idleHostStatus,
             onePairedRow
         ),
@@ -941,6 +943,7 @@ MainActor.assumeIsolated {
             "a newer version downloaded and checked, waiting because a machine is connected and sharing its host screen",
             true,
             .waiting(UpdateVersion("0.5.0")!),
+            false,
             HostOperatorStatus(
                 connection: .servingHostScreen(peerName: "Kestrel Laptop", displayLabel: "Built-in Display"),
                 permissions: granted
@@ -952,6 +955,7 @@ MainActor.assumeIsolated {
             "an update that could not install, saying why in plain words and which version keeps running",
             true,
             .failed(reason: UpdateFailure.readyLate.reason),
+            false,
             idleHostStatus,
             onePairedRow
         ),
@@ -960,19 +964,21 @@ MainActor.assumeIsolated {
             "run from a place it cannot replace itself in, asking to be moved to Applications",
             true,
             .notUpdatable,
+            false,
             idleHostStatus,
             onePairedRow
         ),
         (
             "host-window-25-automatic-updates-off",
-            "Install updates automatically turned off, the line still saying where the running version stands",
+            "Install updates automatically turned off and no check made this launch, so no update line",
             false,
             .current,
+            false,
             idleHostStatus,
             onePairedRow
         )
     ]
-    for (prefix, description, installsAutomatically, updateStatus, status, rows) in hostUpdateStates {
+    for (prefix, description, installsAutomatically, updateStatus, checkAnswered, status, rows) in hostUpdateStates {
         let controller = HostSetupWindowController(
             status: status,
             onRevealPairingCode: {},
@@ -986,7 +992,11 @@ MainActor.assumeIsolated {
             installsUpdatesAutomatically: { installsAutomatically }
         )
         controller.updatePairedMachines(rows)
-        controller.setUpdateLine(HostUpdateStatusLine.line(for: updateStatus, runningVersion: runningHostVersion))
+        controller.setUpdateLine(HostUpdateStatusLine.line(
+            for: updateStatus,
+            runningVersion: runningHostVersion,
+            upToDateAnswered: checkAnswered
+        ))
         write(
             render(hostWindowContent(controller)),
             named: "\(prefix).png",

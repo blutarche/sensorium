@@ -3,12 +3,15 @@ import SensoriumUpdate
 
 /// The host window's update line, under **Open at login**.
 public enum HostUpdateStatusLine {
-    /// Nil while checking or downloading: the window keeps the line it had,
-    /// since a check that finds nothing should not flicker.
-    public static func line(for status: UpdateStatus, runningVersion: UpdateVersion) -> String? {
+    /// Nil while checking or downloading, when the window keeps the line it
+    /// had, since a check that finds nothing should not flicker. Nil also for
+    /// a running version the scheduler starts on as current without having
+    /// asked: `upToDateAnswered` is whether a check during this launch has
+    /// answered up to date, and the line claims nothing until one has.
+    public static func line(for status: UpdateStatus, runningVersion: UpdateVersion, upToDateAnswered: Bool) -> String? {
         switch status {
         case .current:
-            "Sensorium Host \(runningVersion) is up to date."
+            upToDateAnswered ? "Sensorium Host \(runningVersion) is up to date." : nil
         case .checking, .downloading:
             nil
         case let .ready(version), let .waiting(version):

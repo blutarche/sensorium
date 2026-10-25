@@ -33,13 +33,26 @@ public struct HostUpdateBundle: Equatable, Sendable {
     }
 }
 
+/// Whether a check this launch has answered up to date, read from the check's
+/// own log line.
+private final class HostUpdateCheckAnswers {
+    private(set) var upToDateThisLaunch = false
+
+    func observe(_ logLine: String) {
+        if logLine == HostUpdateLog.describe(.upToDate) {
+            upToDateThisLaunch = true
+        }
+    }
+}
+
 /// The host's side of the update scheduler: the window's checkbox and line,
 /// **Check for Updates…**, and installing once a session or pairing ends.
 @MainActor
 public final class HostUpdater {
     public let version: UpdateVersion
-    public private(set) var line: String
-    public var onLineChange: ((String) -> Void)?
+    /// Nil until there is something to say; see `HostUpdateStatusLine`.
+    public private(set) var line: String?
+    public var onLineChange: ((String?) -> Void)?
 
     private let scheduler: UpdateScheduler
     private let preferences: any HostUpdatePreferenceStoring
@@ -48,6 +61,7 @@ public final class HostUpdater {
     private var recheckGeneration = 0
     private var currentStatus: HostOperatorStatus?
     private var installFailureReason: String?
+    private let answers: HostUpdateCheckAnswers
 
     /// `makeScheduler` receives the saved checkbox state and the log, and is
     /// normally `HostUpdater.makeScheduler`.
@@ -60,10 +74,18 @@ public final class HostUpdater {
         self.version = version
         self.preferences = preferences
         self.log = log
-        let scheduler = makeScheduler(preferences.installsAutomatically(), log)
+        // The scheduler restores its earlier status when the release page
+        // could not be reached, which reads the same as up to date. The
+        // check logs its own result, so that line is the one place an
+        // answer can be told from no answer.
+        let answers = HostUpdateCheckAnswers()
+        self.answers = answers
+        let scheduler = makeScheduler(preferences.installsAutomatically(), { line in
+            answers.observe(line)
+            log(line)
+        })
         self.scheduler = scheduler
-        line = HostUpdateStatusLine.line(for: scheduler.status, runningVersion: version)
-            ?? HostUpdateStatusLine.line(for: .current, runningVersion: version)!
+        line = HostUpdateStatusLine.line(for: scheduler.status, runningVersion: version, upToDateAnswered: false)
         scheduler.onStatusChange = { [weak self] status in
             self?.statusChanged(status)
         }
@@ -132,14 +154,20 @@ public final class HostUpdater {
     }
 
     private func statusChanged(_ status: UpdateStatus) {
-        guard installFailureReason == nil,
-              let next = HostUpdateStatusLine.line(for: status, runningVersion: version) else {
+        guard installFailureReason == nil else { return }
+        switch status {
+        case .checking, .downloading:
             return
+        case .current, .ready, .waiting, .failed, .notUpdatable:
+            setLine(HostUpdateStatusLine.line(
+                for: status,
+                runningVersion: version,
+                upToDateAnswered: answers.upToDateThisLaunch
+            ))
         }
-        setLine(next)
     }
 
-    private func setLine(_ next: String) {
+    private func setLine(_ next: String?) {
         guard next != line else { return }
         line = next
         onLineChange?(next)

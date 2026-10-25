@@ -14,34 +14,43 @@ func runHostUpdateStatusLineTests() {
     let newer = UpdateVersion("0.5.0")!
 
     expect(
-        HostUpdateStatusLine.line(for: .current, runningVersion: running) == "Sensorium Host 0.4.0 is up to date.",
-        "current"
+        HostUpdateStatusLine.line(for: .current, runningVersion: running, upToDateAnswered: true)
+            == "Sensorium Host 0.4.0 is up to date.",
+        "current, once a check has answered"
     )
     expect(
-        HostUpdateStatusLine.line(for: .waiting(newer), runningVersion: running)
+        HostUpdateStatusLine.line(for: .current, runningVersion: running, upToDateAnswered: false) == nil,
+        "current before any check has answered says nothing: the scheduler starts there without having checked"
+    )
+    expect(
+        HostUpdateStatusLine.line(for: .waiting(newer), runningVersion: running, upToDateAnswered: false)
             == "Sensorium Host 0.5.0 will install when no machine is connected.",
         "waiting"
     )
     expect(
-        HostUpdateStatusLine.line(for: .failed(reason: "the new version did not start in time"), runningVersion: running)
+        HostUpdateStatusLine.line(
+            for: .failed(reason: "the new version did not start in time"),
+            runningVersion: running,
+            upToDateAnswered: false
+        )
             == "Sensorium Host could not update: the new version did not start in time. It keeps running 0.4.0.",
         "failed, with the core's plain reason"
     )
     expect(
-        HostUpdateStatusLine.line(for: .notUpdatable, runningVersion: running)
+        HostUpdateStatusLine.line(for: .notUpdatable, runningVersion: running, upToDateAnswered: false)
             == "Move Sensorium Host to Applications and open it again to receive updates.",
         "not updatable"
     )
     print("PASS: the four host update lines read exactly as the design gives them")
 
     expect(
-        HostUpdateStatusLine.line(for: .ready(newer), runningVersion: running)
-            == HostUpdateStatusLine.line(for: .waiting(newer), runningVersion: running),
+        HostUpdateStatusLine.line(for: .ready(newer), runningVersion: running, upToDateAnswered: false)
+            == HostUpdateStatusLine.line(for: .waiting(newer), runningVersion: running, upToDateAnswered: false),
         "a staged host update is the waiting line"
     )
-    expect(HostUpdateStatusLine.line(for: .checking, runningVersion: running) == nil, "checking keeps the line it had")
+    expect(HostUpdateStatusLine.line(for: .checking, runningVersion: running, upToDateAnswered: true) == nil, "checking keeps the line it had")
     expect(
-        HostUpdateStatusLine.line(for: .downloading(newer), runningVersion: running) == nil,
+        HostUpdateStatusLine.line(for: .downloading(newer), runningVersion: running, upToDateAnswered: true) == nil,
         "downloading keeps the line it had"
     )
     print("PASS: checking and downloading leave the line as it was")
@@ -206,12 +215,19 @@ func runHostUpdaterTests() async {
     do {
         let probe = Probe()
         let host = updater(probe)
-        expect(host.line == "Sensorium Host 0.4.0 is up to date.", "before any check the line is the current one")
-        var lines: [String] = []
+        expect(host.line == nil, "before any check has answered the host claims nothing about being up to date")
+        var lines: [String?] = []
         host.onLineChange = { lines.append($0) }
         host.start()
         expect(await waitUntil(timeoutSeconds: 5) { probe.checks == 1 }, "starting with the checkbox on checks at once")
-        expect(lines.isEmpty, "a check that finds nothing leaves the line as it was, with no flicker through checking")
+        expect(
+            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.4.0 is up to date." },
+            "a check that answers up to date says so, got \(String(describing: host.line))"
+        )
+        expect(
+            lines == ["Sensorium Host 0.4.0 is up to date."],
+            "the line appears once, with no flicker through checking, got \(lines)"
+        )
         expect(
             probe.logged.contains("checking for updates") && probe.logged.contains("update check: up to date"),
             "the check and its result are logged, got \(probe.logged)"
@@ -226,6 +242,7 @@ func runHostUpdaterTests() async {
         host.start()
         try? await Task.sleep(for: .milliseconds(50))
         expect(probe.checks == 0, "with the checkbox off the host makes no update request at all")
+        expect(host.line == nil, "and with no check made it has no line either")
         print("PASS: with the checkbox off the host makes no request")
     }
 
@@ -321,6 +338,49 @@ func runHostUpdaterTests() async {
     }
 
     do {
+        // A page that could not be reached is not an answer: the scheduler
+        // goes back to the status it had, which looks the same as up to date.
+        let probe = Probe()
+        let host = updater(probe)
+        probe.result = .unreachable
+        var lines: [String?] = []
+        host.onLineChange = { lines.append($0) }
+        host.start()
+        expect(await waitUntil(timeoutSeconds: 5) { probe.checks == 1 }, "the launch check runs")
+        try? await Task.sleep(for: .milliseconds(50))
+        expect(host.line == nil && lines.isEmpty, "a check that reached nothing leaves no line, got \(String(describing: host.line))")
+        probe.result = .upToDate
+        host.checkForUpdates()
+        expect(
+            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.4.0 is up to date." },
+            "a later check that answers up to date shows the line, got \(String(describing: host.line))"
+        )
+        probe.result = .unreachable
+        host.checkForUpdates()
+        expect(await waitUntil(timeoutSeconds: 5) { probe.checks == 3 }, "a third check runs")
+        try? await Task.sleep(for: .milliseconds(50))
+        expect(
+            host.line == "Sensorium Host 0.4.0 is up to date.",
+            "a check that reaches nothing later does not take back an answer this launch has already had"
+        )
+        print("PASS: an unreachable release page is no answer; a later up to date answer stays")
+    }
+
+    do {
+        // Check for Updates… answers even with the checkbox off.
+        let probe = Probe()
+        let host = updater(probe, preferences: InMemoryHostUpdatePreferenceStore(installsAutomatically: false))
+        host.start()
+        expect(host.line == nil, "with the checkbox off and nothing chosen there is no line")
+        host.checkForUpdates()
+        expect(
+            await waitUntil(timeoutSeconds: 5) { host.line == "Sensorium Host 0.4.0 is up to date." },
+            "a chosen check that answers up to date shows the line, got \(String(describing: host.line))"
+        )
+        print("PASS: a chosen check answers up to date on the line")
+    }
+
+    do {
         let probe = Probe()
         let host = updater(probe, installability: .notUpdatable(.translocated))
         expect(
@@ -342,7 +402,7 @@ func runHostUpdaterTests() async {
         host.start()
         expect(await waitUntil(timeoutSeconds: 5) { probe.checks == 1 }, "the scheduler still runs")
         expect(
-            host.line.hasPrefix("Sensorium Host could not update:"),
+            host.line?.hasPrefix("Sensorium Host could not update:") == true,
             "the failed line stays for the rest of this process's life"
         )
         print("PASS: an install failure the host reports itself holds the failed line")

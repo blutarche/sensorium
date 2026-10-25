@@ -131,9 +131,9 @@ func runHostUpdateWindowTests() {
             line.textColor == CanvasDesign.warn.nsColor,
             "a failed update reads in the warning colour -- got \(String(describing: line.textColor))"
         )
-        window.setUpdateLine(HostUpdateStatusLine.line(for: .current, runningVersion: running))
+        window.setUpdateLine(HostUpdateStatusLine.line(for: .current, runningVersion: running, upToDateAnswered: true))
         expect(line.textColor == CanvasDesign.muted.nsColor, "an up-to-date line goes back to the quiet colour")
-        window.setUpdateLine(HostUpdateStatusLine.line(for: .notUpdatable, runningVersion: running))
+        window.setUpdateLine(HostUpdateStatusLine.line(for: .notUpdatable, runningVersion: running, upToDateAnswered: false))
         expect(line.textColor == CanvasDesign.muted.nsColor, "asking to be moved to Applications is not a failure")
         print("PASS: only a failed update line is drawn in the warning colour")
     }
