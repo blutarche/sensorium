@@ -77,6 +77,23 @@ func bitmapContext(width: Int, height: Int) -> CGContext {
     return context
 }
 
+/// `image` redrawn into an sRGB bitmap, converting its pixels rather than only
+/// relabelling them. `cacheDisplay` hands back pixels in the colour space of
+/// whichever display the machine running this script has, so without this a
+/// design token is stored as a different value on every machine, and the PNG
+/// carries that display's profile.
+func inSRGB(_ image: CGImage) -> CGImage {
+    if (image.colorSpace?.name as String?) == (CGColorSpace.sRGB as String) {
+        return image
+    }
+    let context = bitmapContext(width: image.width, height: image.height)
+    context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+    guard let converted = context.makeImage() else {
+        fail("converting a \(image.width)x\(image.height) image to sRGB produced no image")
+    }
+    return converted
+}
+
 /// Draws a view into a bitmap without a window. `cacheDisplay` is the AppKit
 /// path that also captures layer-backed content, which is all of the chrome in
 /// this design system — borders and fills live on layers, not in `draw(_:)`.
@@ -90,7 +107,7 @@ func render(_ view: NSView) -> CGImage {
     guard let image = rep.cgImage else {
         fail("no image from the cached bitmap for \(type(of: view))")
     }
-    return image
+    return inSRGB(image)
 }
 
 /// Down to the streamed resolution and back up, at the canvas's own scale
@@ -199,10 +216,16 @@ var index: [IndexEntry] = []
 var blanks: [String] = []
 
 @discardableResult
-func write(_ image: CGImage, named name: String, state: String) -> IndexEntry {
+func write(_ unconverted: CGImage, named name: String, state: String) -> IndexEntry {
+    let image = inSRGB(unconverted)
     let rep = NSBitmapImageRep(cgImage: image)
     guard let data = rep.representation(using: .png, properties: [:]) else {
         fail("no PNG encoding for \(name)")
+    }
+    guard let encoded = CGImageSourceCreateWithData(data as CFData, nil),
+          let stored = CGImageSourceCreateImageAtIndex(encoded, 0, nil),
+          (stored.colorSpace?.name as String?) == (CGColorSpace.sRGB as String) else {
+        fail("\(name) was not encoded as sRGB")
     }
     let url = outputDirectory.appendingPathComponent(name)
     do {
@@ -505,6 +528,72 @@ MainActor.assumeIsolated {
             + " field border; FORCED: the field-editor notification is simulated, everything drawn is real"
     )
 
+    // The rest of the launcher's status line. Launching is the sentence shown
+    // while an application opens; `launchSelectedRow` is what Return fires,
+    // and with no row under it only ever reports, so it is safe to call for
+    // the two no-row states and is never called with a row selected, where it
+    // would open a real application.
+    let launching = launcher()
+    if let first = catalog.first {
+        type(first.name, into: launching)
+        launching.testApplyStatus(CanvasLauncherPresentation.launchingStatus(application: first.name))
+    }
+    hostPasses(
+        render(launching),
+        prefix: "host-launcher-8-launching",
+        state: "CanvasLauncherView while an application is opening — status severity .progress; FORCED: the status"
+            + " is applied directly, because Return would also open the application"
+    )
+
+    let launchOutcomes: [(String, String, CanvasApplicationLaunchOutcome)] = [
+        (
+            "host-launcher-9-placement-refused",
+            "the application opened but its window could not be moved onto the canvas — status severity .warn",
+            .placementRefused(windows: 1)
+        ),
+        (
+            "host-launcher-10-no-windows",
+            "the application opened and has shown no window yet — status severity .warn",
+            .noWindows(attempts: CanvasWindowAdoptionPolicy.maxAttempts)
+        ),
+        (
+            "host-launcher-11-accessibility-denied",
+            "the application opened elsewhere because Sensorium Host has no Accessibility access — status severity .bad",
+            .accessibilityDenied
+        )
+    ]
+    for (prefix, description, outcome) in launchOutcomes {
+        let view = launcher()
+        if let first = catalog.first {
+            type(first.name, into: view)
+        }
+        post(CanvasLaunchReport(application: catalog.first?.name ?? "Safari", outcome: outcome), to: view)
+        hostPasses(render(view), prefix: prefix, state: "CanvasLauncherView after a launch where \(description)")
+    }
+
+    let returnWithNoRow = NSSelectorFromString("launchSelectedRow")
+    let nothingToLaunch = launcher()
+    nothingToLaunch.testAdoptCatalog([])
+    guard nothingToLaunch.responds(to: returnWithNoRow) else {
+        fail("CanvasLauncherView does not answer -launchSelectedRow")
+    }
+    nothingToLaunch.perform(returnWithNoRow)
+    hostPasses(
+        render(nothingToLaunch),
+        prefix: "host-launcher-12-nothing-to-launch",
+        state: "CanvasLauncherView with no applications installed after Return — the status line says why nothing"
+            + " opened, beneath the empty state"
+    )
+    let nothingMatches = launcher()
+    type("qqzzxx", into: nothingMatches)
+    nothingMatches.perform(returnWithNoRow)
+    hostPasses(
+        render(nothingMatches),
+        prefix: "host-launcher-13-nothing-matches",
+        state: "CanvasLauncherView with a query matching nothing after Return — the status line says why nothing"
+            + " opened, beneath the empty state"
+    )
+
     let workspace = WorkspaceContentView(
         frame: NSRect(x: 0, y: 0, width: canvas.logicalWidth, height: canvas.logicalHeight),
         canvas: placement
@@ -526,6 +615,24 @@ MainActor.assumeIsolated {
     // One instant for the whole run, so the countdown is the same in every
     // rendering rather than depending on when the script happened to reach it.
     let issued = Date()
+    // A status reached the way the running host reaches it: through the
+    // store's own transitions, so the fields that move together do.
+    @MainActor
+    func statusAfter(_ transitions: (HostOperatorStatusStore) -> Void) -> HostOperatorStatus {
+        let store = HostOperatorStatusStore(permissions: granted)
+        store.beginHosting(address: "203.0.113.42")
+        transitions(store)
+        return store.status
+    }
+    let accessibilityLostStatus = statusAfter { $0.apply(.lost(.accessibility)) }
+    let captureStoppedStatus = statusAfter { $0.recordCaptureUnavailable() }
+    let askingToPairStatus = statusAfter {
+        $0.recordPairingRequest(deviceName: "Kestrel Laptop", now: issued) {
+            (code: "418297", expiresAt: issued.addingTimeInterval(272))
+        }
+    }
+    let couldNotStartStatus = statusAfter { $0.reportProblem(HostUpdateProblemCopy.stoppedListening) }
+
     // `.notHosting` without a problem has no fixture of its own: the GUI
     // starts hosting itself at launch, synchronously, before this status is
     // ever observed on screen, so this state is never actually reachable
@@ -561,6 +668,26 @@ MainActor.assumeIsolated {
                     accessibility: .granted
                 )
             )
+        ),
+        (
+            "host-menu-panel-6-accessibility-missing",
+            "Accessibility revoked while the host waits for a machine, so no machine could type or click",
+            accessibilityLostStatus
+        ),
+        (
+            "host-menu-panel-7-capture-stopped",
+            "this process can no longer capture anything: the one state that outranks every other",
+            captureStoppedStatus
+        ),
+        (
+            "host-menu-panel-8-asking-to-pair",
+            "a code shown on its own because a machine asked to pair, with that machine named",
+            askingToPairStatus
+        ),
+        (
+            "host-menu-panel-9-could-not-start",
+            "hosting stopped with a reason that is neither of the two Tailscale ones, under the generic headline",
+            couldNotStartStatus
         )
     ]
     for (prefix, description, status) in operatorStates {
@@ -711,6 +838,19 @@ MainActor.assumeIsolated {
         ])
     )
 
+    // An armed machine and a display that exists but cannot be handed to it,
+    // because it is asleep: the notice that says so instead of a list of displays.
+    let asleepDisplay = DisplaySnapshot(
+        id: 1, pixelWidth: 1512, pixelHeight: 982, modeWidth: 1512, modeHeight: 982,
+        modePixelWidth: 3024, modePixelHeight: 1964, bounds: CGRect(x: 0, y: 0, width: 1512, height: 982),
+        online: true, asleep: true, builtin: true, main: true, vendorNumber: 0x01, modelNumber: 0x01
+    )
+    let noShareableDisplayRows = HostScreenArmingPresentation.pairedMachineRows(
+        approvedDevices: [(kestrelLaptopKey, "Kestrel Laptop")],
+        arming: kestrelLaptopSharing,
+        activeDisplays: [asleepDisplay]
+    )
+
     let hostWindowStates: [(
         String, String, HostOperatorStatus, [HostScreenArmingPresentation.PairedMachineRow]
     )] = [
@@ -812,11 +952,79 @@ MainActor.assumeIsolated {
                 permissions: granted
             ),
             twoPairedRows
+        ),
+        (
+            "host-window-26-accessibility-missing",
+            "Accessibility not granted, with the button that opens it, while the host waits for a machine",
+            accessibilityLostStatus,
+            noRows
+        ),
+        (
+            "host-window-27-capture-stopped",
+            "this process can no longer capture anything, saying to quit and open the host again",
+            captureStoppedStatus,
+            noRows
+        ),
+        (
+            "host-window-28-asking-to-pair",
+            "a code shown on its own because a machine asked to pair, with that machine named",
+            askingToPairStatus,
+            noRows
+        ),
+        (
+            "host-window-29-could-not-start-hosting",
+            "hosting stopped with a reason that is neither of the two Tailscale ones, under the generic headline",
+            couldNotStartStatus,
+            noRows
+        ),
+        (
+            "host-window-30-no-display-can-be-shared",
+            "a paired machine allowed to share its host screen while every display here is asleep, so the row says"
+                + " no display can be shared right now",
+            HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
+            noShareableDisplayRows
         )
     ]
     for (prefix, description, status, rows) in hostWindowStates {
         let controller = hostWindow(status: status)
         controller.updatePairedMachines(rows)
+        write(
+            render(hostWindowContent(controller)),
+            named: "\(prefix).png",
+            state: "HostSetupWindowController — \(description); 360pt wide at the height its content needs;"
+                + " no stream pass, it never leaves the host"
+        )
+    }
+
+    // The Open at login checkbox and the line under it in the two states other
+    // than plainly on or off. The window reads the status through the same
+    // closure `sensoriumd` hands it, so nothing is registered while rendering.
+    let loginItemStates: [(String, String, HostAutoLoginStatus)] = [
+        (
+            "host-window-31-open-at-login-needs-approval",
+            "registered but not yet approved in System Settings, so the checkbox is on and a line says where to approve it",
+            .requiresApproval
+        ),
+        (
+            "host-window-32-open-at-login-not-available",
+            "macOS cannot find this app to register, so the checkbox is off and disabled and a line says so",
+            .notFound
+        )
+    ]
+    for (prefix, description, autoLogin) in loginItemStates {
+        let controller = HostSetupWindowController(
+            status: HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
+            onRevealPairingCode: {},
+            onStop: {},
+            onOpenPermissionSettings: { _ in },
+            tailscaleAppURLLookup: { nil },
+            onOpenTailscaleApp: { _ in },
+            onToggleSharing: { _, _ in },
+            onRemovePairedDevice: { _ in },
+            autoLoginStatus: { autoLogin },
+            installsUpdatesAutomatically: { true }
+        )
+        controller.updatePairedMachines(onePairedRow)
         write(
             render(hostWindowContent(controller)),
             named: "\(prefix).png",
@@ -1130,7 +1338,7 @@ MainActor.assumeIsolated {
             "host-screen-presence-prompt-3-long-display-label",
             "Kestrel Laptop",
             HostScreenArmingPresentation.qualifiedDisplayLabel(
-                "LG UltraFine 5K Display, connected over Thunderbolt 3", by: "left"
+                "Desk Monitor, connected over Thunderbolt 3", by: "left"
             ),
             "a display label long enough to test the subtitle's own three-line wrap"
         )
@@ -1200,7 +1408,7 @@ MainActor.assumeIsolated {
             tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: false, isThisMachine: false
         )),
         TailnetDevicePickerRow(peer: TailnetPeer(
-            id: "3", displayName: "iPhone", magicDNSName: nil,
+            id: "3", displayName: "Kestrel Phone", magicDNSName: nil,
             tailnetIPv4: "100.64.1.3", tailnetIPv6: nil, isOnline: false, isThisMachine: false
         ))
     ]
@@ -1342,6 +1550,93 @@ MainActor.assumeIsolated {
         named: "viewer-machines-8-long-address.png",
         state: "YourMachinesWindowController with one machine whose address wraps — the dot stays beside its first line"
     )
+
+    // A row after its Cancel was pressed: the attempt already out has to finish
+    // before the row is free.
+    let stoppingRow = machinesWindow(hosts: [miniHost, studioHost])
+    stoppingRow.connectRequested(hostPublicKey: miniHost.hostPublicKey)
+    stoppingRow.connectStarted(hostPublicKey: miniHost.hostPublicKey)
+    stoppingRow.stopping()
+    write(
+        render(machinesContent(stoppingRow)),
+        named: "viewer-machines-9-stopping.png",
+        state: "YourMachinesWindowController after Cancel on a dialling row — the row says it is stopping until"
+            + " the attempt out has unwound; no stream pass"
+    )
+
+    // Every other line a row can end on, each through the call the app makes:
+    // `attemptFailed` with the words `ViewerSessionFailureCopy.rowLine` gives
+    // the failure, then `stoppedTrying` only for the failures
+    // `ClientReconnectDriver` does not redial. The rest stay on the retrying
+    // line, which is how the app leaves them.
+    let rowFailures: [(String, ViewerSessionFailure, Bool, String)] = [
+        (
+            "unverified-host", .unverifiedHost, true,
+            "the machine answered with a key other than the one saved at pairing; not redialled"
+        ),
+        (
+            "private-desktop-busy", .canvasRefused(reason: CanvasRefusalReason.creationInProgress), false,
+            "the host is opening a private desktop for another connection; redialled"
+        ),
+        (
+            "private-desktop-unavailable", .canvasRefused(reason: CanvasRefusalReason.canvasUnavailable), true,
+            "the host could not open a private desktop at all; not redialled"
+        ),
+        (
+            "private-desktop-not-offered", .canvasRefused(reason: CanvasRefusalReason.canvasNotOffered), true,
+            "the host does not offer a private desktop; not redialled"
+        ),
+        (
+            "private-desktop-unknown-reason", .canvasRefused(reason: "a-reason-this-build-has-never-seen"), false,
+            "a private-desktop refusal this build has never seen, quoted rather than translated; redialled"
+        ),
+        (
+            "version-mismatch", .unexpectedReply, false,
+            "the host replied with something this build does not expect; redialled"
+        ),
+        (
+            "no-identity", .identityMissing, false,
+            "this machine has no identity to present; redialled"
+        ),
+        (
+            "pairing-refused", .pairingRefused(reason: "code-expired"), false,
+            "the host refused the pairing request, in the pairing form's own headline; redialled"
+        ),
+        (
+            "host-screen-declined", .hostScreenRefused(reason: "host-screen-presence-declined"), true,
+            "the person at the host declined to share its screen; not redialled"
+        ),
+        (
+            "stopped-by-host", .stoppedByHost, true,
+            "a person at the host ended the session; not redialled"
+        ),
+        (
+            "screens-asleep", .hostDisplaysAsleep, true,
+            "every screen on the host is asleep and would not wake; not redialled"
+        ),
+        (
+            "capture-unavailable", .hostCaptureUnavailable, false,
+            "the host can no longer get a picture out of its machine; redialled"
+        ),
+        (
+            "unknown", .unknown, false,
+            "an ending nothing could classify; redialled"
+        )
+    ]
+    for (slug, failure, stopsRetrying, description) in rowFailures {
+        let window = machinesWindow(hosts: [miniHost, studioHost])
+        window.connectRequested(hostPublicKey: miniHost.hostPublicKey)
+        window.connectStarted(hostPublicKey: miniHost.hostPublicKey)
+        window.attemptFailed(reason: ViewerSessionFailureCopy.rowLine(for: failure, hostLabel: "Workstation"))
+        if stopsRetrying {
+            window.stoppedTrying()
+        }
+        write(
+            render(machinesContent(window)),
+            named: "viewer-machines-10-row-\(slug).png",
+            state: "YourMachinesWindowController, a row after \(description); no stream pass"
+        )
+    }
 
     // The update line beneath the list, each text taken from the same
     // `ViewerUpdateLine.make` the running viewer calls.
@@ -1543,6 +1838,135 @@ MainActor.assumeIsolated {
             + " — ViewerPairingFailureCopy under the field, and the code kept for another try"
     )
 
+    /// Presses Pair, then waits for the attempt to settle on whatever the
+    /// window's `pair` closure answers.
+    @MainActor
+    func pairAndSettle(_ controller: YourMachinesWindowController) {
+        guard controller.responds(to: submit) else {
+            fail("YourMachinesWindowController does not answer -submit")
+        }
+        controller.perform(submit)
+        pumpUntil(
+            { stored("isPairing", of: controller, as: Bool.self) == false },
+            description: "the pairing attempt to settle"
+        )
+    }
+
+    // Every way pairing can fail other than a wrong code (above), each as the
+    // other machine or the network would answer it.
+    let pairingFailures: [(String, ViewerPairingOutcome, String)] = [
+        ("code-expired", .refused(reason: "code-expired"), "the code expired (wire reason code-expired)"),
+        (
+            "code-already-used", .refused(reason: "code-already-consumed"),
+            "the code was already used (wire reason code-already-consumed)"
+        ),
+        (
+            "too-many-tries", .refused(reason: "code-attempts-exhausted"),
+            "too many wrong tries (wire reason code-attempts-exhausted)"
+        ),
+        (
+            "no-code-showing", .refused(reason: "no-active-code"),
+            "the other machine showing no code (wire reason no-active-code)"
+        ),
+        (
+            "unreadable-request", .refused(reason: "invalid-request"),
+            "the other machine unable to read the request (wire reason invalid-request)"
+        ),
+        (
+            "unknown-refusal", .refused(reason: "a-reason-this-build-has-never-seen"),
+            "a refusal reason this build has never seen, quoted rather than translated"
+        ),
+        ("unreachable", .unreachable, "nothing answering at the address"),
+        ("unverified-host", .unverifiedHost, "an answer that does not prove it is the machine that showed the code"),
+        ("unexpected-reply", .unexpectedReply, "a reply this build does not expect"),
+        ("unknown", .unknown, "an ending nothing could classify")
+    ]
+    for (slug, outcome, description) in pairingFailures {
+        let failing = machinesWindow(hosts: [miniHost]) { _, _ in .failed(outcome) }
+        failing.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
+        fill(failing, code: "418297")
+        pairAndSettle(failing)
+        write(
+            render(machinesContent(failing)),
+            named: "viewer-add-4b-failed-\(slug).png",
+            state: "YourMachinesWindowController after pairing failed with \(description) — "
+                + "ViewerPairingFailureCopy under the field; a spent code is cleared, an unspent one kept"
+        )
+    }
+
+    // The same attempt while it is out: the button, the fields and the line
+    // above Name all change at once. The `pair` closure never answers.
+    let pairing = machinesWindow(hosts: [miniHost]) { _, _ in
+        try? await Task.sleep(for: .seconds(3600))
+        return .failed(.unknown)
+    }
+    pairing.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
+    fill(pairing, code: "418297")
+    guard pairing.responds(to: submit) else {
+        fail("YourMachinesWindowController does not answer -submit")
+    }
+    pairing.perform(submit)
+    write(
+        render(machinesContent(pairing)),
+        named: "viewer-add-7-asking-pairing.png",
+        state: "YourMachinesWindowController while the other machine is being asked — the fields are locked, the"
+            + " button reads Pairing\u{2026}, and the line above Name asks the machine to accept this one"
+    )
+
+    // The code step reached from a saved machine's own Pair Again, which says
+    // outright that the saved key will be replaced.
+    let pairAgain = machinesWindow(hosts: [miniHost])
+    pairAgain.beginPairAgain(with: miniHost)
+    write(
+        render(machinesContent(pairAgain)),
+        named: "viewer-add-8-pair-again.png",
+        state: "YourMachinesWindowController on the code step reached from a saved machine's Pair Again — the"
+            + " machine is already known, and a line says pairing again replaces the saved key"
+    )
+
+    // Live validation on the hand-typed address and on the code. The address
+    // line stays the height of its two-line hint, so nothing below it moves.
+    let addressErrors: [(String, String, String)] = [
+        ("viewer-add-5-address-error-implausible", "mini_local", "an address with a character no name has"),
+        ("viewer-add-5b-address-error-scheme", "https://mini.local", "an address typed with a scheme in front")
+    ]
+    for (name, typed, description) in addressErrors {
+        let window = machinesWindow(hosts: [miniHost])
+        window.showCodeStep(for: nil)
+        fill(window, address: typed, code: "418297")
+        write(
+            render(machinesContent(window)),
+            named: "\(name).png",
+            state: "YourMachinesWindowController on the hand-typed address step with \(description) — the message"
+                + " replaces the hint in place and the Pair button stays off"
+        )
+    }
+    let codeErrors: [(String, String, Bool, String)] = [
+        ("viewer-add-6-code-error-letters", "41829a", false, "a letter among the digits"),
+        ("viewer-add-6b-code-error-too-long", "4182975", false, "seven digits"),
+        (
+            "viewer-add-6c-code-short-after-leaving", "418", true,
+            "three digits and the field left, so the count-down now reads as a mistake"
+        )
+    ]
+    for (name, typed, leavesField, description) in codeErrors {
+        let window = machinesWindow(hosts: [miniHost])
+        window.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Workstation"))
+        fill(window, code: typed)
+        if leavesField {
+            window.controlTextDidEndEditing(Notification(
+                name: NSControl.textDidEndEditingNotification,
+                object: stored("codeField", of: window, as: NSTextField.self)
+            ))
+        }
+        write(
+            render(machinesContent(window)),
+            named: "\(name).png",
+            state: "YourMachinesWindowController on the code step with \(description) — the message replaces the"
+                + " hint in place and the Pair button stays off"
+        )
+    }
+
     // The viewer's own screen for a key it cannot read: no user ever runs a
     // command, so this offers its fix instead of naming a CLI flag.
     // Constructed but never shown -- `run()` is the only thing that orders
@@ -1719,6 +2143,95 @@ MainActor.assumeIsolated {
         privateDesktopOffered.handle(.hostScreenConnectEnded(
             reasonLine: ViewerSessionFailureCopy.line(
                 for: .hostScreenRefused(reason: HostScreenRefusalCopy.noneAvailableReason), hostLabel: "Workstation"
+            ),
+            offersVirtualDisplay: true
+        ))
+    ))
+
+    // A person stopping the redial of a session that had been live, and each
+    // way a live session ends other than a dropped link. Every sentence is the
+    // one `ClientSessionHost` hands the state machine, from the same failure
+    // value it classifies.
+    var stoppedMachine = ViewerSessionStateMachine(hostName: "Workstation")
+    stoppedMachine.handle(.connectStarted)
+    stoppedMachine.handle(.canvasReady)
+    stoppedMachine.handle(.sessionEnded)
+    stoppedMachine.handle(.connectStarted)
+    viewerStates.append((
+        "viewer-status-17-stopped",
+        "the person pressed Cancel while the session was being redialled",
+        stoppedMachine.handle(.stopRequested)
+    ))
+
+    var stoppedByHostMachine = ViewerSessionStateMachine(hostName: "Workstation")
+    stoppedByHostMachine.handle(.connectStarted)
+    stoppedByHostMachine.handle(.canvasReady)
+    viewerStates.append((
+        "viewer-status-18-stopped-by-host",
+        "a person at the host pressed Stop on the live session",
+        stoppedByHostMachine.handle(.stoppedByHost(
+            reasonLine: ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: "Workstation")
+        ))
+    ))
+
+    for (number, slug, failure, description) in [
+        (
+            19, "screens-asleep", ViewerSessionFailure.hostDisplaysAsleep,
+            "the host ended the session because its screens were asleep and would not wake"
+        ),
+        (
+            20, "capture-unavailable", ViewerSessionFailure.hostCaptureUnavailable,
+            "the host ended the session because it could no longer get a picture out of its machine"
+        )
+    ] {
+        var hostEndedMachine = ViewerSessionStateMachine(hostName: "Workstation")
+        hostEndedMachine.handle(.connectStarted)
+        hostEndedMachine.handle(.canvasReady)
+        viewerStates.append((
+            "viewer-status-\(number)-host-ended-\(slug)",
+            description,
+            hostEndedMachine.handle(.hostEnded(
+                reasonLine: ViewerSessionFailureCopy.line(for: failure, hostLabel: "Workstation")
+            ))
+        ))
+    }
+
+    // Two host-screen reasons the loop above leaves out, and the refusal a
+    // host that offers a private desktop gets. Resume-expired follows a live
+    // session, as the resume reasons above do.
+    var resumeExpiredMachine = ViewerSessionStateMachine(hostName: "Workstation")
+    resumeExpiredMachine.handle(.connectStarted)
+    resumeExpiredMachine.handle(.canvasReady)
+    viewerStates.append((
+        "viewer-status-21-ended-resume-expired",
+        "a host-screen connect that could not resume a session that was away too long, reason"
+            + " \"host-screen-resume-expired\"",
+        resumeExpiredMachine.handle(.hostScreenConnectEnded(
+            reasonLine: ViewerSessionFailureCopy.line(
+                for: .hostScreenRefused(reason: "host-screen-resume-expired"), hostLabel: "Workstation"
+            ),
+            screenNeverCameUp: false
+        ))
+    ))
+    var alreadyLiveMachine = ViewerSessionStateMachine(hostName: "Workstation")
+    viewerStates.append((
+        "viewer-status-22-ended-already-live",
+        "a host-screen connect the host refused because it still shows an earlier session as live, reason"
+            + " \"host-screen-already-live\"",
+        alreadyLiveMachine.handle(.hostScreenConnectEnded(
+            reasonLine: ViewerSessionFailureCopy.line(
+                for: .hostScreenRefused(reason: "host-screen-already-live"), hostLabel: "Workstation"
+            )
+        ))
+    ))
+    var declinedWithDesktopMachine = ViewerSessionStateMachine(hostName: "Workstation")
+    viewerStates.append((
+        "viewer-status-23-ended-presence-declined-private-desktop-offered",
+        "a host-screen connect the person at the host declined, on a machine that offers a private desktop"
+            + " instead, reason \"host-screen-presence-declined\"",
+        declinedWithDesktopMachine.handle(.hostScreenConnectEnded(
+            reasonLine: ViewerSessionFailureCopy.line(
+                for: .hostScreenRefused(reason: "host-screen-presence-declined"), hostLabel: "Workstation"
             ),
             offersVirtualDisplay: true
         ))
@@ -2197,6 +2710,81 @@ MainActor.assumeIsolated {
         )
     }
 
+    // The same banner for the other two things that refuse a request over a
+    // picture that is still live: a screen resolution change the host would not
+    // make, and a clipboard that was not shared. The window hands both to the
+    // view the refused Displays request uses, so these are that view too.
+    let modeNoticeStates: [(String, String, String)] = [
+        (
+            "viewer-notice-6-screen-mode-failed",
+            HostScreenModeRefusalReason.failed,
+            "the host's change of its screen's resolution failed and it went back to what it had"
+        ),
+        (
+            "viewer-notice-7-screen-mode-unknown",
+            HostScreenModeRefusalReason.unknown,
+            "the resolution asked for is no longer one the host's screen offers"
+        ),
+        (
+            "viewer-notice-8-screen-mode-not-live",
+            HostScreenModeRefusalReason.notLive,
+            "the host is no longer showing this machine its screen"
+        ),
+        (
+            "viewer-notice-9-screen-mode-unrecognised-reason",
+            "a-reason-this-build-has-never-seen",
+            "a reason this build has never seen, quoted verbatim rather than translated"
+        )
+    ]
+    for (prefix, reason, description) in modeNoticeStates {
+        let notice = ViewerTransientNoticeView()
+        notice.show(HostScreenRefusalCopy.modeRefusalLine(reason: reason, hostLabel: "Workstation"))
+        notice.layoutSubtreeIfNeeded()
+        notice.frame = NSRect(origin: .zero, size: notice.fittingSize)
+        write(
+            render(notice),
+            named: "\(prefix).png",
+            state: "ViewerTransientNoticeView — a refused change of the host screen's resolution, \(description);"
+                + " shown as a banner over the canvas, drawn on the viewer's own machine; no stream pass"
+        )
+    }
+
+    let clipboardNoticeStates: [(String, ClipboardRefusal, String)] = [
+        (
+            "viewer-notice-10-clipboard-too-large",
+            .tooLarge(
+                byteCount: ClipboardPolicy.maximumContentBytes + 1,
+                limit: ClipboardPolicy.maximumContentBytes
+            ),
+            "a copy one byte over the limit, which the size rounding keeps from reading as the limit itself"
+        ),
+        (
+            "viewer-notice-11-clipboard-private",
+            .excludedType,
+            "a copy the app that made it marked private, or a file"
+        ),
+        (
+            "viewer-notice-12-clipboard-unsupported",
+            .unsupportedContent,
+            "a copy that is neither text nor an image"
+        )
+    ]
+    for (prefix, refusal, description) in clipboardNoticeStates {
+        guard let line = ClipboardRefusalCopy.line(for: refusal) else {
+            fail("\(prefix) has no clipboard notice line")
+        }
+        let notice = ViewerTransientNoticeView()
+        notice.show(line)
+        notice.layoutSubtreeIfNeeded()
+        notice.frame = NSRect(origin: .zero, size: notice.fittingSize)
+        write(
+            render(notice),
+            named: "\(prefix).png",
+            state: "ViewerTransientNoticeView — a clipboard that was not shared, \(description); shown as a banner"
+                + " over the canvas, drawn on the viewer's own machine; no stream pass"
+        )
+    }
+
     // ShortcutStripView: the row of system shortcuts across the top of the
     // session window, in the three states it has -- closed, with only the
     // handle that opens it; open, with its buttons; and the one question Lock
@@ -2309,7 +2897,9 @@ lines += [
     "The Displays-menu refusal banner (ViewerTransientNoticeView) gets the same",
     "one-pass, no-stream-pass treatment for the same reason -- it is drawn on",
     "the viewer's own machine -- but at its own fitting size, which is not fixed:",
-    "it grows and wraps with the sentence it shows.",
+    "it grows and wraps with the sentence it shows. The same view carries the",
+    "refused screen-resolution changes (viewer-notice-6 to 9) and the clipboard",
+    "that was not shared (viewer-notice-10 to 12).",
     "",
     "non-bg is the fraction of pixels that differ from the most common colour:",
     "the check that the file is a picture and not one flat rectangle.",
@@ -2333,6 +2923,10 @@ lines += [
     "  content is ViewerMenuPlan.pointerCaptureTitle, ClipboardSharingToggle,",
     "  DisplayScaleMenuPlan, DisplayCountMenuPlan, and ScreenMenuPlan, all pure and",
     "  covered by SensoriumClientTestRunner.",
+    "  The Make a new key? confirmation (ViewerNewKeyAlert) -- an NSAlert, whose",
+    "  background, text colour and buttons are drawn by macOS around a window",
+    "  that is never shown, so an offscreen draw of it is a folder icon and nothing",
+    "  else. Its words are ViewerNewKeyConfirmation's.",
     "  The Sensorium menu's Check for Updates\u{2026} and Check for Updates",
     "  Automatically, for the same reason. ViewerMenuPlan builds both from",
     "  ViewerMenuBarState.checksForUpdatesAutomatically, and SensoriumClientTestRunner",

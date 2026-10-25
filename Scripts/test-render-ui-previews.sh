@@ -33,3 +33,4 @@ if grep -nE '"/(private/)?(tmp|var|Users)/' "$RENDERER" >&2; then
 fi
 
 printf 'PASS: UI preview renderer output location contract\n'
+python3 "$ROOT/Scripts/test-render-ui-preview-colors.py"
