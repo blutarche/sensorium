@@ -205,6 +205,30 @@ func testShortcutStripEscapeRoutingTests() {
     expect(!chrome.isStripVisible, "the pinned confirmation closes")
     forwarded.removeAll()
     expect(key(false) == .canvas(.key(keyCode: 53, isDown: false, modifiers: [])), "focus loss clears consumed-key memory")
+    forwarded.removeAll()
+    chrome = SessionChromeState()
+    chrome.apply(status: machine.handle(.canvasReady), now: 0)
+    expect(key(true) == .canvas(.key(keyCode: 53, isDown: true, modifiers: [])), "a press before hovering the strip reaches the host")
+    forwarded.noteForwarded(evdev: 1)
+    chrome.toggleStripRequested(now: 0)
+    chrome.pointerOnStrip(isOnHandleSpot: false, now: 0)
+    expect(key(true) == .canvas(.key(keyCode: 53, isDown: true, modifiers: [])), "a held host Escape repeat is not stolen when the pointer moves onto the strip")
+    expect(chrome.isStripVisible, "a held host key does not close newly hovered chrome")
+    expect(key(false) == .canvas(.key(keyCode: 53, isDown: false, modifiers: [])), "the held Escape still releases at the host")
+    expect(key(true) == .dropped && !chrome.isStripVisible, "the next distinct Escape closes the strip locally")
+    expect(key(false) == .dropped, "its release stays local")
+    expect(key(true) == .canvas(.key(keyCode: 53, isDown: true, modifiers: [])), "a later press reaches the host with no stale consumption state")
+    forwarded.removeAll()
+    chrome = SessionChromeState()
+    chrome.apply(status: machine.handle(.canvasReady), now: 0)
+    chrome.toggleStripRequested(now: 0)
+    chrome.pointerOnStrip(isOnHandleSpot: false, now: 0)
+    expect(key(true) == .dropped, "Escape is consumed before a menu opens")
+    expect(
+        WaylandKeyPath.forwardedRelease(evdev: 1, keyboard: keyboard, forwarded: &forwarded) == .dropped,
+        "the open-menu release path settles a locally consumed Escape"
+    )
+    expect(key(true) == .canvas(.key(keyCode: 53, isDown: true, modifiers: [])), "after the menu closes, a distinct Escape is not swallowed")
     print("PASS: Linux Escape closes eligible strips, consumes repeats and release, and preserves host releases")
 }
 

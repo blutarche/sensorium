@@ -59,6 +59,8 @@ public struct WaylandForwardedKeys: Equatable, Sendable {
     private var consumedEscape = false
 
     mutating func consumeEscape(isDown: Bool, allowsClosing: Bool, chrome: inout SessionChromeState) -> Bool {
+        // A press already sent to the host owns its repeats until release.
+        guard !held.contains(1) else { return false }
         if consumedEscape {
             if !isDown { consumedEscape = false }
             return true
@@ -79,6 +81,12 @@ public struct WaylandForwardedKeys: Equatable, Sendable {
     /// settles the debt: it is owed once.
     public mutating func takeRelease(evdev code: UInt32) -> Bool {
         held.remove(code) != nil
+    }
+
+    mutating func takeConsumedEscapeRelease(evdev code: UInt32) -> Bool {
+        guard code == 1, consumedEscape else { return false }
+        consumedEscape = false
+        return true
     }
 
     /// The far machine let go of everything, as it does when the keyboard
@@ -170,20 +178,21 @@ public enum WaylandKeyPath {
         return .menuCommand(command, isDown: isDown)
     }
 
-    /// Where the release of this key goes if the far machine saw it pressed,
-    /// and nil if it did not. Asked on its own by a window whose open menu
-    /// takes every other key.
+    /// Settles host-owned and locally consumed releases even while an open
+    /// menu takes the other keys. Returns nil for an untracked release.
     @MainActor
     public static func forwardedRelease(
         evdev: UInt32,
         keyboard: WaylandKeyTranslating?,
         forwarded: inout WaylandForwardedKeys
     ) -> WaylandKeyDestination? {
-        guard forwarded.takeRelease(evdev: evdev) else { return nil }
+        let wasForwarded = forwarded.takeRelease(evdev: evdev)
+        let wasConsumed = forwarded.takeConsumedEscapeRelease(evdev: evdev)
+        guard wasForwarded || wasConsumed else { return nil }
         // The keyboard is told even when the far machine is not, so its
         // record of what is held stays true.
         guard let event = keyboard?.key(evdev: evdev, isDown: false) else { return .dropped }
-        return .canvas(event)
+        return wasForwarded ? .canvas(event) : .dropped
     }
 
     /// The same decision for an event the window already has in hand: a key
