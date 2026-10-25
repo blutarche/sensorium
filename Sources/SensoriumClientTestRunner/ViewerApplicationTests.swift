@@ -335,13 +335,17 @@ actor GatedControlConnection: ClientControlConnection {
     /// Once set, every send parks and never returns, as a write to a peer that
     /// has already gone does. `close()` deliberately leaves them parked.
     private var stallsSends = false
+    private var stalledSendContinuations: [CheckedContinuation<Void, Never>] = []
+    var stalledSendCount: Int { stalledSendContinuations.count }
     func stallSends() { stallsSends = true }
     func send(_ message: SensoriumMessage) async throws { await parkIfStalled() }
     func send(_ packet: SensoriumTransportPacket) async throws { await parkIfStalled() }
 
     private func parkIfStalled() async {
         if stallsSends {
-            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+            await withCheckedContinuation { continuation in
+                stalledSendContinuations.append(continuation)
+            }
         }
     }
 
@@ -414,12 +418,12 @@ private struct ViewerApplicationHarness {
     /// happened. Every check below is the end of a chain of awaits, not a
     /// fixed delay. The ten-second ceiling only bounds a genuine failure; a
     /// loaded CI machine can take seconds to schedule the chain.
-    func settle(until condition: @MainActor () -> Bool) async -> Bool {
+    func settle(until condition: @MainActor () async -> Bool) async -> Bool {
         for _ in 0..<2000 {
-            if condition() { return true }
+            if await condition() { return true }
             try? await Task.sleep(for: .milliseconds(5))
         }
-        return condition()
+        return await condition()
     }
 
     func reportFirstDecodedFrame(in window: FakeViewerSessionWindow) async {
@@ -731,6 +735,10 @@ private func withHostStoppedSessionWhoseSendsStall(
     expect(
         await harness.settle(until: { window.appliedStatuses.last.map({ unbound($0.headline) }) == "Stopped at Studio." }),
         "the panel says the host stopped it, got \(String(describing: window.appliedStatuses.last?.headline))"
+    )
+    expect(
+        await harness.settle(until: { await connection.stalledSendCount > 0 }),
+        "the viewer has an outstanding send before the panel action"
     )
     await body(harness, window, connection)
 }
