@@ -158,6 +158,23 @@ public enum WaylandOverlayLayout {
         )
     }
 
+    /// Whether a point in the window's logical units is on the spot the handle
+    /// takes while the strip is closed. An open strip hides the handle, but
+    /// the spot stays the pointer's way in -- see
+    /// `SessionChromeState.pointerOnStrip`.
+    public static func isOnStripHandleSpot(
+        x: Double,
+        y: Double,
+        windowWidth: Double,
+        handleWidth: Double,
+        handleHeight: Double,
+        barTop: Double
+    ) -> Bool {
+        stripHandle(windowWidth: windowWidth, contentWidth: handleWidth, contentHeight: handleHeight)
+            .offset(y: barTop)
+            .contains(x: x, y: y)
+    }
+
     /// The band across the top a pinned, open strip claims, which the
     /// picture and the diagnostics panel move down by. The rule itself is
     /// `ShortcutStripLayoutPolicy`, the same one the macOS window applies to

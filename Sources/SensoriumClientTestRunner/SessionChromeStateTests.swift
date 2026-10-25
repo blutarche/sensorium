@@ -56,6 +56,59 @@ func testSessionChromeStateTests() {
     print("PASS: the session window's chrome shows the panel, the strip, the notice and the diagnostics on the states that ask for them")
 }
 
+/// A strip closed by Escape or the chord while the pointer rests on the
+/// handle's spot stays closed. The handle comes back up under the pointer at
+/// that moment, and a compositor reports the pointer entering it; taking that
+/// for a fresh approach would open the strip again at once.
+func testSessionChromeHandleSpotTests() {
+    func liveChrome() -> SessionChromeState {
+        var chrome = SessionChromeState()
+        var machine = ViewerSessionStateMachine(hostName: "studio")
+        chrome.apply(status: machine.handle(.connectStarted), now: 0)
+        chrome.apply(status: machine.handle(.canvasReady), now: 1)
+        return chrome
+    }
+
+    var chrome = liveChrome()
+    chrome.toggleStripRequested(now: 2)
+    chrome.pointerOnStrip(isOnHandleSpot: false, now: 3)
+    chrome.pointerOnStrip(isOnHandleSpot: true, now: 3.1)
+    expect(chrome.escapePressed(), "Escape closes an open strip the pointer is on")
+    expect(!chrome.isStripVisible, "and it is closed")
+    expect(chrome.isHandleVisible, "the handle is back")
+    chrome.pointerOverHandle(true, now: 3.2)
+    expect(!chrome.isStripVisible, "a pointer that never left the handle's spot does not open the strip again")
+    chrome.pointerOverHandle(false, now: 4)
+    chrome.pointerOverHandle(true, now: 5)
+    expect(chrome.isStripVisible, "once it has gone and come back, the handle opens the strip as it always does")
+
+    var chord = liveChrome()
+    chord.toggleStripRequested(now: 2)
+    chord.pointerOnStrip(isOnHandleSpot: true, now: 3)
+    chord.toggleStripRequested(now: 4)
+    chord.pointerOverHandle(true, now: 4)
+    expect(!chord.isStripVisible, "the chord closes it for good under a pointer on the spot, too")
+
+    var wandering = liveChrome()
+    wandering.toggleStripRequested(now: 2)
+    wandering.pointerOnStrip(isOnHandleSpot: true, now: 3)
+    wandering.pointerOnStrip(isOnHandleSpot: false, now: 3.1)
+    expect(wandering.escapePressed(), "Escape closes it from anywhere on the strip")
+    wandering.pointerOverHandle(true, now: 4)
+    expect(wandering.isStripVisible, "a pointer that had moved off the spot is a fresh approach when it reaches the handle")
+
+    var leaving = liveChrome()
+    leaving.toggleStripRequested(now: 2)
+    leaving.pointerOnStrip(isOnHandleSpot: true, now: 3)
+    leaving.pointerLeftStrip(now: 4)
+    expect(leaving.isStripVisible, "a pointer that just left has not closed the strip yet")
+    expect(leaving.nextDeadline == 4 + ShortcutStripModel.hideDelaySeconds, "it closes on the strip's own delay, though the pointer left from the spot")
+    leaving.tick(now: 4 + ShortcutStripModel.hideDelaySeconds)
+    expect(!leaving.isStripVisible, "and is closed once that is up")
+
+    print("PASS: a strip closed with the pointer on the handle's spot stays closed, and one left from the spot still closes on its delay")
+}
+
 /// The session controls live in the menu bar now, so Control-Shift-Command-K
 /// is ordinary typing again and reaches the machine being worked on.
 func testSessionControlsChordTests() {

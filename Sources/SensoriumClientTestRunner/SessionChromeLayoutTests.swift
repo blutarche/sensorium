@@ -113,6 +113,27 @@ func testWaylandOverlayLayoutTests() {
     print("PASS: the four session overlays sit where the window's logical size puts them, in whole pixels at any scale")
 }
 
+/// The spot the handle takes while the strip is closed. An open strip hides
+/// the handle, but the spot stays where a pointer counts as "on the handle",
+/// so the window can tell one resting there from one that has gone.
+func testStripHandleSpotTests() {
+    let spot = { (x: Double, y: Double, barTop: Double) -> Bool in
+        WaylandOverlayLayout.isOnStripHandleSpot(
+            x: x, y: y, windowWidth: 1280, handleWidth: 60, handleHeight: 8, barTop: barTop
+        )
+    }
+    let top = WaylandOverlayLayout.topClearance
+    expect(spot(640, top + 4, 0), "the middle of the handle's place is on its spot")
+    expect(spot(610, top, 0) && spot(669, top + 7, 0), "and so are its corners")
+    expect(!spot(609, top + 4, 0) && !spot(670, top + 4, 0), "a point beside it is not")
+    expect(!spot(640, top - 1, 0) && !spot(640, top + 8, 0), "nor one above or below it")
+    expect(
+        spot(640, top + 4 + 28, 28) && !spot(640, top + 4, 28),
+        "with a menu bar above, the spot moves down by the bar, as the handle does"
+    )
+    print("PASS: the handle's spot is where the handle is drawn when the strip is closed")
+}
+
 /// What a pinned strip takes from the picture. Pinning gives the strip its
 /// own band across the top; the picture and the diagnostics panel move down
 /// below it, so neither is covered. An unpinned strip opened by a hover or

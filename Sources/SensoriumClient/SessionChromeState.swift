@@ -89,6 +89,24 @@ public struct SessionChromeState: Equatable, Sendable {
         strip.pointerOverStrip(isOver, now: now)
     }
 
+    /// The pointer is somewhere on the open strip. The open strip hides the
+    /// handle, but the handle's spot stays the pointer's way in: a pointer
+    /// resting on it is not one that left, so a strip closed by Escape or the
+    /// chord stays closed as the handle comes back up under the pointer rather
+    /// than opening again at once. `ShortcutStripView` makes the same
+    /// judgement on macOS.
+    public mutating func pointerOnStrip(isOnHandleSpot: Bool, now: TimeInterval) {
+        strip.pointerOverHandle(isOnHandleSpot && strip.isHandleVisible, now: now)
+        strip.pointerOverStrip(true, now: now)
+    }
+
+    /// The pointer left the open strip for the picture or another overlay,
+    /// which takes the handle's spot with it.
+    public mutating func pointerLeftStrip(now: TimeInterval) {
+        strip.pointerOverHandle(false, now: now)
+        strip.pointerOverStrip(false, now: now)
+    }
+
     public mutating func handleClicked() {
         strip.handleClicked()
     }

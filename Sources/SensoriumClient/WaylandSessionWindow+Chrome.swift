@@ -631,6 +631,13 @@ extension WaylandSessionWindow: SessionWindowChrome {
         }
         chrome.overlayPointerX = x
         chrome.overlayPointerY = y
+        if overlayKind(for: surface) == .shortcutStrip {
+            // The handle's spot is part of the strip's surface while the strip
+            // is open, so only motion can say whether the pointer is on it.
+            let before = chrome.state.strip.visibility
+            chrome.state.pointerOnStrip(isOnHandleSpot: isPointerOnHandleSpot(), now: chromeNow())
+            if chrome.state.strip.visibility != before { relayoutChrome() }
+        }
         _ = menuPointerMoved(surface: surface, x: x, y: y)
         return true
     }
@@ -759,11 +766,29 @@ extension WaylandSessionWindow: SessionWindowChrome {
         case .stripHandle:
             chrome.state.pointerOverHandle(isOver, now: now)
         case .shortcutStrip:
-            chrome.state.pointerOverStrip(isOver, now: now)
+            if isOver {
+                chrome.state.pointerOnStrip(isOnHandleSpot: isPointerOnHandleSpot(), now: now)
+            } else {
+                chrome.state.pointerLeftStrip(now: now)
+            }
         case .statusPanel, .notice, .diagnostics, .canvasScrim, .menuBar:
             return
         }
         relayoutChrome()
+    }
+
+    /// Whether the pointer, which is on the strip's surface, is on the spot the
+    /// handle takes while the strip is closed.
+    private func isPointerOnHandleSpot() -> Bool {
+        guard let strip = chrome.overlays[.shortcutStrip]?.rect else { return false }
+        return WaylandOverlayLayout.isOnStripHandleSpot(
+            x: strip.x + chrome.overlayPointerX,
+            y: strip.y + chrome.overlayPointerY,
+            windowWidth: logicalSize.width,
+            handleWidth: SessionChromePainter.handleWidth,
+            handleHeight: SessionChromePainter.handleHeight,
+            barTop: chrome.menuBar.contentTop
+        )
     }
 
     private func overlayKind(for surface: OpaquePointer?) -> WaylandOverlayKind? {
