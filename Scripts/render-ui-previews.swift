@@ -2396,6 +2396,21 @@ MainActor.assumeIsolated {
             )
         ),
         (
+            "viewer-hud-14-no-readings",
+            "a named host that has sent no measurements",
+            SessionHUDSnapshot(
+                surfaceID: 0,
+                availability: .unavailable,
+                clientMetrics: clientMetrics,
+                stream: streamReading(scale: 2.0),
+                requestedStreamScale: 2.0,
+                streamScalePreference: .automatic,
+                decoder: .hardwareAccelerated,
+                hostName: "Workstation",
+                hostAddress: previewHostAddress
+            )
+        ),
+        (
             "viewer-hud-3-old-host",
             "a host that sends neither applied scale nor ceiling — unknown, not held below",
             SessionHUDSnapshot(
