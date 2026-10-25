@@ -11,9 +11,9 @@
   <description>
     <p>
       Sensorium is a private remote workstation for two machines. You sit at
-      this one, the viewer, and work on a virtual display the other machine
-      creates for you. With permission granted at that machine, you can also
-      see and control one of its real screens.
+      this one, the viewer, and see and control the screen of the other
+      machine once the two are paired. If the person at that machine offers a
+      private desktop, you can work on that instead.
     </p>
     <p>
       The two machines talk directly over their own Tailscale tailnet. There
