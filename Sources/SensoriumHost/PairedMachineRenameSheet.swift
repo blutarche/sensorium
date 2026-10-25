@@ -1,23 +1,42 @@
 import AppKit
 import Foundation
 
-/// The small sheet a paired machine's Rename opens: one field, prefilled
-/// with the name this machine shows for it now, with Cancel and Rename.
+/// The small sheet a paired machine's Rename opens: a heading naming the
+/// machine, one field prefilled with the name this machine shows for it now,
+/// with Cancel and Rename.
 /// Return renames and Escape cancels. What it hands back is the field as
 /// typed; `PairedDeviceName.normalized` decides what is stored.
 @MainActor
 public final class PairedMachineRenameView: NSView {
     static let width: CGFloat = 320
 
-    /// How tall the sheet is when it needs no more room than its own content.
-    static var naturalHeight: CGFloat {
-        PairedMachineRenameView(currentName: "", onRename: { _ in }, onCancel: {}).fittingSize.height
+    private static let titleFont = CanvasDesign.font(.primary, size: 14, weight: .semibold)
+    private static var textWidth: CGFloat { width - CanvasDesign.Space.lg * 2 }
+
+    /// How tall the sheet is when it needs no more room than its own content,
+    /// which a long name in the heading can add a line to.
+    package static func naturalHeight(currentName: String = "") -> CGFloat {
+        PairedMachineRenameView(currentName: currentName, onRename: { _ in }, onCancel: {}).fittingSize.height
     }
 
-    private let titleLabel = NSTextField(labelWithString: "Rename this machine")
+    /// Names the machine being renamed, held whole where it fits. A machine
+    /// with no name of its own is shown on its row as "Unnamed machine", and
+    /// its field starts empty, so that title stands in here.
+    private static func heading(forMachineNamed currentName: String) -> String {
+        let name = currentName.isEmpty ? HostScreenArmingPresentation.unnamedMachineTitle : currentName
+        return HostTextFlow.flow(
+            "Rename \(name)",
+            names: [name],
+            measure: HostTextFlow.Measure(attributes: [.font: titleFont], width: textWidth)
+        )
+    }
+
+    private let titleLabel = NSTextField(wrappingLabelWithString: "")
     private let nameField = NSTextField()
     private let hintLabel = NSTextField(
-        wrappingLabelWithString: "Only this host uses this name. Leave it empty to use the name the machine reports."
+        wrappingLabelWithString: HostTextFlow.flow(
+            "Only this machine uses this name. Leave it empty to use the name the other machine reports."
+        )
     )
     private let cancelButton = NSButton()
     private let renameButton = NSButton()
@@ -42,8 +61,12 @@ public final class PairedMachineRenameView: NSView {
         layer?.borderColor = CanvasDesign.line2.cgColor
         layer?.cornerRadius = CanvasDesign.Radius.base
 
-        titleLabel.font = CanvasDesign.font(.primary, size: 14, weight: .semibold)
+        titleLabel.font = Self.titleFont
         titleLabel.textColor = CanvasDesign.ink.nsColor
+        titleLabel.stringValue = Self.heading(forMachineNamed: currentName)
+        // Same reason as the hint's: a wrapping label is one line tall until
+        // it is laid out.
+        titleLabel.preferredMaxLayoutWidth = Self.textWidth
 
         nameField.stringValue = currentName
         nameField.placeholderString = currentName
@@ -56,7 +79,7 @@ public final class PairedMachineRenameView: NSView {
         hintLabel.textColor = CanvasDesign.muted.nsColor
         // Without this a wrapping label reports one line's height until it is
         // laid out, and the view then grows past the height it reported.
-        hintLabel.preferredMaxLayoutWidth = Self.width - CanvasDesign.Space.lg * 2
+        hintLabel.preferredMaxLayoutWidth = Self.textWidth
 
         Self.style(cancelButton, title: "Cancel", fill: CanvasDesign.bg3, text: CanvasDesign.ink, bordered: true)
         cancelButton.keyEquivalent = "\u{1b}"
@@ -91,6 +114,7 @@ public final class PairedMachineRenameView: NSView {
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
             heightAnchor.constraint(greaterThanOrEqualToConstant: minimumHeight),
             nameField.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            titleLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             hintLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
             buttons.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
@@ -180,7 +204,7 @@ enum PairedMachineRenameSheet {
         minimumHeight: CGFloat = 0,
         onRename: @escaping (String) -> Void
     ) {
-        let height = max(PairedMachineRenameView.naturalHeight, minimumHeight)
+        let height = max(PairedMachineRenameView.naturalHeight(currentName: currentName), minimumHeight)
         let sheet = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: PairedMachineRenameView.width, height: height),
             styleMask: [.titled],

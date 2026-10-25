@@ -182,7 +182,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
                 PairedMachineRenameSheet.present(
                     on: window,
                     currentName: currentName,
-                    minimumHeight: self.renameSheetHeight(atLeast: PairedMachineRenameView.naturalHeight),
+                    minimumHeight: self.renameSheetHeight(
+                        atLeast: PairedMachineRenameView.naturalHeight(currentName: currentName)
+                    ),
                     onRename: renamed
                 )
             }

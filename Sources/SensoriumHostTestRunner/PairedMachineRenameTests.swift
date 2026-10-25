@@ -579,4 +579,51 @@ func runPairedMachineRenameTests() async {
         expect(cancelled == 1 && confirmed.count == 1, "Cancel hands back nothing")
         print("PASS: the rename sheet starts with the current name, confirms on Return and cancels on Escape")
     }
+
+    do {
+        // "this machine" means the host everywhere else in this window, so
+        // the heading names the machine being renamed instead, held whole.
+        func plain(_ text: String) -> String {
+            text
+                .replacingOccurrences(of: HostTextFlow.noBreakSpace, with: " ")
+                .replacingOccurrences(of: HostTextFlow.nonBreakingHyphen, with: "-")
+        }
+        func texts(of sheet: PairedMachineRenameView) -> (heading: String, hint: String) {
+            let heading: NSTextField = field("titleLabel", of: sheet, as: NSTextField.self)
+            let hint: NSTextField = field("hintLabel", of: sheet, as: NSTextField.self)
+            return (heading.stringValue, hint.stringValue)
+        }
+        func sheet(named name: String) -> PairedMachineRenameView {
+            PairedMachineRenameView(currentName: name, onRename: { _ in }, onCancel: {})
+        }
+
+        let named = texts(of: sheet(named: "Studio Laptop"))
+        expect(plain(named.heading) == "Rename Studio Laptop", "the heading names the machine -- got \(named.heading)")
+        expect(
+            named.heading.contains(HostTextFlow.whole("Studio Laptop")),
+            "the machine's name is held whole in the heading -- got \(named.heading.debugDescription)"
+        )
+        let hyphenated = texts(of: sheet(named: "kestrel-laptop"))
+        expect(
+            hyphenated.heading.contains(HostTextFlow.whole("kestrel-laptop")),
+            "a hyphenated name is held whole too -- got \(hyphenated.heading.debugDescription)"
+        )
+        expect(
+            plain(named.hint)
+                == "Only this machine uses this name. Leave it empty to use the name the other machine reports.",
+            "the hint says who uses the name and where the empty one comes from -- got \(named.hint)"
+        )
+        expect(
+            named.hint.hasSuffix("machine\(HostTextFlow.noBreakSpace)reports."),
+            "the hint's last two words stay together -- got \(named.hint.debugDescription)"
+        )
+        // The row's field starts empty for a machine that has no name, while its
+        // row reads "Unnamed machine"; the heading says what the row says.
+        let unnamed = texts(of: sheet(named: ""))
+        expect(
+            plain(unnamed.heading) == "Rename \(HostScreenArmingPresentation.unnamedMachineTitle)",
+            "a machine with no name is renamed under the title its row shows -- got \(unnamed.heading)"
+        )
+        print("PASS: the rename sheet's heading names the machine being renamed, held whole")
+    }
 }

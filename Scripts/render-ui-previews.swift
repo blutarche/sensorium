@@ -1006,7 +1006,9 @@ MainActor.assumeIsolated {
         let windowImage = render(hostWindowContent(controller))
         let sheet = PairedMachineRenameView(
             currentName: "Kestrel Laptop",
-            minimumHeight: controller.renameSheetHeight(atLeast: PairedMachineRenameView.naturalHeight),
+            minimumHeight: controller.renameSheetHeight(
+                atLeast: PairedMachineRenameView.naturalHeight(currentName: "Kestrel Laptop")
+            ),
             onRename: { _ in },
             onCancel: {}
         )

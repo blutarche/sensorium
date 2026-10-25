@@ -73,19 +73,45 @@ func runHostRenameSheetPlacementTests() async {
         // The height a sheet reports before layout is the height it keeps
         // after it: a wrapping hint that measures one line first and two
         // later would push the sheet's bottom edge past the gap picked for it.
-        for minimum: CGFloat in [0, 260] {
-            let sheet = PairedMachineRenameView(
-                currentName: "Kestrel Laptop", minimumHeight: minimum, onRename: { _ in }, onCancel: {}
-            )
-            let reported = sheet.fittingSize
-            sheet.frame = NSRect(origin: .zero, size: reported)
-            sheet.layoutSubtreeIfNeeded()
-            expect(
-                abs(sheet.frame.height - reported.height) < 0.5,
-                "a sheet reporting \(reported.height) must stay that tall once laid out, got \(sheet.frame.height)"
-            )
+        // A long name wraps the heading to a second line, and the sheet must
+        // report that line before layout too.
+        let longName = "Kestrel Laptop Pro Max Studio Edition North Annex Workstation"
+        for name in ["Kestrel Laptop", longName] {
+            for minimum: CGFloat in [0, 260] {
+                let sheet = PairedMachineRenameView(
+                    currentName: name, minimumHeight: minimum, onRename: { _ in }, onCancel: {}
+                )
+                let reported = sheet.fittingSize
+                sheet.frame = NSRect(origin: .zero, size: reported)
+                sheet.layoutSubtreeIfNeeded()
+                expect(
+                    abs(sheet.frame.height - reported.height) < 0.5,
+                    "a sheet reporting \(reported.height) must stay that tall once laid out, got \(sheet.frame.height)"
+                )
+            }
         }
         print("PASS: the rename view keeps the height it reports")
+    }
+
+    do {
+        // The height the host picks a gap for is the height of the sheet it
+        // will show: the one for a name that wraps is taller than the one for a
+        // name that does not.
+        let short = PairedMachineRenameView.naturalHeight(currentName: "Kestrel Laptop")
+        let long = PairedMachineRenameView.naturalHeight(
+            currentName: "Kestrel Laptop Pro Max Studio Edition North Annex Workstation"
+        )
+        expect(long > short, "a heading that wraps makes the sheet taller -- one line \(short), wrapped \(long)")
+        let shown = PairedMachineRenameView(
+            currentName: "Kestrel Laptop Pro Max Studio Edition North Annex Workstation",
+            onRename: { _ in },
+            onCancel: {}
+        )
+        expect(
+            abs(shown.fittingSize.height - long) < 0.5,
+            "the natural height for a name is the height its own sheet reports -- \(long) against \(shown.fittingSize.height)"
+        )
+        print("PASS: the rename sheet's natural height follows its heading")
     }
 
     do {
