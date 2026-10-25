@@ -75,9 +75,10 @@ public enum HostScreenRefusalCopy {
         case "host-screen-presence-unanswered":
             return "No one at \(host) answered the request within thirty seconds."
         case "host-screen-presence-check-required":
-            return "Sensorium Host could not show its ask-first prompt, which "
-                + "\u{201C}\(ViewerCopyWrapping.control(askFirstSwitchName))\u{201D} turns on. Quit and reopen "
-                + "Sensorium Host there, then try again."
+            return ViewerCopyWrapping.keepingLastTwoWordsTogether(
+                "\u{201C}\(ViewerCopyWrapping.control(askFirstSwitchName))\u{201D} is on, but Sensorium Host "
+                    + "could not show its prompt. Quit and reopen Sensorium Host on \(host), then try again."
+            )
         case "host-screen-display-unavailable":
             return "The screen you chose is no longer available. Trying again asks for it once more."
         case retryNeedsPersonReason:

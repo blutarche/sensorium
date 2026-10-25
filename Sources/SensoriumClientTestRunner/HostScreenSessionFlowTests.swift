@@ -216,12 +216,21 @@ func testHostScreenSessionFlowTests() async {
 
         let presenceCheckRequired = HostScreenRefusalCopy.line(reason: "host-screen-presence-check-required")
         expect(
-            presenceCheckRequired == "Sensorium Host could not show its ask-first prompt, which "
-                + "\u{201C}Ask\u{00A0}me\u{00A0}first\u{00A0}if\u{00A0}this\u{00A0}machine\u{00A0}is\u{00A0}in\u{00A0}use\u{201D} "
-                + "turns on. Quit and reopen Sensorium Host there, then try again.",
+            presenceCheckRequired
+                == "\u{201C}Ask\u{00A0}me\u{00A0}first\u{00A0}if\u{00A0}this\u{00A0}machine\u{00A0}is\u{00A0}in\u{00A0}use\u{201D} "
+                + "is on, but Sensorium Host could not show its prompt. Quit and reopen Sensorium Host on "
+                + "that machine, then try\u{00A0}again.",
             "host-screen-presence-check-required must not imply a specific person declined, since the same "
-                + "reason fires when no gate was configured or another prompt was already on screen -- "
-                + "got \(presenceCheckRequired)"
+                + "reason fires when no gate was configured or another prompt was already on screen; it opens "
+                + "on the whole quoted switch so no early break strands part of it, and keeps its last two words "
+                + "together -- got \(presenceCheckRequired)"
+        )
+        let namedPresenceCheckRequired = HostScreenRefusalCopy.line(
+            reason: "host-screen-presence-check-required", hostLabel: "Kestrel Laptop-2"
+        )
+        expect(
+            namedPresenceCheckRequired.contains("reopen Sensorium Host on Kestrel\u{00A0}Laptop\u{2011}2, then try\u{00A0}again."),
+            "a named host is where Sensorium Host is reopened, held whole -- got \(namedPresenceCheckRequired)"
         )
 
         let presenceDeclined = HostScreenRefusalCopy.line(reason: "host-screen-presence-declined")
