@@ -199,6 +199,8 @@ struct SensoriumClientTestRunner {
         testWaylandPasteboardProxyTests()
         testLinuxViewerLocationsTests()
         testViewerFirstRunNoticeTests()
+        await testSoftwareDecodeNoticePersistenceTests()
+        await testGtkSoftwareDecodeContinuePersistenceTests()
         await testViewportDrawableSizeTests()
     }
 }

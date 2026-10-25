@@ -355,11 +355,16 @@ struct Sensorium {
             // What this machine cannot do, said once, before any machine has
             // been reached. None of it stops pairing or a session: each
             // notice is a sentence and a button that takes it away.
-            for notice in ViewerFirstRunNotices.notices(
-                arguments: Array(CommandLine.arguments.dropFirst()),
-                capabilities: LinuxDecoderCapabilityProbe()
-            ) {
-                Task { @MainActor in await prompts.showNotice(notice) }
+            let noticeStore = ViewerFirstRunNoticeStore(
+                url: environment.applicationSupportDirectory().appendingPathComponent("first-run-notices.json")
+            )
+            Task { @MainActor in
+                await ViewerFirstRunNotices.showNotices(
+                    arguments: Array(CommandLine.arguments.dropFirst()),
+                    capabilities: LinuxDecoderCapabilityProbe(), acknowledgements: noticeStore
+                ) { notice in
+                    await prompts.showNotice(notice)
+                }
             }
             return ViewerGUI(
                 launch: launch,

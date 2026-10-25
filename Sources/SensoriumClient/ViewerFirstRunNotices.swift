@@ -30,12 +30,22 @@ public protocol VideoDecodeCapabilities: Sendable {
 /// for and what this machine can do, so it is verified without a window.
 public enum ViewerFirstRunNotices {
     public static let softwareDecode = ViewerNotice(
-        headline: "This machine has no hardware video decoder Sensorium can use, so it will decode in "
-            + "software and use more power.",
-        detail: "Fedora leaves the decoder out; it comes from the RPM Fusion package named "
-            + "mesa-va-drivers-freeworld.",
+        headline: "This machine decodes video in software, which uses more power.",
+        detail: "\(ViewerCopyWrapping.control("Session Diagnostics")) links to a guide for faster video.",
         continueTitle: "Continue"
     )
+
+    @MainActor
+    public static func showNotices(
+        arguments: [String], capabilities: any VideoDecodeCapabilities,
+        acknowledgements: ViewerFirstRunNoticeStore,
+        show: @MainActor (ViewerNotice) async -> Void
+    ) async {
+        for notice in notices(arguments: arguments, capabilities: capabilities, acknowledgements: acknowledgements) {
+            await show(notice)
+            acknowledgements.acknowledgeSoftwareDecode()
+        }
+    }
 
     /// The notices this launch should show, in order. Empty for a run that is
     /// only printing its usage or tracing a session: neither opens a window to
@@ -43,9 +53,38 @@ public enum ViewerFirstRunNotices {
     /// has no reason to touch.
     public static func notices(
         arguments: [String],
-        capabilities: any VideoDecodeCapabilities
+        capabilities: any VideoDecodeCapabilities,
+        acknowledgements: ViewerFirstRunNoticeStore? = nil
     ) -> [ViewerNotice] {
         guard !arguments.contains("--help"), !arguments.contains("--trace") else { return [] }
+        guard acknowledgements?.hasAcknowledgedSoftwareDecode() != true else { return [] }
         return capabilities.hasH264HardwareDecoder() ? [] : [softwareDecode]
+    }
+}
+
+/// Acknowledgements in the viewer's Application Support directory, written
+/// atomically with the same owner-only file policy as the strip's pin memory.
+public struct ViewerFirstRunNoticeStore: Sendable {
+    private let url: URL
+    private struct Record: Codable {
+        let softwareDecode: Bool
+    }
+
+    public init(url: URL) { self.url = url }
+
+    public func hasAcknowledgedSoftwareDecode() -> Bool {
+        guard let data = try? Data(contentsOf: url),
+              let record = try? JSONDecoder().decode(Record.self, from: data) else { return false }
+        return record.softwareDecode
+    }
+
+    public func acknowledgeSoftwareDecode() {
+        guard let data = try? JSONEncoder().encode(Record(softwareDecode: true)) else { return }
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? data.write(to: url, options: [.atomic])
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 }
