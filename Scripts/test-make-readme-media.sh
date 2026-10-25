@@ -68,7 +68,7 @@ viewer-add-2b-code-typed-6 920 574
 viewer-shortcuts-1b-pinned 1920 1200
 host-screen-badge-1-expanded 604 180
 host-screen-presence-prompt-1-short 720 514
-host-window-12-last-session-clean-stop 720 1610
+host-window-12-last-session-clean-stop 720 1642
 SIZES
 
 python3 -I - "$WORK" <<'PY'

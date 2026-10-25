@@ -146,6 +146,27 @@ func crop(_ image: CGImage, _ rect: CGRect, _ what: String) -> CGImage {
     return cropped
 }
 
+/// Dies unless each of `rows` is one flat colour. A fixed crop must start and
+/// end in empty space; when a render grows, its content moves onto the crop's
+/// edge and this names it rather than letting the media cut it silently.
+func requireBlankRows(_ image: CGImage, _ rows: [Int], _ what: String) {
+    let width = image.width
+    var pixels = [UInt8](repeating: 0, count: width * image.height * 4)
+    pixels.withUnsafeMutableBytes { buffer in
+        CGContext(
+            data: buffer.baseAddress, width: width, height: image.height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: image.height))
+    }
+    for row in rows {
+        let start = row * width * 4
+        for x in 1..<width where (0..<3).contains(where: { abs(Int(pixels[start + x * 4 + $0]) - Int(pixels[start + $0])) > 3 }) {
+            die("\(what) has content on row \(row) of its crop; move the crop back into empty space")
+        }
+    }
+}
+
 // MARK: - Drawing
 
 /// A bitmap that is addressed from its top-left corner, as the layout is
@@ -399,7 +420,9 @@ let badgeExpanded = render("host-screen-badge-1-expanded")
 /// Each crop ends in the empty space between two controls.
 func windowCrop(_ name: String, height: Int) -> CGImage {
     let source = render(name)
-    return crop(source, CGRect(x: 0, y: 0, width: source.width, height: height), name)
+    let cropped = crop(source, CGRect(x: 0, y: 0, width: source.width, height: height), name)
+    requireBlankRows(cropped, [height - 1], name)
+    return cropped
 }
 
 let hostReady = windowCrop("host-window-3-ready-no-machines-paired", height: 322)
@@ -1323,6 +1346,12 @@ func writeStill(to url: URL) {
 // MARK: - at-the-host.png
 
 func writeAtTheHost(to url: URL) {
+    let lastSessionCrop = crop(
+        render("host-window-12-last-session-clean-stop"),
+        CGRect(x: 32, y: 954, width: 656, height: 206),
+        "the host window"
+    )
+    requireBlankRows(lastSessionCrop, [0, lastSessionCrop.height - 1], "the last-session record")
     let width = 2048
     let margin: CGFloat = 48
     let gap: CGFloat = 24
@@ -1333,11 +1362,7 @@ func writeAtTheHost(to url: URL) {
             "After it ends",
             // The last-session record: its heading and its card, without the
             // paired-machine list above.
-            Placement(crop(
-                render("host-window-12-last-session-clean-stop"),
-                CGRect(x: 32, y: 922, width: 656, height: 206),
-                "the host window"
-            )),
+            Placement(lastSessionCrop),
             true
         )
     ]
