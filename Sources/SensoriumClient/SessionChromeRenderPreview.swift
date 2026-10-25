@@ -50,9 +50,9 @@ public enum SessionChromeRenderPreview {
     }
 
     package static func renderDiagnosticsViewport(
-        blocks: [SessionHUDBlock], width: Double, height: Double, offset: Double, to url: URL
+        blocks: [SessionHUDBlock], width: Double, height: Double, offset: Double, scale: Double = 1, to url: URL
     ) -> Bool {
-        renderToPNG(logicalWidth: width, logicalHeight: height, scale: 1, to: url) { context in
+        renderToPNG(logicalWidth: width, logicalHeight: height, scale: scale, to: url) { context in
             SessionChromePainter.drawDiagnostics(
                 blocks: blocks, in: context,
                 bounds: ViewerChromeRect(x: 0, y: 0, width: width, height: height),
@@ -208,6 +208,10 @@ public enum SessionChromeRenderPreview {
     /// any shortening its truncation asks for.
     package static func diagnosticsDisplayedValue(_ row: SessionHUDRow) -> String {
         SessionChromePainter.displayedValue(row, width: SessionChromePainter.diagnosticsContentWidth(), isNarrow: false)
+    }
+
+    package static func diagnosticsReadingsContain(y: Double, panelHeight: Double) -> Bool {
+        SessionChromePainter.diagnosticsReadingsContain(y: y, panelHeight: panelHeight)
     }
 
     /// Each link's rectangle on a diagnostics panel drawn at its own measured

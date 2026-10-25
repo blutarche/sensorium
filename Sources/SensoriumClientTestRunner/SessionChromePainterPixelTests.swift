@@ -1326,6 +1326,73 @@ func testSessionHUDAddressKeepsItsPortTests() {
     print("PASS: a HUD address too long for its row is shortened in the middle and keeps its port whole")
 }
 
+/// A scrolled panel clips its readings at the same padding it keeps above its
+/// first row, so no row ever touches the border however far it is scrolled.
+@MainActor
+func testSessionHUDScrollClipsAtThePanelPaddingPixelTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-hud-clip-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let metrics = ViewerChromeMetrics.Diagnostics.self
+    let padding = Int(ViewerChromeMetrics.Space.sm)
+    let blocks: [SessionHUDBlock] = (0..<12).map { index in
+        .section(SessionHUDSection(title: "SECTION \(index)", rows: [SessionHUDRow(label: "VALUE", value: "\(index)")]))
+    }
+    let height = 160
+    let measured = SessionChromeRenderPreview.diagnosticsSize(blocks: blocks)
+    let furthest = Int(measured.height) - height
+    expect(furthest > 70, "the fixture is taller than its viewport, by \(furthest)")
+
+    // In points, past the border and the rounded corners, and clear of the
+    // scroll thumb.
+    let columns = 10...Int(metrics.width - metrics.scrollThumbTrailingInset - metrics.scrollThumbWidth - 6)
+    var checked = 0
+    for offset in stride(from: 0, through: furthest + 7, by: 7) {
+        let url = directory.appendingPathComponent("scrolled-\(offset).png")
+        expect(
+            SessionChromeRenderPreview.renderDiagnosticsViewport(
+                blocks: blocks, width: Double(metrics.width), height: Double(height), offset: Double(offset), to: url
+            ),
+            "the panel renders scrolled \(offset) points"
+        )
+        for band in [2...(padding - 1), (height - padding)...(height - 2)] {
+            var stray = 0
+            for y in band {
+                for x in columns where !matches(pngPixel(at: url, x: x, y: y), ViewerPalette.chromeBg2) {
+                    stray += 1
+                }
+            }
+            expect(
+                stray == 0,
+                "scrolled \(offset) points down, \(stray) pixels of a row sit in the \(padding)-point padding "
+                    + "(rows \(band.lowerBound)...\(band.upperBound))"
+            )
+        }
+        if offset >= furthest {
+            var ink = 0
+            for y in (height - padding - 16)..<(height - padding) {
+                for x in columns where !matches(pngPixel(at: url, x: x, y: y), ViewerPalette.chromeBg2) { ink += 1 }
+            }
+            expect(ink > 0, "scrolled to the end, the last reading is still in view above the bottom padding")
+        }
+        checked += 1
+    }
+    expect(checked >= 8, "the panel was checked at several scroll positions, got \(checked)")
+
+    // A press in the padding hits nothing, as no reading is drawn there.
+    func contains(_ y: Int) -> Bool {
+        SessionChromeRenderPreview.diagnosticsReadingsContain(y: Double(y), panelHeight: Double(height))
+    }
+    expect(
+        !contains(padding - 1) && contains(padding) && contains(height - padding - 1) && !contains(height - padding),
+        "the readings are pressable from the top padding to the bottom padding, and not in either"
+    )
+    print("PASS: a scrolled HUD never draws a row into the padding between its readings and its border")
+}
+
 /// Pango, which sets every Linux overlay's text, treats the no-break space and
 /// the non-breaking hyphen `ViewerCopyWrapping` writes as the no-break
 /// characters they are: a line that has to wrap lets go of a plain space or
@@ -1373,6 +1440,8 @@ func testPangoHoldsNoBreakCharactersTests() {
 func testSessionHUDScrollThumbClearsContentTests() {}
 @MainActor
 func testSessionHUDAddressKeepsItsPortTests() {}
+@MainActor
+func testSessionHUDScrollClipsAtThePanelPaddingPixelTests() {}
 @MainActor
 func testPangoHoldsNoBreakCharactersTests() {}
 @MainActor

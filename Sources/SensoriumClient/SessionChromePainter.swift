@@ -386,6 +386,12 @@ enum SessionChromePainter {
         CairoChromeText.measure(link.title, pointSize: rowSize, weight: linkWeight)
     }
 
+    /// Whether `y`, measured down a diagnostics panel `panelHeight` tall, is
+    /// inside the readings rather than in the padding they are clipped at.
+    static func diagnosticsReadingsContain(y: Double, panelHeight: Double) -> Bool {
+        y >= gap && y < panelHeight - gap
+    }
+
     /// Where `drawDiagnostics` puts each link inside `bounds`, found by
     /// running the same drawing against a scratch pixel.
     static func diagnosticsLinkLayouts(blocks: [SessionHUDBlock], bounds: ViewerChromeRect) -> [SessionHUDLinkLayout] {
@@ -419,7 +425,9 @@ enum SessionChromePainter {
             offset: scrollOffset
         )
         cairo_save(context)
-        cairo_rectangle(context, bounds.x + 1, bounds.y + 1, max(0, bounds.width - 2), max(0, bounds.height - 2))
+        // Readings scroll out of view at the padding, not at the border, as
+        // `SessionHUDView`'s scroll view sits inside it.
+        cairo_rectangle(context, bounds.x + 1, bounds.y + gap, max(0, bounds.width - 2), max(0, bounds.height - gap * 2))
         cairo_clip(context)
         var y = bounds.y + gap - viewport.offset
         for block in blocks {

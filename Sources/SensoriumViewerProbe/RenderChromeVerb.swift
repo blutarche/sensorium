@@ -114,6 +114,22 @@ enum RenderChromeVerb {
             to: url("hud-long-address", scale, directory)
         ))
 
+        // A panel shorter than its readings, scrolled to the top, partway and
+        // to the end: a row is cut at the padding, never at the border.
+        let scrollingBlocks = diagnosticsBlocks(isAttentionWorthy: false)
+        let scrollingHeight = 360.0
+        let furthest = SessionChromeRenderPreview.diagnosticsSize(blocks: scrollingBlocks).height - scrollingHeight
+        for (name, offset) in [("top", 0.0), ("middle", 331.0), ("bottom", furthest)] {
+            write("hud-scrolled-\(name)", SessionChromeRenderPreview.renderDiagnosticsViewport(
+                blocks: scrollingBlocks,
+                width: SessionChromeRenderPreview.diagnosticsSize(blocks: scrollingBlocks).width,
+                height: scrollingHeight,
+                offset: offset,
+                scale: scale,
+                to: url("hud-scrolled-\(name)", scale, directory)
+            ))
+        }
+
         write("strip-handle", SessionChromeRenderPreview.renderOverlay(
             .stripHandle, scale: scale, to: url("strip-handle", scale, directory)
         ))

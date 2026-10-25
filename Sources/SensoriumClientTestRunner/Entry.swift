@@ -114,6 +114,7 @@ struct SensoriumClientTestRunner {
         testShortcutStripConfirmRowMatchesMacOSTests()
         testSessionHUDScrollThumbClearsContentTests()
         testSessionHUDAddressKeepsItsPortTests()
+        testSessionHUDScrollClipsAtThePanelPaddingPixelTests()
         testPangoHoldsNoBreakCharactersTests()
         testSessionHUDLongValueStaysOnOneLineTests()
         testSessionHUDNarrowLatencyLabelsNeverWrapTests()

@@ -688,7 +688,8 @@ extension WaylandSessionWindow: SessionWindowChrome {
         guard let rect = chrome.overlays[.diagnostics]?.rect else { return }
         let local = ViewerChromeRect(x: 0, y: 0, width: rect.width, height: chrome.diagnosticsViewport.contentHeight)
         let layouts = SessionChromePainter.diagnosticsLinkLayouts(blocks: chrome.state.diagnosticsBlocks, bounds: local)
-        guard let contentY = chrome.diagnosticsViewport.contentY(atViewportY: chrome.overlayPointerY),
+        guard SessionChromePainter.diagnosticsReadingsContain(y: chrome.overlayPointerY, panelHeight: rect.height),
+              let contentY = chrome.diagnosticsViewport.contentY(atViewportY: chrome.overlayPointerY),
               let link = SessionHUDLinkHitTest.link(
             atX: chrome.overlayPointerX, y: contentY, in: layouts
         ) else {
