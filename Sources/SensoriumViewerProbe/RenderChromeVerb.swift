@@ -101,6 +101,19 @@ enum RenderChromeVerb {
             to: url("hud-flagged", scale, directory)
         ))
 
+        // An address too wide for its row: the host gives up its middle and
+        // the ":port" stays whole.
+        write("hud-long-address", SessionChromeRenderPreview.renderOverlay(
+            .diagnostics(
+                blocks: diagnosticsBlocks(
+                    isAttentionWorthy: false, hostAddress: "render-node-west-wing-07.tail1234.ts.net:7777"
+                ),
+                isFlagged: false
+            ),
+            scale: scale,
+            to: url("hud-long-address", scale, directory)
+        ))
+
         write("strip-handle", SessionChromeRenderPreview.renderOverlay(
             .stripHandle, scale: scale, to: url("strip-handle", scale, directory)
         ))
@@ -205,11 +218,11 @@ enum RenderChromeVerb {
     /// itself would flag, so an unflagged render never shows a warn-worthy
     /// drop count inside a plain border, a combination the real HUD never
     /// draws.
-    private static func diagnosticsBlocks(isAttentionWorthy: Bool) -> [SessionHUDBlock] {
+    private static func diagnosticsBlocks(isAttentionWorthy: Bool, hostAddress: String? = nil) -> [SessionHUDBlock] {
         var machine = ViewerSessionStateMachine(hostName: hostName)
         machine.handle(.canvasReady)
         return SessionHUDPanel.blocks(
-            telemetry: diagnosticsTelemetry(isAttentionWorthy: isAttentionWorthy),
+            telemetry: diagnosticsTelemetry(isAttentionWorthy: isAttentionWorthy, hostAddress: hostAddress),
             session: machine.status
         )
     }
@@ -217,7 +230,7 @@ enum RenderChromeVerb {
     /// The reading itself, kept separate from `diagnosticsBlocks()` so a
     /// composite that carries `SessionChromeState`'s own telemetry, rather
     /// than a bare block list, can build from the same numbers.
-    private static func diagnosticsTelemetry(isAttentionWorthy: Bool = true) -> SessionHUDSnapshot {
+    private static func diagnosticsTelemetry(isAttentionWorthy: Bool = true, hostAddress: String? = nil) -> SessionHUDSnapshot {
         var clientMetrics = SessionMetrics()
         clientMetrics.record(stage: .receive, startedAtNanoseconds: 0, endedAtNanoseconds: 3_200_000)
         clientMetrics.record(stage: .decode, startedAtNanoseconds: 0, endedAtNanoseconds: 4_100_000)
@@ -258,7 +271,7 @@ enum RenderChromeVerb {
             presentCompletionP50Nanoseconds: 4_600_000,
             presentationHoldNanoseconds: 2_300_000,
             hostName: hostName,
-            hostAddress: "\(hostName).tail1234.ts.net:7777",
+            hostAddress: hostAddress ?? "\(hostName).tail1234.ts.net:7777",
             endToEndLatencyTrend: SessionHUDTrend(samples: [14, 16, 15, 19, 18.5, 17, 18.5]),
             videoInBitrateTrend: SessionHUDTrend(samples: [38, 40, 41.5, 39, 42, 41.5]),
             fpsTrend: SessionHUDTrend(samples: [59, 58, 60, 57, 58.4]),

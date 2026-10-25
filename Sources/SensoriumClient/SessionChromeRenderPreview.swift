@@ -204,6 +204,12 @@ public enum SessionChromeRenderPreview {
         SessionChromePainter.diagnosticsSize(blocks: blocks)
     }
 
+    /// The text the panel draws for `row`'s value on a full-width row, after
+    /// any shortening its truncation asks for.
+    package static func diagnosticsDisplayedValue(_ row: SessionHUDRow) -> String {
+        SessionChromePainter.displayedValue(row, width: SessionChromePainter.diagnosticsContentWidth(), isNarrow: false)
+    }
+
     /// Each link's rectangle on a diagnostics panel drawn at its own measured
     /// size, the way `renderOverlay` draws it.
     public static func diagnosticsLinkLayouts(blocks: [SessionHUDBlock]) -> [SessionHUDLinkLayout] {

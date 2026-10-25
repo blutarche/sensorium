@@ -113,6 +113,7 @@ struct SensoriumClientTestRunner {
         testNoticeIsAsWideAsMacOSWhateverItSaysTests()
         testShortcutStripConfirmRowMatchesMacOSTests()
         testSessionHUDScrollThumbClearsContentTests()
+        testSessionHUDAddressKeepsItsPortTests()
         testPangoHoldsNoBreakCharactersTests()
         testSessionHUDLongValueStaysOnOneLineTests()
         testSessionHUDNarrowLatencyLabelsNeverWrapTests()

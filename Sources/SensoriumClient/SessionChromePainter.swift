@@ -278,7 +278,7 @@ enum SessionChromePainter {
     /// What a row, note or sparkline has to lay out in on a panel `panelWidth`
     /// wide: the left inset, and on the right the room the scroll thumb and its
     /// clearance take -- `SessionHUDView.contentWidth` on macOS.
-    private static func diagnosticsContentWidth(_ panelWidth: Double) -> Double {
+    static func diagnosticsContentWidth(_ panelWidth: Double = diagnosticsWidth) -> Double {
         panelWidth - gap - Double(ViewerChromeMetrics.Diagnostics.contentTrailingInset)
     }
 
@@ -340,15 +340,28 @@ enum SessionChromePainter {
         return height - rowGap
     }
 
+    private static func valueWidth(_ text: String) -> Double {
+        CairoChromeText.measure(
+            text, pointSize: rowSize, mono: true, weight: hudValueWeight, tabularFigures: true
+        ).width
+    }
+
     private static func rowLayout(_ row: SessionHUDRow, width: Double, isNarrow: Bool) -> SessionHUDRowLayout.Row {
         SessionHUDRowLayout.layout(
-            valueWidth: CairoChromeText.measure(
-                row.value, pointSize: rowSize, mono: true, weight: hudValueWeight, tabularFigures: true
-            ).width,
+            valueWidth: valueWidth(row.value),
             columnWidth: width,
             isNarrow: isNarrow,
             showsSparkline: (row.trend?.count ?? 0) >= 2
         )
+    }
+
+    /// The text a row's value is drawn with: the value itself, or for an
+    /// address too wide for its room, the host shortened in its middle with
+    /// the ":port" kept whole, as `SessionHUDView` shows it.
+    static func displayedValue(_ row: SessionHUDRow, width: Double, isNarrow: Bool) -> String {
+        guard row.truncation == .middleKeepingPort else { return row.value }
+        let room = rowLayout(row, width: width, isNarrow: isNarrow).value.width
+        return SessionHUDAddressFit.fitting(row.value, width: room, measure: valueWidth)
     }
 
     /// One line, label and value alike: a value too wide for its column is
@@ -504,7 +517,7 @@ enum SessionChromePainter {
             let valueColor = row.tone.map(ViewerPalette.color(for:))
                 ?? (row.isStale ? ViewerPalette.muted : ViewerPalette.ink)
             CairoChromeText.draw(
-                row.value,
+                displayedValue(row, width: width, isNarrow: isNarrow),
                 in: context,
                 x: x + layout.value.x,
                 y: cursor,

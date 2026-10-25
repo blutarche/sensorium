@@ -1255,6 +1255,77 @@ func testSessionHUDScrollThumbClearsContentTests() {
     print("PASS: the HUD's scroll thumb sits where macOS draws it, with 8 points of clear space before the content")
 }
 
+/// An address too wide for its row gives up characters from the middle of its
+/// host and keeps ":port" whole, as the macOS panel shows it, instead of
+/// letting the row's own truncation take the port off the end.
+@MainActor
+func testSessionHUDAddressKeepsItsPortTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-hud-address-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let long = "render-node-west-wing-07.tail1234.ts.net:7777"
+    let row = SessionHUDRow(label: "ADDRESS", value: long, truncation: .middleKeepingPort)
+    let shown = SessionChromeRenderPreview.diagnosticsDisplayedValue(row)
+    expect(shown != long, "an address wider than its row is shortened, got \(shown)")
+    expect(shown.hasSuffix(":7777"), "the port stays whole, got \(shown)")
+    expect(
+        shown.contains(SessionHUDAddressFit.ellipsis) && shown.hasPrefix("render") && shown.contains("ts.net"),
+        "the host loses its middle and both ends stay legible, got \(shown)"
+    )
+    expect(
+        SessionChromeRenderPreview.diagnosticsDisplayedValue(
+            SessionHUDRow(label: "ADDRESS", value: shown, truncation: .middleKeepingPort)
+        ) == shown,
+        "what is drawn fits the row, so a second pass has nothing left to cut"
+    )
+    let short = "mini.tail1234.ts.net:7777"
+    expect(
+        SessionChromeRenderPreview.diagnosticsDisplayedValue(
+            SessionHUDRow(label: "ADDRESS", value: short, truncation: .middleKeepingPort)
+        ) == short,
+        "an address that fits is drawn whole"
+    )
+    expect(
+        SessionChromeRenderPreview.diagnosticsDisplayedValue(SessionHUDRow(label: "ADDRESS", value: long)) == long,
+        "a row that asks for ordinary truncation keeps its value as it is"
+    )
+
+    func render(_ name: String, _ row: SessionHUDRow) -> URL {
+        let url = directory.appendingPathComponent("\(name).png")
+        expect(
+            SessionChromeRenderPreview.renderOverlay(
+                .diagnostics(blocks: [.section(SessionHUDSection(title: "SESSION", rows: [row]))], isFlagged: false),
+                scale: 1, to: url
+            ),
+            "the \(name) panel renders"
+        )
+        return url
+    }
+    let drawn = render("drawn", row)
+    let reference = render("reference", SessionHUDRow(label: "ADDRESS", value: shown))
+    let cutAtTheEnd = render("cut-at-the-end", SessionHUDRow(label: "ADDRESS", value: long))
+    func differences(_ a: URL, _ b: URL) -> Int {
+        guard let size = pngSize(at: a), pngSize(at: b)?.height == size.height else { return Int.max }
+        var count = 0
+        for y in 10..<(size.height - 10) {
+            for x in 112..<304 {
+                guard let left = pngPixel(at: a, x: x, y: y), let right = pngPixel(at: b, x: x, y: y) else { return Int.max }
+                if abs(left.r - right.r) > 0.02 || abs(left.g - right.g) > 0.02 || abs(left.b - right.b) > 0.02 { count += 1 }
+            }
+        }
+        return count
+    }
+    expect(differences(drawn, reference) == 0, "the panel draws the shortened text, not the long one")
+    expect(
+        differences(drawn, cutAtTheEnd) > 0,
+        "the port is what the shortened text keeps and a cut at the end loses, so the two draw differently"
+    )
+    print("PASS: a HUD address too long for its row is shortened in the middle and keeps its port whole")
+}
+
 /// Pango, which sets every Linux overlay's text, treats the no-break space and
 /// the non-breaking hyphen `ViewerCopyWrapping` writes as the no-break
 /// characters they are: a line that has to wrap lets go of a plain space or
@@ -1300,6 +1371,8 @@ func testPangoHoldsNoBreakCharactersTests() {
 #else
 @MainActor
 func testSessionHUDScrollThumbClearsContentTests() {}
+@MainActor
+func testSessionHUDAddressKeepsItsPortTests() {}
 @MainActor
 func testPangoHoldsNoBreakCharactersTests() {}
 @MainActor
