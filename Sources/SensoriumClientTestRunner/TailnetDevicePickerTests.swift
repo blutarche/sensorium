@@ -85,13 +85,13 @@ func testTailnetDevicePickerTests() async {
             "the reason is a sentence for the person choosing a machine, not the case name, got: \(reason)"
         )
         expect(
-            reason.hasSuffix("then choose Look Again."),
+            reason.hasSuffix("then choose Look\u{00A0}Again."),
             "the one button this screen shows reads \u{201C}Look Again\u{201D}, not \u{201C}Try again\u{201D}, "
                 + "and the sentence names it as a button -- got: \(reason)"
         )
         expect(
             TailnetDevicePickerFetchError.tailscaledUnreachable.reason
-                == "Tailscale is not running. Start Tailscale and sign in, then choose Look Again.",
+                == "Tailscale is not running. Start Tailscale and sign in, then choose Look\u{00A0}Again.",
             "this reason draws regardless of whether the Tailscale app was found, and says to start it rather than "
                 + "to look for a Connected label an app may not have -- got: "
                 + "\(TailnetDevicePickerFetchError.tailscaledUnreachable.reason)"
@@ -99,7 +99,7 @@ func testTailnetDevicePickerTests() async {
 
         expect(
             TailnetDevicePickerFetchError.tailscaleNotInstalled.reason
-                == "Tailscale is not installed. Download Tailscale and sign in, then choose Look Again.",
+                == "Tailscale is not installed. Download\u{00A0}Tailscale and sign in, then choose Look\u{00A0}Again.",
             "the not-installed reason states the fact plainly and names the Download Tailscale link beside it, never "
                 + "\u{201C}open the Tailscale app,\u{201D} since there is no app on this machine to open -- got: "
                 + "\(TailnetDevicePickerFetchError.tailscaleNotInstalled.reason)"

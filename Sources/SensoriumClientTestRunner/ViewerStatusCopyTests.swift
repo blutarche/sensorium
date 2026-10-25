@@ -71,7 +71,7 @@ func testViewerStatusCopyTests() {
         "the retry-stopped body names the machine to check, got \"\(gaveUpDetail)\""
     )
     expect(
-        gaveUpDetail.hasSuffix("choose\(nbsp)Try\(nbsp)Again.") || gaveUpDetail.hasSuffix("Try\(nbsp)Again."),
+        gaveUpDetail.contains("Try\(nbsp)Again."),
         "the control it sends the person to is never split, got \"\(gaveUpDetail)\""
     )
 
@@ -196,16 +196,24 @@ func testViewerStatusCopyTests() {
     var offered = ViewerSessionStateMachine(hostName: "Workstation")
     let offeredStatus = offered.handle(.hostScreenConnectEnded(reasonLine: "Nothing to share.", offersVirtualDisplay: true))
     expect(
-        offeredStatus.buttons.map(\.title) == ["Quit Sensorium", "Connect to a Private Desktop", "Your Machines"],
-        "an offered private desktop sits between Quit and the Your Machines default, got "
+        offeredStatus.buttons.map(\.title) == [
+            "Quit Sensorium", "Connect to a Private Desktop", "Your Machines", "Try Again"
+        ],
+        "an offered private desktop sits between Quit and the list, with Try Again last, got "
             + "\(offeredStatus.buttons.map(\.title))"
     )
     expect(
-        offeredStatus.buttons.map(\.isPrimary) == [false, false, true],
-        "and Your Machines stays the one default, got \(offeredStatus.buttons.map(\.isPrimary))"
+        offeredStatus.buttons.map(\.action) == [.quit, .connectAsVirtualDisplay, .yourMachines, .tryAgain],
+        "each button keeps its own action, got \(offeredStatus.buttons.map(\.action))"
     )
     expect(
-        ViewerSessionStateMachine.buttonRows.contains(["Quit Sensorium", "Connect to a Private Desktop", "Your Machines"]),
+        offeredStatus.buttons.map(\.isPrimary) == [false, false, false, true],
+        "and Try Again is the one default, got \(offeredStatus.buttons.map(\.isPrimary))"
+    )
+    expect(
+        ViewerSessionStateMachine.buttonRows.contains([
+            "Quit Sensorium", "Connect to a Private Desktop", "Your Machines", "Try Again"
+        ]),
         "the panel is sized for that row"
     )
     let privateDesktopSentence = "Workstation offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
@@ -218,7 +226,8 @@ func testViewerStatusCopyTests() {
     ))
     expect(
         unbound(offeredNoScreenStatus.detail)
-            == "Workstation has no screen to share right now. \(privateDesktopSentence)",
+            == "Workstation has no screen to share right now. Trying again asks for its screen once more. "
+                + privateDesktopSentence,
         "a panel that offers Connect to a Private Desktop says what that is, after the reason, got "
             + "\"\(unbound(offeredNoScreenStatus.detail))\""
     )
@@ -230,7 +239,8 @@ func testViewerStatusCopyTests() {
         offersVirtualDisplay: false
     ))
     expect(
-        unbound(notOfferedStatus.detail) == "Workstation has no screen to share right now.",
+        unbound(notOfferedStatus.detail)
+            == "Workstation has no screen to share right now. Trying again asks for its screen once more.",
         "a panel that does not offer it adds nothing, got \"\(unbound(notOfferedStatus.detail))\""
     )
 

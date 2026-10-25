@@ -96,7 +96,8 @@ func testHostScreenSessionFlowTests() async {
         expect(
             HostScreenRefusalCopy.line(reason: "a-future-reason")
                 == "That machine gave a reason this version of Sensorium does not know: "
-                    + "\u{201C}a\u{2011}future\u{2011}reason\u{201D}. Update both apps, then try again.",
+                    + "\u{201C}a\u{2011}future\u{2011}reason\u{201D}. Update both apps. "
+                    + "Trying again then asks for its screen once more.",
             "an unknown reason's remedy never promises a fresh Host screen pick this build cannot honour, "
                 + "since it does not know what went wrong -- a session canvas may not even be offered -- and "
                 + "the token stays separate from the sentence punctuation -- got: "
@@ -144,8 +145,8 @@ func testHostScreenSessionFlowTests() async {
     do {
         let line = HostScreenRefusalCopy.line(reason: "host-screen-resume-expired")
         expect(
-            line == "The connection was away too long to resume.",
-            "host-screen-resume-expired says the connection was away too long -- got \(line)"
+            line == "The connection was away too long to resume. Trying again starts a new session.",
+            "host-screen-resume-expired says the connection was away too long, then what Try Again does -- got \(line)"
         )
 
         print("PASS: host-screen-resume-expired reads as a plain sentence, not the unknown-reason default")

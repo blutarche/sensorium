@@ -64,12 +64,11 @@ public enum TailnetDevicePickerState: Equatable, Sendable {
     }
 
     public static func from(
-        _ result: Result<TailnetDirectorySnapshot, TailnetDevicePickerFetchError>,
-        installHint: String = TailnetDevicePickerFetchError.defaultInstallHint
+        _ result: Result<TailnetDirectorySnapshot, TailnetDevicePickerFetchError>
     ) -> TailnetDevicePickerState {
         switch result {
         case let .failure(error):
-            return .unreachable(reason: error.reason(installHint: installHint))
+            return .unreachable(reason: error.reason)
         case let .success(snapshot):
             let ordered = TailnetDirectory.presentationOrder(snapshot.peers)
             return ordered.isEmpty ? .noOtherDevices : .devices(ordered.map(TailnetDevicePickerRow.init))
@@ -97,21 +96,20 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
     static let notRunningFact = "Tailscale is not running."
     static let notInstalledFact = "Tailscale is not installed."
 
-    /// The second sentence of the not-installed reason. Both viewers show a
-    /// "Download Tailscale" link beside it, so it names that link and neither
-    /// an app to open nor a package manager to ask.
-    public static let defaultInstallHint = "Download Tailscale and sign in, then choose Look Again."
-
-    public var reason: String { reason(installHint: Self.defaultInstallHint) }
-
-    /// `installHint` is the second sentence of the not-installed reason. The
-    /// other two reasons are the same everywhere.
-    public func reason(installHint: String) -> String {
+    /// Each reason ends on the control to press, and holds the names of the
+    /// controls it quotes whole. The picker draws those controls in the order
+    /// the sentence reads: the way into Tailscale first, then Look Again.
+    public var reason: String {
+        let lookAgain = ViewerCopyWrapping.control("Look Again")
         switch self {
         case .tailscaledUnreachable:
-            return Self.notRunningFact + " Start Tailscale and sign in, then choose Look Again."
+            return Self.notRunningFact + " Start Tailscale and sign in, then choose \(lookAgain)."
         case .tailscaleNotInstalled:
-            return Self.notInstalledFact + " " + installHint
+            // Both viewers show a "Download Tailscale" link beside it, so the
+            // sentence names that link, neither an app to open nor a package
+            // manager to ask.
+            let download = ViewerCopyWrapping.control("Download Tailscale")
+            return Self.notInstalledFact + " \(download) and sign in, then choose \(lookAgain)."
         case .malformedStatus:
             return "Tailscale answered with something this app could not read. "
                 + "Try again, or enter the other machine\u{2019}s address by hand."

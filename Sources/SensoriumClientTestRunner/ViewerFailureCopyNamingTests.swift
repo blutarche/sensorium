@@ -55,9 +55,32 @@ func testViewerFailureCopyNamingTests() {
 
     let pairing = ViewerPairingFailureCopy.copy(for: .refused(reason: "no-active-code"), hostLabel: "Studio")
     expect(
-        pairing.detail == "Press Show Pairing Code there first.",
-        "the pairing hint quotes the host's button as it is labelled, got \"\(pairing.detail)\""
+        pairing.detail == "Have Sensorium Host show the six digits on that machine first.",
+        "the pairing hint names the six digits the host shows, as the code field's hint does, got \"\(pairing.detail)\""
     )
+
+    let awkward = "west-annex studio"
+    let heldAwkward = ViewerCopyWrapping.name(awkward)
+    expect(
+        heldAwkward == "west\u{2011}annex\u{00A0}studio",
+        "a name with a hyphen and a space is held at both, got \"\(heldAwkward)\""
+    )
+    let pairingOutcomes: [ViewerPairingOutcome] = [
+        "invalid-code", "code-expired", "code-already-consumed", "code-attempts-exhausted", "no-active-code",
+        "invalid-request", "a-reason-from-a-newer-host"
+    ].map { .refused(reason: $0) } + [.unreachable, .unverifiedHost, .unexpectedReply, .unknown]
+    for outcome in pairingOutcomes {
+        let copy = ViewerPairingFailureCopy.copy(for: outcome, hostLabel: awkward)
+        let lines = [copy.headline, copy.detail]
+        expect(
+            lines.allSatisfy { !$0.contains(awkward) },
+            "\(outcome) never carries the machine's own breakable name, got \(lines)"
+        )
+        expect(
+            lines.contains { $0.contains(heldAwkward) },
+            "\(outcome) names the machine, held whole, got \(lines)"
+        )
+    }
 
     print("PASS: failure copy holds the machine's name, names a private desktop one way and quotes the host's labels")
 }

@@ -434,7 +434,7 @@ public enum ViewerMenuPlan {
             ]),
             ViewerMenu(title: "Help", items: [
                 ViewerMenuItem(
-                    title: "Escape back to this machine: \(ViewerKeyNames.escapeGesture)",
+                    title: "Escape Back to This Machine: \(ViewerKeyNames.escapeGesture)",
                     command: .escapeGestureHint,
                     isEnabled: false
                 )

@@ -161,7 +161,7 @@ public struct YourMachinesWindowModel: Equatable, Sendable {
         name.isEmpty ? "Rename" : "Rename \(ViewerCopyWrapping.name(name))"
     }
     public static let renameHint = ViewerCopyWrapping.keepingTailTogether(
-        "Only this machine uses this name. Leave it empty to use the name it had when it was paired."
+        "Only this machine sees this name. Leave it empty to use the name it had when it was paired."
     )
     public static let renameConfirmTitle = "Rename"
     public static let renameCancelTitle = "Cancel"

@@ -33,7 +33,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private static let tailscaleDownloadURL = "https://tailscale.com/download"
     private static let addressHintText = "Tailscale address, or a name like mini.local."
     private static let codeHintText =
-        "Shown by Sensorium Host on that machine under Show Pairing Code."
+        "The six digits Sensorium Host shows on that machine."
 
     public var loadTailnet: (() async -> TailnetDevicePickerState)?
     public var sendPairIntent: ((ViewerPairingDevice) async -> ViewerPairIntentAttempt)?
@@ -737,15 +737,16 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
                 GtkWidgets.onTextLine(GtkWidgets.label(reason, cssClass: GtkViewerStyle.Class.bad), size: 13),
                 to: pickerPage
             )
-            appendLookAgain(to: pickerPage)
             // No "Open Tailscale": this platform has no app to open. With
             // Tailscale not installed at all, the way on is the page it
-            // publishes, the same one the host's setup offers.
+            // publishes, the same one the host's setup offers, above Look
+            // Again as the sentence reads.
             if pickerState.isTailscaleNotInstalled {
                 let download = GtkWidgets.link("Download Tailscale", icon: .download)
                 onClick(download) { [weak self] in self?.onOpenURL(Self.tailscaleDownloadURL) }
                 GtkWidgets.append(download, to: pickerPage)
             }
+            appendLookAgain(to: pickerPage)
         case .noOtherDevices:
             GtkWidgets.append(
                 GtkWidgets.onTextLine(
@@ -757,7 +758,8 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             GtkWidgets.append(
                 GtkWidgets.onTextLine(
                     GtkWidgets.label(
-                        "Sign in to Tailscale on the machine you want to work on, then choose Look Again.",
+                        "Sign in to Tailscale on the machine you want to work on, then choose "
+                            + "\(ViewerCopyWrapping.control("Look Again")).",
                         cssClass: GtkViewerStyle.Class.muted
                     ),
                     size: 13
@@ -832,7 +834,8 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         GtkWidgets.append(
             GtkWidgets.onTextLine(
                 GtkWidgets.label(
-                    device.map { "Type the code shown on \($0.label)" } ?? "Type the machine\u{2019}s address and code",
+                    device.map { "Type the code shown on \(ViewerCopyWrapping.name($0.label))." }
+                        ?? "Type the machine\u{2019}s address and code.",
                     cssClass: GtkViewerStyle.Class.heading
                 ),
                 size: 20
@@ -856,7 +859,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             addressHint = hint
             onChanged(entry) { [weak self] in self?.formDidChange() }
             GtkWidgets.append(
-                Self.fieldGroup(label: "The address of the machine you want to add", field: entry, hint: hint),
+                Self.fieldGroup(label: "Address", field: entry, hint: hint),
                 to: codePage
             )
         }
@@ -885,7 +888,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         messageGroup = message
         GtkWidgets.append(message, to: codePage)
 
-        let name = GtkWidgets.entry(placeholder: "Uses the name it reports", cssClass: nil)
+        let name = GtkWidgets.entry(placeholder: "Uses its address", cssClass: nil)
         GtkWidgets.setText(form.name, on: name)
         nameEntry = name
         onChanged(name) { [weak self] in self?.formDidChange() }
@@ -1047,9 +1050,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         codeErrorsRevealed = true
         setFieldsEditable(false)
         refresh()
+        let heldName = ViewerCopyWrapping.name(submission.displayName)
         showMessage(
-            headline: "Asking \(submission.displayName) to accept this machine\u{2026}",
-            detail: "This takes a moment. Leave the code on \(submission.displayName)\u{2019}s screen "
+            headline: "Asking \(heldName) to accept this machine\u{2026}",
+            detail: "This takes a moment. Leave the code on \(heldName)\u{2019}s screen "
                 + "until this finishes.",
             tone: .info
         )
@@ -1081,6 +1085,7 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
                 self.showMessage(headline: copy.headline, detail: copy.detail, tone: .bad)
                 if let focus = self.entry(for: copy.focus) {
                     gtk_widget_grab_focus(sensorium_gtk_widget(focus))
+                    gtk_editable_set_position(sensorium_gtk_editable(focus), -1)
                 }
             }
         }

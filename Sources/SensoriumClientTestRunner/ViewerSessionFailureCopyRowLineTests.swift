@@ -7,7 +7,7 @@ import SensoriumCore
 /// `line(for:hostLabel:)` still carries unchanged.
 func testViewerSessionFailureCopyRowLineTests() {
     expect(
-        ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Studio") == "couldn\u{2019}t reach it",
+        ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Studio") == "could not reach it",
         "an unreachable host says in plain words that it could not be reached, got "
             + ViewerSessionFailureCopy.rowLine(for: .unreachable, hostLabel: "Studio")
     )
@@ -31,6 +31,13 @@ func testViewerSessionFailureCopyRowLineTests() {
         ViewerSessionFailureCopy.rowLine(for: .unknown, hostLabel: "Studio") == "stopped; reason unknown",
         "an unclassified ending says plainly that the reason is unknown, got "
             + ViewerSessionFailureCopy.rowLine(for: .unknown, hostLabel: "Studio")
+    )
+
+    let name = "West-annex Studio"
+    let row = ViewerSessionFailureCopy.rowLine(for: .pairingRefused(reason: "no-active-code"), hostLabel: name)
+    expect(
+        row == "\(ViewerCopyWrapping.name(name)) is not showing a code",
+        "a pairing failure row preserves the held machine name's case, got \(row)"
     )
 
     print("PASS: the Your machines row reads a short fragment per failure, never the status panel's long line")

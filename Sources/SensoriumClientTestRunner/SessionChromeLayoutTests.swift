@@ -259,14 +259,14 @@ func testViewerStatusPanelHitTestTests() {
     let measure: (String) -> Double = { _ in 100 }
     let panel = ViewerChromeRect(x: 200, y: 100, width: 500, height: 220)
     // A refused host-screen connect with a private desktop on offer is the
-    // state whose row is three buttons, taken from the state machine rather
+    // state whose row is four buttons, taken from the state machine rather
     // than made up here.
     var machine = ViewerSessionStateMachine(hostName: "studio")
     let buttons = machine.handle(.hostScreenConnectEnded(reasonLine: "No.", offersVirtualDisplay: true)).buttons
     let layouts = ViewerStatusPanelHitTest.buttonRow(buttons: buttons, panel: panel, measure: measure)
-    expect(layouts.count == 3, "one rect per button")
+    expect(layouts.count == 4, "one rect per button")
     expect(
-        layouts.map(\.action) == [.quit, .connectAsVirtualDisplay, .yourMachines],
+        layouts.map(\.action) == [.quit, .connectAsVirtualDisplay, .yourMachines, .tryAgain],
         "the rects come back in the order the status named them"
     )
 
@@ -293,6 +293,7 @@ func testViewerStatusPanelHitTestTests() {
     expect(hit(layouts[0].rect.x + 5, middle) == .quit, "a point inside the first button is that button's action")
     expect(hit(layouts[1].rect.x + 5, middle) == .connectAsVirtualDisplay, "a point inside the second button is that button's action")
     expect(hit(layouts[2].rect.x + 5, middle) == .yourMachines, "a point inside the third button is that button's action")
+    expect(hit(layouts[3].rect.x + 5, middle) == .tryAgain, "a point inside the fourth button is that button's action")
     expect(
         hit(layouts[0].rect.x + layouts[0].rect.width + 2, middle) == nil,
         "a point in the gap between two buttons is no action at all"

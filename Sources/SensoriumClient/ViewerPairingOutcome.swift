@@ -69,11 +69,13 @@ public struct ViewerPairingFailureCopy: Equatable, Sendable {
 
     /// `hostLabel` is what the user called the machine — their own name for it
     /// when they gave one, its address when they did not — so every sentence
-    /// names a machine the reader recognises.
+    /// names a machine the reader recognises. Every sentence holds the name
+    /// whole: it never breaks at its own spaces or hyphens.
     public static func copy(
         for outcome: ViewerPairingOutcome,
         hostLabel: String
     ) -> ViewerPairingFailureCopy {
+        let hostLabel = ViewerCopyWrapping.name(hostLabel)
         switch outcome {
         case let .refused(reason):
             return refusalCopy(reason: reason, hostLabel: hostLabel)
@@ -116,7 +118,7 @@ public struct ViewerPairingFailureCopy: Equatable, Sendable {
         case "invalid-code":
             return ViewerPairingFailureCopy(
                 headline: "Wrong code.",
-                detail: "Check the six digits on \(hostLabel) and try again.",
+                detail: "Check the six digits on \(hostLabel), then choose Pair.",
                 focus: .code,
                 needsFreshCode: false
             )
@@ -144,7 +146,7 @@ public struct ViewerPairingFailureCopy: Equatable, Sendable {
         case "no-active-code":
             return ViewerPairingFailureCopy(
                 headline: "\(hostLabel) is not showing a code.",
-                detail: "Press Show Pairing Code there first.",
+                detail: "Have Sensorium Host show the six digits on that machine first.",
                 focus: .code,
                 needsFreshCode: true
             )

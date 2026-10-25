@@ -44,13 +44,13 @@ func testViewerRefusalsNameTheMachineTests() {
     expect(
         HostScreenRefusalCopy.line(
             reason: HostScreenRefusalCopy.noneAvailableReason, hostLabel: "Workstation"
-        ) == "Workstation has no screen to share right now.",
+        ) == "Workstation has no screen to share right now. Trying again asks for its screen once more.",
         "an empty offer names the machine, got "
             + HostScreenRefusalCopy.line(reason: HostScreenRefusalCopy.noneAvailableReason, hostLabel: "Workstation")
     )
     expect(
         HostScreenRefusalCopy.line(reason: HostScreenRefusalCopy.noneAvailableReason)
-            == "That machine has no screen to share right now.",
+            == "That machine has no screen to share right now. Trying again asks for its screen once more.",
         "and says \"That machine\" where the caller has no name for it"
     )
 

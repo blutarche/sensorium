@@ -46,6 +46,10 @@ func testYourMachinesWindowModelTests() {
             YourMachinesWindowModel.renameHint.hasSuffix("when\u{00A0}it\u{00A0}was\u{00A0}paired."),
             "the rename hint does not strand \"paired.\" on a line of its own, got \(YourMachinesWindowModel.renameHint)"
         )
+        expect(
+            unbound(YourMachinesWindowModel.renameHint).hasPrefix("Only this machine sees this name. "),
+            "the rename hint says who sees the name, not that no other machine has it, got \(YourMachinesWindowModel.renameHint)"
+        )
         expect(empty.addIsPrimary, "with nothing paired, adding a machine is the accent")
 
         let listed = YourMachinesWindowModel(hosts: [mini, studio])

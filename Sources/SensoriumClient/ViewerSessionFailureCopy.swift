@@ -127,21 +127,21 @@ public enum ViewerSessionFailureCopy {
             // Nothing here failed, and nothing here is being retried, so this
             // says what happened and stops. "Stopped:" is the same opening
             // `.unverifiedHost` uses for an ending only a person can undo.
-            return "Stopped: a person at \(hostLabel) ended this session from that machine."
+            return "Stopped: a person at \(hostLabel) ended this session from that machine. "
+                + "Trying again starts a new session."
         case .hostDisplaysAsleep:
             // Not a failure of anything here, and not a failure of the host
             // app either. macOS draws nothing while a screen sleeps, so there
             // was no picture to send.
             return "Stopped: the screens on \(hostLabel) are asleep, so there was nothing to send. Sensorium "
-                + "asked that machine to wake them and they did not come back. Wake a screen at the machine "
-                + "itself, then try again."
+                + "asked that machine to wake them and they did not come back. Someone there can wake a "
+                + "screen. Trying again then starts a new session."
         case .hostCaptureUnavailable:
-            return "Stopped: \(hostLabel) is no longer giving Sensorium any picture to send. Its Sensorium "
-                + "Host app needs to be quit and opened again at the machine itself before this machine can "
-                + "connect."
+            return "Stopped: \(hostLabel) is no longer giving Sensorium any picture to send. Someone there "
+                + "can quit and reopen Sensorium Host. Trying again then starts a new session."
         case .unknown:
-            return "The session with \(hostLabel) stopped, and Sensorium could not tell why. Try "
-                + "again; if it keeps failing, quit and reopen Sensorium on both machines."
+            return "The session with \(hostLabel) stopped, and Sensorium could not tell why. Trying again "
+                + "starts a new session. If it keeps failing, quit and reopen Sensorium on both machines."
         }
     }
 
@@ -187,7 +187,7 @@ public enum ViewerSessionFailureCopy {
     public static func rowLine(for failure: ViewerSessionFailure, hostLabel: String) -> String {
         switch failure {
         case .unreachable:
-            return "couldn\u{2019}t reach it"
+            return "could not reach it"
         case .unverifiedHost:
             return "answered with a key other than the one saved at pairing; check it at the machine "
                 + "before pairing again"
@@ -234,7 +234,7 @@ public enum ViewerSessionFailureCopy {
     /// with `hostLabel` itself -- a proper noun, never lowercased.
     private static func rowFragment(fromHeadline headline: String, hostLabel: String) -> String {
         let trimmed = stripTrailingPeriod(headline)
-        guard !trimmed.hasPrefix(hostLabel), let first = trimmed.first else { return trimmed }
+        guard !trimmed.hasPrefix(ViewerCopyWrapping.name(hostLabel)), let first = trimmed.first else { return trimmed }
         return first.lowercased() + trimmed.dropFirst()
     }
 

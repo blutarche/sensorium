@@ -95,7 +95,7 @@ private func testUsageNamesEveryVerbAndTheHelpFlag() {
 private func testTailscaleNotInstalledReasonNamesTheDownload() {
     let reason = TailnetDevicePickerFetchError.tailscaleNotInstalled.reason
     expect(
-        reason == "Tailscale is not installed. Download Tailscale and sign in, then choose Look Again.",
+        reason == "Tailscale is not installed. Download\u{00A0}Tailscale and sign in, then choose Look\u{00A0}Again.",
         "the not-installed reason points at the Download Tailscale link both viewers show -- got: \(reason)"
     )
     expect(

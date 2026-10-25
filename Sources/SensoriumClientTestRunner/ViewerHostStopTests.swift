@@ -79,7 +79,8 @@ func runViewerHostStopTests() async {
         // The words the person at the viewer reads
         let line = ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: "Studio")
         expect(
-            line == "Stopped: a person at Studio ended this session from that machine.",
+            line == "Stopped: a person at Studio ended this session from that machine. "
+                + "Trying again starts a new session.",
             "the viewer says who ended the session and where they were -- got \"\(line)\""
         )
         expect(
@@ -117,7 +118,8 @@ func runViewerHostStopTests() async {
         let status = machine.handle(.stoppedByHost(reasonLine: reasonLine))
 
         expect(
-            unbound(status.detail) == "Stopped: a person at Studio ended this session from that machine.",
+            unbound(status.detail) == "Stopped: a person at Studio ended this session from that machine. "
+                + "Trying again starts a new session.",
             "the panel carries the ending's own words -- got \"\(status.detail)\""
         )
         expect(

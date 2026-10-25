@@ -58,8 +58,8 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
             "an error does not repeat the sentence about what the list will show"
         )
         expect(
-            linkTitles(under: root) == ["Look Again", "Download Tailscale", "Enter Address Manually\u{2026}", "Back"],
-            "with no Tailscale the add step offers Look Again, Download Tailscale, then the manual address and Back, got \(linkTitles(under: root))"
+            linkTitles(under: root) == ["Download Tailscale", "Look Again", "Enter Address Manually\u{2026}", "Back"],
+            "with no Tailscale the add step offers Download Tailscale before Look Again, as its sentence reads, then the manual address and Back, got \(linkTitles(under: root))"
         )
         if let download = link(titled: "Download Tailscale", under: root) {
             gtk_widget_activate(sensorium_gtk_widget(download))
@@ -67,6 +67,12 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
             structurePump(seconds: 0.6)
         }
         expect(opened == "https://tailscale.com/download", "Download Tailscale opens Tailscale's own page, got \(opened ?? "nothing")")
+        expect(
+            visibleLabels(under: root).map(\.text).contains(
+                "Tailscale is not installed. Download\u{00A0}Tailscale and sign in, then choose Look\u{00A0}Again."
+            ),
+            "the not-installed sentence holds both control names whole, got \(visibleLabels(under: root).map(\.text))"
+        )
     }
     do {
         let (window, root) = show {
@@ -78,6 +84,12 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
             "a Tailscale that is installed but stopped has nothing to download, got \(linkTitles(under: root))"
         )
         expect(!visibleLabels(under: root).map(\.text).contains(intro), "and says nothing about the list")
+        expect(
+            visibleLabels(under: root).map(\.text).contains(
+                "Tailscale is not running. Start Tailscale and sign in, then choose Look\u{00A0}Again."
+            ),
+            "the not-running sentence holds Look Again whole, got \(visibleLabels(under: root).map(\.text))"
+        )
     }
     do {
         let (window, root) = show { $0.apply(deviceList: .noOtherDevices) }
@@ -89,7 +101,7 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
             "an empty tailnet says what is empty in a heading of its own, got \(labels.map(\.text))"
         )
         expect(
-            labels.map(\.text).contains("Sign in to Tailscale on the machine you want to work on, then choose Look Again."),
+            labels.map(\.text).contains("Sign in to Tailscale on the machine you want to work on, then choose Look\u{00A0}Again."),
             "and then what to do about it"
         )
     }
@@ -121,14 +133,18 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         let (window, root) = show { $0.showCodeStep(for: studio) }
         defer { window.hide() }
         let labels = visibleLabels(under: root).map(\.text)
-        expect(labels.first == "Type the code shown on Studio", "the code step is headed in sentence case, got \(labels.first ?? "nothing")")
+        expect(labels.first == "Type the code shown on Studio.", "the code step is headed in sentence case, got \(labels.first ?? "nothing")")
         expect(labels.contains("Pairing code"), "the code field is labelled, as every field is")
+        expect(
+            labels.contains("The six digits Sensorium Host shows on that machine."),
+            "the code hint names the digits, not a button the host has already replaced, got \(labels)"
+        )
         let placeholders = descendants(of: root)
             .filter { String(cString: gtk_widget_get_css_name(sensorium_gtk_widget($0))) == "entry" }
             .compactMap { gtk_entry_get_placeholder_text(sensorium_gtk_entry($0)).map { String(cString: $0) } }
         expect(
-            placeholders.contains("Uses the name it reports") && !placeholders.contains("Studio"),
-            "an empty name field says what it will use, instead of a sample that reads as a name already typed, got \(placeholders)"
+            placeholders.contains("Uses its address") && !placeholders.contains("Studio"),
+            "an empty name field says it will use the address, instead of a sample that reads as a name already typed, got \(placeholders)"
         )
         guard let back = link(titled: "Back", under: root),
               let pair = firstDescendant(of: root, where: { widgetHasClass($0, Class.primary) }) else {
@@ -158,8 +174,12 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
         let (window, root) = show { $0.showCodeStep(for: nil) }
         defer { window.hide() }
         expect(
-            visibleLabels(under: root).first?.text == "Type the machine\u{2019}s address and code",
+            visibleLabels(under: root).first?.text == "Type the machine\u{2019}s address and code.",
             "the heading for an address typed by hand asks for the address too, in sentence case"
+        )
+        expect(
+            visibleLabels(under: root).map(\.text).contains("Address"),
+            "the address field is labelled with a noun, like the other fields, got \(visibleLabels(under: root).map(\.text))"
         )
     }
 
@@ -260,7 +280,7 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
                 "a failed attempt that will be retried draws the pulsing dot"
             )
             expect(
-                visibleLabels(under: row).map(\.text).contains("mini.tail1234.ts.net \u{2014}\u{00A0}couldn\u{2019}t reach it, trying\u{00A0}again\u{2026}"),
+                visibleLabels(under: row).map(\.text).contains("mini.tail1234.ts.net \u{2014}\u{00A0}could not reach it, trying\u{00A0}again\u{2026}"),
                 "and the line reads as the shared model words it, got \(visibleLabels(under: row).map(\.text))"
             )
             expect(
@@ -271,6 +291,107 @@ func testGtkYourMachinesMatchesMacOSStructureTests() {
     }
 
     print("PASS: Your Machines puts the same words, links and controls on each step in the order macOS does")
+}
+
+/// The steps of Your Machines that finish only when an answer arrives: what is
+/// said while a machine is asked and after it refuses, and where the caret goes.
+/// The answer is a task, so these wait on the main actor instead of pumping the
+/// display alone. They need the same scratch Wayland display as the structure
+/// tests above.
+@MainActor
+func testGtkYourMachinesPairingFlowTests() async {
+    guard ProcessInfo.processInfo.environment["SENSORIUM_GTK_WINDOW_TESTS"] == "1" else {
+        print("SKIP: Your Machines' pairing flow needs a scratch Wayland display; set SENSORIUM_GTK_WINDOW_TESTS=1 to check it")
+        return
+    }
+    let studio = ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio")
+
+    func show(
+        _ drive: (GtkYourMachinesWindow) -> Void
+    ) -> (window: GtkYourMachinesWindow, root: UnsafeMutableRawPointer) {
+        let window = GtkYourMachinesWindow(store: InMemorySavedHostStore())
+        window.show()
+        drive(window)
+        structurePump(seconds: 0.4)
+        return (window, UnsafeMutableRawPointer(window.toplevel))
+    }
+
+    // A machine's name is held whole in the code step's heading and in the
+    // lines shown while it is asked, never broken at its hyphen or space.
+    do {
+        let held = "west\u{2011}annex\u{00A0}studio"
+        let gate = PairingGate()
+        let (window, root) = show {
+            $0.pair = { _, _ in
+                await gate.wait()
+                return .failed(.refused(reason: "invalid-code"))
+            }
+            $0.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "west-annex studio"))
+        }
+        defer { window.hide() }
+        expect(
+            visibleLabels(under: root).first?.text == "Type the code shown on \(held).",
+            "the code step's heading holds the machine's name whole, got \(visibleLabels(under: root).first?.text ?? "nothing")"
+        )
+        guard let code = firstDescendant(of: root, where: { widgetHasClass($0, Class.code) }),
+              let pair = firstDescendant(of: root, where: { widgetHasClass($0, Class.primary) }) else {
+            expect(false, "the code step has a code field and Pair")
+            return
+        }
+        gtk_editable_set_text(sensorium_gtk_editable(code), "418297")
+        gtk_widget_activate(sensorium_gtk_widget(pair))
+        await structureWait(seconds: 0.6)
+        let asking = visibleLabels(under: root).map(\.text)
+        expect(
+            asking.contains("Asking \(held) to accept this machine\u{2026}"),
+            "the line shown while the machine is asked holds its name whole, got \(asking)"
+        )
+        expect(
+            asking.contains { $0.contains("the code on \(held)\u{2019}s screen") },
+            "and so does the line telling the person to leave the code up, got \(asking)"
+        )
+        gate.open()
+        await structureWait(seconds: 0.6)
+        expect(
+            visibleLabels(under: root).map(\.text).contains("Check the six digits on \(held), then choose Pair."),
+            "a refused code names the machine whole as well, got \(visibleLabels(under: root).map(\.text))"
+        )
+    }
+
+    // After a refused code the caret sits at the end of the code with nothing
+    // selected, as on macOS: focusing a field selects everything in it, and a
+    // person correcting a code edits it where it ends.
+    do {
+        let (window, root) = show {
+            $0.pair = { _, _ in .failed(.refused(reason: "invalid-code")) }
+            $0.showCodeStep(for: studio)
+        }
+        defer { window.hide() }
+        guard let code = firstDescendant(of: root, where: { widgetHasClass($0, Class.code) }),
+              let pair = firstDescendant(of: root, where: { widgetHasClass($0, Class.primary) }) else {
+            expect(false, "the code step has a code field and Pair")
+            return
+        }
+        let editable = sensorium_gtk_editable(code)
+        gtk_editable_set_text(editable, "418297")
+        gtk_widget_activate(sensorium_gtk_widget(pair))
+        await structureWait(seconds: 1.0)
+        expect(
+            visibleLabels(under: root).map(\.text).contains("Wrong code."),
+            "the refused code is reported, got \(visibleLabels(under: root).map(\.text))"
+        )
+        var start: gint = 0
+        var end: gint = 0
+        let hasSelection = gtk_editable_get_selection_bounds(editable, &start, &end) != 0
+        expect(!hasSelection, "nothing in the kept code is selected, got \(start)..<\(end)")
+        let length = String(cString: gtk_editable_get_text(editable)).count
+        expect(
+            Int(gtk_editable_get_position(editable)) == length,
+            "the caret sits after the code, at \(length), got \(gtk_editable_get_position(editable))"
+        )
+    }
+
+    print("PASS: Your Machines names the machine whole while it is asked and after it refuses, and leaves the caret after the kept code")
 }
 
 /// Every widget under `widget` in tree order, the hidden ones only when asked for.
@@ -322,6 +443,22 @@ private func visibleLabels(under widget: UnsafeMutableRawPointer) -> [(text: Str
 
 private typealias Class = GtkViewerStyle.Class
 
+/// Holds a pairing attempt open until the test lets it end, so the line shown
+/// while the other machine is asked can be read before the answer replaces it.
+@MainActor
+private final class PairingGate {
+    private var waiting: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        await withCheckedContinuation { waiting = $0 }
+    }
+
+    func open() {
+        waiting?.resume()
+        waiting = nil
+    }
+}
+
 /// The title of each link, in tree order. A link's own label is the last
 /// label inside its button.
 @MainActor
@@ -357,7 +494,19 @@ private func structurePump(seconds: TimeInterval) {
         usleep(5_000)
     }
 }
+/// Runs the display's events and lets main-actor tasks run, for `seconds`.
+@MainActor
+private func structureWait(seconds: TimeInterval) async {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        while g_main_context_iteration(nil, 0) != 0 {}
+        try? await Task.sleep(nanoseconds: 5_000_000)
+    }
+}
 #else
 @MainActor
 func testGtkYourMachinesMatchesMacOSStructureTests() {}
+
+@MainActor
+func testGtkYourMachinesPairingFlowTests() async {}
 #endif

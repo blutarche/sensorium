@@ -84,6 +84,8 @@ func runDarwinClientTests() async {
     testViewerFormActionButtonPaddingTests()
     testYourMachinesCodeStepFieldsSitOnTheColumnTests()
     testViewerFormControlsButtonFontSizeTests()
+    testViewerDisabledActionButtonTitleDrawsAsMuted2Tests()
+    testYourMachinesAddressErrorsFitWithoutMovingFieldsTests()
     testViewerPairingFieldCellCenteringTests()
     testViewerPairingFieldTextTests()
     testViewerPairingFieldPlaceholderStaysPutWhileEditingTests()

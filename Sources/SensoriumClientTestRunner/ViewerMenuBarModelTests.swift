@@ -100,7 +100,7 @@ func testViewerMenuBarModelTests() {
         "Edit's enablement is left to whichever field has focus, on both platforms"
     )
     expect(
-        rows.filter { $0.title.hasPrefix("Escape back to this machine") }.map(\.isEnabled) == [false],
+        rows.filter { $0.title.hasPrefix("Escape Back to This Machine") }.map(\.isEnabled) == [false],
         "Help states the escape gesture, never clickable"
     )
     expect(

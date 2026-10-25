@@ -179,9 +179,31 @@ enum ViewerFormControls {
 /// length, the same fix `ViewerActionButton` makes for the status panel's
 /// own buttons.
 final class ViewerFormActionButton: NSButton {
+    override class var cellClass: AnyClass? {
+        get { ViewerFormActionButtonCell.self }
+        set {}
+    }
+
     override var intrinsicContentSize: NSSize {
         let titleWidth = ceil(attributedTitle.size().width)
         return NSSize(width: titleWidth + ViewerDesign.Space.md * 2, height: 32)
+    }
+}
+
+/// Retains AppKit's title layout while using the authored colour, which
+/// AppKit otherwise lightens for a disabled button.
+final class ViewerFormActionButtonCell: NSButtonCell {
+    override func drawTitle(
+        _ title: NSAttributedString,
+        withFrame frame: NSRect,
+        in controlView: NSView
+    ) -> NSRect {
+        let drawnTitle = NSMutableAttributedString(attributedString: title)
+        if attributedTitle.length > 0,
+           let color = attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) {
+            drawnTitle.addAttribute(.foregroundColor, value: color, range: NSRange(location: 0, length: drawnTitle.length))
+        }
+        return super.drawTitle(drawnTitle, withFrame: frame, in: controlView)
     }
 }
 

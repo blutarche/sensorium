@@ -428,12 +428,12 @@ func testYourMachinesWindowTests() async {
 
         controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "Studio"))
         expect(
-            hasLabel("Type the code shown on Studio", in: content(of: controller)),
+            hasLabel("Type the code shown on Studio.", in: content(of: controller)),
             "the code step names the machine the code is on"
         )
         expect(
             hasLabel(
-                "Shown by Sensorium Host on that machine under Show Pairing Code.",
+                "The six digits Sensorium Host shows on that machine.",
                 in: content(of: controller)
             ),
             "the code field's hint says where that code comes from"
@@ -444,7 +444,7 @@ func testYourMachinesWindowTests() async {
         )
         expect(
             storedValue("nameField", of: controller, as: NSTextField.self).placeholderAttributedString?.string
-                == "Uses the name it reports",
+                == "Uses its address",
             "an empty name field says what it will use, instead of a sample that reads as a name already typed"
         )
         expect(
@@ -457,7 +457,7 @@ func testYourMachinesWindowTests() async {
             "and so is the one under an address typed by hand"
         )
         expect(
-            hasLabel("Type the machine\u{2019}s address and code", in: content(of: controller)),
+            hasLabel("Type the machine\u{2019}s address and code.", in: content(of: controller)),
             "with the address field on the step, the heading asks for the address too, since no machine was picked"
         )
         expect(
@@ -514,11 +514,47 @@ func testYourMachinesWindowTests() async {
         controller.showCodeStep(for: nil)
         expect(addressField.superview != nil, "typing an address by hand asks for one")
         expect(
-            hasLabel("The address of the machine you want to add", in: content(of: controller)),
+            hasLabel("Address", in: content(of: controller)),
             "and labels it as a sentence"
         )
 
         print("PASS: only the hand-typed path asks for an address, above the code")
+    }
+
+    do {
+        // A machine's name is held whole wherever a sentence says it: the
+        // code step's heading, the line shown while the other machine is
+        // asked, and the failure under the code.
+        let held = "west\u{2011}annex\u{00A0}studio"
+        let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+        controller.pair = { _, _ in .failed(.refused(reason: "invalid-code")) }
+        controller.showCodeStep(for: ViewerPairingDevice(address: "studio.tail1234.ts.net", name: "west-annex studio"))
+        expect(
+            hasLabel("Type the code shown on \(held).", in: content(of: controller)),
+            "the code step's heading holds the machine's name whole, never at its hyphen or space"
+        )
+
+        let codeField = storedValue("codeField", of: controller, as: NSTextField.self)
+        codeField.stringValue = "418297"
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: nil))
+        triggerSubmit(controller)
+        let headline = storedValue("messageHeadline", of: controller, as: NSTextField.self)
+        let detail = storedValue("messageDetail", of: controller, as: NSTextField.self)
+        expect(
+            headline.stringValue == "Asking \(held) to accept this machine\u{2026}",
+            "the line shown while the machine is asked holds its name whole, got \(headline.stringValue)"
+        )
+        expect(
+            detail.stringValue.contains("the code on \(held)\u{2019}s screen"),
+            "and so does the line telling the person to leave the code up, got \(detail.stringValue)"
+        )
+        await pumpUntil { storedValue("isPairing", of: controller, as: Bool.self) == false }
+        expect(
+            detail.stringValue == "Check the six digits on \(held), then choose Pair.",
+            "a refused code names the machine whole as well, got \(detail.stringValue)"
+        )
+
+        print("PASS: the code step holds a machine's name whole in its heading and its pairing lines")
     }
 
     do {
@@ -737,6 +773,13 @@ func testYourMachinesWindowTests() async {
             !hasLabel(subtext, in: content(of: missing)),
             "the not-installed state hides the list sentence as well"
         )
+        expect(
+            hasLabel(
+                "Tailscale is not installed. Download\u{00A0}Tailscale and sign in, then choose Look\u{00A0}Again.",
+                in: content(of: missing)
+            ),
+            "the not-installed sentence holds both control names whole"
+        )
 
         var openedURL: URL?
         let installed = YourMachinesWindowController(
@@ -749,6 +792,13 @@ func testYourMachinesWindowTests() async {
         }
         tap(openTailscale)
         expect(openedURL == fakeAppURL, "tapping passes exactly the looked-up URL, not a reconstructed one")
+        expect(
+            hasLabel(
+                "Tailscale is not running. Start Tailscale and sign in, then choose Look\u{00A0}Again.",
+                in: content(of: installed)
+            ),
+            "the not-running sentence holds Look Again whole"
+        )
 
         let emptyTailnet = YourMachinesWindowController(
             store: InMemorySavedHostStore(), tailscaleAppURLLookup: { fakeAppURL }, onOpenTailscaleApp: { _ in }
@@ -764,7 +814,7 @@ func testYourMachinesWindowTests() async {
         )
         expect(
             hasLabel(
-                "Sign in to Tailscale on the machine you want to work on, then choose Look Again.",
+                "Sign in to Tailscale on the machine you want to work on, then choose Look\u{00A0}Again.",
                 in: content(of: emptyTailnet)
             ),
             "and the line under it points at the actual fix -- getting the other machine onto the tailnet"
@@ -820,7 +870,7 @@ func testYourMachinesWindowTests() async {
 
         controller.beginPairAgain(with: studio)
         expect(
-            hasLabel("Type the code shown on Studio", in: content(of: controller)),
+            hasLabel("Type the code shown on Studio.", in: content(of: controller)),
             "the overlay's Pair again opens this window on that machine's code step"
         )
         controller.showList()
@@ -915,6 +965,48 @@ func testYourMachinesWindowTests() async {
 /// tooltip already states, and naming the machine, since a list of rows all
 /// reading "More actions" with no machine named would leave a person unable
 /// to tell one row's control from another's.
+@MainActor
+func testYourMachinesAddressErrorsFitWithoutMovingFieldsTests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: nil)
+    let root = content(of: controller)
+    root.layoutSubtreeIfNeeded()
+    let address = storedValue("addressField", of: controller, as: NSTextField.self)
+    let hint = storedValue("addressHint", of: controller, as: NSTextField.self)
+    let code = storedValue("codeField", of: controller, as: NSTextField.self)
+    let name = storedValue("nameField", of: controller, as: NSTextField.self)
+    guard let pair = button(titled: "Pair", in: root) else {
+        expect(false, "the manual code step has Pair")
+        return
+    }
+    func frames() -> [NSRect] {
+        [code, name, pair].map { $0.convert($0.bounds, to: root) }
+    }
+    let restingFrames = frames()
+    let restingHeight = root.bounds.height
+    for value in ["http://mini.local", "mini.local/path", "mini local", "user@mini.local", "[mini.local", "mini.local:0", "mini_local", "mini.local", ""] {
+        address.stringValue = value
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: address))
+        root.layoutSubtreeIfNeeded()
+        let message = ViewerPairingForm(address: value).addressState.message
+        if let message {
+            expect(hint.stringValue == message && !hint.isHidden, "the address error is shown in full")
+        }
+        let text = NSAttributedString(string: hint.stringValue, attributes: [.font: hint.font!])
+        let needed = ceil(text.boundingRect(
+            with: NSSize(width: hint.bounds.width, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        ).height)
+        expect(
+            hint.bounds.height >= needed,
+            "the complete address message for \(value) needs \(needed)pt but has \(hint.bounds.height)pt: \(hint.stringValue)"
+        )
+        expect(frames() == restingFrames, "address validation keeps the code, name and Pair frames stable")
+        expect(root.bounds.height == restingHeight, "address validation keeps the form height stable")
+    }
+    print("PASS: every address error fits in full without moving the form")
+}
+
 @MainActor
 func testYourMachinesWindowMoreButtonAccessibilityLabelTests() {
     let mini = testMachine("Loft", key: 1, host: "mini.tail1234.ts.net")
@@ -1051,6 +1143,87 @@ func testViewerFormControlsButtonFontSizeTests() {
     )
 
     print("PASS: ViewerFormControls' own buttons are 13pt, matching the status panel's own buttons")
+}
+
+/// AppKit dims a disabled button's attributed title again on top of the colour
+/// set for it, which drew Pair lighter than the `muted2` the design names for a
+/// disabled action. The drawn pixels are what is measured, not the colour the
+/// title carries: the brightest pixels of the title are the ones the glyph
+/// covers fully, and they are the title's own colour.
+@MainActor
+func testViewerDisabledActionButtonTitleDrawsAsMuted2Tests() {
+    let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
+    controller.showCodeStep(for: ViewerPairingDevice(address: "mini.tail1234.ts.net", name: "Workstation"))
+    let root = content(of: controller)
+    guard let pair = button(titled: "Pair", in: root) else {
+        expect(false, "the code step offers Pair")
+        return
+    }
+    expect(!pair.isEnabled, "Pair is disabled until a code is typed")
+    root.layoutSubtreeIfNeeded()
+
+    let scale = 2
+    guard let rep = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: Int(root.bounds.width) * scale,
+        pixelsHigh: Int(root.bounds.height) * scale,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 32
+    ), let data = rep.bitmapData else {
+        expect(false, "a bitmap to draw the window into")
+        return
+    }
+    rep.size = root.bounds.size
+    root.cacheDisplay(in: root.bounds, to: rep)
+
+    // The glyphs only: inside the button's own 1pt border and rounded corners.
+    let frame = pair.convert(pair.bounds, to: root).insetBy(dx: 6, dy: 6)
+    let top = root.isFlipped ? frame.minY : root.bounds.height - frame.maxY
+    let bytesPerPixel = rep.bitsPerPixel / 8
+    func pixel(_ x: Int, _ y: Int) -> [Int] {
+        let offset = y * rep.bytesPerRow + x * bytesPerPixel
+        return [Int(data[offset]), Int(data[offset + 1]), Int(data[offset + 2])]
+    }
+    var brightest = pixel(Int(frame.minX) * scale, Int(top) * scale)
+    for y in Int(top) * scale..<Int(top + frame.height) * scale {
+        for x in Int(frame.minX) * scale..<Int(frame.maxX) * scale where pixel(x, y).reduce(0, +) > brightest.reduce(0, +) {
+            brightest = pixel(x, y)
+        }
+    }
+
+    guard let muted2 = ViewerDesign.muted2.nsColor.usingColorSpace(rep.colorSpace) else {
+        expect(false, "muted2 in the bitmap's colour space")
+        return
+    }
+    let expected = [muted2.redComponent, muted2.greenComponent, muted2.blueComponent].map { Int(($0 * 255).rounded()) }
+    expect(
+        zip(brightest, expected).allSatisfy { abs($0 - $1) <= 3 },
+        "the disabled Pair title's brightest pixel is \(brightest), not within 3 per channel of muted2 \(expected)"
+    )
+
+    let buttonFrame = pair.convert(pair.bounds, to: root)
+    var inkLeft = Int.max
+    var inkRight = Int.min
+    for y in Int(top) * scale..<Int(top + frame.height) * scale {
+        for x in Int(buttonFrame.minX + 1) * scale..<Int(buttonFrame.maxX - 1) * scale {
+            if zip(pixel(x, y), expected).allSatisfy({ abs($0 - $1) <= 3 }) {
+                inkLeft = min(inkLeft, x)
+                inkRight = max(inkRight, x)
+            }
+        }
+    }
+    let inkCenter = CGFloat(inkLeft + inkRight) / 2 / CGFloat(scale)
+    expect(
+        inkLeft <= inkRight && abs(inkCenter - buttonFrame.midX) <= 2,
+        "the disabled title stays centered in its button, got \(inkCenter)pt against \(buttonFrame.midX)pt"
+    )
+
+    print("PASS: a disabled action button's title is drawn in muted2, not dimmed again")
 }
 
 /// `ViewerPairingFieldCell`'s own title box: centred in the field's bounds,
@@ -1214,7 +1387,7 @@ func testViewerPairingFieldAccessibilityPlaceholderTests() {
     let controller = YourMachinesWindowController(store: InMemorySavedHostStore())
     controller.showCodeStep(for: nil)
     let placeholders = [
-        ("codeField", "000 000"), ("addressField", "mini.local"), ("nameField", "Uses the name it reports")
+        ("codeField", "000 000"), ("addressField", "mini.local"), ("nameField", "Uses its address")
     ]
     for (name, placeholder) in placeholders {
         let field = storedValue(name, of: controller, as: NSTextField.self)
@@ -1678,8 +1851,10 @@ func testYourMachinesCodeStepPutsBackBeforePairTests() {
     print("PASS: the code step puts Back on the left of Pair")
 }
 
-/// Open Tailscale is a link like the others on its step: its own line, at the
-/// same left edge, not beside Look Again.
+/// Open Tailscale and Download Tailscale are links like the others on their
+/// step: their own line, at the same left edge, not beside Look Again, and
+/// above it, since the sentence above them says to start or download Tailscale
+/// and only then to choose Look Again.
 @MainActor
 func testYourMachinesOpenTailscaleStacksWithTheOtherLinksTests() {
     let controller = YourMachinesWindowController(
@@ -1695,20 +1870,43 @@ func testYourMachinesOpenTailscaleStacksWithTheOtherLinksTests() {
         expect(false, "the unreachable step offers Look Again, Open Tailscale and Enter Address Manually")
         return
     }
-    func titleX(_ link: NSButton) -> CGFloat {
+    func titleX(_ link: NSButton, in root: NSView) -> CGFloat {
         guard let cell = link.cell as? NSButtonCell else { return .nan }
         return link.convert(NSPoint(x: cell.titleRect(forBounds: link.bounds).minX, y: 0), to: root).x
     }
     expect(
-        abs(titleX(open) - titleX(look)) < 0.5 && abs(titleX(open) - titleX(manual)) < 0.5,
-        "Open Tailscale starts its word where the other links do, got \(titleX(open)) against \(titleX(look))"
+        abs(titleX(open, in: root) - titleX(look, in: root)) < 0.5
+            && abs(titleX(open, in: root) - titleX(manual, in: root)) < 0.5,
+        "Open Tailscale starts its word where the other links do, got \(titleX(open, in: root)) against "
+            + "\(titleX(look, in: root))"
     )
     let lookFrame = look.convert(look.bounds, to: root)
     let openFrame = open.convert(open.bounds, to: root)
     let manualFrame = manual.convert(manual.bounds, to: root)
     expect(
-        openFrame.maxY <= lookFrame.minY && manualFrame.maxY <= openFrame.minY,
-        "it has its own line between Look Again and Enter Address Manually, got \(lookFrame), \(openFrame), \(manualFrame)"
+        lookFrame.maxY <= openFrame.minY && manualFrame.maxY <= lookFrame.minY,
+        "it has its own line above Look Again, which sits above Enter Address Manually, got \(openFrame), \(lookFrame), \(manualFrame)"
+    )
+
+    let notInstalled = YourMachinesWindowController(
+        store: InMemorySavedHostStore(), tailscaleAppURLLookup: { nil }, onOpenTailscaleApp: { _ in }
+    )
+    notInstalled.apply(deviceList: .unreachable(reason: TailnetDevicePickerFetchError.tailscaleNotInstalled.reason))
+    let notInstalledRoot = content(of: notInstalled)
+    notInstalledRoot.layoutSubtreeIfNeeded()
+    guard let download = button(titled: "Download Tailscale", in: notInstalledRoot),
+          let lookAgain = button(titled: "Look Again", in: notInstalledRoot) else {
+        expect(false, "the not-installed step offers Download Tailscale and Look Again")
+        return
+    }
+    expect(
+        abs(titleX(download, in: notInstalledRoot) - titleX(lookAgain, in: notInstalledRoot)) < 0.5,
+        "Download Tailscale starts its word where Look Again does"
+    )
+    expect(
+        lookAgain.convert(lookAgain.bounds, to: notInstalledRoot).maxY
+            <= download.convert(download.bounds, to: notInstalledRoot).minY,
+        "Download Tailscale has its own line above Look Again"
     )
 
     print("PASS: Open Tailscale stacks with the step's other links")

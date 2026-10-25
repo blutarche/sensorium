@@ -62,7 +62,7 @@ public enum HostScreenRefusalCopy {
         let subject = isGeneric ? "That machine" : host
         switch reason {
         case noneAvailableReason:
-            return "\(subject) has no screen to share right now."
+            return "\(subject) has no screen to share right now. Trying again asks for its screen once more."
         case "canvas-session-active":
             return "An earlier private desktop session was still active. It has now ended. "
                 + "Trying again asks for the host screen once more."
@@ -95,7 +95,7 @@ public enum HostScreenRefusalCopy {
             // An expired resume starts a fresh session by itself, so this
             // line is shown only when that fresh attempt is itself answered
             // this way, or by a viewer that does not start one.
-            return "The connection was away too long to resume."
+            return "The connection was away too long to resume. Trying again starts a new session."
         case "host-screen-session-active":
             return "An earlier host-screen session was still active. It has now ended. "
                 + "Trying again asks for the host screen once more."
@@ -114,7 +114,8 @@ public enum HostScreenRefusalCopy {
                 + "seconds, and trying again then asks for the screen."
         default:
             return "\(subject) gave a reason this version of Sensorium does not know: "
-                + "\(ViewerCopyWrapping.quoted(reason)). Update both apps, then try again."
+                + "\(ViewerCopyWrapping.quoted(reason)). Update both apps. "
+                + "Trying again then asks for its screen once more."
         }
     }
 

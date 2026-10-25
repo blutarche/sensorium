@@ -146,7 +146,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
     private static let addressHintText = "Tailscale address, or a name like mini.local."
     private static let codeHintText =
-        "Shown by Sensorium Host on that machine under Show Pairing Code."
+        "The six digits Sensorium Host shows on that machine."
 
     public init(
         store: any SavedHostStoring,
@@ -186,7 +186,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         // the code either way and the placeholder is where that is learned.
         codeField.placeholderAttributedString = ViewerFormControls.placeholder("000 000", mono: true, size: 20)
         codeField.delegate = self
-        nameField.placeholderAttributedString = ViewerFormControls.placeholder("Uses the name it reports", mono: false, size: 14)
+        nameField.placeholderAttributedString = ViewerFormControls.placeholder("Uses its address", mono: false, size: 14)
         nameField.delegate = self
         pairButton.target = self
         pairButton.action = #selector(submit)
@@ -759,20 +759,17 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
             views.append(loadingSentence("Looking for machines on your tailnet\u{2026}"))
         case let .unreachable(reason):
             views.append(sentence(reason, color: ViewerDesign.bad))
-            // An "Open Tailscale" button beside Look Again, but only when
-            // Tailscale is actually installed and only for a tailscaled that
-            // could not be asked: an empty tailnet is answered fine and is not
-            // a reason to suggest opening another app.
+            // An "Open Tailscale" button above Look Again, as the sentence
+            // reads, but only when Tailscale is actually installed and only
+            // for a tailscaled that could not be asked: an empty tailnet is
+            // answered fine and is not a reason to suggest opening another app.
             if let appURL = tailscaleAppURLLookup() {
                 tailscaleActionURL = appURL
                 let open = ViewerFormControls.linkButton("Open Tailscale", symbol: "arrow.up.forward.app")
                 open.target = self
                 open.action = #selector(openTailscale)
-                let button = ViewerFormControls.linkButton("Look Again", symbol: "arrow.clockwise")
-                button.target = self
-                button.action = #selector(lookAgain)
-                views.append(leadingRow([button]))
                 views.append(leadingRow([open]))
+                views.append(lookAgainLink())
             } else if pickerState.isTailscaleNotInstalled {
                 // Nothing on this machine to open, so the way on is the page
                 // Tailscale publishes, the same one the host's setup offers.
@@ -780,15 +777,18 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
                 let download = ViewerFormControls.linkButton("Download Tailscale", symbol: "arrow.down.circle")
                 download.target = self
                 download.action = #selector(openTailscale)
-                views.append(lookAgainLink())
                 views.append(leadingRow([download]))
+                views.append(lookAgainLink())
             } else {
                 tailscaleActionURL = nil
                 views.append(lookAgainLink())
             }
         case .noOtherDevices:
             views.append(emptyHeading("Nothing else is on your tailnet yet."))
-            views.append(sentence("Sign in to Tailscale on the machine you want to work on, then choose Look Again."))
+            views.append(sentence(
+                "Sign in to Tailscale on the machine you want to work on, then choose "
+                    + "\(ViewerCopyWrapping.control("Look Again"))."
+            ))
             views.append(lookAgainLink())
         case let .devices(rows):
             let list = column([], spacing: ViewerDesign.Space.xs)
@@ -887,21 +887,25 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         addressHint.stringValue = Self.addressHintText
         codeHint.stringValue = Self.codeHintText
         nameHint.isHidden = true
-        // The default hint is the tallest text this field ever shows -- fixing
-        // its height here keeps the code field, name field and Pair button in
-        // place whether the hint changes length within itself or is replaced
-        // by a shorter error.
+        // Reserve every validation message as well as the hint, so no error
+        // is clipped and the fields below it stay in place.
         addressHintReservedHeight?.isActive = false
+        let messages = [Self.addressHintText] + ViewerPairingForm.possibleMessages(for: .address)
+        let reservedHeight = messages.map { message in
+            addressHint.stringValue = message
+            return addressHint.intrinsicContentSize.height
+        }.max() ?? 0
+        addressHint.stringValue = Self.addressHintText
         let reserved = addressHint.heightAnchor.constraint(
-            equalToConstant: addressHint.intrinsicContentSize.height
+            equalToConstant: reservedHeight
         )
         reserved.isActive = true
         addressHintReservedHeight = reserved
 
         var views: [NSView] = [
             heading(
-                device.map { "Type the code shown on \($0.label)" }
-                    ?? "Type the machine\u{2019}s address and code"
+                device.map { "Type the code shown on \(ViewerCopyWrapping.name($0.label))." }
+                    ?? "Type the machine\u{2019}s address and code."
             )
         ]
         if isPairingAgain {
@@ -909,7 +913,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         }
         if device == nil {
             views.append(fieldGroup(
-                label: "The address of the machine you want to add",
+                label: "Address",
                 field: addressField,
                 hint: addressHint,
                 fieldHeight: 32
@@ -1137,9 +1141,10 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         codeErrorsRevealed = true
         setFieldsEditable(false)
         refresh()
+        let heldName = ViewerCopyWrapping.name(submission.displayName)
         showMessage(
-            headline: "Asking \(submission.displayName) to accept this machine\u{2026}",
-            detail: "This takes a moment. Leave the code on \(submission.displayName)\u{2019}s screen "
+            headline: "Asking \(heldName) to accept this machine\u{2026}",
+            detail: "This takes a moment. Leave the code on \(heldName)\u{2019}s screen "
                 + "until this finishes.",
             tone: .info
         )

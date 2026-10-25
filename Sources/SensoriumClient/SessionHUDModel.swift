@@ -404,6 +404,12 @@ public enum SessionHUDPanel {
         hostName ?? "the host"
     }
 
+    /// `hostReference` where it opens a sentence: a name stays as given, and
+    /// only the fallback takes a capital.
+    private static func hostReferenceOpeningSentence(_ hostName: String?) -> String {
+        hostName.map(ViewerCopyWrapping.name) ?? "The host"
+    }
+
     /// Every sub-line sentence on the panel ends with a period; the session
     /// headline this row's note carries is authored elsewhere, so this adds
     /// the period.
@@ -550,7 +556,7 @@ public enum SessionHUDPanel {
                 label: "READINGS",
                 value: "none yet",
                 tone: nil,
-                note: "This host has sent no measurements. It may predate them."
+                note: "\(hostReferenceOpeningSentence(hostName)) has sent no measurements. It may predate them."
             )
         }
         let addressRow = SessionHUDRow(
@@ -563,7 +569,7 @@ public enum SessionHUDPanel {
             value: isPointerCaptured ? "captured" : "free",
             tone: isPointerCaptured ? .warn : nil,
             note: isPointerCaptured
-                ? "\(ViewerKeyNames.escapeGesture) releases it back to this machine."
+                ? "\(ViewerKeyNames.pointerCapture) releases it back to this machine."
                 : nil
         )
         return SessionHUDSection(title: "SESSION", rows: [state, addressRow, telemetryRow, pointerRow])
@@ -749,19 +755,15 @@ public enum SessionHUDPanel {
         guard telemetry.decoder == .softwareFallback else {
             return SessionHUDRow(label: "DECODER", value: value)
         }
+        let note = "Video is decoded in software, which uses more power."
         guard let guide = telemetry.softwareDecodeGuide else {
-            return SessionHUDRow(
-                label: "DECODER",
-                value: value,
-                tone: .warn,
-                note: "No hardware decoder was available; this machine is decoding in software."
-            )
+            return SessionHUDRow(label: "DECODER", value: value, tone: .warn, note: note)
         }
         return SessionHUDRow(
             label: "DECODER",
             value: value,
             tone: .warn,
-            note: "Video decoded on the CPU.",
+            note: note,
             link: SessionHUDLink(title: "Faster video", url: guide)
         )
     }

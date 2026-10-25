@@ -1592,8 +1592,8 @@ func testDualCanvasReconnectAndUITests() async {
             "no transport jargon reaches the person reading it, got: \(dropped.detail)"
         )
         expect(
-            unbound(dropped.detail).contains("frozen") && !dropped.detail.contains("trying"),
-            "the drop says what the user is looking at and lets the buttons offer the retry, rather than announcing one beside a Try again button, got: \(dropped.detail)"
+            unbound(dropped.detail).contains("frozen") && !dropped.detail.contains("Sensorium is trying"),
+            "the drop says what the user is looking at and what Try Again does, and announces no retry that is not happening, got: \(dropped.detail)"
         )
         expect(
             unbound(dropped.detail).contains("The picture is frozen where the connection dropped."),
@@ -1647,7 +1647,8 @@ func testDualCanvasReconnectAndUITests() async {
         expect(gaveUp.phase == .lost, "giving up leaves the viewer in the lost state")
         expect(
             unbound(gaveUp.detail) == "Sensorium has stopped retrying. Check that Studio is awake, and that both "
-                + "machines are on the same network or have Tailscale connected, then choose Try Again.",
+                + "machines are on the same network or have Tailscale connected, then choose Try Again. "
+                + "Trying again reconnects.",
             "giving up names the machine to check and what the user can actually do about it, got: "
                 + "\(gaveUp.detail)"
         )
@@ -1674,23 +1675,25 @@ func testDualCanvasReconnectAndUITests() async {
             "the headline never orphans the host's name on its own line, got: \(refused.headline)"
         )
         expect(
-            refused.buttons.map(\.title) == ["Quit Sensorium", "Connect to a Private Desktop", "Your Machines"],
-            "the list and Quit sit beside the private desktop offer so a refusal is never a dead end, got: "
-                + "\(refused.buttons.map(\.title))"
+            refused.buttons.map(\.title) == [
+                "Quit Sensorium", "Connect to a Private Desktop", "Your Machines", "Try Again"
+            ],
+            "the list and Quit sit beside the private desktop offer, and Try Again is the way back, so a "
+                + "refusal is never a dead end, got: \(refused.buttons.map(\.title))"
         )
         expect(
-            refused.buttons.map(\.action) == [.quit, .connectAsVirtualDisplay, .yourMachines],
-            "the way to another machine is the filled default, rightmost, got: \(refused.buttons.map(\.action))"
+            refused.buttons.map(\.action) == [.quit, .connectAsVirtualDisplay, .yourMachines, .tryAgain],
+            "the way back is the filled default, rightmost, got: \(refused.buttons.map(\.action))"
         )
         expect(
-            refused.buttons.map(\.isPrimary) == [false, false, true],
-            "Your Machines is the one primary action here -- the private desktop is opt-in, so a stray "
+            refused.buttons.map(\.isPrimary) == [false, false, false, true],
+            "Try Again is the one primary action here -- the private desktop is opt-in, so a stray "
                 + "Return must never start one, got: \(refused.buttons.map(\.isPrimary))"
         )
         expect(
             ViewerFocusPolicy.chosenIndex(among: refused.buttons.map { (action: $0.action, isPrimary: $0.isPrimary) })
-                .map { refused.buttons[$0].action } == .yourMachines,
-            "a stray Return on the host-screen ended panel goes to Your Machines, never to starting a "
+                .map { refused.buttons[$0].action } == .tryAgain,
+            "a stray Return on the host-screen ended panel goes to Try Again, never to starting a "
                 + "private desktop the person never asked for"
         )
 
@@ -2137,8 +2140,8 @@ func testDualCanvasReconnectAndUITests() async {
             "a spent, expired or retired code cannot be retyped: the other machine has to show a new one first"
         )
         expect(
-            failureCopy(.refused(reason: "invalid-code")).detail == "Check the six digits on Studio and try again.",
-            "a wrong code is one sentence naming only the action -- "
+            failureCopy(.refused(reason: "invalid-code")).detail == "Check the six digits on Studio, then choose Pair.",
+            "a wrong code ends on the button that sends the retry -- "
                 + "got \(failureCopy(.refused(reason: "invalid-code")).detail)"
         )
         expect(

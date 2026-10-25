@@ -28,18 +28,36 @@ func testViewerKeyNamesTests() {
         ViewerKeyNames.escapeGesture == "Control-Option-Command-Escape",
         "macOS spells the escape gesture with its own modifier names, got \(ViewerKeyNames.escapeGesture)"
     )
+    expect(
+        ViewerKeyNames.pointerCapture == "Control-Option-Command-G",
+        "and the pointer-capture toggle the same way, got \(ViewerKeyNames.pointerCapture)"
+    )
     #else
     expect(
         ViewerKeyNames.escapeGesture == "Ctrl-Alt-Super-Escape",
         "elsewhere it is spelled for a PC keyboard, got \(ViewerKeyNames.escapeGesture)"
     )
+    expect(
+        ViewerKeyNames.pointerCapture == "Ctrl-Alt-Super-G",
+        "and so is the pointer-capture toggle, got \(ViewerKeyNames.pointerCapture)"
+    )
     #endif
+
+    // The spelling follows the chord the View menu really carries.
+    let captureItem = ViewerMenuPlan.menus
+        .flatMap(\.items)
+        .first(where: { $0.command == .togglePointerCapture })
+    expect(
+        captureItem?.keyEquivalent == "g" && captureItem?.modifiers == .viewerChord,
+        "the toggle named in the HUD is the one the View menu binds, got "
+            + "\(String(describing: captureItem?.keyEquivalent))"
+    )
 
     let helpItem = ViewerMenuPlan.menus
         .first(where: { $0.title == "Help" })?
         .items.first
     expect(
-        helpItem?.title == "Escape back to this machine: \(ViewerKeyNames.escapeGesture)",
+        helpItem?.title == "Escape Back to This Machine: \(ViewerKeyNames.escapeGesture)",
         "and the Help menu names it from that one place, got \(String(describing: helpItem?.title))"
     )
     expect(

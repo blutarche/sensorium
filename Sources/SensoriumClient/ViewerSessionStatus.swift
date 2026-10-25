@@ -14,8 +14,8 @@ public enum ViewerSessionPhase: Equatable, Sendable {
     case lost
     /// A host-screen connect that never became a session, refused or
     /// failed -- distinct from `.lost`, since nothing auto-redials here:
-    /// a host that refused this machine's screen refuses it again. The only
-    /// way out is the one button this phase's own status carries.
+    /// a host that refused this machine's screen refuses it again. Only the
+    /// person's own press on one of this phase's buttons starts anything.
     case ended
 }
 
@@ -77,9 +77,10 @@ public enum ViewerSessionAction: Equatable, Sendable {
     case tryAgain
     case stopTrying
     case quit
-    /// The `.ended` phase's own single action -- never resumes the target
-    /// that just ended, always switches to a session canvas, and only ever
-    /// fires on the person's own press: nothing here is automatic.
+    /// Offered by the `.ended` phase when the host offers a private desktop --
+    /// never resumes the target that just ended, always switches to a session
+    /// canvas, and only ever fires on the person's own press: nothing here is
+    /// automatic.
     case connectAsVirtualDisplay
     /// Offered when the host did not prove it is the machine this one
     /// paired with: re-pinning its key is the only fix, and only the pairing
@@ -174,6 +175,11 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     /// describes is over: a canvas came up, the person asked to try again,
     /// or they stopped trying.
     private var lastFailureLine: String?
+    /// Whether the picture on screen froze at an ending that was not a dropped
+    /// link: a person at the host stopping the session, the host naming a
+    /// cause, or a host screen that ended. The first reconnecting panel after
+    /// Try Again says where the picture froze, so it must not call that a drop.
+    private var endedWithoutADrop = false
     public private(set) var status: ViewerSessionStatus
 
     public init(hostName: String) {
@@ -210,6 +216,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
             attempt = 0
             hasBeenLive = true
             lastFailureLine = nil
+            endedWithoutADrop = false
             status = ViewerSessionStatus(
                 phase: .live,
                 tone: .ok,
@@ -219,18 +226,20 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 buttons: []
             )
         case .sessionEnded:
+            endedWithoutADrop = false
             status = ViewerSessionStatus(
                 phase: .lost,
                 tone: .bad,
                 eyebrow: "SESSION LOST",
                 headline: "Connection to \(hostName) lost.",
-                detail: "The picture is frozen where the connection dropped.",
+                detail: "The picture is frozen where the connection dropped. Trying again reconnects.",
                 buttons: Self.recoveryButtons
             )
         case let .stoppedByHost(reasonLine):
             // Cleared like `.stopRequested`'s: the last dial did not fail, so
             // there is nothing about an attempt for a later panel to repeat.
             lastFailureLine = nil
+            endedWithoutADrop = true
             status = ViewerSessionStatus(
                 phase: .lost,
                 tone: .bad,
@@ -245,6 +254,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
             )
         case let .hostEnded(reasonLine):
             lastFailureLine = nil
+            endedWithoutADrop = true
             status = ViewerSessionStatus(
                 phase: .lost,
                 tone: .bad,
@@ -260,7 +270,8 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 tone: .bad,
                 eyebrow: "STOPPED",
                 headline: "Stopped trying to reach \(hostName).",
-                detail: "Nothing is being retried now. Choose \(Self.tryAgainName) when that machine is awake, or quit.",
+                detail: "Nothing is being retried now. Choose \(Self.tryAgainName) when that machine is awake, "
+                    + "or quit. Trying again reconnects.",
                 buttons: Self.recoveryButtons
             )
         case .retryRequested:
@@ -270,6 +281,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 ? reconnecting()
                 : Self.connecting(hostName: hostName, attempt: attempt, lastFailureLine: lastFailureLine)
         case .gaveUp:
+            endedWithoutADrop = false
             status = ViewerSessionStatus(
                 phase: .lost,
                 tone: .bad,
@@ -277,11 +289,12 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 headline: "Cannot reach \(hostName).",
                 detail: "Sensorium has stopped retrying. "
                     + "\(ViewerSessionFailureCopy.reachabilityChecklist(hostLabel: hostName)), "
-                    + "then choose \(Self.tryAgainName).",
+                    + "then choose \(Self.tryAgainName). Trying again reconnects.",
                 buttons: Self.recoveryButtons
             )
         case let .hostScreenConnectEnded(reasonLine, offersVirtualDisplay, screenNeverCameUp):
             let sessionEnded = hasBeenLive && !screenNeverCameUp
+            endedWithoutADrop = true
             status = ViewerSessionStatus(
                 phase: .ended,
                 tone: .bad,
@@ -335,18 +348,19 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false)
     ]
 
-    /// A refusal is a dead end without the list beside it: the machine that
-    /// refused may stay that way all night, so Your Machines is the filled
-    /// default -- it sits rightmost, the way macOS itself places a default
-    /// button in a horizontal row. The private desktop is opt-in and starts
-    /// only when named, so Connect to a Private Desktop must never be
-    /// what a stray Return fires.
+    /// A refusal where the host offers a private desktop: the way out, the
+    /// private desktop, the list, and the way back. Try Again is the filled
+    /// default and sits rightmost, as it does in `recoveryButtons`, because
+    /// the body above it says what trying again asks for. The private desktop
+    /// is opt-in and starts only when named, so Connect to a Private Desktop
+    /// must never be what a stray Return fires.
     private static let endedButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
         ViewerSessionButton(
             action: .connectAsVirtualDisplay, title: "Connect to a Private Desktop", isPrimary: false
         ),
-        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
+        ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false),
+        ViewerSessionButton(action: .tryAgain, title: "Try Again", isPrimary: true)
     ]
 
     /// Said beside the reason whenever the panel carries Connect to a Private
@@ -417,7 +431,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     private func reconnecting() -> ViewerSessionStatus {
         let shown = max(attempt, 1)
         var detail = shown <= 1
-            ? "The picture is frozen where the connection dropped."
+            ? "The picture is frozen where \(endedWithoutADrop ? "the session ended" : "the connection dropped")."
             : "If it does not come back, check that it is awake and on the same network."
         if let lastFailureLine {
             detail += " \(lastFailureLine)"

@@ -14,10 +14,8 @@ public enum ViewerIdentityFailure: Error, Equatable, Sendable {
 /// reading the key again, or generating a fresh one, is the whole remedy, so
 /// `retryButtonTitle`/`replaceButtonTitle`/`replaceConsequence` are never
 /// `nil`.
-/// Kept apart from `detail`, which only ever describes the problem: a
-/// caller printing this to a terminal (the `pair` verb's own CLI path,
-/// scaffolding with no button to tap) has no reason to also print a
-/// sentence about tapping one.
+/// Kept apart from `detail` so the replacement consequence can be shown
+/// only when the person asks to replace the key.
 public struct ViewerStartupFailureCopy: Equatable, Sendable {
     public let headline: String
     public let detail: String
@@ -54,7 +52,7 @@ public struct ViewerStartupFailureCopy: Equatable, Sendable {
                 headline: ViewerCopyWrapping.keepingTailTogether("Sensorium could not read this machine\u{2019}s key."),
                 detail: ViewerCopyWrapping.keepingTailTogether(
                     "\(sentence). Without it there is nothing to prove which machine this is, so no "
-                        + "session can start."
+                        + "session can start. Trying again reads the key once more."
                 ),
                 replaceButtonTitle: "Make a New Key",
                 replaceConsequence: ViewerCopyWrapping.keepingTailTogether(

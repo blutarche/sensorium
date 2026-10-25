@@ -12,6 +12,16 @@ public enum ViewerKeyNames {
         #endif
     }()
 
+    /// The View menu's pointer-capture toggle (`ViewerMenuModifiers.viewerChord`
+    /// and G), in words.
+    public static let pointerCapture: String = {
+        #if os(macOS)
+        "Control-Option-Command-G"
+        #else
+        "Ctrl-Alt-Super-G"
+        #endif
+    }()
+
     /// `SystemShortcutCatalog.shortcutStripToggle`, in words.
     public static let shortcutStrip: String = {
         #if os(macOS)

@@ -164,8 +164,8 @@ func testViewerUXFixTests() async {
             let capturedRow = hudRow(SessionHUDPanel.sections(telemetry: capturedSnapshot, session: nil), "POINTER")
             expect(capturedRow?.value == "captured", "the HUD states captured-pointer mode plainly")
             expect(
-                capturedRow?.note?.contains("Control-Option-Command-Escape") == true,
-                "the HUD names the exact exit gesture, not just that one exists"
+                capturedRow?.note?.contains(ViewerKeyNames.pointerCapture) == true,
+                "the HUD names the exact way to release the pointer, not just that one exists"
             )
             expect(capturedRow?.tone == .warn, "a mode that changes what the mouse does is worth a tone, not a silent row")
 
@@ -395,6 +395,7 @@ func testViewerUXFixTests() async {
             statuses.append(machine.handle(.gaveUp))
             var ended = ViewerSessionStateMachine(hostName: "studio-mini")
             statuses.append(ended.handle(.hostScreenConnectEnded(reasonLine: "reason")))
+            statuses.append(ended.handle(.hostScreenConnectEnded(reasonLine: "reason", offersVirtualDisplay: true)))
 
             let sessionWidth = StatusPanelLayout.sessionPanelWidth
             for status in statuses {
@@ -423,7 +424,7 @@ func testViewerUXFixTests() async {
                 )
             }
 
-            print("PASS: the session status panel keeps one width across every state, sized to the widest button row")
+            print("PASS: the session status panel keeps one width across every state, sized to the widest button row: \(sessionWidth)pt")
         }
 
         // The Displays-menu refusal banner wraps its sentence at 360pt. The
@@ -616,6 +617,7 @@ func testViewerUXFixTests() async {
             statuses.append(machine.handle(.gaveUp))
             var ended = ViewerSessionStateMachine(hostName: "studio-mini")
             statuses.append(ended.handle(.hostScreenConnectEnded(reasonLine: "reason")))
+            statuses.append(ended.handle(.hostScreenConnectEnded(reasonLine: "reason", offersVirtualDisplay: true)))
             for status in statuses {
                 let entries = status.buttons.map { (action: $0.action, isPrimary: $0.isPrimary) }
                 if let index = ViewerFocusPolicy.chosenIndex(among: entries) {
