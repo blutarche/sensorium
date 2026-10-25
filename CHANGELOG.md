@@ -33,6 +33,15 @@ once it reaches 1.0.
   pair again.
 - A paired machine with no name reads Unnamed machine, and every row shows
   its key.
+- Rename sheets name the machine being renamed. A failed update says which
+  version keeps running, in the warning colour, and an update waiting on a
+  session says when it installs.
+- The panel that says Sensorium is trying again offers Cancel, and the
+  private desktop is explained wherever it is offered. Machines in Add a
+  machine show the same status dot as Your machines.
+- The host lists the screens a paired machine may share without splitting a
+  display name, and its paired machine cards line up with the cards around
+  them.
 - The Fedora viewer matches the macOS one: the same headings, labels,
   button order, status dots, notices, shortcut strip and diagnostics. A
   shortcut strip closed with Escape stays closed while the pointer rests

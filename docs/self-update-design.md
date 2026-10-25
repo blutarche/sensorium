@@ -21,7 +21,7 @@ The app has to run from Applications, or from another folder this user can write
 
 The viewer checks for an update when it opens, then every six hours while it runs. A found update downloads in the background.
 
-When it is ready, *Your Machines* shows one line: *Sensorium `<version>` is ready.* with **Restart Now**. **Restart Now** is offered only while no session window is open. Otherwise the update installs the next time the viewer quits.
+When it is ready, *Your Machines* shows one line: *Sensorium `<version>` is ready.* with **Restart Now**. **Restart Now** is offered only while no session window is open. Otherwise the line adds *It installs the next time Sensorium quits.*, and the update installs then.
 
 ### 1.3 Host updates
 
@@ -31,7 +31,7 @@ The host window shows one line under **Install updates automatically**:
 
 | State | Line |
 | --- | --- |
-| Current | *Sensorium Host `<version>`, up to date* |
+| Current | *Sensorium Host `<version>` is up to date.* |
 | Waiting | *Sensorium Host `<new version>` will install when no machine is connected* |
 | Failed | *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.* |
 | Not updatable | *Move Sensorium Host to Applications and open it again to receive updates.* |

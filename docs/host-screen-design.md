@@ -121,7 +121,7 @@ The offer also says whether the host opens a private desktop at all. The person 
 | Offer | What the viewer does |
 | --- | --- |
 | At least one screen | Starts on the remembered screen, or the first one |
-| No screen | Ends the attempt and says, naming the host, "Workstation has no screen to share right now." |
+| No screen | Ends the attempt and says, naming the host, "Workstation has no screen to share right now." When the host offers a private desktop, it adds "Workstation offers a private desktop instead: a separate desktop that isn’t shown on its screens." |
 | Refused, as for a machine that is not armed | Ends the attempt with the host's reason |
 
 A refusal ends the attempt the ordinary way. Trying again, or choosing a private desktop the host offers, is a person's own decision.

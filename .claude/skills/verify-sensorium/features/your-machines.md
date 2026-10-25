@@ -30,7 +30,7 @@ Preconditions:
 - **List.** Two saved machines. Read `viewer-machines-2-list.png`. Two rows, each with a name, an invented `*.tail1234.ts.net` address and online/offline status, newest first, each with a `…` menu button; Add a Machine below.
 - **Connect, then cancel.** Choose a row. Read `viewer-machines-3-connecting.png`. That row's status reads `connecting…` with a yellow dot, and a Cancel button appears beside its `…` button.
 - **Failed dial.** Read `viewer-machines-4-failed.png`. The row's status reads `couldn’t reach it, trying again…` and Cancel stays until the retry dials.
-- **Rename.** From the list, choose Rename… in the first row's menu. Compare `viewer-machines-2-list.png` (before) with `viewer-rename-1.png` (after). Heading `Rename this machine`, the field holding the current name, a line saying only this machine uses the name, Cancel and Rename beneath.
+- **Rename.** From the list, choose Rename… in the first row's menu. Compare `viewer-machines-2-list.png` (before) with `viewer-rename-1.png` (after). Heading `Rename Workstation`, the field holding the current name, a line saying only this machine uses the name, Cancel and Rename beneath.
 - **Rename persists.** Run `./Scripts/run-unit-tests.sh` (unsandboxed). Its Client runner includes `SavedHostRenameTests` and prints no `FAIL`; it is the only check that the new name is written to the saved-host store, since no live window can be driven here.
 - **Key unreadable.** Read `viewer-identity-1-key-unreadable.png`. Try Again and Make a New Key are offered; no command-line flag is named.
 
