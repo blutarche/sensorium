@@ -556,12 +556,11 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         limited.contains { $0.title == "FIDELITY" } && !limited.contains { $0.title == "RESOLUTION" },
         "the section is named for everything it now reports, not for the one thing it used to"
     )
-    // Both rows read the same whether or not the host limited them: the
-    // number, in its own unit. The LIMITED BY row below says that something
-    // did and what, so a limit is said once rather than rephrased in each
-    // value.
+    // Both rows read the same whether or not the host limited them: just the
+    // number. The LIMITED BY row below says that something did and what, so a
+    // limit is said once rather than rephrased in each value.
     expect(
-        hudRow(limited, "FRAME RATE")?.value == "30 fps",
+        hudRow(limited, "TARGET FPS")?.value == "30",
         "a limited frame rate is still just the rate"
     )
     expect(
@@ -572,7 +571,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         appliedStreamScale: 2.0, appliedFramesPerSecond: 60, qualityScale: 1.0, fidelityLimitReason: nil
     ))
     expect(hudRow(unlimited, "QUALITY")?.value == "100%", "a quality at full is the same shape as one below it")
-    expect(hudRow(unlimited, "FRAME RATE")?.value == "60 fps", "so is an unlimited frame rate")
+    expect(hudRow(unlimited, "TARGET FPS")?.value == "60", "so is an unlimited frame rate")
     expect(
         hudRow(limited, "LIMITED BY")?.value == "the link",
         "the reason is said in the panel's own words, not in the wire's token"
@@ -660,7 +659,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         fidelityLimitReason: nil
     ))
     expect(
-        hudRow(old, "FRAME RATE")?.value == "\u{2014}" && hudRow(old, "QUALITY")?.value == "\u{2014}",
+        hudRow(old, "TARGET FPS")?.value == "\u{2014}" && hudRow(old, "QUALITY")?.value == "\u{2014}",
         "a host that predates the fields reports nothing rather than a fabricated full-quality reading"
     )
     // Held at a ceiling the host measured, with no reason token: the ceiling is
@@ -703,7 +702,7 @@ private func fidelitySectionNamesTheFrameRateQualityAndReason() {
         fidelityLimitReason: nil
     ))
     expect(
-        hudRow(healthy, "FRAME RATE")?.value == "60 fps" && hudRow(healthy, "QUALITY")?.value == "100%",
+        hudRow(healthy, "TARGET FPS")?.value == "60" && hudRow(healthy, "QUALITY")?.value == "100%",
         "a session giving nothing up says what it is running at, with no word about being limited"
     )
     expect(

@@ -643,8 +643,8 @@ public enum SessionHUDPanel {
                 value: choiceText(telemetry.streamScalePreference)
             ),
             SessionHUDRow(
-                label: "FRAME RATE",
-                value: sample?.appliedFramesPerSecond.map { "\($0) fps" } ?? nothingToReport,
+                label: "TARGET FPS",
+                value: sample?.appliedFramesPerSecond.map { "\($0)" } ?? nothingToReport,
                 isStale: isStale
             ),
             SessionHUDRow(
