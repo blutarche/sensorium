@@ -5,7 +5,7 @@ Everything the viewer draws on its own screen over a live session: the status ov
 ## Sub-features
 
 - `chrome-status` connecting, connecting after a failure, lost, reconnecting, gave up, unverified host.
-- `chrome-hud` healthy, held below the asked scale, old host, stale, software decoder, pointer captured, clamped choice, fidelity limited by link or by encoder.
+- `chrome-hud` healthy, held below the asked scale, old host, no readings, stale, software decoder, pointer captured, clamped choice, fidelity limited by link or by encoder.
 - `chrome-hud-layering` the HUD over the canvas, and under the status panel when the session is lost.
 - `chrome-shortcuts` the tab alone, opened, pinned, confirming Lock Screen.
 - `chrome-notices` refusal banners: host screen active, over the host's limit, creation in progress, change failed, unknown reason.
@@ -26,7 +26,7 @@ Preconditions:
 - **Connecting.** Pick a machine. Run `.claude/skills/verify-sensorium/scripts/render.sh chrome viewer-status-1-connecting-natural.png viewer-status-1b-connecting-after-failure-natural.png viewer-status-2-lost-natural.png viewer-status-3-reconnecting-natural.png viewer-status-4-gave-up-natural.png viewer-status-15-unverified-host-natural.png viewer-hud-1-healthy.png viewer-hud-5-software-decoder.png viewer-hud-6-over-canvas.png viewer-hud-7-under-session-panel.png viewer-hud-10-fidelity-limited.png viewer-shortcuts-0-handle.png viewer-shortcuts-1-shown.png viewer-shortcuts-1b-pinned.png viewer-shortcuts-2-confirming-lock.png viewer-notice-1-host-screen-active.png viewer-notice-4-change-failed.png`. All `ok:`. `viewer-status-1-...` reads "Connecting to Workstation…" (the renderer names its machine "Workstation").
 - **Drop and recover.** Read `viewer-status-2-lost-...`, `-3-reconnecting-...`, `-4-gave-up-...` in order. The last frame stays underneath; the headline moves from *Connection to Workstation lost.* to *Reconnecting to Workstation…* to *Cannot reach Workstation.*
 - **Unverified host.** Read `viewer-status-15-unverified-host-natural.png`. `Could not connect to Workstation.` explains the key did not match the one saved at pairing; the only buttons are Quit Sensorium, Your Machines and Pair Again, with no way to connect anyway.
-- **HUD.** Choose View, Session Diagnostics. Read `viewer-hud-1-healthy.png`, `-5-software-decoder.png`, `-10-fidelity-limited.png`. Each names the decode path and what limits the picture.
+- **HUD.** Choose View, Session Diagnostics. Read `viewer-hud-1-healthy.png`, `-5-software-decoder.png`, `-10-fidelity-limited.png`, and `-14-no-readings.png`. Each names the decode path and what limits the picture. With no readings, the note names the host that has sent no measurements.
 - **Layering.** Read `viewer-hud-6-over-canvas.png` and `-7-under-session-panel.png`. The status panel and its buttons sit above the HUD.
 - **Shortcut strip.** Hover the tab, open, pin, press Lock Screen. Read `viewer-shortcuts-0-...` through `-2-...` in order. The last replaces the row with one confirmation question.
 - **Banners.** Read `viewer-notice-1-...` and `-4-...`. One sentence each, sized to fit.

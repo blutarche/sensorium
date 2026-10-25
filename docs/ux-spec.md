@@ -90,6 +90,8 @@ Pairing succeeds, the new machine joins the list, and Sensorium connects to it. 
 
 ### The session window
 
+On Linux, a machine without hardware video decoding shows a notice explaining the extra power use. **Continue** dismisses it and remembers the acknowledgement across launches. The notice points to **Session Diagnostics** for a guide to faster video.
+
 Created when the session goes live, not before. Until then every attempt is reported on the row in *Your Machines*. A session that drops, ends, or cannot prove the machine it reached is the one paired with says so here, with **Your Machines**, closing this window and restoring the list.
 
 Title: `<machine name> @ <address>`, the name the host gives itself and the address this machine reached it at. A host-screen session, or a host that gives no name, is titled with the name saved for the machine here. A second display's window adds *— Display 2*.
@@ -117,6 +119,8 @@ Open, it reads left to right:
 - The host's name, in grey.
 - Four icon-only clusters by intent: window management, virtual desktops, search and app switching, lock and quit. Each button is tooltipped with its action and target.
 - A pin, tooltipped *Keep open* or *Let close*, that turns the strip's hover behaviour off. The strip is pinned by default, and the choice to unpin or pin it again is remembered across launches. Pinning gives the strip its own band across the top; the picture and the diagnostics panel move down below it, so neither is covered.
+
+On Linux, a tooltip appears after the pointer rests on its item for half a second. Pressing the item, leaving it, or closing the strip dismisses the tooltip. An Escape press that closes the strip stays local through repeats and release; an Escape already sent to the host keeps its repeats and release there.
 
 **Lock Screen** and **Quit App** ask once first, with **Cancel** and **Lock** or **Quit**. Nothing on the strip takes keyboard focus.
 
