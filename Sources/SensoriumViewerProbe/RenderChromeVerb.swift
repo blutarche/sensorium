@@ -13,7 +13,7 @@ import SensoriumCore
 /// never invented copy.
 @MainActor
 enum RenderChromeVerb {
-    private static let hostName = "workshop"
+    private static let hostName = "Workstation"
     private static let windowWidth: Double = 1280
     private static let windowHeight: Double = 800
     private static let scales: [Double] = [1.0, 1.5, 2.0]
@@ -76,15 +76,35 @@ enum RenderChromeVerb {
             .statusPanel(machine.status), scale: scale, to: url("status-reconnecting", scale, directory)
         ))
 
-        machine.handle(.hostEnded(reasonLine: "The host machine went to sleep."))
+        machine.handle(.hostEnded(reasonLine: ViewerSessionFailureCopy.line(for: .hostDisplaysAsleep, hostLabel: hostName)))
         write("status-ended", SessionChromeRenderPreview.renderOverlay(
             .statusPanel(machine.status), scale: scale, to: url("status-ended", scale, directory)
         ))
 
-        // A real, long refusal line -- the longest one `HostScreenRefusalCopy`
-        // carries -- so the notice's own word-wrap is checked against a
-        // sentence that actually ships, not one invented to be long.
-        let refusalLine = HostScreenRefusalCopy.line(reason: "host-screen-already-live")
+        let states: [(String, [ViewerSessionEvent])] = [
+            ("status-gave-up", [.canvasReady, .sessionEnded, .gaveUp]),
+            ("status-stopped-by-host", [.canvasReady, .stoppedByHost(
+                reasonLine: ViewerSessionFailureCopy.line(for: .stoppedByHost, hostLabel: hostName))]),
+            ("status-host-screen-refused", [.hostScreenConnectEnded(
+                reasonLine: ViewerSessionFailureCopy.line(for: .hostScreenRefused(reason: "host-screen-presence-declined"),
+                                                          hostLabel: hostName),
+                offersVirtualDisplay: false, screenNeverCameUp: true)]),
+            ("status-host-screen-private-desktop", [.hostScreenConnectEnded(
+                reasonLine: ViewerSessionFailureCopy.line(for: .hostScreenRefused(reason: "host-screen-presence-declined"),
+                                                          hostLabel: hostName),
+                offersVirtualDisplay: true, screenNeverCameUp: true)]),
+            ("status-unverified-host", [.unverifiedHostConnectEnded(
+                reasonLine: ViewerSessionFailureCopy.line(for: .unverifiedHost, hostLabel: hostName))])
+        ]
+        for (name, events) in states {
+            var fixture = ViewerSessionStateMachine(hostName: hostName)
+            for event in events { fixture.handle(event) }
+            write(name, SessionChromeRenderPreview.renderOverlay(
+                .statusPanel(fixture.status), scale: scale, to: url(name, scale, directory)
+            ))
+        }
+
+        let refusalLine = DisplayCountRefusalCopy.line(reason: "display-count-exceeds-host-limit", hostLabel: hostName)
         write("notice", SessionChromeRenderPreview.renderOverlay(
             .notice(refusalLine), scale: scale, to: url("notice", scale, directory)
         ))
@@ -174,6 +194,26 @@ enum RenderChromeVerb {
             scale: scale,
             to: url("composite-live", scale, directory)
         ))
+
+        for (name, target) in [("strip-action-tooltip", ShortcutStripTooltipTarget.action(.showDesktop)),
+                               ("strip-pin-tooltip", .pin), ("strip-handle-tooltip", .handle)] {
+            var tooltipState = liveState
+            if target != .handle {
+                tooltipState.toggleStripRequested(now: 0)
+                tooltipState.pointerOnStrip(isOnHandleSpot: false, now: 0)
+            } else {
+                tooltipState.pointerOverHandle(true, now: 0)
+                tooltipState.pointerOnStrip(isOnHandleSpot: true, now: 0)
+                _ = tooltipState.escapePressed()
+                tooltipState.pointerOverHandle(true, now: 0)
+            }
+            tooltipState.pointerRests(onTooltipTarget: target, now: 0)
+            tooltipState.tick(now: ShortcutStripTooltip.delaySeconds)
+            write(name, SessionChromeRenderPreview.renderComposite(
+                state: tooltipState, hostName: hostName, windowWidth: windowWidth, windowHeight: windowHeight,
+                scale: scale, to: url(name, scale, directory)
+            ))
+        }
 
         // A fourth composite: a fresh dial, before a first frame has ever
         // arrived -- the opaque scrim case, with no frozen picture to mark

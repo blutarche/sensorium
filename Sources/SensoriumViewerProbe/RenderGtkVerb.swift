@@ -80,7 +80,7 @@ enum RenderGtkVerb {
     )
     private static let longNamedHost = SavedHost(
         displayName: "Kestrel-Field-Station-Long-Range-Research-Notebook",
-        host: "workstation-west-annex-render-node-07.tail1234.ts.net",
+        host: "kestrel-field-station-notebook.tail1234.ts.net",
         port: 7777,
         hostPublicKey: Data([4]),
         tlsCertificateHash: Data([4, 4]),
@@ -109,7 +109,7 @@ enum RenderGtkVerb {
             tailnetIPv4: "100.64.1.7", tailnetIPv6: nil, isOnline: false, isThisMachine: false
         )),
         TailnetDevicePickerRow(peer: TailnetPeer(
-            id: "3", displayName: "iPhone", magicDNSName: nil,
+            id: "3", displayName: "Kestrel Phone", magicDNSName: nil,
             tailnetIPv4: "100.64.1.3", tailnetIPv6: nil, isOnline: false, isThisMachine: false
         ))
     ]
@@ -220,7 +220,12 @@ enum RenderGtkVerb {
             ) { window in
                 window.select(hostPublicKey: studioHost.hostPublicKey)
             },
-            machines("viewer-machines-7-long-name", hosts: [longNamedHost]),
+            machines("viewer-machines-7-long-name", hosts: [longNamedHost], tailnet: [
+                TailnetDevicePickerRow(peer: TailnetPeer(
+                    id: "4", displayName: longNamedHost.displayName, magicDNSName: longNamedHost.host,
+                    tailnetIPv4: "100.64.1.11", tailnetIPv6: nil, isOnline: true, isThisMachine: false
+                ))
+            ]),
             machines("viewer-machines-8-long-address", hosts: [wrappedAddressHost], tailnet: [wrappedAddressPeer]),
             machines("viewer-rename-1", hosts: [miniHost, studioHost], withTailnet: true) { window in
                 window.beginRename(hostPublicKey: miniHost.hostPublicKey)
