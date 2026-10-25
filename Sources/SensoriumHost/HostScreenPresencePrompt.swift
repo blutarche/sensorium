@@ -137,10 +137,10 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         // Sharing Request": macOS has its own Screen Sharing feature, and
         // this prompt is not that.
         // Wider than the prompt at the eyebrow's tracking, so it wraps. Each
-        // name is held whole and the separator stays with the first, so the
-        // one place it breaks is after the separator.
+        // name is held whole and the separator stays with the second, so the
+        // one place it breaks is before the separator.
         eyebrow.attributedStringValue = CanvasDesign.eyebrow(
-            HostTextFlow.whole("Sensorium Host \u{00B7}") + " " + HostTextFlow.whole("Host Screen Request")
+            HostTextFlow.whole("Sensorium Host") + " " + HostTextFlow.whole("\u{00B7} Host Screen Request")
         )
         eyebrow.lineBreakMode = .byWordWrapping
         eyebrow.maximumNumberOfLines = 0
@@ -156,16 +156,10 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         // No cap, same reason as `subtitle` below.
         headline.maximumNumberOfLines = 0
         headline.preferredMaxLayoutWidth = textWidth
-        // In curly quotes: the display label can carry its own commas and
-        // parentheses (a Thunderbolt daisy chain's own position note), which
-        // would otherwise read as more clauses of this sentence rather than
-        // as one name. A word joiner (U+2060) glues the opening quote to the
-        // label's first character so word wrap never leaves the quote
-        // orphaned at the end of a line.
         subtitle.font = CanvasDesign.font(.primary, size: 12)
         subtitle.stringValue = HostTextFlow.flow(
             "If you allow, \(content.deviceName) sees and controls "
-                + "\u{201C}\u{2060}\(content.displayLabel)\u{201D} until you click Stop on the badge that stays on screen, "
+                + "\(content.displayLabel) until you click Stop on the badge that stays on screen, "
                 + "or it disconnects. You\u{2019}re asked because this machine was used in the last few minutes.",
             names: [content.deviceName, content.displayLabel],
             measure: HostTextFlow.Measure(attributes: [.font: subtitle.font as Any], width: textWidth)

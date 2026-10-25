@@ -41,11 +41,13 @@ func runHostScreenPresencePromptTests() async {
         )
         // At the widest tracking the whole eyebrow is wider than the prompt,
         // so it wraps. "Sensorium Host" and "Host Screen Request" each stay in
-        // one piece, so the one place it can break is after the separator.
+        // one piece and the separator stays with the words after it, so the
+        // one place it can break is before the separator and no line ends on
+        // it.
         let nbsp = HostTextFlow.noBreakSpace
         expect(
-            eyebrow == "SENSORIUM\(nbsp)HOST\(nbsp)\u{00B7} HOST\(nbsp)SCREEN\(nbsp)REQUEST",
-            "the eyebrow breaks only after the separator -- got \(eyebrow.debugDescription)"
+            eyebrow == "SENSORIUM\(nbsp)HOST \u{00B7}\(nbsp)HOST\(nbsp)SCREEN\(nbsp)REQUEST",
+            "the eyebrow breaks only before the separator -- got \(eyebrow.debugDescription)"
         )
         let eyebrowField: NSTextField = field(
             "eyebrow",
@@ -91,7 +93,7 @@ func runHostScreenPresencePromptTests() async {
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            plain(subtitle.stringValue) == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}Built-in Display\u{201D} "
+            plain(subtitle.stringValue) == "If you allow, Kestrel Laptop Pro sees and controls Built-in Display "
                 + "until you click Stop on the badge that stays on screen, or it disconnects. You\u{2019}re asked because "
                 + "this machine was used in the last "
                 + "few minutes.",
@@ -104,8 +106,8 @@ func runHostScreenPresencePromptTests() async {
     }
 
     do {
-        // A display label containing its own commas must not be read
-        // as more clauses of the surrounding sentence.
+        // A display name is a name, written bare as it is everywhere else
+        // the host shows it, commas and all.
         let longLabel = HostScreenArmingPresentation.qualifiedDisplayLabel(
             "LG UltraFine 5K Display, connected over Thunderbolt 3", by: "left"
         )
@@ -114,15 +116,15 @@ func runHostScreenPresencePromptTests() async {
         )
         let subtitle: NSTextField = field("subtitle", of: controller, as: NSTextField.self)
         expect(
-            plain(subtitle.stringValue) == "If you allow, Kestrel Laptop Pro sees and controls \u{201C}\u{2060}\(longLabel)\u{201D} "
+            plain(subtitle.stringValue) == "If you allow, Kestrel Laptop Pro sees and controls \(longLabel) "
                 + "until you click Stop on the badge that stays on screen, or it disconnects. You\u{2019}re asked because "
                 + "this machine was used in the last "
                 + "few minutes.",
-            "curly quotes around the label mark where it starts and ends, so its own commas and parentheses are "
-                + "never mistaken for more clauses of the surrounding sentence -- got: \(subtitle.stringValue)"
+            "the display label stands in the sentence unquoted, as the badge and status card show it -- got: "
+                + "\(subtitle.stringValue)"
         )
 
-        print("PASS: the presence prompt's subtitle quotes a display label that carries its own commas")
+        print("PASS: the presence prompt's subtitle names a display label bare, as every other host surface does")
     }
 
     do {
@@ -140,7 +142,7 @@ func runHostScreenPresencePromptTests() async {
             "the headline holds the device name whole and never ends a line on \"a\" -- got \(headline.stringValue.debugDescription)"
         )
         expect(
-            subtitle.stringValue.contains("\u{201C}\u{2060}LG\(nbsp)UltraFine\(nbsp)5K\(nbsp)Display\u{201D}")
+            subtitle.stringValue.contains("controls LG\(nbsp)UltraFine\(nbsp)5K\(nbsp)Display until")
                 && subtitle.stringValue.hasSuffix("last few\(nbsp)minutes."),
             "a display label that fits stays whole and \"minutes.\" keeps \"few\" -- got \(subtitle.stringValue.debugDescription)"
         )
@@ -155,7 +157,7 @@ func runHostScreenPresencePromptTests() async {
         )
         let longSubtitle: NSTextField = field("subtitle", of: longLabel, as: NSTextField.self)
         expect(
-            longSubtitle.stringValue.contains("\u{201C}\u{2060}LG\(nbsp)UltraFine 5K Display, connected"),
+            longSubtitle.stringValue.contains("controls LG\(nbsp)UltraFine 5K Display, connected"),
             "a display label too long to fit never splits its first two words -- got \(longSubtitle.stringValue.debugDescription)"
         )
 
@@ -164,8 +166,8 @@ func runHostScreenPresencePromptTests() async {
 
     do {
         // A device name that fits a line of its own but not what is left of
-        // the body's first line must not push "If you allow," onto a line by
-        // itself.
+        // the body's first line moves whole to the next line: a name never
+        // breaks at its own spaces or hyphens when it fits on one.
         let controller = HostScreenPresencePromptWindowController(
             content: HostScreenBadgeContent(
                 deviceName: "Kestrel Field Station Sixteen-Inch Laptop (2024)",
@@ -189,12 +191,13 @@ func runHostScreenPresencePromptTests() async {
         let firstLine = (subtitle.stringValue as NSString).substring(with: characterRange)
 
         expect(
-            plain(firstLine).hasPrefix("If you allow, Kestrel Field Station"),
-            "the body's first line carries the start of the device name, not just \"If you allow,\" -- got "
+            plain(firstLine).trimmingCharacters(in: .whitespaces) == "If you allow,"
+                && subtitle.stringValue.contains(HostTextFlow.whole("Kestrel Field Station Sixteen-Inch Laptop (2024)")),
+            "the body's first line holds only \"If you allow,\" and the device name follows whole -- got "
                 + "\(firstLine.debugDescription)"
         )
 
-        print("PASS: a long device name never leaves the body's first line almost empty")
+        print("PASS: a long device name that fits a line stays whole in the body, on a line of its own")
     }
 
     do {

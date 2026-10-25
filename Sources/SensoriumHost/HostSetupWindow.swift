@@ -530,7 +530,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
             // owner approves it themselves -- shown, not silently read as on.
             autoLoginCheckbox.state = .on
             autoLoginCheckbox.isEnabled = true
-            autoLoginStatusLabel.stringValue = "Needs your approval in System Settings General Login Items."
+            autoLoginStatusLabel.stringValue = "Needs your approval in System Settings > General > Login Items."
             autoLoginStatusLabel.isHidden = false
         case .notFound:
             // The platform reports this app as not found: nothing here can

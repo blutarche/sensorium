@@ -90,9 +90,9 @@ func runHostTextFlowTests() async {
             "If you allow, \(name) sees and controls the display.", names: [name], measure: measure
         )
         expect(
-            after.contains("Kestrel\(nbsp)Field Station Sixteen-Inch Laptop (2024)"),
-            "a name that does not fit what remains of its line wraps at its spaces instead of jumping whole to "
-                + "the next line and leaving this one nearly empty -- got \(after.debugDescription)"
+            after.contains(HostTextFlow.whole(name)),
+            "a name that fits a line stays whole even when it does not fit what remains of the line it starts "
+                + "on, and moves to the next line instead -- got \(after.debugDescription)"
         )
 
         let wellFilled = HostTextFlow.flow(
@@ -100,7 +100,7 @@ func runHostTextFlowTests() async {
         )
         expect(
             wellFilled.contains(HostTextFlow.whole(name)),
-            "when the line before it is more than half full, a name moves whole to the next line -- got "
+            "after a well-filled line, a name moves whole to the next line too -- got "
                 + "\(wellFilled.debugDescription)"
         )
 
@@ -108,11 +108,10 @@ func runHostTextFlowTests() async {
             "\(name) sees it. If you allow, \(name) sees it.", names: [name], measure: measure
         )
         expect(
-            twice.hasPrefix(HostTextFlow.whole(name)) && twice.hasSuffix("Kestrel\(nbsp)Field Station Sixteen-Inch Laptop (2024) sees\(nbsp)it."),
-            "each mention of a name is judged where it falls: the first starts its line and stays whole, the "
-                + "second follows other words and wraps -- got \(twice.debugDescription)"
+            twice.hasPrefix(HostTextFlow.whole(name)) && twice.hasSuffix("\(HostTextFlow.whole(name)) sees\(nbsp)it."),
+            "every mention of a name that fits a line stays whole, wherever it falls -- got \(twice.debugDescription)"
         )
-        print("PASS: a name that does not fit what remains of its line wraps at its spaces")
+        print("PASS: a name that fits a line never breaks at its own spaces or hyphens, wherever it falls")
     }
 
     do {

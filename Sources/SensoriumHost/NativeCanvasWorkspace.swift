@@ -411,7 +411,7 @@ final class WorkspaceContentView: NSView, NSTextViewDelegate {
     /// content: the text view below is editable, and select-all followed by
     /// one keystroke would otherwise erase the only reminder of this
     /// window's keyboard, permanently and with nothing to restore it.
-    private static let keyboardHint = "\u{2318}L focuses the launcher · Esc leaves it"
+    private static let keyboardHint = "Command-L focuses the launcher · Escape leaves it"
     /// The margin the whole workspace column stands in.
     private static let inset: CGFloat = 48
     /// The widest the editor's text runs before it wraps, so the welcome

@@ -169,7 +169,7 @@ public struct HostOperatorPermissionAlert: Equatable, Sendable {
     /// The status-item menu's own title — Title Case, like every other menu
     /// item there.
     public let title: String
-    /// The host window's button label for the same alert — sentence case,
+    /// The host window's button label for the same alert — Title Case,
     /// like every other button in that window.
     public let windowButtonTitle: String
     /// What stops working until it is granted.
@@ -214,7 +214,7 @@ public struct HostOperatorPresentation: Equatable, Sendable {
     /// rather than choosing a colour of its own, so the two stay in step.
     public var eyebrowColor: DesignColor {
         switch eyebrow {
-        case "COULD NOT START", "SCREEN RECORDING NEEDED":
+        case "COULD NOT START", "SCREEN RECORDING NEEDED", "CAPTURE STOPPED":
             return CanvasDesign.warn
         default:
             return CanvasDesign.muted

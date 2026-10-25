@@ -179,6 +179,11 @@ func runCaptureUnavailableTests() async {
             presentation.indicator == .attention,
             "a host that cannot capture is not a host quietly waiting"
         )
+        expect(
+            presentation.eyebrow == "CAPTURE STOPPED" && presentation.eyebrowColor == CanvasDesign.warn,
+            "the top-ranked failure's eyebrow is gold, like COULD NOT START, not the grey of a calm status -- got "
+                + "\(presentation.eyebrow) in \(presentation.eyebrowColor)"
+        )
     }
 
     print("PASS: the host window tells the person at this machine to quit and open the host again")

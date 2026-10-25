@@ -131,11 +131,13 @@ public enum CanvasLauncherPresentation {
     /// whole catalog printed under a list showing one row reads as a
     /// contradiction, so a filtered list is counted by what it shows.
     ///
-    /// An empty catalog is counted too, so the panel's foot is laid out the
-    /// same whether the list is empty or not. The count reports; the empty
-    /// state's heading and subtext say what to do.
+    /// A list showing nothing has no count: the empty state's heading already
+    /// says what is empty, and a zero beneath it would say it again.
     public static func catalogStatus(count: Int, showing: Int? = nil) -> CanvasLauncherStatus {
-        if count > 0, let showing, showing != count {
+        if count == 0 || showing == 0 {
+            return CanvasLauncherStatus(text: "", severity: .neutral)
+        }
+        if let showing, showing != count {
             return CanvasLauncherStatus(text: "\(showing) of \(count)", severity: .neutral)
         }
         let text = count == 1 ? "1 application" : "\(count) applications"
@@ -177,8 +179,7 @@ public enum CanvasLauncherPresentation {
             )
         case .accessibilityDenied:
             return CanvasLauncherStatus(
-                text: "\(application) opened elsewhere."
-                    + " Grant Sensorium Accessibility access on the host machine.",
+                text: "\(application) opened elsewhere on \(hostName). Sensorium Host needs Accessibility access there to bring its window here.",
                 severity: .bad
             )
         }
@@ -195,7 +196,7 @@ public enum CanvasLauncherPresentation {
     ) -> CanvasLauncherEmptyState {
         guard catalogCount > 0 else {
             return CanvasLauncherEmptyState(
-                heading: "Nothing to launch.",
+                heading: "No applications to launch.",
                 subtext: "Install an application on \(hostName) and reconnect."
             )
         }

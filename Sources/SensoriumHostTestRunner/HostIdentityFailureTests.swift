@@ -88,14 +88,33 @@ func runHostIdentityFailureTests() async {
             "the primary button repeats the read that already ran once to reach this screen -- got: \(copy.retryButtonTitle)"
         )
         expect(
-            copy.detail == "The file that holds the key identifying this machine could not be read. Click "
-                + "Try\u{00A0}Again. If that keeps failing, click Make\u{00A0}a\u{00A0}New\u{00A0}Key. That replaces "
-                + "the key, so every paired machine must pair again.",
-            "the body names what failed, the next click and what Make a New Key costs, quoting each button "
-                + "exactly and never splitting its name across lines -- got: \(copy.detail)"
+            copy.detail == "The file that holds the key identifying this machine could not be read. Trying again "
+                + "reads it once more. If that keeps failing, Make\u{00A0}a\u{00A0}New\u{00A0}Key replaces the key, "
+                + "and every paired machine must pair again.",
+            "the body names what failed, what Try Again does and what Make a New Key costs, never splitting the "
+                + "button's name across lines -- got: \(copy.detail)"
         )
 
         print("PASS: HostIdentityFailureCopy offers Try Again first, says which file could not be read and what a new key costs")
+    }
+
+    do {
+        let copy = HostIdentityFailureCopy.cannotReadKey
+        let alert = copy.makeReplacementConfirmation()
+        expect(alert.messageText == "Make a new key?", "key replacement asks for confirmation instead of repeating the failure headline")
+        expect(alert.informativeText == copy.replaceConsequence, "confirmation keeps the replacement consequences")
+        expect(alert.buttons.map(\.title) == ["Make a New Key", "Cancel"], "key replacement stays the default with Cancel beside it")
+        expect(alert.buttons[0].keyEquivalent == "\r", "Return chooses Make a New Key")
+        print("PASS: key replacement asks Make a new key? with the consequences and Make a New Key as default")
+    }
+
+    do {
+        expect(
+            HostIdentityFailureCopy.replacementFailure(reason: "the file could not be written")
+                == "Sensorium Host could not replace this machine\u{2019}s key: the file could not be written.",
+            "key replacement failures name the machine's key without internal identity terminology"
+        )
+        print("PASS: key replacement failures name this machine's key")
     }
 
     do {

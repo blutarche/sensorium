@@ -36,7 +36,7 @@ public final class PairedMachineRenameView: NSView {
     private let nameField = NSTextField()
     private let hintLabel = NSTextField(
         wrappingLabelWithString: HostTextFlow.flow(
-            "Only this machine uses this name. Leave it empty to use the name the other machine reports."
+            "Only this machine sees this name. Leave it empty to use the name the other machine reports."
         )
     )
     private let cancelButton = NSButton()

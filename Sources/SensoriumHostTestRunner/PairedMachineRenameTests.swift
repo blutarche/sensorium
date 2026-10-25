@@ -610,8 +610,8 @@ func runPairedMachineRenameTests() async {
         )
         expect(
             plain(named.hint)
-                == "Only this machine uses this name. Leave it empty to use the name the other machine reports.",
-            "the hint says who uses the name and where the empty one comes from -- got \(named.hint)"
+                == "Only this machine sees this name. Leave it empty to use the name the other machine reports.",
+            "the hint says who sees the name and where the empty one comes from -- got \(named.hint)"
         )
         expect(
             named.hint.hasSuffix("machine\(HostTextFlow.noBreakSpace)reports."),

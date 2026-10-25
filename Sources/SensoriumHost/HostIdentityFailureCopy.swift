@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// What the host window shows when Sensorium Host cannot read its own key --
@@ -33,9 +34,9 @@ public struct HostIdentityFailureCopy: Equatable, Sendable {
     /// host's key.
     public static let cannotReadKey = HostIdentityFailureCopy(
         headline: "Sensorium Host could not read its own key.",
-        detail: "The file that holds the key identifying this machine could not be read. Click "
-            + "\(HostTextFlow.whole(retryTitle)). If that keeps failing, click \(HostTextFlow.whole(replaceTitle)). "
-            + "That replaces the key, so every paired machine must pair again.",
+        detail: "The file that holds the key identifying this machine could not be read. Trying again reads "
+            + "it once more. If that keeps failing, \(HostTextFlow.whole(replaceTitle)) replaces the key, and "
+            + "every paired machine must pair again.",
         retryButtonTitle: retryTitle,
         replaceButtonTitle: replaceTitle,
         replaceConsequence: "\(HostTextFlow.whole(replaceTitle)) replaces the key that identifies this machine. "
@@ -45,4 +46,18 @@ public struct HostIdentityFailureCopy: Equatable, Sendable {
 
     private static let retryTitle = "Try Again"
     private static let replaceTitle = "Make a New Key"
+
+    package func makeReplacementConfirmation() -> NSAlert {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Make a new key?"
+        alert.informativeText = replaceConsequence
+        alert.addButton(withTitle: replaceButtonTitle)
+        alert.addButton(withTitle: "Cancel")
+        return alert
+    }
+
+    package static func replacementFailure(reason: String) -> String {
+        "Sensorium Host could not replace this machine\u{2019}s key: \(reason)."
+    }
 }

@@ -67,6 +67,11 @@ func runHostAutoLoginSwitchTests() async {
         let label = autoLoginStatusLabel(in: ctrl)
         expect(checkbox.state == .on, "requiresApproval is registered, so the checkbox reads on")
         expect(!label.isHidden, "requiresApproval shows text distinct from a plain on, not silently read as on")
+        expect(
+            label.stringValue == "Needs your approval in System Settings > General > Login Items.",
+            "the line names the System Settings location the way the host's Accessibility lines do -- got "
+                + "\(label.stringValue)"
+        )
         print("PASS: requiresApproval reads as on with its own explanatory text, not a silent on")
     }
 

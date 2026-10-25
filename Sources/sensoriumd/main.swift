@@ -1483,12 +1483,7 @@ struct sensoriumd {
             onHidePairingCode: { operatorBox.status.hidePairingCode() },
             onReplaceIdentity: {
                 let copy = HostIdentityFailureCopy.cannotReadKey
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = copy.headline
-                alert.informativeText = copy.replaceConsequence
-                alert.addButton(withTitle: "Make a New Key")
-                alert.addButton(withTitle: "Cancel")
+                let alert = copy.makeReplacementConfirmation()
                 guard alert.runModal() == .alertFirstButtonReturn else { return }
 
                 // Both keys are minted before either file is written, so a
@@ -1502,16 +1497,15 @@ struct sensoriumd {
                     operatorBox.status.clearIdentityProblem()
                     startHosting()
                 case let .deviceIdentityFailed(reason):
-                    operatorBox.status.reportProblem("Sensorium Host could not replace this machine\u{2019}s device identity: \(reason).")
+                    operatorBox.status.reportProblem(HostIdentityFailureCopy.replacementFailure(reason: reason))
                 case let .hostTLSIdentityFailed(reason):
-                    operatorBox.status.reportProblem("Sensorium Host could not replace this machine\u{2019}s TLS identity: \(reason).")
+                    operatorBox.status.reportProblem(HostIdentityFailureCopy.replacementFailure(reason: reason))
                 }
             },
             // "Try Again": repeats the read this process already made once,
             // at launch or at the last press of this same button. The read
-            // comes first, so a key still unreadable says so again rather
-            // than reaching the canvas probe and reporting whatever that
-            // finds instead.
+            // comes first, so a key still unreadable says so again before
+            // hosting is tried.
             onRetryIdentityRead: {
                 guard resolveIdentity() != nil, resolveTLSIdentity() != nil else {
                     operatorBox.status.reportIdentityProblem(.cannotReadKey)

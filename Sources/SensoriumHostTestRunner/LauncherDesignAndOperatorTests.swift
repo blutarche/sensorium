@@ -257,17 +257,13 @@ func runLauncherDesignAndOperatorTests() async {
                     && hintLines.allSatisfy { $0.count <= CanvasLauncherMetrics.lineBudget },
                 "the keyboard hint is two authored lines, neither ending on a dangling separator nor overrunning the panel"
             )
-            // Two lines of status are laid out, so two lines of status are what
-            // the copy may spend -- including the longest application name a
-            // real catalog offers. The failure message was cut off mid-sentence
-            // when this was left to chance.
             let longName = "Bluetooth File Exchange"
             let everyStatus = [
                 CanvasLauncherPresentation.catalogStatus(count: 0),
                 CanvasLauncherPresentation.catalogStatus(count: 105),
                 CanvasLauncherPresentation.launchingStatus(application: longName),
-                CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 0),
-                CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 105)
+                CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 0, hostName: "Workstation"),
+                CanvasLauncherPresentation.nothingToLaunchStatus(catalogCount: 105, hostName: "Workstation")
             ] + [
                 CanvasApplicationLaunchOutcome.placed(windows: 1),
                 .placed(windows: 3),
@@ -275,11 +271,27 @@ func runLauncherDesignAndOperatorTests() async {
                 .noWindows(attempts: 40),
                 .accessibilityDenied,
                 .launchFailed(message: "NSWorkspace error")
-            ].map { CanvasLauncherPresentation.outcomeStatus(application: longName, outcome: $0) }
-            expect(
-                everyStatus.allSatisfy { $0.text.count <= CanvasLauncherMetrics.lineBudget * 2 },
-                "every status line fits the two lines the panel lays out, at the longest name a real catalog offers"
+            ].map { CanvasLauncherPresentation.outcomeStatus(application: longName, outcome: $0, hostName: "Workstation") }
+            let placement = CanvasHostTestHooks.placementForTesting(
+                displayID: 0, bounds: CGRect(x: 0, y: 0, width: 1920, height: 1200)
             )
+            for status in everyStatus {
+                let layout = CanvasHostTestHooks.launcherStatusLayout(
+                    frame: NSRect(x: 0, y: 0, width: 440, height: 1104), canvas: placement, status: status
+                )
+                let label = NSTextField(labelWithString: HostTextFlow.flow(status.text, names: ["Workstation"]))
+                label.font = CanvasDesign.font(.primary, size: 12)
+                label.lineBreakMode = .byWordWrapping
+                label.maximumNumberOfLines = 0
+                let needed = label.cell?.cellSize(forBounds: NSRect(
+                    x: 0, y: 0, width: layout.statusFrame.width, height: .greatestFiniteMagnitude
+                )).height ?? 0
+                expect(
+                    status.text.isEmpty ? layout.statusFrame.height == 0 : layout.statusFrame.height >= needed - 0.5,
+                    "the launcher grows its status row to show every wrapped line -- got \(layout.statusFrame.height), need \(needed) for \(status.text)"
+                )
+                expect(layout.statusFrame.minY >= layout.hintFrame.maxY, "a wrapped status never overlaps the keyboard hint")
+            }
             expect(
                 CanvasLauncherMetrics.rowHeight
                     == CanvasLauncherMetrics.iconSize + CanvasDesign.Space.xxs * 2
@@ -312,21 +324,24 @@ func runLauncherDesignAndOperatorTests() async {
                     && CanvasLauncherPresentation.catalogStatus(count: 105, showing: nil).text == "105 applications",
                 "an unfiltered list is the plain catalog count, however the caller says so"
             )
+            // Whenever the list is empty, the empty state's heading already
+            // says so, and "0 of 105" or "0 applications" beneath it would
+            // say it again.
             expect(
-                CanvasLauncherPresentation.catalogStatus(count: 105, showing: 0).text == "0 of 105",
-                "a filter matching nothing still counts against the catalog it was filtered from"
+                CanvasLauncherPresentation.catalogStatus(count: 105, showing: 0).text.isEmpty,
+                "a filter matching nothing shows no count under the empty state -- got "
+                    + "\(CanvasLauncherPresentation.catalogStatus(count: 105, showing: 0).text)"
             )
-            // An empty catalog is counted like any other, so the panel's foot
-            // is laid out the same whether the list is empty or not.
             expect(
-                CanvasLauncherPresentation.catalogStatus(count: 0, showing: 0).text == "0 applications"
-                    && CanvasLauncherPresentation.catalogStatus(count: 0).text == "0 applications",
-                "a host that discovered nothing still reports its count, so the foot matches the no-match state's"
+                CanvasLauncherPresentation.catalogStatus(count: 0, showing: 0).text.isEmpty
+                    && CanvasLauncherPresentation.catalogStatus(count: 0).text.isEmpty,
+                "a host that discovered nothing shows no count under the empty state -- got "
+                    + "\(CanvasLauncherPresentation.catalogStatus(count: 0).text)"
             )
             expect(
                 CanvasLauncherPresentation.emptyState(catalogCount: 0, hostName: "Kestrel Studio")
                     == CanvasLauncherEmptyState(
-                        heading: "Nothing to launch.",
+                        heading: "No applications to launch.",
                         subtext: "Install an application on Kestrel Studio and reconnect."
                     ),
                 "an empty catalog is advised to install something, never to clear a query it does not have -- on "
@@ -428,9 +443,9 @@ func runLauncherDesignAndOperatorTests() async {
                 "an application that opened no window is a warning, and is not described as failed"
             )
             expect(
-                CanvasLauncherPresentation.outcomeStatus(application: "Safari", outcome: .accessibilityDenied)
+                CanvasLauncherPresentation.outcomeStatus(application: "Safari", outcome: .accessibilityDenied, hostName: "Workstation")
                     == CanvasLauncherStatus(
-                        text: "Safari opened elsewhere. Grant Sensorium Accessibility access on the host machine.",
+                        text: "Safari opened elsewhere on Workstation. Sensorium Host needs Accessibility access there to bring its window here.",
                         severity: .bad
                     ),
                 "a missing Accessibility grant names the one thing that would fix it, without naming an API"
