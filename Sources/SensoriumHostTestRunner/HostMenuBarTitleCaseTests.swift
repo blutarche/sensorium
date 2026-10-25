@@ -62,7 +62,7 @@ func runHostMenuBarTitleCaseTests() async {
 
     do {
         // Every other action item in the menu reads in Title Case.
-        let notGranted = HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .granted)
+        let notGranted = HostPermissionRequestResult(screenCapture: .granted, accessibility: .approvalRequired)
         let presence = HostMenuBarPresence(
             status: HostOperatorStatus(connection: .notHosting, permissions: notGranted),
             openSetup: {},
@@ -74,8 +74,8 @@ func runHostMenuBarTitleCaseTests() async {
             fatalError("the status item's menu was never installed")
         }
         expect(
-            menu.items.contains { $0.title == "Open Screen Recording Settings" },
-            "the Screen Recording alert's own action item reads in Title Case -- got titles \(menu.items.map { $0.title })"
+            menu.items.contains { $0.title == "Open Accessibility Settings" },
+            "the Accessibility alert's own action item reads in Title Case -- got titles \(menu.items.map { $0.title })"
         )
         expect(
             menu.items.contains { $0.title == "Host Setup\u{2026}" },
@@ -86,6 +86,94 @@ func runHostMenuBarTitleCaseTests() async {
             "Quit Sensorium Host already reads in Title Case"
         )
 
-        print("PASS: the Screen Recording alert's action item reads in Title Case alongside Host Setup and Quit")
+        print("PASS: the Accessibility alert's action item reads in Title Case alongside Host Setup and Quit")
+    }
+
+    /// The panel's own button, when it is showing one.
+    func shownPanelButtonTitles(in presence: HostMenuBarPresence) -> [String] {
+        for child in Mirror(reflecting: presence).children where child.label == "panel" {
+            if let panel = child.value as? NSView {
+                return panel.subviews
+                    .compactMap { $0 as? NSButton }
+                    .filter { !$0.isHidden }
+                    .map { $0.attributedTitle.string }
+            }
+        }
+        fatalError("HostMenuBarPresence no longer has a stored property named panel")
+    }
+
+    do {
+        // Screen Recording missing: the panel carries the gold button, so the
+        // menu does not offer the same title a second time.
+        let missing = HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .granted)
+        let presence = HostMenuBarPresence(
+            status: HostOperatorStatus(connection: .notHosting, permissions: missing),
+            openSetup: {},
+            onStop: {},
+            quit: {}
+        )
+        presence.install()
+        guard let menu = statusItem(in: presence).menu else {
+            fatalError("the status item's menu was never installed")
+        }
+        let title = "Open Screen Recording Settings"
+        let inMenu = menu.items.filter { $0.title == title }.count
+        let inPanel = shownPanelButtonTitles(in: presence).filter { $0 == title }.count
+        expect(inPanel == 1, "the panel shows the Screen Recording button once, got \(inPanel)")
+        expect(
+            inMenu + inPanel == 1,
+            "\(title) appears exactly once across the panel and the menu items -- panel \(inPanel), menu \(inMenu)"
+        )
+        print("PASS: Open Screen Recording Settings appears once, on the panel's button, not again in the menu")
+    }
+
+    do {
+        // Both permissions missing: only the alert the panel has a button for
+        // loses its menu item. The Accessibility alert has no button, so it
+        // keeps its item.
+        let bothMissing = HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .approvalRequired)
+        let presence = HostMenuBarPresence(
+            status: HostOperatorStatus(connection: .notHosting, permissions: bothMissing),
+            openSetup: {},
+            onStop: {},
+            quit: {}
+        )
+        presence.install()
+        guard let menu = statusItem(in: presence).menu else {
+            fatalError("the status item's menu was never installed")
+        }
+        let titles = menu.items.map { $0.title }
+        expect(
+            titles.filter { $0 == "Open Screen Recording Settings" }.isEmpty
+                && shownPanelButtonTitles(in: presence) == ["Open Screen Recording Settings"],
+            "Screen Recording is offered by the panel's button alone -- menu \(titles)"
+        )
+        expect(
+            titles.filter { $0 == "Open Accessibility Settings" }.count == 1,
+            "Accessibility, which the panel has no button for, keeps its menu item -- menu \(titles)"
+        )
+        print("PASS: only the alert the panel has a button for loses its menu item")
+    }
+
+    do {
+        // Screen Recording alone, with no menu item left for any alert, adds
+        // no separator for a list that is empty.
+        let missing = HostPermissionRequestResult(screenCapture: .approvalRequired, accessibility: .granted)
+        let presence = HostMenuBarPresence(
+            status: HostOperatorStatus(connection: .notHosting, permissions: missing),
+            quit: {}
+        )
+        presence.install()
+        guard let menu = statusItem(in: presence).menu else {
+            fatalError("the status item's menu was never installed")
+        }
+        var previousWasSeparator = false
+        var doubled = false
+        for item in menu.items {
+            doubled = doubled || (item.isSeparatorItem && previousWasSeparator)
+            previousWasSeparator = item.isSeparatorItem
+        }
+        expect(!doubled, "no two separators sit side by side once the alert's item is left out")
+        print("PASS: leaving out the alert's item leaves no empty section behind")
     }
 }

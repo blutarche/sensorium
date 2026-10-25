@@ -179,9 +179,11 @@ public final class HostMenuBarPresence: NSObject {
                 menu.addItem(turnOffItem)
             }
         }
-        if !presentation.alerts.isEmpty {
+        // An alert the panel already carries a button for is not listed again.
+        let listedAlerts = presentation.alerts.filter { !panel.showsButton(for: $0) }
+        if !listedAlerts.isEmpty {
             menu.addItem(.separator())
-            for alert in presentation.alerts {
+            for alert in listedAlerts {
                 let item = NSMenuItem(
                     title: alert.title,
                     action: #selector(openSettingsPane(_:)),
@@ -427,6 +429,11 @@ final class HostOperatorPanelView: NSView {
             ]
         )
         permissionButton.identifier = NSUserInterfaceItemIdentifier(action.alert.settingsURL)
+    }
+
+    /// Whether this panel places a button for `alert`.
+    func showsButton(for alert: HostOperatorPermissionAlert) -> Bool {
+        panelLayout().permissionAction?.alert == alert
     }
 
     @objc private func permissionTapped() {
