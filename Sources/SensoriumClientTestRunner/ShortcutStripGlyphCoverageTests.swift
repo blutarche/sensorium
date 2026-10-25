@@ -5,7 +5,8 @@ import SensoriumClient
 /// At 1x, 1.5x and 2x each Linux strip glyph carries about the ink of
 /// the SF Symbol the macOS strip draws for the same action, so neither strip
 /// reads bolder or lighter than the other. The symbol is laid out as the
-/// strip's 18-point icon view lays it out; the glyph is rasterised here with
+/// strip's 18-point icon view lays it out, or larger for a symbol the strip
+/// enlarges to match its neighbours; the glyph is rasterised here with
 /// CoreGraphics, standing in for the Cairo painter, with the same caps, joins
 /// and corner arcs.
 func testShortcutStripGlyphCoverageTests() {
@@ -33,7 +34,9 @@ func testShortcutStripGlyphCoverageTests() {
 func testShortcutStripGlyphCentroidTests() {
     for scale in [1.0, 1.5, 2.0] {
         for (title, symbolName, glyph) in stripGlyphsAndSymbols {
-            let symbol = inkCentre(symbolBitmap(symbolName, scale: scale))
+            // The symbol's canvas keeps a margin the glyph's square has none of.
+            let canvas = inkCentre(symbolBitmap(symbolName, scale: scale))
+            let symbol = (x: canvas.x - symbolCanvasMargin * scale, y: canvas.y - symbolCanvasMargin * scale)
             let drawn = inkCentre(glyphBitmap(glyph, scale: scale))
             let offset = (x: drawn.x - symbol.x, y: drawn.y - symbol.y)
             // macOS places these symbols differently from one release to the
@@ -68,15 +71,24 @@ private func inkCentre(_ bitmap: NSBitmapImageRep) -> (x: Double, y: Double) {
     return total > 0 ? (x / total, y / total) : (0, 0)
 }
 
+/// How much larger than the common size the macOS strip draws a symbol, as
+/// `ShortcutStripIconButton.opticalScales` has it.
+private let symbolOpticalScales: [String: Double] = ["rectangle.3.group": 1.15]
+
+/// Clear space a symbol's canvas keeps around the glyph's square, so a symbol
+/// drawn larger than the common size is measured whole.
+private let symbolCanvasMargin = 2.0
+
 /// Drawn in points when `inPoints`, otherwise in device pixels.
 private func coverageBitmap(scale: Double, inPoints: Bool) -> NSBitmapImageRep {
-    let side = Int((ShortcutStripGlyph.box * scale).rounded())
+    let margin = inPoints ? symbolCanvasMargin : 0
+    let side = Int(((ShortcutStripGlyph.box + margin * 2) * scale).rounded())
     let bitmap = NSBitmapImageRep(
         bitmapDataPlanes: nil, pixelsWide: side, pixelsHigh: side, bitsPerSample: 8, samplesPerPixel: 4,
         hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
     )!
     if inPoints {
-        bitmap.size = NSSize(width: ShortcutStripGlyph.box, height: ShortcutStripGlyph.box)
+        bitmap.size = NSSize(width: ShortcutStripGlyph.box + margin * 2, height: ShortcutStripGlyph.box + margin * 2)
     }
     return bitmap
 }
@@ -95,20 +107,23 @@ private func totalAlpha(_ bitmap: NSBitmapImageRep) -> Double {
 /// not its image size, into the view.
 private func symbolBitmap(_ symbolName: String, scale: Double) -> NSBitmapImageRep {
     let bitmap = coverageBitmap(scale: scale, inPoints: true)
-    let configuration = NSImage.SymbolConfiguration(pointSize: ShortcutStripGlyph.box, weight: .medium)
+    // The strip draws a symbol in a square of this side, centred where the
+    // glyph's square is.
+    let box = ShortcutStripGlyph.box * (symbolOpticalScales[symbolName] ?? 1)
+    let configuration = NSImage.SymbolConfiguration(pointSize: box, weight: .medium)
         .applying(NSImage.SymbolConfiguration(paletteColors: [.white]))
     guard let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
         .withSymbolConfiguration(configuration) else {
         expect(false, "\(symbolName) resolves to an SF Symbol")
         return bitmap
     }
-    let box = ShortcutStripGlyph.box
+    let centre = ShortcutStripGlyph.box / 2 + symbolCanvasMargin
     let alignment = image.alignmentRect
     let fit = min(box / alignment.width, box / alignment.height)
     NSGraphicsContext.saveGraphicsState()
     NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
     image.draw(in: CGRect(
-        x: box / 2 - alignment.midX * fit, y: box / 2 - alignment.midY * fit,
+        x: centre - alignment.midX * fit, y: centre - alignment.midY * fit,
         width: image.size.width * fit, height: image.size.height * fit
     ))
     NSGraphicsContext.restoreGraphicsState()

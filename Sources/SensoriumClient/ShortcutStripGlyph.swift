@@ -160,10 +160,14 @@ extension ShortcutStripAction {
         }
         switch self {
         case .missionControl:
-            return ShortcutStripGlyph(lineWidth: 1, shapes: [
-                frame(2.08, 4.7, 6.42, 3.81, radius: 0.65),
-                frame(3.25, 10.58, 5.51, 3.12, radius: 0.65),
-                frame(11.06, 5.51, 4.82, 7.5, radius: 0.65)
+            // Wide and short, so at the symbol's own size its ink is two thirds
+            // of its neighbours' height. Drawn 1.1 times larger, with its ink
+            // where the larger symbol's is: any more and it would reach the
+            // square's edge.
+            return ShortcutStripGlyph(lineWidth: 1.1, shapes: [
+                frame(1.09, 4.25, 7.06, 4.19, radius: 0.72),
+                frame(2.38, 10.72, 6.06, 3.43, radius: 0.72),
+                frame(10.97, 5.14, 5.3, 8.25, radius: 0.72)
             ])
         case .applicationWindows:
             return ShortcutStripGlyph(lineWidth: 1.25, shapes: [

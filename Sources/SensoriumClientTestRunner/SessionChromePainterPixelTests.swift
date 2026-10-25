@@ -205,6 +205,68 @@ func testShortcutStripGlyphsDrawTests() {
     print("PASS: every strip button draws its own glyph at 1x, 1.5x and 2x, the pin fills rather than accents, and the confirm row keeps the host name and pin")
 }
 
+/// The strip's glyphs read as one set: none is visibly smaller than the rest.
+/// A glyph drawn wide and short, like the three-window Mission Control one,
+/// leaves most of its height empty, so each is judged by the side of the
+/// square with the same ink extent -- the square root of its ink width times
+/// its ink height -- against the median of the set.
+@MainActor
+func testShortcutStripGlyphsShareOneOpticalSizeTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-strip-optical-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let hostName = "Studio"
+    let width = 1100.0
+    let rects = SessionChromeRenderPreview.stripButtonRects(hostName: hostName, width: width)
+    expect(rects.count == 11, "ten actions and the pin, got \(rects.count)")
+    for scale in [1.5, 2.0] {
+        let url = directory.appendingPathComponent("strip-\(scale).png")
+        expect(
+            SessionChromeRenderPreview.renderOverlay(
+                .strip(visibility: .shown, hostName: hostName, isPinned: false), scale: scale, width: width, to: url
+            ),
+            "the strip renders at \(scale)x"
+        )
+        var sizes: [(title: String, side: Double)] = []
+        for rect in rects {
+            let left = Int(rect.x * scale)
+            let right = Int((rect.x + rect.width) * scale)
+            let top = Int(rect.y * scale)
+            let bottom = Int((rect.y + rect.height) * scale)
+            // The glyph is the ink colour on whatever the button sits on, so
+            // a pixel is ink when it is most of the way from that to the ink.
+            guard let ground = pngPixel(at: url, x: left + 1, y: (top + bottom) / 2) else {
+                expect(false, "\"\(rect.title)\" can be read back at \(scale)x")
+                return
+            }
+            let reach = ViewerPalette.ink.red - ground.r
+            var minX = Int.max, maxX = -1, minY = Int.max, maxY = -1
+            for y in top..<bottom {
+                for x in left..<right {
+                    guard let pixel = pngPixel(at: url, x: x, y: y), (pixel.r - ground.r) / reach > 0.4 else { continue }
+                    minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+                }
+            }
+            expect(maxX >= 0, "\"\(rect.title)\" draws something at \(scale)x")
+            let inkWidth = Double(maxX - minX + 1) / scale
+            let inkHeight = Double(maxY - minY + 1) / scale
+            sizes.append((rect.title, (inkWidth * inkHeight).squareRoot()))
+        }
+        let median = sizes.map(\.side).sorted()[sizes.count / 2]
+        for entry in sizes {
+            expect(
+                (median * 0.9)...(median * 1.1) ~= entry.side,
+                "\"\(entry.title)\" is within 10% of the median glyph's optical size at \(scale)x, got "
+                    + "\(entry.side) pt against \(median) pt, of \(sizes.map { "\($0.title) \($0.side)" })"
+            )
+        }
+    }
+    print("PASS: no strip glyph's ink is visibly smaller or larger than the rest at 1.5x and 2x")
+}
+
 /// A host name too long for a narrow bar is truncated before the trailing
 /// pin pill, never drawn under it. The host name is the only
 /// strip text drawn in `ViewerPalette.muted`, so that colour reaching
@@ -1438,6 +1500,8 @@ func testPangoHoldsNoBreakCharactersTests() {
 #else
 @MainActor
 func testSessionHUDScrollThumbClearsContentTests() {}
+@MainActor
+func testShortcutStripGlyphsShareOneOpticalSizeTests() {}
 @MainActor
 func testSessionHUDAddressKeepsItsPortTests() {}
 @MainActor

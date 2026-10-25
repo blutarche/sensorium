@@ -107,6 +107,7 @@ struct SensoriumClientTestRunner {
         testSessionChromePainterPixelTests()
         testSessionChromeSecondaryTextIsReadableTests()
         testShortcutStripGlyphsDrawTests()
+        testShortcutStripGlyphsShareOneOpticalSizeTests()
         testShortcutStripLongHostNameNeverDrawsUnderPillTests()
         testShortcutStripOverflowNeverOverlapsTests()
         testNoticeBorderAndDismissGlyphTests()
