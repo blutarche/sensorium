@@ -617,12 +617,12 @@ func runPairedMachineRenameTests() async {
             named.hint.hasSuffix("machine\(HostTextFlow.noBreakSpace)reports."),
             "the hint's last two words stay together -- got \(named.hint.debugDescription)"
         )
-        // The row's field starts empty for a machine that has no name, while its
-        // row reads "Unnamed machine"; the heading says what the row says.
+        // A machine with no name has no name to put in the heading, and "Rename
+        // Unnamed machine" reads as if that were its name.
         let unnamed = texts(of: sheet(named: ""))
         expect(
-            plain(unnamed.heading) == "Rename \(HostScreenArmingPresentation.unnamedMachineTitle)",
-            "a machine with no name is renamed under the title its row shows -- got \(unnamed.heading)"
+            plain(unnamed.heading) == "Rename the unnamed machine",
+            "a machine with no name is renamed under a plain description, not its row's title -- got \(unnamed.heading)"
         )
         print("PASS: the rename sheet's heading names the machine being renamed, held whole")
     }

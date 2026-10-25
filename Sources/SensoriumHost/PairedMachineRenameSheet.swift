@@ -20,10 +20,11 @@ public final class PairedMachineRenameView: NSView {
     }
 
     /// Names the machine being renamed, held whole where it fits. A machine
-    /// with no name of its own is shown on its row as "Unnamed machine", and
-    /// its field starts empty, so that title stands in here.
+    /// with no name of its own is described instead: its row's "Unnamed
+    /// machine" would read here as if it were the name.
     private static func heading(forMachineNamed currentName: String) -> String {
-        let name = currentName.isEmpty ? HostScreenArmingPresentation.unnamedMachineTitle : currentName
+        guard !currentName.isEmpty else { return "Rename the unnamed machine" }
+        let name = currentName
         return HostTextFlow.flow(
             "Rename \(name)",
             names: [name],
