@@ -220,16 +220,16 @@ enum SessionChromePainter {
 
     // MARK: - Transient notice
 
-    /// The label wraps at this width, the same as `ViewerTransientNoticeView`
-    /// on macOS -- not a fixed panel width, so a short refusal draws a small
-    /// banner rather than one padded out to 420 regardless of what it says.
+    /// The label is this wide whatever it says, as `ViewerTransientNoticeView`
+    /// sets it, so the dismiss control is where the eye already is the next
+    /// time a notice shows. The banner is as tall as the label wraps to.
     static let noticeMaxTextWidth: Double = Double(ViewerChromeMetrics.Notice.maxTextWidth)
     static let noticeDismissSize: Double = Double(ViewerChromeMetrics.Notice.dismissHitSize)
 
     static func noticeSize(line: String) -> (width: Double, height: Double) {
         let text = CairoChromeText.measure(line, pointSize: detailSize, weight: detailWeight, maxWidth: noticeMaxTextWidth)
-        let width = gap + text.width + tightGap + noticeDismissSize + gap
-        let height = max(text.height, noticeDismissSize) + gap * 2
+        let width = gap + noticeMaxTextWidth + tightGap + noticeDismissSize + gap
+        let height = text.height + gap * 2
         return (width, height)
     }
 

@@ -1050,7 +1050,44 @@ func testSessionChromeSecondaryTextIsReadableTests() {
     print("PASS: eyebrows, section titles and notes are drawn in muted, not the under-contrast muted2")
 }
 
+/// A notice is as wide as macOS draws it whatever it says, so the dismiss
+/// control sits in the same place the next time one shows, and as tall as its
+/// text and the inset above and below it.
+@MainActor
+func testNoticeIsAsWideAsMacOSWhateverItSaysTests() {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+        "sensorium-notice-size-tests-\(UUID().uuidString)", isDirectory: true
+    )
+    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let space = ViewerChromeMetrics.Space.self
+    let width = Int(space.sm + ViewerChromeMetrics.Notice.maxTextWidth + space.xs + ViewerChromeMetrics.Notice.dismissHitSize + space.sm)
+    let oneLine = Int(ViewerChromeMetrics.TextLine.height(size: 12, mono: false) + Double(space.sm) * 2)
+    let lines = [
+        "Short.",
+        "A request the host could not carry out, with enough said about why that it runs onto a second line of the banner."
+    ]
+    for (index, line) in lines.enumerated() {
+        let url = directory.appendingPathComponent("notice-\(index).png")
+        expect(SessionChromeRenderPreview.renderOverlay(.notice(line), scale: 1, to: url), "the notice renders")
+        guard let size = pngSize(at: url) else {
+            expect(false, "the notice PNG could not be read back")
+            return
+        }
+        expect(size.width == width, "a notice is \(width) wide however little it says, got \(size.width) for \"\(line.prefix(12))\"")
+        if index == 0 {
+            expect(size.height == oneLine, "a one-line notice is its line and the inset above and below, \(oneLine) tall, got \(size.height)")
+        } else {
+            expect(size.height > oneLine, "a notice that wraps grows taller, got \(size.height)")
+        }
+    }
+    print("PASS: a notice is one width whatever it says, and as tall as its text")
+}
+
 #else
+@MainActor
+func testNoticeIsAsWideAsMacOSWhateverItSaysTests() {}
 @MainActor
 func testSessionChromeSecondaryTextIsReadableTests() {}
 @MainActor
