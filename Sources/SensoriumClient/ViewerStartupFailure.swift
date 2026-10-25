@@ -59,7 +59,7 @@ public struct ViewerStartupFailureCopy: Equatable, Sendable {
                 replaceButtonTitle: "Make a New Key",
                 replaceConsequence: ViewerCopyWrapping.keepingTailTogether(
                     "\(ViewerCopyWrapping.control("Make a New Key")) replaces the key that identifies this "
-                        + "machine. The host will then ask for a pairing code again."
+                        + "machine. Every machine this one is paired with will then ask for a pairing code again."
                 )
             )
         }

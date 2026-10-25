@@ -109,16 +109,17 @@ func testViewerIdentityRecoveryTests() async {
         // button" check in DualCanvasReconnectAndUITests.swift -- so its
         // opening words carry the button's own capitalisation rather than
         // sentence case; nothing else in it does. Two facts a person needs
-        // before tapping: what breaks (the key itself) and what to do about
-        // it (pair again), each its own sentence.
+        // before tapping: what is replaced (the key itself) and what follows
+        // (every paired machine asks for a pairing code again), each its own
+        // sentence.
         let copy = ViewerStartupFailureCopy.copy(for: .unreadable(reason: "this machine\u{2019}s saved key can\u{2019}t be read"))
         expect(
             copy.replaceButtonTitle == "Make a New Key",
             "the button title is Title Case, like every other button -- got \(copy.replaceButtonTitle)"
         )
         expect(
-            unbound(copy.replaceConsequence) == "Make a New Key replaces the key that identifies this machine. The "
-                + "host will then ask for a pairing code again.",
+            unbound(copy.replaceConsequence) == "Make a New Key replaces the key that identifies this machine. "
+                + "Every machine this one is paired with will then ask for a pairing code again.",
             "the consequence states both facts plainly, one sentence each, opening with the button's own "
                 + "title -- got \(copy.replaceConsequence)"
         )
