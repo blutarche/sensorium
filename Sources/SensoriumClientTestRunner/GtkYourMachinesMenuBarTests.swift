@@ -69,6 +69,7 @@ func testGtkYourMachinesMenuCommandsTests() {
         expect(version == ViewerRelease.version, "About shows this build’s version, got \(String(describing: version))")
         let copyright = gtk_about_dialog_get_copyright(OpaquePointer(about)).map { String(cString: $0) }
         expect(copyright == SensoriumCredit.copyrightLine, "About credits \(SensoriumCredit.copyrightLine), got \(String(describing: copyright))")
+        checkAboutHoldsNoTextOrControl(about)
         gtk_window_destroy(sensorium_gtk_window(about))
     }
 
@@ -137,6 +138,40 @@ private func pump(seconds: TimeInterval) {
         while g_main_context_iteration(nil, 0) != 0 {}
         usleep(5_000)
     }
+}
+
+/// About opens with nothing selected and nothing focused, and a Tab has
+/// nowhere to land: every label is plain text, which GTK neither selects nor
+/// focuses, and the window is drawn with the app stylesheet like the rest.
+@MainActor
+private func checkAboutHoldsNoTextOrControl(_ about: UnsafeMutableRawPointer) {
+    guard let dialog = sensorium_gtk_widget(about) else {
+        expect(false, "About is a widget")
+        return
+    }
+    expect(
+        gtk_widget_has_css_class(dialog, "sensorium") != 0,
+        "About is drawn with the app stylesheet, as every other Sensorium window is"
+    )
+    func visitLabels(_ widget: UnsafeMutablePointer<GtkWidget>) {
+        var child = gtk_widget_get_first_child(widget)
+        while let current = child {
+            if String(cString: gtk_widget_get_css_name(current)) == "label" {
+                let text = String(cString: gtk_label_get_text(sensorium_gtk_label(current)))
+                expect(gtk_label_get_selectable(sensorium_gtk_label(current)) == 0, "About's \"\(text)\" cannot be selected")
+                expect(gtk_widget_get_focusable(current) == 0, "About's \"\(text)\" cannot take keyboard focus")
+            }
+            visitLabels(current)
+            child = gtk_widget_get_next_sibling(current)
+        }
+    }
+    visitLabels(dialog)
+    let window = sensorium_gtk_window(about)
+    expect(gtk_window_get_focus(window) == nil, "nothing in About has focus as it opens, so none of its text is highlighted")
+    gtk_window_set_focus_visible(window, 1)
+    _ = gtk_widget_child_focus(dialog, GTK_DIR_TAB_FORWARD)
+    pump(seconds: 0.2)
+    expect(gtk_window_get_focus(window) == nil, "the first Tab in About lands on no text, and there is no control for it to land on")
 }
 
 @MainActor
