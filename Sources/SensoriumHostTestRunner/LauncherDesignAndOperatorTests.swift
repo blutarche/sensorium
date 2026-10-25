@@ -326,7 +326,7 @@ func runLauncherDesignAndOperatorTests() async {
             expect(
                 CanvasLauncherPresentation.emptyState(catalogCount: 0, hostName: "Kestrel Studio")
                     == CanvasLauncherEmptyState(
-                        heading: "Nothing to launch",
+                        heading: "Nothing to launch.",
                         subtext: "Install an application on Kestrel Studio and reconnect."
                     ),
                 "an empty catalog is advised to install something, never to clear a query it does not have -- on "
@@ -344,7 +344,7 @@ func runLauncherDesignAndOperatorTests() async {
             expect(
                 CanvasLauncherPresentation.emptyState(catalogCount: 40)
                     == CanvasLauncherEmptyState(
-                        heading: "No matching applications",
+                        heading: "No matching applications.",
                         subtext: "Clear the filter, or type fewer letters."
                     ),
                 "a filter that matched nothing is advised to widen it, because there is something to find"

@@ -195,12 +195,12 @@ public enum CanvasLauncherPresentation {
     ) -> CanvasLauncherEmptyState {
         guard catalogCount > 0 else {
             return CanvasLauncherEmptyState(
-                heading: "Nothing to launch",
+                heading: "Nothing to launch.",
                 subtext: "Install an application on \(hostName) and reconnect."
             )
         }
         return CanvasLauncherEmptyState(
-            heading: "No matching applications",
+            heading: "No matching applications.",
             subtext: "Clear the filter, or type fewer letters."
         )
     }
