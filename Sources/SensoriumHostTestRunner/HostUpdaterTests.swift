@@ -14,7 +14,7 @@ func runHostUpdateStatusLineTests() {
     let newer = UpdateVersion("0.5.0")!
 
     expect(
-        HostUpdateStatusLine.line(for: .current, runningVersion: running) == "Sensorium Host 0.4.0, up to date.",
+        HostUpdateStatusLine.line(for: .current, runningVersion: running) == "Sensorium Host 0.4.0 is up to date.",
         "current"
     )
     expect(
@@ -206,7 +206,7 @@ func runHostUpdaterTests() async {
     do {
         let probe = Probe()
         let host = updater(probe)
-        expect(host.line == "Sensorium Host 0.4.0, up to date.", "before any check the line is the current one")
+        expect(host.line == "Sensorium Host 0.4.0 is up to date.", "before any check the line is the current one")
         var lines: [String] = []
         host.onLineChange = { lines.append($0) }
         host.start()

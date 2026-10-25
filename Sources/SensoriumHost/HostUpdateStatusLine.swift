@@ -8,7 +8,7 @@ public enum HostUpdateStatusLine {
     public static func line(for status: UpdateStatus, runningVersion: UpdateVersion) -> String? {
         switch status {
         case .current:
-            "Sensorium Host \(runningVersion), up to date."
+            "Sensorium Host \(runningVersion) is up to date."
         case .checking, .downloading:
             nil
         case let .ready(version), let .waiting(version):

@@ -40,7 +40,7 @@ func runHostUpdateWindowTests() {
         let window = controller(installsUpdatesAutomatically: nil)
         let checkbox = stored("automaticUpdatesCheckbox", in: window, as: NSButton.self)
         let line = stored("updateLineLabel", in: window, as: NSTextField.self)
-        window.setUpdateLine("Sensorium Host 0.4.0, up to date.")
+        window.setUpdateLine("Sensorium Host 0.4.0 is up to date.")
         expect(checkbox.isHidden, "a build with no updater shows no update checkbox")
         expect(line.isHidden, "and no update line, whatever it is given")
         print("PASS: a build with no updater shows neither the checkbox nor the line")
