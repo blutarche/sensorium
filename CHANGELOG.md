@@ -54,6 +54,10 @@ once it reaches 1.0.
   keep an address's port whole, and leave out a limit with no reason.
   Status panels say what Try Again does when no one answered or a session
   could not resume, and an empty Your machines list has a heading.
+- Adding a machine without Tailscale says to start it or download it, the
+  same way on both viewers. On Fedora, borders stay crisp at 1.5x, the
+  About window uses the app's own look, a field reached with Tab shows a
+  focus ring, and the diagnostics and empty Your machines list match macOS.
 
 ## [0.5.8] - 2026-10-24
 
