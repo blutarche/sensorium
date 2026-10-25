@@ -97,24 +97,19 @@ public enum TailnetDevicePickerFetchError: Error, Equatable, Sendable {
     static let notRunningFact = "Tailscale is not running."
     static let notInstalledFact = "Tailscale is not installed."
 
-    /// How a machine with a Tailscale application of its own says to get it.
-    public static let defaultInstallHint = "Install Tailscale and sign in, then choose Look Again."
-    /// How a machine where Tailscale is a daemon and nothing else says it.
-    /// Which distribution, and how it installs things, is the person's own
-    /// business, so this names neither.
-    public static let linuxInstallHint =
-        "Install Tailscale for Linux from your distribution, sign in, then choose Look Again."
+    /// The second sentence of the not-installed reason. Both viewers show a
+    /// "Download Tailscale" link beside it, so it names that link and neither
+    /// an app to open nor a package manager to ask.
+    public static let defaultInstallHint = "Download Tailscale and sign in, then choose Look Again."
 
     public var reason: String { reason(installHint: Self.defaultInstallHint) }
 
-    /// `installHint` is the second sentence of the not-installed reason, and
-    /// is the platform's to supply: only it knows whether there is an
-    /// application to install or a daemon to bring up. The other two reasons
-    /// are the same everywhere.
+    /// `installHint` is the second sentence of the not-installed reason. The
+    /// other two reasons are the same everywhere.
     public func reason(installHint: String) -> String {
         switch self {
         case .tailscaledUnreachable:
-            return Self.notRunningFact + " Make sure Tailscale says Connected, then choose Look Again."
+            return Self.notRunningFact + " Start Tailscale and sign in, then choose Look Again."
         case .tailscaleNotInstalled:
             return Self.notInstalledFact + " " + installHint
         case .malformedStatus:

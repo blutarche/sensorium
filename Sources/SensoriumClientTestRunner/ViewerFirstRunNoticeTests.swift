@@ -18,7 +18,7 @@ func testViewerFirstRunNoticeTests() {
     testSoftwareDecodeNoticeNamesWhereTheDecoderComesFrom()
     testNoticesAreDecidedByTheDecoderAndTheArguments()
     testUsageNamesEveryVerbAndTheHelpFlag()
-    testTailscaleInstallHintIsPlatformNeutral()
+    testTailscaleNotInstalledReasonNamesTheDownload()
 }
 
 /// docs/ux-spec.md line 108: one sentence on what happened, and no file path
@@ -89,34 +89,23 @@ private func testUsageNamesEveryVerbAndTheHelpFlag() {
     print("PASS: the usage names every verb, the enter URL and the flag that printed it")
 }
 
-/// Tailscale on Linux is a daemon with no application to open, so the sentence
-/// that names how to get it is the platform's to supply.
-private func testTailscaleInstallHintIsPlatformNeutral() {
+/// Both viewers show a "Download Tailscale" link beside the not-installed
+/// reason, so the one sentence names that link rather than an install route
+/// that differs by platform.
+private func testTailscaleNotInstalledReasonNamesTheDownload() {
+    let reason = TailnetDevicePickerFetchError.tailscaleNotInstalled.reason
     expect(
-        TailnetDevicePickerFetchError.tailscaleNotInstalled.reason
-            == "Tailscale is not installed. Install Tailscale and sign in, then choose Look Again.",
-        "the default sentence is the one the macOS viewer already showed -- got: "
-            + "\(TailnetDevicePickerFetchError.tailscaleNotInstalled.reason)"
-    )
-    let linux = TailnetDevicePickerFetchError.tailscaleNotInstalled.reason(
-        installHint: TailnetDevicePickerFetchError.linuxInstallHint
+        reason == "Tailscale is not installed. Download Tailscale and sign in, then choose Look Again.",
+        "the not-installed reason points at the Download Tailscale link both viewers show -- got: \(reason)"
     )
     expect(
-        linux == "Tailscale is not installed. Install Tailscale for Linux from your distribution, sign in, "
-            + "then choose Look Again.",
-        "and a platform with no application to open says how that platform installs it -- got: \(linux)"
+        !reason.contains("distribution") && !reason.contains("app"),
+        "and names neither a distribution nor an app, which one platform has and the other does not -- got: \(reason)"
     )
     expect(
-        !linux.contains("app"),
-        "never \u{201C}open the Tailscale app\u{201D} where there is no app -- got: \(linux)"
+        TailnetDevicePickerState.from(.failure(.tailscaleNotInstalled)) == .unreachable(reason: reason),
+        "and the picker draws that sentence"
     )
-    expect(
-        TailnetDevicePickerState.from(
-            .failure(.tailscaleNotInstalled),
-            installHint: TailnetDevicePickerFetchError.linuxInstallHint
-        ) == .unreachable(reason: linux),
-        "and the picker draws that sentence, not the default one"
-    )
-    print("PASS: the not-installed reason takes its install sentence from the platform")
+    print("PASS: the not-installed reason names the Download Tailscale link")
 }
 

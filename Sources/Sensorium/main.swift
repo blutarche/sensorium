@@ -332,12 +332,7 @@ struct Sensorium {
         ) {
             let launch = GtkYourMachinesWindow(store: savedHosts)
             launch.loadTailnet = {
-                await TailnetDevicePickerLoader(
-                    provider: LocalTailscaleStatusProvider(),
-                    // Tailscale is a daemon here, with no application to
-                    // open and no download this app can point at.
-                    installHint: TailnetDevicePickerFetchError.linuxInstallHint
-                ).load()
+                await TailnetDevicePickerLoader(provider: LocalTailscaleStatusProvider()).load()
             }
             let prompts = GtkViewerPrompts(launchWindow: launch)
             let registry = LinuxViewerWindowRegistry(environment: environment)
