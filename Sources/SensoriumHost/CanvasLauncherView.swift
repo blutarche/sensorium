@@ -124,7 +124,7 @@ public enum CanvasLauncherPresentation {
     /// lands after a separator and clips the last item.
     public static let keyboardHint = """
         Type to filter · Arrows to choose
-        Return to launch · Esc to close
+        Return to launch · Esc to leave
         """
 
     /// `showing` is how many rows the list is actually offering. A count of the
@@ -229,10 +229,10 @@ public enum CanvasLauncherPresentation {
     /// query still might.
     public static func footerHint(catalogCount: Int, visibleCount: Int) -> String {
         guard catalogCount > 0 else {
-            return "Esc to close"
+            return "Esc to leave"
         }
         guard visibleCount > 0 else {
-            return "Type to filter \u{00B7} Esc to close"
+            return "Type to filter \u{00B7} Esc to leave"
         }
         return keyboardHint
     }

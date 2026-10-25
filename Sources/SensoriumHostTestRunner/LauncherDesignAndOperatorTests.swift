@@ -367,16 +367,27 @@ func runLauncherDesignAndOperatorTests() async {
             // choose, or launch, and a filter matching nothing has nothing to
             // choose or launch either. Both trim the hint to what still works.
             expect(
-                CanvasLauncherPresentation.footerHint(catalogCount: 0, visibleCount: 0) == "Esc to close",
+                CanvasLauncherPresentation.footerHint(catalogCount: 0, visibleCount: 0) == "Esc to leave",
                 "an empty catalog offers nothing to filter or choose, so the hint is only how to leave"
             )
             expect(
-                CanvasLauncherPresentation.footerHint(catalogCount: 40, visibleCount: 0) == "Type to filter · Esc to close",
+                CanvasLauncherPresentation.footerHint(catalogCount: 40, visibleCount: 0) == "Type to filter · Esc to leave",
                 "a filter matching nothing still offers typing a different query, but nothing yet to choose or launch"
             )
             expect(
                 CanvasLauncherPresentation.footerHint(catalogCount: 40, visibleCount: 12) == CanvasLauncherPresentation.keyboardHint,
                 "a catalog with matches on screen keeps the full hint, unchanged"
+            )
+            // Escape hands the keyboard back to the editor; it does not close
+            // the launcher, so no footer form may say it does.
+            expect(
+                CanvasLauncherPresentation.keyboardHint == "Type to filter · Arrows to choose\nReturn to launch · Esc to leave"
+                    && ![
+                        CanvasLauncherPresentation.keyboardHint,
+                        CanvasLauncherPresentation.footerHint(catalogCount: 0, visibleCount: 0),
+                        CanvasLauncherPresentation.footerHint(catalogCount: 40, visibleCount: 0)
+                    ].contains { $0.contains("Esc to close") },
+                "the footer says Esc leaves the launcher, as the workspace hint does, in every form"
             )
         }
 
