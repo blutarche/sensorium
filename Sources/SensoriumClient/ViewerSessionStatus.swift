@@ -199,7 +199,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                     eyebrow: "CONNECTING",
                     headline: "Connecting to \(hostName)…",
                     detail: "\(reasonLine) Sensorium is trying again.",
-                    buttons: Self.connectingButtons
+                    buttons: Self.retryingButtons
                 )
             case .reconnecting:
                 status = reconnecting()
@@ -289,7 +289,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
                 headline: sessionEnded
                     ? "The host-screen session with \(hostName) ended."
                     : "Could not show a host screen from \(hostName).",
-                detail: reasonLine,
+                detail: offersVirtualDisplay ? "\(reasonLine) \(Self.privateDesktopExplanation)" : reasonLine,
                 buttons: offersVirtualDisplay ? Self.endedButtons : Self.endedWithoutVirtualDisplayButtons
             )
         case let .unverifiedHostConnectEnded(reasonLine):
@@ -322,10 +322,12 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false)
     ]
 
-    /// `Cancel` is what makes a reconnect wait finite -- the retry policy
-    /// itself has no attempt limit. It leads the other two so a stray Return
-    /// lands on it and not on Quit.
-    private static let reconnectingButtons = [
+    /// `Cancel` is what makes a retry finite -- the retry policy itself has no
+    /// attempt limit. Carried by the reconnecting panel and by a connecting
+    /// panel once an attempt has failed; a first connect with no failure yet
+    /// has nothing to stop. It leads the other two so a stray Return lands on
+    /// it and not on Quit.
+    private static let retryingButtons = [
         ViewerSessionButton(action: .quit, title: "Quit Sensorium", isPrimary: false),
         ViewerSessionButton(action: .stopTrying, title: "Cancel", isPrimary: false),
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: false)
@@ -344,6 +346,11 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
         ),
         ViewerSessionButton(action: .yourMachines, title: "Your Machines", isPrimary: true)
     ]
+
+    /// Said beside the reason whenever the panel carries Connect to a Private
+    /// Desktop, so the button names something the person has already been told about.
+    private static let privateDesktopExplanation =
+        "It offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
 
     /// How the Try Again button is named inside a sentence.
     private static let tryAgainName = ViewerCopyWrapping.control("Try Again")
@@ -366,7 +373,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
     /// the runner checks that every state's row is listed.
     public static let buttonRows: [[String]] = [
         connectingButtons,
-        reconnectingButtons,
+        retryingButtons,
         recoveryButtons,
         endedButtons,
         endedWithoutVirtualDisplayButtons,
@@ -388,7 +395,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
             headline: "Connecting to \(hostName)…",
             detail: lastFailureLine.map { "Attempt \(attempt) is under way. Last attempt: \($0)" }
                 ?? "The picture appears here as soon as the connection is up.",
-            buttons: connectingButtons
+            buttons: lastFailureLine == nil ? connectingButtons : retryingButtons
         )
     }
 
@@ -416,7 +423,7 @@ public struct ViewerSessionStateMachine: Equatable, Sendable {
             eyebrow: "RECONNECTING",
             headline: "Reconnecting to \(hostName)…",
             detail: detail,
-            buttons: Self.reconnectingButtons
+            buttons: Self.retryingButtons
         )
     }
 }

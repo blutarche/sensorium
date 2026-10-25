@@ -115,6 +115,52 @@ func testViewerStatusCopyTests() {
         "and no longer opens with the attempt count, got \"\(retryingDetail)\""
     )
 
+    // A first connect with no failure yet has nothing to cancel; once an
+    // attempt has failed and Sensorium is trying again, Cancel stops it, as it
+    // does while reconnecting.
+    var plainFirstConnect = ViewerSessionStateMachine(hostName: "Workstation")
+    expect(
+        plainFirstConnect.handle(.connectStarted).buttons.map(\.title) == ["Quit Sensorium", "Your Machines"],
+        "the first connecting panel, with no failure yet, offers Quit and Your Machines only"
+    )
+    let retryingStatus = plainFirstConnect.handle(.attemptFailed(reasonLine: unreachablePanelLine))
+    expect(
+        retryingStatus.phase == .connecting
+            && retryingStatus.buttons.map(\.action) == [.quit, .stopTrying, .yourMachines]
+            && retryingStatus.buttons.map(\.title) == ["Quit Sensorium", "Cancel", "Your Machines"]
+            && retryingStatus.buttons.allSatisfy { !$0.isPrimary },
+        "the connecting panel that says Sensorium is trying again offers Quit, Cancel, Your Machines in that "
+            + "order, none of them the default, got \(retryingStatus.buttons.map(\.title))"
+    )
+    expect(
+        ViewerSessionStateMachine.buttonRows.contains(retryingStatus.buttons.map(\.title)),
+        "and it is the row the reconnecting panel already carries, so the panel is not sized for a new one"
+    )
+    let redialled = plainFirstConnect.handle(.connectStarted)
+    expect(
+        redialled.phase == .connecting && redialled.buttons.map(\.action) == [.quit, .stopTrying, .yourMachines],
+        "Cancel does not vanish while the next attempt is under way, got \(redialled.buttons.map(\.title))"
+    )
+    let cancelled = plainFirstConnect.handle(.stopRequested)
+    expect(
+        cancelled.phase == .lost && cancelled.eyebrow == "STOPPED"
+            && cancelled.buttons.map(\.action) == [.quit, .yourMachines, .tryAgain]
+            && cancelled.buttons.last?.isPrimary == true,
+        "Cancel from a retry leaves the not-connected panel with Try Again as its default, got "
+            + "\(cancelled.phase) / \(cancelled.eyebrow) / \(cancelled.buttons.map(\.title))"
+    )
+    expect(
+        unbound(cancelled.detail).contains("Nothing is being retried now.")
+            && !unbound(cancelled.detail).contains(unbound(unreachablePanelLine)),
+        "and says nothing is being retried, without repeating the failure it stopped, got \"\(cancelled.detail)\""
+    )
+    let again = plainFirstConnect.handle(.retryRequested)
+    expect(
+        again.phase == .connecting && again.buttons.map(\.title) == ["Quit Sensorium", "Your Machines"],
+        "Try Again after that starts a fresh first connect, with no failure to cancel yet, got "
+            + "\(again.phase) / \(again.buttons.map(\.title))"
+    )
+
     // A window that was live on one target and then asked for a host screen
     // that never came up has not ended a host-screen session.
     var liveThenRefused = ViewerSessionStateMachine(hostName: "Workstation")
@@ -161,6 +207,31 @@ func testViewerStatusCopyTests() {
     expect(
         ViewerSessionStateMachine.buttonRows.contains(["Quit Sensorium", "Connect to a Private Desktop", "Your Machines"]),
         "the panel is sized for that row"
+    )
+    let privateDesktopSentence = "It offers a private desktop instead: a separate desktop that isn\u{2019}t shown on its screens."
+    var offeredNoScreen = ViewerSessionStateMachine(hostName: "Workstation")
+    let offeredNoScreenStatus = offeredNoScreen.handle(.hostScreenConnectEnded(
+        reasonLine: HostScreenRefusalCopy.line(
+            reason: HostScreenRefusalCopy.noneAvailableReason, hostLabel: "Workstation"
+        ),
+        offersVirtualDisplay: true
+    ))
+    expect(
+        unbound(offeredNoScreenStatus.detail)
+            == "Workstation has no screen to share right now. \(privateDesktopSentence)",
+        "a panel that offers Connect to a Private Desktop says what that is, after the reason, got "
+            + "\"\(unbound(offeredNoScreenStatus.detail))\""
+    )
+    var notOffered = ViewerSessionStateMachine(hostName: "Workstation")
+    let notOfferedStatus = notOffered.handle(.hostScreenConnectEnded(
+        reasonLine: HostScreenRefusalCopy.line(
+            reason: HostScreenRefusalCopy.noneAvailableReason, hostLabel: "Workstation"
+        ),
+        offersVirtualDisplay: false
+    ))
+    expect(
+        unbound(notOfferedStatus.detail) == "Workstation has no screen to share right now.",
+        "a panel that does not offer it adds nothing, got \"\(unbound(notOfferedStatus.detail))\""
     )
 
     print("PASS: the status panel holds names whole, keeps sentence ends together and offers Quit on every row")
