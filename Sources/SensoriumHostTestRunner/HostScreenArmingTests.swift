@@ -656,7 +656,7 @@ func runHostScreenArmingTests() async {
             id: 10, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             builtin: false, main: false, vendorNumber: 0x0A, modelNumber: 0x0A,
-            name: "MPG321UX OLED"
+            name: "Wide Monitor"
         )
         let unnamedExternal = DisplaySnapshot(
             id: 11, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
@@ -664,7 +664,7 @@ func runHostScreenArmingTests() async {
             builtin: false, main: false, vendorNumber: 0x0B, modelNumber: 0x0B
         )
         expect(
-            HostScreenArmingPresentation.displayLabel(for: named) == "MPG321UX OLED",
+            HostScreenArmingPresentation.displayLabel(for: named) == "Wide Monitor",
             "a display macOS named reads by that name, not by its kind"
         )
         expect(
@@ -676,22 +676,22 @@ func runHostScreenArmingTests() async {
             id: 12, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             builtin: false, main: false, vendorNumber: 0x0C, modelNumber: 0x0C,
-            name: "LS27A800U"
+            name: "Desk Monitor"
         )
         let secondOfSameModel = DisplaySnapshot(
             id: 13, pixelWidth: 1, pixelHeight: 1, modeWidth: 1, modeHeight: 1,
             modePixelWidth: 1, modePixelHeight: 1, bounds: .zero, online: true,
             builtin: false, main: false, vendorNumber: 0x0D, modelNumber: 0x0D,
-            name: "LS27A800U"
+            name: "Desk Monitor"
         )
         expect(
             HostScreenArmingPresentation.displayLabels(for: [firstOfSameModel, secondOfSameModel])
-                == ["LS27A800U", "LS27A800U (2)"],
+                == ["Desk Monitor", "Desk Monitor (2)"],
             "two displays macOS gave the identical name are told apart by offer order, the first plain and the second suffixed -- never by size or position, which a name collision may share too"
         )
         expect(
             HostScreenArmingPresentation.displayLabels(for: [named, unnamedExternal])
-                == ["MPG321UX OLED", "External Display"],
+                == ["Wide Monitor", "External Display"],
             "a named display never collides with an unnamed one's generic kind label"
         )
 
@@ -709,7 +709,7 @@ func runHostScreenArmingTests() async {
             activeDisplays: [firstOfSameModel, secondOfSameModel]
         )
         expect(
-            rows[0].sharedDisplaysLine == "May share LS27A800U and LS27A800U (2).",
+            rows[0].sharedDisplaysLine == "May share Desk Monitor and Desk Monitor (2).",
             "the Share host screen row's own sentence carries the same name-collision suffix"
         )
 

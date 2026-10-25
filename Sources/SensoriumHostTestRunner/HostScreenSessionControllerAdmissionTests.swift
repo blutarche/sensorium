@@ -612,13 +612,13 @@ func runHostScreenSessionControllerAdmissionTests() async {
             id: 21, pixelWidth: 2560, pixelHeight: 1440, modeWidth: 2560, modeHeight: 1440,
             modePixelWidth: 2560, modePixelHeight: 1440, bounds: CGRect(x: 0, y: 0, width: 2560, height: 1440),
             online: true, builtin: false, main: false, vendorNumber: 0x15, modelNumber: 0x28,
-            name: "LS27A800U"
+            name: "Desk Monitor"
         )
         let secondMonitor = DisplaySnapshot(
             id: 22, pixelWidth: 2560, pixelHeight: 1440, modeWidth: 2560, modeHeight: 1440,
             modePixelWidth: 2560, modePixelHeight: 1440, bounds: CGRect(x: 2560, y: 0, width: 2560, height: 1440),
             online: true, builtin: false, main: false, vendorNumber: 0x16, modelNumber: 0x29,
-            name: "LS27A800U"
+            name: "Desk Monitor"
         )
         let arming = HostScreenArming(devices: [
             HostScreenDeviceArming(
@@ -650,7 +650,7 @@ func runHostScreenSessionControllerAdmissionTests() async {
             return
         }
         expect(
-            displays.map(\.label) == ["LS27A800U", "LS27A800U (2)"],
+            displays.map(\.label) == ["Desk Monitor", "Desk Monitor (2)"],
             "the wire offer's own labels are told apart by offer order, matching the arming row's sentence"
         )
 

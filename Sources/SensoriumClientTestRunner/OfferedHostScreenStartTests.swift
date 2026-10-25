@@ -18,7 +18,7 @@ private func sentNoCanvasRequest(_ transport: ScriptedClientTransport) async -> 
 /// its screens on the same connection, and never on a canvas by itself.
 func testOfferedHostScreenStartTests() async {
     let builtin = offeredEntry(1, label: "Built-in Display", identity: "builtin-id")
-    let external = offeredEntry(2, label: "LS27A800U", identity: "external-id")
+    let external = offeredEntry(2, label: "Desk Monitor", identity: "external-id")
     let geometry = SessionSurfaceGeometry(logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0)
     let ticket = Data([0x07])
 

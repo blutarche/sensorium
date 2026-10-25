@@ -365,7 +365,7 @@ func testHostScreenSessionFlowTests() async {
             displayIdentity: "00000610-0000a038"
         )
         let external = HostScreenListEntry(
-            opaqueToken: Data([0x02]), label: "LS27A800U",
+            opaqueToken: Data([0x02]), label: "Desk Monitor",
             logicalWidth: 2560, logicalHeight: 1440, backingScale: 1.0, isBuiltin: false,
             displayIdentity: streamingIdentity
         )
@@ -401,7 +401,7 @@ func testHostScreenSessionFlowTests() async {
             menu == [
                 ScreenMenuItem(token: nil, title: "Private Desktop", isSelected: false),
                 ScreenMenuItem(token: Data([0x01]), title: "Built-in Display", isSelected: false),
-                ScreenMenuItem(token: Data([0x02]), title: "LS27A800U", isSelected: true)
+                ScreenMenuItem(token: Data([0x02]), title: "Desk Monitor", isSelected: true)
             ],
             "a direct host-screen connect's own offer must list every offered screen, with the streaming one "
                 + "selected and Private Desktop unselected -- got \(menu)"

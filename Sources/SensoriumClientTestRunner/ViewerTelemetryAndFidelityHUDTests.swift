@@ -166,7 +166,7 @@ private func heldBackSentenceNamesBothMachinesNumbersWhenTheHostsEchoDisagrees()
             requestedDrawablePixelHeight: 2016,
             streamScalePreference: .automatic,
             decoder: .hardwareAccelerated,
-            hostName: "blut-macminim4"
+            hostName: "render-mini-07"
         ),
         session: nil
     )
@@ -178,7 +178,7 @@ private func heldBackSentenceNamesBothMachinesNumbersWhenTheHostsEchoDisagrees()
     expect(
         hudRow(sections, "REQUESTED")?.note.map(unbound)
             == "Held to 1.50x at 30 fps. This machine asked for 1.75x from 3584x2016 px. "
-            + "blut-macminim4 derived 1.50x.",
+            + "render-mini-07 derived 1.50x.",
         "the two machines' own numbers are said, naming no stage, got "
             + "\(hudRow(sections, "REQUESTED")?.note ?? "nil")"
     )
