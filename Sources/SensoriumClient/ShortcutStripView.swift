@@ -583,10 +583,18 @@ private final class ShortcutStripIconButton: NSButton {
     /// button's centre. The circled cross is drawn high in its own frame.
     private static let opticalOffsets: [String: CGFloat] = ["xmark.circle": 1]
 
+    /// How much larger than the common size a symbol is drawn so its ink reads
+    /// as big as its neighbours'. The three-window glyph is wide and short: at
+    /// the common size it takes the width of its frame and only two thirds of
+    /// the height of the squarer symbols beside it.
+    private static let opticalScales: [String: CGFloat] = ["rectangle.3.group": 1.15]
+
     var onPress: (() -> Void)?
 
     private let icon = NSImageView()
     private var iconCentreY: NSLayoutConstraint!
+    private var iconWidth: NSLayoutConstraint!
+    private var iconHeight: NSLayoutConstraint!
     private var trackingArea: NSTrackingArea?
     private var isHovering = false {
         didSet { updateBackground() }
@@ -615,6 +623,8 @@ private final class ShortcutStripIconButton: NSButton {
         icon.contentTintColor = ViewerDesign.ink.nsColor
         addSubview(icon)
         iconCentreY = icon.centerYAnchor.constraint(equalTo: centerYAnchor)
+        iconWidth = icon.widthAnchor.constraint(equalToConstant: Self.iconPointSize)
+        iconHeight = icon.heightAnchor.constraint(equalToConstant: Self.iconPointSize)
         setSymbol(symbolName)
 
         NSLayoutConstraint.activate([
@@ -622,8 +632,8 @@ private final class ShortcutStripIconButton: NSButton {
             heightAnchor.constraint(equalToConstant: Self.size),
             icon.centerXAnchor.constraint(equalTo: centerXAnchor),
             iconCentreY,
-            icon.widthAnchor.constraint(equalToConstant: Self.iconPointSize),
-            icon.heightAnchor.constraint(equalToConstant: Self.iconPointSize)
+            iconWidth,
+            iconHeight
         ])
     }
 
@@ -635,9 +645,12 @@ private final class ShortcutStripIconButton: NSButton {
     /// Swapped when the pin button's own state changes; every other button's
     /// symbol is fixed for its whole life.
     func setSymbol(_ symbolName: String) {
-        let configuration = NSImage.SymbolConfiguration(pointSize: Self.iconPointSize, weight: .medium)
+        let side = Self.iconPointSize * (Self.opticalScales[symbolName] ?? 1)
+        let configuration = NSImage.SymbolConfiguration(pointSize: side, weight: .medium)
         icon.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(configuration)
+        iconWidth.constant = side
+        iconHeight.constant = side
         iconCentreY.constant = Self.opticalOffsets[symbolName] ?? 0
     }
 

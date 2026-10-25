@@ -51,6 +51,7 @@ func runDarwinClientTests() async {
     testShortcutStripPinButtonAppearanceTests()
     testShortcutStripConfirmationOrderAndDefaultTests()
     testShortcutStripIconsSitOnTheirButtonCentreTests()
+    testShortcutStripIconsShareOneOpticalSizeTests()
     testShortcutStripClusterPillsContrastWithTheBarTests()
     testShortcutStripAccessibilityLabelsTests()
     testShortcutStripSymbolsTests()

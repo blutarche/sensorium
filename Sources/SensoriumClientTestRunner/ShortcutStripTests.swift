@@ -974,6 +974,57 @@ func testShortcutStripIconsSitOnTheirButtonCentreTests() {
     print("PASS: every strip icon sits within three quarters of a point of the middle of its button")
 }
 
+/// The strip's icons read as one set: no symbol's ink is visibly smaller than
+/// the rest. A symbol drawn wide and short, like the three-window Mission
+/// Control glyph, takes its frame's width and leaves most of its height empty,
+/// so it is judged by the side of the square with the same ink area.
+@MainActor
+func testShortcutStripIconsShareOneOpticalSizeTests() {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
+    let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
+    container.addSubview(strip)
+    NSLayoutConstraint.activate([
+        strip.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+        strip.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        strip.topAnchor.constraint(equalTo: container.topAnchor)
+    ])
+    strip.phaseChanged(.live)
+    strip.toggleRequested()
+    container.layoutSubtreeIfNeeded()
+
+    let buttons = collectButtonsWithToolTipPrefix("")(strip).filter { $0.subviews.contains { $0 is NSImageView } }
+    expect(buttons.count == ShortcutStripAction.allCases.count + 1, "every action and the pin were found")
+    var sizes: [(name: String, side: Double)] = []
+    for button in buttons {
+        let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: Int(button.bounds.width * 2), pixelsHigh: Int(button.bounds.height * 2),
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        )!
+        rep.size = button.bounds.size
+        button.cacheDisplay(in: button.bounds, to: rep)
+        var minX = Int.max, maxX = -1, minY = Int.max, maxY = -1
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.4 {
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        expect(maxX >= 0, "\(button.toolTip ?? "a strip icon") draws something")
+        let width = Double(maxX - minX + 1) / 2
+        let height = Double(maxY - minY + 1) / 2
+        sizes.append((button.toolTip ?? "a strip icon", (width * height).squareRoot()))
+    }
+    let ordered = sizes.map(\.side).sorted()
+    let median = ordered[ordered.count / 2]
+    for entry in sizes {
+        expect(
+            (median * 0.9)...(median * 1.1) ~= entry.side,
+            "\(entry.name) is within 10% of the median icon's optical size, got \(entry.side) pt against \(median) pt"
+        )
+    }
+    print("PASS: no strip icon's ink is visibly smaller or larger than the rest")
+}
+
 /// The pill behind each group of buttons has to show against the bar it sits
 /// on: a group that cannot be seen is a row of unrelated icons.
 @MainActor
