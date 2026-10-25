@@ -82,7 +82,7 @@ SensoriumBenchHost <tailnet-address> <port> --state-dir <dir> --trace <path> [--
 
 It prints `bench-host pairing-code <code>` once at start. Its keys and paired devices live in `--state-dir`. It appends the host stage traces to `--trace`, prints `bench-host session-ended`, and exits after the first session that ends, after `--max-seconds` (default 180), or on SIGTERM.
 
-It never captures or lists a display, calls ScreenCaptureKit or any permission-gated API, creates a private desktop, posts input events, locks or unlocks the screen, holds a display awake, opens a window or menu-bar item, listens on port 7777, touches the clipboard, or reads or writes outside `--state-dir` and `--trace`. It accepts only a tailnet address.
+It never captures or lists a display, calls ScreenCaptureKit or any permission-gated API, creates a virtual display, posts input events, locks or unlocks the screen, holds a display awake, opens a window or menu-bar item, listens on port 7777, touches the clipboard, or reads or writes outside `--state-dir` and `--trace`. It accepts only a tailnet address.
 
 ### Running the benchmark
 
