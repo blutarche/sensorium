@@ -1574,9 +1574,10 @@ MainActor.assumeIsolated {
         width: CGFloat(canvas.logicalWidth) / 2,
         height: CGFloat(canvas.logicalHeight) / 2
     )
-    // Every state here belongs to a session that has already had a picture in
-    // it: a first dial is reported on the launch window's own row, and this
-    // overlay is never on screen before then.
+    // The session window opens at the first picture, so in the app a first
+    // dial is reported on the launch window's own row. The two connecting
+    // states below are drawn anyway, so the panel's copy for them is still
+    // checked; every later state belongs to a session that has had a picture.
     var viewerStates: [(String, String, ViewerSessionStatus)] = []
 
     var machine = ViewerSessionStateMachine(hostName: "Workstation")

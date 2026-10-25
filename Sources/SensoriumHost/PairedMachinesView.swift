@@ -45,7 +45,7 @@ final class PairedMachinesView: NSView {
         color: CanvasDesign.muted
     )
     private let lastSessionCard = NSView()
-    private let lastSessionEyebrow = NSTextField(labelWithAttributedString: CanvasDesign.eyebrow("Last Host Screen Session"))
+    private let lastSessionEyebrow = NSTextField(labelWithAttributedString: CanvasDesign.eyebrow("Last host screen session"))
     private let lastSessionLabel = PairedMachinesView.label("", color: CanvasDesign.muted)
     private let lastSessionStack = NSStackView()
     private let stack = NSStackView()
