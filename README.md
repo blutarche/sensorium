@@ -51,7 +51,7 @@ stay reachable with nobody in front of it.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
-  <img src="docs/architecture.svg" alt="The Sensorium app on the machine you sit at sends input and clipboard to Sensorium Host on the machine you reach and gets H.264 video back, over your tailnet. The host captures one of its existing screens. Only if allowed, it can create a private virtual desktop instead.">
+  <img src="docs/architecture.svg" alt="The Sensorium app on the machine you sit at sends input and clipboard to Sensorium Host on the machine you reach and gets H.264 video back, over your tailnet. The host captures one of its existing screens. Only if allowed, it can create a private desktop instead.">
 </picture>
 
 ## What you can do
@@ -65,9 +65,8 @@ stay reachable with nobody in front of it.
 - **Send system shortcuts** such as Mission Control, Spotlight and
   Command-Tab to the host, not to the machine in front of you.
 - **Reconnect on its own** after a dropped link.
-- **Open a private desktop** instead: a separate virtual display that never
-  shows on the host's screens. Off by default. The person at the host turns
-  it on.
+- **Open a private desktop** instead: a separate desktop that is never shown
+  on the host's screens. Off by default. The person at the host turns it on.
 - **Connect by name on the local network**, such as `mini.local`, without
   Tailscale. Off by default, and meant for networks you trust.
 
@@ -81,13 +80,13 @@ The person at the host always knows when someone is on their screen.
 
 - A badge names the connected machine and the display it sees. It stays on
   top, on every Space, with a **Stop** button. Stop is also in the menu bar.
-- **Ask me first** can be turned on for any paired machine. Then, if someone
-  used the host in the last few minutes, they are asked and must agree.
-  It is off by default.
+- **Ask me first if this machine is in use** can be turned on for any paired
+  machine. Then, if someone used the host in the last few minutes, they are
+  asked and must agree. It is off by default.
 - Every host screen session leaves a local record: which machine, which
   display, and when it started and stopped.
-- Screen sharing can be turned off for one paired machine, or the machine
-  removed. A live session ends at once.
+- **Share host screen** can be turned off for one paired machine, or the
+  machine removed. A live session ends at once.
 
 Sensorium never creates, removes, rearranges or mirrors a physical display.
 The one change it makes is the resolution, on request, and it puts that back.
