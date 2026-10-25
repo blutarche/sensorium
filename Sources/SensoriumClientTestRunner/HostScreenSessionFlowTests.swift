@@ -133,9 +133,9 @@ func testHostScreenSessionFlowTests() async {
         // left waiting on a redial that will never come.
         let line = HostScreenRefusalCopy.line(reason: "host-screen-resume-refused")
         expect(
-            line == "The connection was interrupted and could not resume.",
-            "host-screen-resume-refused states the fact and leaves the recovery path to the on-screen button, "
-                + "which may or may not offer a virtual display -- got \(line)"
+            line == "The connection was interrupted and could not resume. Trying again starts a new session.",
+            "host-screen-resume-refused states the fact, then what the accent Try Again does: a new session, "
+                + "never another resume -- got \(line)"
         )
 
         print("PASS: host-screen-resume-refused steers the person to a fresh Host screen pick without repeating the host the headline names")
@@ -218,19 +218,21 @@ func testHostScreenSessionFlowTests() async {
         expect(
             presenceCheckRequired
                 == "\u{201C}Ask\u{00A0}me\u{00A0}first\u{00A0}if\u{00A0}this\u{00A0}machine\u{00A0}is\u{00A0}in\u{00A0}use\u{201D} "
-                + "is on, but Sensorium Host could not show its prompt. Quit and reopen Sensorium Host on "
-                + "that machine, then try\u{00A0}again.",
+                + "is on, but Sensorium Host on that machine could not show its prompt. Someone there can quit "
+                + "and reopen Sensorium Host. Trying again then asks once\u{00A0}more.",
             "host-screen-presence-check-required must not imply a specific person declined, since the same "
                 + "reason fires when no gate was configured or another prompt was already on screen; it opens "
-                + "on the whole quoted switch so no early break strands part of it, and keeps its last two words "
-                + "together -- got \(presenceCheckRequired)"
+                + "on the whole quoted switch so no early break strands part of it, hands the quitting to the "
+                + "person at the host rather than the viewer, says what the accent Try Again then does, and "
+                + "keeps its last two words together -- got \(presenceCheckRequired)"
         )
         let namedPresenceCheckRequired = HostScreenRefusalCopy.line(
             reason: "host-screen-presence-check-required", hostLabel: "Kestrel Laptop-2"
         )
         expect(
-            namedPresenceCheckRequired.contains("reopen Sensorium Host on Kestrel\u{00A0}Laptop\u{2011}2, then try\u{00A0}again."),
-            "a named host is where Sensorium Host is reopened, held whole -- got \(namedPresenceCheckRequired)"
+            namedPresenceCheckRequired.contains("Sensorium Host on Kestrel\u{00A0}Laptop\u{2011}2 could not show its prompt."),
+            "a named host is where Sensorium Host could not show its prompt, held whole -- got "
+                + "\(namedPresenceCheckRequired)"
         )
 
         let presenceDeclined = HostScreenRefusalCopy.line(reason: "host-screen-presence-declined")
@@ -243,9 +245,10 @@ func testHostScreenSessionFlowTests() async {
 
         let presenceUnanswered = HostScreenRefusalCopy.line(reason: "host-screen-presence-unanswered")
         expect(
-            presenceUnanswered == "No one at that machine answered the request within thirty seconds.",
+            presenceUnanswered == "No one at that machine answered the request within thirty seconds. "
+                + "Trying again asks once more.",
             "host-screen-presence-unanswered must say the window closed with no answer, not that anyone "
-                + "declined -- got \(presenceUnanswered)"
+                + "declined, then what the accent Try Again does -- got \(presenceUnanswered)"
         )
 
         print("PASS: canvas-session-active, host-screen-session-active, host-screen-not-allowed, "

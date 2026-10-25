@@ -73,11 +73,12 @@ public enum HostScreenRefusalCopy {
             return "The person at \(host) chose not to share its screen this time. "
                 + "Trying again asks them once more."
         case "host-screen-presence-unanswered":
-            return "No one at \(host) answered the request within thirty seconds."
+            return "No one at \(host) answered the request within thirty seconds. Trying again asks once more."
         case "host-screen-presence-check-required":
             return ViewerCopyWrapping.keepingLastTwoWordsTogether(
                 "\u{201C}\(ViewerCopyWrapping.control(askFirstSwitchName))\u{201D} is on, but Sensorium Host "
-                    + "could not show its prompt. Quit and reopen Sensorium Host on \(host), then try again."
+                    + "on \(host) could not show its prompt. Someone there can quit and reopen Sensorium Host. "
+                    + "Trying again then asks once more."
             )
         case "host-screen-display-unavailable":
             return "The screen you chose is no longer available. Trying again asks for it once more."
@@ -86,8 +87,10 @@ public enum HostScreenRefusalCopy {
         case "host-screen-resume-refused":
             // The host ended or never knew the session this resume named: a
             // Stop at the host, a restart, or a changed arming record. The
-            // viewer does not start a new session for it.
-            return "The connection was interrupted and could not resume."
+            // viewer does not start a new session on its own; Try Again does,
+            // because the refused ticket is dropped and the next connect
+            // presents none.
+            return "The connection was interrupted and could not resume. Trying again starts a new session."
         case "host-screen-resume-expired":
             // An expired resume starts a fresh session by itself, so this
             // line is shown only when that fresh attempt is itself answered
