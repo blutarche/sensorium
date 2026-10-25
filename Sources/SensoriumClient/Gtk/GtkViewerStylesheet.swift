@@ -438,7 +438,7 @@ public enum GtkViewerStyle {
             \(weight(Weight.field))
             caret-color: \(palette.accentHi.hexString);
         }
-        window.sensorium entry:focus-within { border-color: \(accent); }
+        window.sensorium entry:focus-visible { border-color: \(accent); }
         window.sensorium entry > text { margin-bottom: 2px; }
         window.sensorium entry > text > placeholder { color: \(muted); }
         window.sensorium entry > text > selection { background-color: \(selectionBg); color: \(ink); }

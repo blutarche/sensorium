@@ -258,10 +258,10 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
             && !css.contains("sensorium-mono-field"),
         "a field's text sits a point above centre, and no field but the code field is set in the mono face, as on macOS"
     )
-    // A Tab onto a field has to show where focus went. GTK puts a field's
-    // focus on its inner text node, so the field itself is styled by what it
-    // contains, and the ring is the one a focused row draws.
-    let fieldFocus = cssRule("window.sensorium entry:focus-within", in: css)
+    // A Tab onto a field has to show where focus went, with the ring a
+    // focused row draws, and only on a keyboard's say-so: a field a step
+    // focuses on its own, or one clicked, draws none, as on macOS.
+    let fieldFocus = cssRule("window.sensorium entry:focus-visible", in: css)
         .split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
     check(
         fieldFocus == ["border-color: \(palette.accent.hexString)"],
@@ -345,8 +345,8 @@ func testGtkViewerStylesheetOverridesTheThemeTests() {
     check(!css.contains(":hover"), "nothing changes under the pointer, as on macOS")
     let focusSelectors = css.matches(of: /([^\s,{}]+):focus-visible/).map { String($0.1) }
     check(
-        focusSelectors == [".\(Class.row)"],
-        "only a row changes with keyboard focus, got \(focusSelectors)"
+        focusSelectors == [".\(Class.row)", "entry"],
+        "only a row and a field change with keyboard focus, got \(focusSelectors)"
     )
     let rowFocus = cssRule(".\(Class.row):focus-visible", in: css)
         .split(separator: ";").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
