@@ -1218,9 +1218,53 @@ func testSessionHUDScrollThumbClearsContentTests() {
     print("PASS: the HUD's scroll thumb sits where macOS draws it, with 8 points of clear space before the content")
 }
 
+/// Pango, which sets every Linux overlay's text, treats the no-break space and
+/// the non-breaking hyphen `ViewerCopyWrapping` writes as the no-break
+/// characters they are: a line that has to wrap lets go of a plain space or
+/// hyphen, and has nowhere to break at these, so it fills to the edge instead.
+@MainActor
+func testPangoHoldsNoBreakCharactersTests() {
+    let size = 12.0
+    func widest(_ text: String, within maxWidth: Double) -> Double {
+        SessionChromeRenderPreview.measureChromeTextLineWidth(text, pointSize: size, maxWidth: maxWidth)
+    }
+    func whole(_ text: String) -> Double {
+        SessionChromeRenderPreview.measureChromeText(text, pointSize: size, mono: false, scale: 1)
+    }
+
+    let spaced = "Kestrelstation Fieldnotebook"
+    let held = spaced.replacingOccurrences(of: " ", with: "\u{00A0}")
+    let spaceLimit = whole(spaced) * 0.75
+    let longerWord = max(whole("Kestrelstation"), whole("Fieldnotebook"))
+    expect(
+        widest(spaced, within: spaceLimit) < longerWord + 1,
+        "a plain space is where a wrapped line lets go"
+    )
+    expect(
+        widest(held, within: spaceLimit) > longerWord + 8,
+        "a no-break space is not: the line is carried past it, got \(widest(held, within: spaceLimit))"
+    )
+
+    let hyphenated = "Kestrelstation-Fieldnotebook"
+    let fixed = hyphenated.replacingOccurrences(of: "-", with: "\u{2011}")
+    let hyphenLimit = whole(hyphenated) * 0.75
+    let longerPart = max(whole("Kestrelstation-"), whole("Fieldnotebook"))
+    expect(
+        widest(hyphenated, within: hyphenLimit) < longerPart + 1,
+        "a plain hyphen is where a wrapped line lets go"
+    )
+    expect(
+        widest(fixed, within: hyphenLimit) > longerPart + 8,
+        "a non-breaking hyphen is not: the line is carried past it, got \(widest(fixed, within: hyphenLimit))"
+    )
+    print("PASS: Pango carries a wrapped line past a no-break space and a non-breaking hyphen, and lets go at the plain ones")
+}
+
 #else
 @MainActor
 func testSessionHUDScrollThumbClearsContentTests() {}
+@MainActor
+func testPangoHoldsNoBreakCharactersTests() {}
 @MainActor
 func testShortcutStripConfirmRowMatchesMacOSTests() {}
 @MainActor

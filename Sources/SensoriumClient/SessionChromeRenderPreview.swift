@@ -303,6 +303,17 @@ public enum SessionChromeRenderPreview {
         ).height
     }
 
+    /// The widest line `CairoChromeText.measure` lays `text` out in when it is
+    /// wrapped at `maxWidth`. A test outside this module compares what a
+    /// no-break character holds together with what a plain one lets go.
+    public static func measureChromeTextLineWidth(_ text: String, pointSize: Double, maxWidth: Double) -> Double {
+        guard let surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1) else { return 0 }
+        defer { cairo_surface_destroy(surface) }
+        guard let context = cairo_create(surface) else { return 0 }
+        defer { cairo_destroy(context) }
+        return CairoChromeText.measure(text, pointSize: pointSize, maxWidth: maxWidth, on: context).width
+    }
+
     /// Where the ink of `text`, drawn by `CairoChromeText.draw` with its top
     /// at 0 on a surface at `scale`, ends, in logical units: the baseline,
     /// for text with no descenders.
