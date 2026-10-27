@@ -1,12 +1,20 @@
 <p align="center">
-  <img src="Packaging/linux/icons/hicolor/256x256/apps/com.sensorium.viewer.png" width="96" height="96" alt="">
+  <img src="docs/media/logo.svg" width="128" height="128" alt="Sensorium">
 </p>
 
 <h1 align="center">Sensorium</h1>
 
 <p align="center">
+  <b>A remote desktop with nobody in the middle 🤫</b><br>
   See and control one of your machines from another, over your own Tailscale network.<br>
-  Two apps and a six-digit code. No account, no relay, no telemetry.
+  Two native apps and a six-digit code.
+</p>
+
+<p align="center">
+  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/blutarche/sensorium?color=7C70F5&label=release"></a>
+  <a href="#requirements"><img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Fedora-5A4FC0"></a>
+  <a href="#license"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-34343F"></a>
+  <img alt="Swift 6, no dependencies, no webview" src="https://img.shields.io/badge/swift%206-no%20dependencies%2C%20no%20webview-F0A8D0">
 </p>
 
 <p align="center">
@@ -26,6 +34,22 @@
 <p align="center"><sub>Pairing, staged. Sensorium's windows are drawn offscreen by
 <code>Scripts/render-ui-previews.swift</code>, and the editor and terminal by
 <code>Scripts/make-readme-media.swift</code>. No screen was recorded.</sub></p>
+
+## Why
+
+Most remote desktops send your screen through someone else's cloud. Most want an account first.
+Sensorium connects your two machines directly. Nothing in between keeps a copy.
+
+| What it takes | How many |
+| --- | --- |
+| Accounts to sign up for | 0 |
+| Servers of ours between your machines | 0 |
+| Telemetry, analytics or crash reports | 0 |
+| Third-party Swift packages | 0 |
+| Terminal commands to set it up on macOS | 0 |
+| Digits to pair a machine | 6 |
+
+The only other thing it talks to is GitHub, on macOS, to check for updates.
 
 ## What it is
 
