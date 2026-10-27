@@ -1,30 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="100 100 824 824" role="img" aria-label="Sensorium">
   <defs>
-    <clipPath id="tile"><path d="M285.4 100.0 H738.6 L738.6 100.0 L752.1 100.0 L765.5 100.0 L779.0 100.0 L792.4 100.1 L805.9 100.2 L819.3 100.6 L832.8 101.3 L846.2 102.5 L859.7 104.6 L873.1 108.1 L886.6 113.9 L900.0 124.0 L910.1 137.4 L915.9 150.9 L919.4 164.3 L921.5 177.8 L922.7 191.2 L923.4 204.7 L923.8 218.1 L923.9 231.6 L924.0 245.0 L924.0 258.5 L924.0 271.9 L924.0 285.4 L924.0 738.6 L924.0 752.1 L924.0 765.5 L924.0 779.0 L923.9 792.4 L923.8 805.9 L923.4 819.3 L922.7 832.8 L921.5 846.2 L919.4 859.7 L915.9 873.1 L910.1 886.6 L900.0 900.0 L886.6 910.1 L873.1 915.9 L859.7 919.4 L846.2 921.5 L832.8 922.7 L819.3 923.4 L805.9 923.8 L792.4 923.9 L779.0 924.0 L765.5 924.0 L752.1 924.0 L738.6 924.0 L285.4 924.0 L271.9 924.0 L258.5 924.0 L245.0 924.0 L231.6 923.9 L218.1 923.8 L204.7 923.4 L191.2 922.7 L177.8 921.5 L164.3 919.4 L150.9 915.9 L137.4 910.1 L124.0 900.0 L113.9 886.6 L108.1 873.1 L104.6 859.7 L102.5 846.2 L101.3 832.8 L100.6 819.3 L100.2 805.9 L100.1 792.4 L100.0 779.0 L100.0 765.5 L100.0 752.1 L100.0 738.6 L100.0 285.4 L100.0 271.9 L100.0 258.5 L100.0 245.0 L100.1 231.6 L100.2 218.1 L100.6 204.7 L101.3 191.2 L102.5 177.8 L104.6 164.3 L108.1 150.9 L113.9 137.4 L124.0 124.0 L137.4 113.9 L150.9 108.1 L164.3 104.6 L177.8 102.5 L191.2 101.3 L204.7 100.6 L218.1 100.2 L231.6 100.1 L245.0 100.0 L258.5 100.0 L271.9 100.0 L285.4 100.0 Z"/></clipPath>
     <clipPath id="near"><rect x="346" y="439.75" width="500" height="312.5" rx="20"/></clipPath>
-    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#F0A8D0" stop-opacity="0"/>
-      <stop offset="0.5" stop-color="#F5BFE0" stop-opacity="0.55"/>
-      <stop offset="1" stop-color="#F0A8D0" stop-opacity="0"/>
-    </linearGradient>
+    <clipPath id="tile"><path d="M285.4 100.0 H738.6 L738.6 100.0 L752.1 100.0 L765.5 100.0 L779.0 100.0 L792.4 100.1 L805.9 100.2 L819.3 100.6 L832.8 101.3 L846.2 102.5 L859.7 104.6 L873.1 108.1 L886.6 113.9 L900.0 124.0 L910.1 137.4 L915.9 150.9 L919.4 164.3 L921.5 177.8 L922.7 191.2 L923.4 204.7 L923.8 218.1 L923.9 231.6 L924.0 245.0 L924.0 258.5 L924.0 271.9 L924.0 285.4 L924.0 738.6 L924.0 752.1 L924.0 765.5 L924.0 779.0 L923.9 792.4 L923.8 805.9 L923.4 819.3 L922.7 832.8 L921.5 846.2 L919.4 859.7 L915.9 873.1 L910.1 886.6 L900.0 900.0 L886.6 910.1 L873.1 915.9 L859.7 919.4 L846.2 921.5 L832.8 922.7 L819.3 923.4 L805.9 923.8 L792.4 923.9 L779.0 924.0 L765.5 924.0 L752.1 924.0 L738.6 924.0 L285.4 924.0 L271.9 924.0 L258.5 924.0 L245.0 924.0 L231.6 923.9 L218.1 923.8 L204.7 923.4 L191.2 922.7 L177.8 921.5 L164.3 919.4 L150.9 915.9 L137.4 910.1 L124.0 900.0 L113.9 886.6 L108.1 873.1 L104.6 859.7 L102.5 846.2 L101.3 832.8 L100.6 819.3 L100.2 805.9 L100.1 792.4 L100.0 779.0 L100.0 765.5 L100.0 752.1 L100.0 738.6 L100.0 285.4 L100.0 271.9 L100.0 258.5 L100.0 245.0 L100.1 231.6 L100.2 218.1 L100.6 204.7 L101.3 191.2 L102.5 177.8 L104.6 164.3 L108.1 150.9 L113.9 137.4 L124.0 124.0 L137.4 113.9 L150.9 108.1 L164.3 104.6 L177.8 102.5 L191.2 101.3 L204.7 100.6 L218.1 100.2 L231.6 100.1 L245.0 100.0 L258.5 100.0 L271.9 100.0 L285.4 100.0 Z"/></clipPath>
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="28"/>
     </filter>
+    <filter id="melt" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="55"/>
+    </filter>
   </defs>
   <style>
-    .glow { animation: glow 2.4s ease-in-out infinite; }
-    .sweep { animation: sweep 2.4s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
-    @keyframes glow {
-      0%, 100% { opacity: 0.25; }
-      45% { opacity: 0.6; }
-    }
-    @keyframes sweep {
-      0% { transform: translateY(-180px); }
-      55%, 100% { transform: translateY(400px); }
-    }
+    .glow { animation: glow 12s ease-in-out infinite; }
+    .b1 { animation: b1 13s ease-in-out infinite; }
+    .b2 { animation: b2 17s ease-in-out infinite; }
+    .b3 { animation: b3 11s ease-in-out infinite; }
+    .b4 { animation: b4 19s ease-in-out infinite; }
+    @keyframes glow { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.55; } }
+    @keyframes b1 { 0%, 100% { transform: translate(0px, 0px); } 33% { transform: translate(260px, 110px); } 66% { transform: translate(110px, 210px); } }
+    @keyframes b2 { 0%, 100% { transform: translate(0px, 0px); } 33% { transform: translate(-290px, -70px); } 66% { transform: translate(-120px, -210px); } }
+    @keyframes b3 { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(-230px, 170px); } }
+    @keyframes b4 { 0%, 100% { transform: translate(0px, 0px); } 33% { transform: translate(300px, -60px); } 66% { transform: translate(170px, -220px); } }
     @media (prefers-reduced-motion: reduce) {
-      .glow, .sweep { animation: none; }
-      .sweep { opacity: 0; }
+      .glow, .b1, .b2, .b3, .b4 { animation: none; }
       .glow { opacity: 0.4; }
     }
   </style>
@@ -36,7 +33,12 @@
     <rect class="glow" x="346" y="439.75" width="500" height="312.5" rx="20" fill="#7C70F5" filter="url(#glow)"/>
     <rect x="346" y="439.75" width="500" height="312.5" rx="20" fill="#7C70F5"/>
     <g clip-path="url(#near)">
-      <rect class="sweep" x="346" y="439.75" width="500" height="140" fill="url(#band)"/>
+      <g filter="url(#melt)">
+        <circle class="b1" cx="450" cy="500" r="130" fill="#F0A8D0" fill-opacity="0.75"/>
+        <circle class="b2" cx="770" cy="700" r="160" fill="#5A4FC0" fill-opacity="0.9"/>
+        <circle class="b3" cx="720" cy="490" r="120" fill="#9088F8"/>
+        <circle class="b4" cx="420" cy="720" r="100" fill="#F5BFE0" fill-opacity="0.6"/>
+      </g>
     </g>
   </g>
 </svg>
