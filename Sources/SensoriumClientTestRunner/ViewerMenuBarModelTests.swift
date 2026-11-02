@@ -58,11 +58,11 @@ func testViewerMenuUpdateItemsTests() {
         !withoutUpdater.contains { $0.command == .checkForUpdates || $0.command == .toggleAutomaticUpdates },
         "with no updater there are no update items"
     )
-    expect(withoutUpdater.map(\.title).prefix(3) == ["About Sensorium", "", "Your Machines\u{2026}"], "and the app menu reads as before")
+    expect(withoutUpdater.filter { $0.title != "Appearance" }.map(\.title).prefix(3) == ["About Sensorium", "", "Your Machines\u{2026}"], "and the app menu reads as before")
 
     let on = appMenu(true)
     expect(
-        on.map(\.title).prefix(5) == [
+        on.filter { $0.title != "Appearance" }.map(\.title).prefix(5) == [
             "About Sensorium", "Check for Updates\u{2026}", "Check for Updates Automatically", "", "Your Machines\u{2026}"
         ],
         "the update items follow About, got \(on.map(\.title))"

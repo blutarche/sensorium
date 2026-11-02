@@ -902,7 +902,7 @@ func runHostScreenIndicationTests() async {
             HostScreenBadgeState.borderGradientColors == [CanvasDesign.accent, CanvasDesign.accent2],
             "the border sweeps from the primary accent to the secondary accent, in that order"
         )
-        expect(CanvasDesign.accent2 == DesignColor(hex: 0xF0A8D0), "the secondary accent is the soft pink token")
+        expect(CanvasDesign.accent2.resolved(for: .dark) == DesignColor(hex: 0xF0A8D0), "the secondary accent is the soft pink token")
         expect(HostScreenBadgeState.borderGradientRotationDuration == 6, "one full sweep of the border takes six seconds")
 
         print("PASS: the border gradient's rotation keyframes trace a circle around the badge's centre, and its colours and duration are the primary and secondary accents")

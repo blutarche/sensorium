@@ -28,7 +28,7 @@ func runHostMainMenuTests() async {
     let appTitles = appMenu.items.map(\.title)
     expect(
         appTitles == [
-            "About Sensorium Host", "", "Hide Sensorium Host", "Hide Others", "Show All", "", "Quit Sensorium Host"
+            "About Sensorium Host", "Appearance", "", "Hide Sensorium Host", "Hide Others", "Show All", "", "Quit Sensorium Host"
         ],
         "the App menu offers About, Hide, Hide Others, Show All and Quit in the standard order, got \(appTitles)"
     )

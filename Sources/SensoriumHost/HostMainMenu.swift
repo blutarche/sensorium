@@ -23,6 +23,7 @@ public final class HostMainMenuController: NSObject {
     }
 
     public func install(into application: NSApplication) {
+        AppAppearance.shared.install(refreshColors: { CanvasDesign.refreshAppearance() })
         let bar = NSMenu()
         bar.addItem(menuHolder(appMenu()))
         bar.addItem(menuHolder(editMenu()))
@@ -50,6 +51,7 @@ public final class HostMainMenuController: NSObject {
             checkItem.target = self
             menu.addItem(checkItem)
         }
+        menu.addItem(AppAppearance.shared.menuItem())
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Hide Sensorium Host", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h"))
         let hideOthers = NSMenuItem(

@@ -371,6 +371,12 @@ func syntheticFrame(width: Int, height: Int) -> CGImage {
 // MARK: - Render
 
 let application = NSApplication.shared
+if ProcessInfo.processInfo.environment["SENSORIUM_RENDER_APPEARANCE"] == "light" {
+    application.appearance = NSAppearance(named: .aqua)
+} else {
+    application.appearance = NSAppearance(named: .darkAqua)
+}
+NSAppearance.current = application.effectiveAppearance
 // No dock icon, no menu bar, no activation: this must not disturb whoever is
 // logged in on the machine that runs it.
 application.setActivationPolicy(.prohibited)

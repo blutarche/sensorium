@@ -1,4 +1,5 @@
 import AppKit
+import SensoriumCore
 import Foundation
 
 /// A prompt styled like a system alert, naming the device and display,
@@ -127,7 +128,7 @@ public final class HostScreenPresencePromptWindowController: NSObject {
     private func buildContent(content: HostScreenBadgeContent) {
         let contentView = NSView()
         contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = CanvasDesign.chromeBg.cgColor
+        contentView.layer?.setAppearanceColor(CanvasDesign.chromeBg.nsColor, for: "backgroundColor")
 
         let inset = CanvasDesign.Space.lg
         let textWidth = Self.panelWidth - inset * 2
@@ -232,7 +233,7 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         button.isBordered = false
         button.wantsLayer = true
         button.layer?.cornerRadius = CanvasDesign.Radius.tight
-        button.layer?.backgroundColor = CanvasDesign.accent.cgColor
+        button.layer?.setAppearanceColor(CanvasDesign.accent.nsColor, for: "backgroundColor")
         button.attributedTitle = NSAttributedString(
             string: title,
             attributes: [
@@ -258,7 +259,7 @@ public final class HostScreenPresencePromptWindowController: NSObject {
         button.wantsLayer = true
         button.layer?.cornerRadius = CanvasDesign.Radius.tight
         button.layer?.borderWidth = 1
-        button.layer?.borderColor = CanvasDesign.line2.cgColor
+        button.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
     }
 
     @objc private func allowTapped() {

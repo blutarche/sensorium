@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import SensoriumCore
 
 /// Which of this window's buttons ended it, so a caller offering more than
 /// one can act on the one actually tapped instead of only ever dismissing.
@@ -53,14 +54,14 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.title = "Sensorium"
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = nil
         window.backgroundColor = ViewerDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
         window.delegate = self
 
         let content = NSView()
         content.wantsLayer = true
-        content.layer?.backgroundColor = ViewerDesign.chromeBg.cgColor
+        content.layer?.setAppearanceColor(ViewerDesign.chromeBg.nsColor, for: "backgroundColor")
 
         let eyebrowLabel = NSTextField(labelWithAttributedString: NSAttributedString(
             string: eyebrow,
@@ -93,7 +94,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
             button.wantsLayer = true
             button.layer?.cornerRadius = ViewerDesign.Radius.base
             if actionIsPrimary {
-                button.layer?.backgroundColor = ViewerDesign.accent.cgColor
+                button.layer?.setAppearanceColor(ViewerDesign.accent.nsColor, for: "backgroundColor")
             } else {
                 Self.outline(button)
             }
@@ -144,7 +145,7 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
         if actionButton != nil && actionIsPrimary {
             Self.outline(dismissButton)
         } else {
-            dismissButton.layer?.backgroundColor = ViewerDesign.accent.cgColor
+            dismissButton.layer?.setAppearanceColor(ViewerDesign.accent.nsColor, for: "backgroundColor")
         }
         dismissButton.attributedTitle = NSAttributedString(
             string: dismissTitle,
@@ -257,9 +258,9 @@ public final class ViewerMessageWindowController: NSObject, NSWindowDelegate {
     /// treatment as the secondary buttons in the pairing form; a fill the
     /// colour of the border would read as a second primary.
     private static func outline(_ button: NSButton) {
-        button.layer?.backgroundColor = ViewerDesign.chromeBg2.cgColor
+        button.layer?.setAppearanceColor(ViewerDesign.chromeBg2.nsColor, for: "backgroundColor")
         button.layer?.borderWidth = 1
-        button.layer?.borderColor = ViewerDesign.line.cgColor
+        button.layer?.setAppearanceColor(ViewerDesign.line.nsColor, for: "borderColor")
     }
 
     private static func label(_ text: String, font: NSFont, color: ViewerColor) -> NSTextField {

@@ -179,6 +179,7 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     }
 
     public func install(into application: NSApplication) {
+        AppAppearance.shared.install(refreshColors: { ViewerDesign.refreshAppearance() })
         let bar = NSMenu()
         var state = ViewerMenuBarState.initial
         state.checksForUpdatesAutomatically = updates?.checksAutomatically()
@@ -248,6 +249,7 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     }
 
     private func menuItem(for item: ViewerMenuItem) -> NSMenuItem {
+        if item.title == "Appearance" { return AppAppearance.shared.menuItem() }
         guard item.command != .separator else { return .separator() }
         let result = NSMenuItem(
             title: item.title,

@@ -166,14 +166,20 @@ struct SensoriumCoreTestRunner {
             ("motion starts at once after a viewer scroll or drag", testStreamMotionStartsAtOnceAfterViewerScrollOrDrag),
             ("motion settles only after the screen stays still", testStreamMotionSettlesOnlyAfterTheScreenStaysStill),
             ("motion does not flap on short bursts", testStreamMotionDoesNotFlapOnShortBursts),
-            ("motion input is a scroll or a pointer moved with a button held", testStreamMotionInputIsAScrollOrAPointerMovedWithAButtonHeld)
+            ("motion input is a scroll or a pointer moved with a button held", testStreamMotionInputIsAScrollOrAPointerMovedWithAButtonHeld),
+            ("an appearance preference resolves against the system only when it follows it", testAppearancePreferenceResolvesAgainstTheSystemOnlyWhenFollowingIt),
+            ("an appearance preference keeps stable names and round-trips through Codable", testAppearancePreferenceKeepsStableRawValuesAndRoundTripsThroughCodable),
+            ("the appearance store defaults to System and reads back what was set", testAppearancePreferenceStoreDefaultsToSystemAndReadsBackWhatWasSet),
+            ("the appearance store reads an invalid stored value as System", testAppearancePreferenceStoreTreatsAnInvalidStoredValueAsSystem),
+            ("the appearance store announces only real changes", testAppearancePreferenceStoreAnnouncesOnlyRealChanges)
         ]
 
         // The TIFF-to-PNG conversion is the system pasteboard's, which only
         // exists where AppKit does.
         #if canImport(AppKit)
         tests += [
-            ("a TIFF image is converted to PNG before it is sized", testATIFFImageIsConvertedToPNGBeforeItIsSized)
+            ("a TIFF image is converted to PNG before it is sized", testATIFFImageIsConvertedToPNGBeforeItIsSized),
+            ("an appearance preference maps to the matching NSAppearance", testAppearancePreferenceMapsToTheMatchingNSAppearance)
         ]
         #endif
 

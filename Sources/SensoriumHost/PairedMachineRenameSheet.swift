@@ -1,4 +1,5 @@
 import AppKit
+import SensoriumCore
 import Foundation
 
 /// The small sheet a paired machine's Rename opens: a heading naming the
@@ -57,9 +58,9 @@ public final class PairedMachineRenameView: NSView {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.width, height: max(160, minimumHeight)))
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = CanvasDesign.chromeBg.cgColor
+        layer?.setAppearanceColor(CanvasDesign.chromeBg.nsColor, for: "backgroundColor")
         layer?.borderWidth = 1
-        layer?.borderColor = CanvasDesign.line2.cgColor
+        layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
         layer?.cornerRadius = CanvasDesign.Radius.base
 
         titleLabel.font = Self.titleFont
@@ -133,10 +134,10 @@ public final class PairedMachineRenameView: NSView {
         button.isBordered = false
         button.wantsLayer = true
         button.layer?.cornerRadius = CanvasDesign.Radius.tight
-        button.layer?.backgroundColor = fill.cgColor
+        button.layer?.setAppearanceColor(fill.nsColor, for: "backgroundColor")
         if bordered {
             button.layer?.borderWidth = 1
-            button.layer?.borderColor = CanvasDesign.line2.cgColor
+            button.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
         }
         let attributed = NSAttributedString(
             string: title,
@@ -172,7 +173,7 @@ package final class PairedMachineSheetScrim: NSView {
     package override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.backgroundColor = CanvasDesign.chromeBg.nsColor.withAlphaComponent(Self.opacity).cgColor
+        layer?.setAppearanceColor(CanvasDesign.chromeBg.nsColor.withAlphaComponent(Self.opacity), for: "backgroundColor")
         autoresizingMask = [.width, .height]
     }
 
@@ -212,7 +213,7 @@ enum PairedMachineRenameSheet {
             backing: .buffered,
             defer: false
         )
-        sheet.appearance = NSAppearance(named: .darkAqua)
+        sheet.appearance = nil
         sheet.backgroundColor = CanvasDesign.chromeBg.nsColor
         let scrim = PairedMachineSheetScrim.cover(window)
         let view = PairedMachineRenameView(

@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import SensoriumCore
 
 /// A brief, dismissible banner over the canvas for something that failed
 /// without ending the session: a refused request, such as a "Displays"
@@ -21,10 +22,10 @@ public final class ViewerTransientNoticeView: NSView {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = ViewerDesign.chromeBg2.cgColor
+        layer?.setAppearanceColor(ViewerDesign.chromeBg2.nsColor, for: "backgroundColor")
         layer?.cornerRadius = ViewerDesign.Radius.base
         layer?.borderWidth = 1
-        layer?.borderColor = ViewerDesign.warn.cgColor
+        layer?.setAppearanceColor(ViewerDesign.warn.nsColor, for: "borderColor")
 
         label.font = ViewerDesign.font(mono: false, size: 12)
         label.textColor = ViewerDesign.ink.nsColor

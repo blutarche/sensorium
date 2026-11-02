@@ -85,12 +85,12 @@ public final class ShortcutStripView: NSView {
         // over the screen it is showing. `NSVisualEffectView` would give a
         // true blur, but this system never uses one -- see `docs/design-system.md`'s
         // "no shadows" rule, which names it alongside `NSShadow`.
-        bar.layer?.backgroundColor = ViewerDesign.chromeBg2.nsColor.withAlphaComponent(0.88).cgColor
+        bar.layer?.setAppearanceColor(ViewerDesign.chromeBg2.nsColor.withAlphaComponent(0.88), for: "backgroundColor")
         addSubview(bar)
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = ViewerDesign.chromeBorder2.cgColor
+        separator.layer?.setAppearanceColor(ViewerDesign.chromeBorder2.nsColor, for: "backgroundColor")
         bar.addSubview(separator)
 
         hostNameLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -431,7 +431,7 @@ public final class ShortcutStripView: NSView {
         pill.translatesAutoresizingMaskIntoConstraints = false
         pill.wantsLayer = true
         pill.layer?.cornerRadius = clusterHeight / 2
-        pill.layer?.backgroundColor = ViewerDesign.bg4.cgColor
+        pill.layer?.setAppearanceColor(ViewerDesign.bg4.nsColor, for: "backgroundColor")
         let row = NSStackView(views: buttons)
         row.translatesAutoresizingMaskIntoConstraints = false
         row.orientation = .horizontal
@@ -475,9 +475,9 @@ private final class ShortcutStripHandle: NSView {
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
         layer?.cornerRadius = ShortcutStripView.handleSize.height / 2
-        layer?.backgroundColor = ViewerDesign.ink.nsColor.withAlphaComponent(0.3).cgColor
+        layer?.setAppearanceColor(ViewerDesign.ink.nsColor.withAlphaComponent(0.3), for: "backgroundColor")
         layer?.borderWidth = 1
-        layer?.borderColor = ViewerDesign.chromeBg.nsColor.withAlphaComponent(0.35).cgColor
+        layer?.setAppearanceColor(ViewerDesign.chromeBg.nsColor.withAlphaComponent(0.35), for: "borderColor")
     }
 
     @available(*, unavailable)
@@ -531,7 +531,7 @@ private final class ShortcutStripButton: NSButton {
         refusesFirstResponder = true
         wantsLayer = true
         layer?.cornerRadius = ViewerDesign.Radius.base
-        layer?.backgroundColor = (isDefault ? ViewerDesign.accent : ViewerDesign.bg4).cgColor
+        layer?.setAppearanceColor((isDefault ? ViewerDesign.accent : ViewerDesign.bg4).nsColor, for: "backgroundColor")
         target = self
         action = #selector(fire)
         setLabel(title)
@@ -683,15 +683,15 @@ private final class ShortcutStripIconButton: NSButton {
     /// it: `super.mouseDown` runs its own tracking loop and does not return
     /// until the button is released.
     override func mouseDown(with event: NSEvent) {
-        layer?.backgroundColor = ViewerDesign.ink.nsColor.withAlphaComponent(0.18).cgColor
+        layer?.setAppearanceColor(ViewerDesign.ink.nsColor.withAlphaComponent(0.18), for: "backgroundColor")
         super.mouseDown(with: event)
         updateBackground()
     }
 
     private func updateBackground() {
-        layer?.backgroundColor = isHovering
-            ? ViewerDesign.ink.nsColor.withAlphaComponent(0.12).cgColor
-            : NSColor.clear.cgColor
+        layer?.setAppearanceColor(isHovering
+            ? ViewerDesign.ink.nsColor.withAlphaComponent(0.12)
+            : NSColor.clear, for: "backgroundColor")
     }
 
     @objc private func fire() {

@@ -340,7 +340,7 @@ public final class NativeCanvasWorkspace: CanvasWorkspacePresenting {
         // editor and every scroller would follow whatever appearance this
         // machine is set to, which on a light-mode machine means white
         // controls on the palette's near-black surfaces.
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = nil
         // Chrome is the shell's housing and is deliberately a shade below the
         // workspace surfaces the content view draws.
         window.backgroundColor = CanvasDesign.chromeBg.nsColor

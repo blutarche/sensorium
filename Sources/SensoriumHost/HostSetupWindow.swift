@@ -1,4 +1,5 @@
 import AppKit
+import SensoriumCore
 import Foundation
 
 /// The host's one window. Nothing here is configured, opening the app is
@@ -173,7 +174,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         super.init()
 
         window.title = "Sensorium Host"
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = nil
         window.backgroundColor = CanvasDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -241,7 +242,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private func buildContent() {
         let content = NSView()
         content.wantsLayer = true
-        content.layer?.backgroundColor = CanvasDesign.chromeBg.cgColor
+        content.layer?.setAppearanceColor(CanvasDesign.chromeBg.nsColor, for: "backgroundColor")
 
         root.orientation = .vertical
         root.alignment = .leading
@@ -259,7 +260,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         stopButton.isBordered = false
         stopButton.wantsLayer = true
         stopButton.layer?.cornerRadius = CanvasDesign.Radius.base
-        stopButton.layer?.backgroundColor = CanvasDesign.bad.cgColor
+        stopButton.layer?.setAppearanceColor(CanvasDesign.bad.nsColor, for: "backgroundColor")
         stopButton.attributedTitle = NSAttributedString(
             string: "Stop",
             attributes: [
@@ -274,7 +275,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         permissionButton.isBordered = false
         permissionButton.wantsLayer = true
         permissionButton.layer?.cornerRadius = CanvasDesign.Radius.base
-        permissionButton.layer?.backgroundColor = CanvasDesign.warn.cgColor
+        permissionButton.layer?.setAppearanceColor(CanvasDesign.warn.nsColor, for: "backgroundColor")
         permissionButton.target = self
         permissionButton.action = #selector(permissionTapped)
         permissionButton.translatesAutoresizingMaskIntoConstraints = false
@@ -296,7 +297,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
                 .foregroundColor: CanvasDesign.chromeBg.nsColor
             ]
         )
-        revealButton.layer?.backgroundColor = CanvasDesign.accent.cgColor
+        revealButton.layer?.setAppearanceColor(CanvasDesign.accent.nsColor, for: "backgroundColor")
 
         pairingCodeView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -304,7 +305,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         hideCodeButton.wantsLayer = true
         hideCodeButton.layer?.cornerRadius = CanvasDesign.Radius.base
         hideCodeButton.layer?.borderWidth = 1
-        hideCodeButton.layer?.borderColor = CanvasDesign.line2.cgColor
+        hideCodeButton.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
         hideCodeButton.attributedTitle = NSAttributedString(
             string: "Hide Code",
             attributes: [
@@ -697,7 +698,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         button.isBordered = false
         button.wantsLayer = true
         button.layer?.cornerRadius = CanvasDesign.Radius.base
-        button.layer?.backgroundColor = CanvasDesign.warn.cgColor
+        button.layer?.setAppearanceColor(CanvasDesign.warn.nsColor, for: "backgroundColor")
         button.target = self
         button.action = action
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -710,7 +711,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         button.wantsLayer = true
         button.layer?.cornerRadius = CanvasDesign.Radius.base
         button.layer?.borderWidth = 1
-        button.layer?.borderColor = CanvasDesign.line2.cgColor
+        button.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
         button.target = self
         button.action = action
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -734,9 +735,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         revealButton.isEnabled = enabled
         revealButton.isBordered = false
         if dropsToPlain {
-            revealButton.layer?.backgroundColor = nil
+            revealButton.layer?.setAppearanceColor(nil, for: "backgroundColor")
             revealButton.layer?.borderWidth = 1
-            revealButton.layer?.borderColor = CanvasDesign.line2.cgColor
+            revealButton.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
             revealButton.attributedTitle = NSAttributedString(
                 string: "Show Pairing Code",
                 attributes: [
@@ -745,9 +746,9 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
                 ]
             )
         } else {
-            revealButton.layer?.backgroundColor = (enabled ? CanvasDesign.accent : CanvasDesign.bg3).cgColor
+            revealButton.layer?.setAppearanceColor((enabled ? CanvasDesign.accent : CanvasDesign.bg3).nsColor, for: "backgroundColor")
             revealButton.layer?.borderWidth = enabled ? 0 : 1
-            revealButton.layer?.borderColor = CanvasDesign.line2.cgColor
+            revealButton.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
             revealButton.attributedTitle = NSAttributedString(
                 string: "Show Pairing Code",
                 attributes: [

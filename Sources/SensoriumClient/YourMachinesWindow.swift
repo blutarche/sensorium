@@ -175,7 +175,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         window.title = "Sensorium"
         // Dark whatever this machine is set to, so the field editor, the caret
         // and the selection match the palette instead of the machine.
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = nil
         window.backgroundColor = ViewerDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -378,7 +378,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
     private func buildFrame() {
         let content = NSView()
         content.wantsLayer = true
-        content.layer?.backgroundColor = ViewerDesign.chromeBg.cgColor
+        content.layer?.setAppearanceColor(ViewerDesign.chromeBg.nsColor, for: "backgroundColor")
 
         root.orientation = .vertical
         root.alignment = .leading
@@ -495,7 +495,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
         let dot = NSView()
         dot.translatesAutoresizingMaskIntoConstraints = false
         dot.wantsLayer = true
-        dot.layer?.backgroundColor = ViewerDesign.warn.cgColor
+        dot.layer?.setAppearanceColor(ViewerDesign.warn.nsColor, for: "backgroundColor")
         dot.layer?.cornerRadius = 3
         NSLayoutConstraint.activate([
             dot.widthAnchor.constraint(equalToConstant: 6),
@@ -1068,7 +1068,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
     public func controlTextDidBeginEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
-        field.layer?.borderColor = ViewerDesign.accent.cgColor
+        field.layer?.setAppearanceColor(ViewerDesign.accent.nsColor, for: "borderColor")
         guard field === codeField,
               let editor = window.fieldEditor(false, for: field) as? NSTextView else { return }
         // A refocused code field is typed into again, so a count-down left over
@@ -1083,7 +1083,7 @@ public final class YourMachinesWindowController: NSObject, ViewerLaunchWindow, N
 
     public func controlTextDidEndEditing(_ notification: Notification) {
         guard let field = notification.object as? NSTextField else { return }
-        field.layer?.borderColor = ViewerDesign.line.cgColor
+        field.layer?.setAppearanceColor(ViewerDesign.line.nsColor, for: "borderColor")
         guard field === codeField else { return }
         codeErrorsRevealed = true
         refresh()
@@ -1230,9 +1230,9 @@ final class SavedMachineRowButton: NSButton {
         // title underneath whatever is added as a subview.
         title = ""
         wantsLayer = true
-        layer?.backgroundColor = ViewerDesign.chromeBg2.cgColor
+        layer?.setAppearanceColor(ViewerDesign.chromeBg2.nsColor, for: "backgroundColor")
         layer?.borderWidth = 1
-        layer?.borderColor = (isSelected ? ViewerDesign.accent : ViewerDesign.chromeBorder2).cgColor
+        layer?.setAppearanceColor((isSelected ? ViewerDesign.accent : ViewerDesign.chromeBorder2).nsColor, for: "borderColor")
         layer?.cornerRadius = ViewerDesign.Radius.base
 
         let name = NSTextField(labelWithString: row.name)
@@ -1355,7 +1355,7 @@ final class SavedMachineRowButton: NSButton {
         case .activity: color = ViewerDesign.warn
         case .none: color = ViewerDesign.muted2
         }
-        dot.layer?.backgroundColor = color.cgColor
+        dot.layer?.setAppearanceColor(color.nsColor, for: "backgroundColor")
         dot.layer?.cornerRadius = 3
         NSLayoutConstraint.activate([
             dot.widthAnchor.constraint(equalToConstant: 6),

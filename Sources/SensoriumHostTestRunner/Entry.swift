@@ -39,6 +39,7 @@ struct SensoriumHostTestRunner {
             { await runCoreSessionTestsPart3(coreFixtures) },
             { await runCoreSessionTestsPart4(coreFixtures) },
             { await runLauncherDesignAndOperatorTests() },
+            { await runCanvasDesignAppearanceTests() },
             { await runCanvasLauncherEmptyStateWrapTests() },
             { await runCanvasLauncherHostNameTests() },
             { await runHostWorkspaceKeyboardHintTests() },

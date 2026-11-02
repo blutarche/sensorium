@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import SensoriumCore
 import Foundation
 
 /// The controls the viewer's own forms are built from, in one place so a
@@ -69,10 +70,10 @@ enum ViewerFormControls {
         field.isBordered = false
         field.focusRingType = .none
         field.wantsLayer = true
-        field.layer?.backgroundColor = ViewerDesign.bg4.cgColor
+        field.layer?.setAppearanceColor(ViewerDesign.bg4.nsColor, for: "backgroundColor")
         field.layer?.cornerRadius = ViewerDesign.Radius.base
         field.layer?.borderWidth = 1
-        field.layer?.borderColor = ViewerDesign.line.cgColor
+        field.layer?.setAppearanceColor(ViewerDesign.line.nsColor, for: "borderColor")
         return field
     }
 
@@ -151,11 +152,11 @@ enum ViewerFormControls {
         button.wantsLayer = true
         button.isEnabled = isEnabled
         let filled = isPrimary && isEnabled
-        button.layer?.backgroundColor = filled
-            ? ViewerDesign.accent.cgColor
-            : ViewerDesign.chromeBg2.cgColor
+        button.layer?.setAppearanceColor(filled
+            ? ViewerDesign.accent.nsColor
+            : ViewerDesign.chromeBg2.nsColor, for: "backgroundColor")
         button.layer?.borderWidth = filled ? 0 : 1
-        button.layer?.borderColor = ViewerDesign.line.cgColor
+        button.layer?.setAppearanceColor(ViewerDesign.line.nsColor, for: "borderColor")
         let color: ViewerColor
         if filled {
             color = ViewerDesign.chromeBg

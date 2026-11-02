@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import SensoriumCore
 
 /// What a `ViewerColor` is to AppKit. The values themselves are
 /// `ViewerPalette`'s, stated once for every platform this viewer runs on.
@@ -8,11 +9,34 @@ import AppKit
 /// appearance, and a palette that moves with the machine is not a palette.
 public extension ViewerColor {
     var nsColor: NSColor {
-        NSColor(srgbRed: red, green: green, blue: blue, alpha: alpha)
+        ViewerDynamicColors.color(self)
     }
 
     var cgColor: CGColor {
         nsColor.cgColor
+    }
+}
+
+private enum ViewerDynamicColors {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: NSColor] = [:]
+
+    static func color(_ token: ViewerColor) -> NSColor {
+        let light = token.resolved(for: .light)
+        let dark = token.resolved(for: .dark)
+        if light == dark {
+            return NSColor(srgbRed: dark.red, green: dark.green, blue: dark.blue, alpha: dark.alpha)
+        }
+        let key = dark.hexString + light.hexString + String(token.alpha)
+        lock.lock()
+        defer { lock.unlock() }
+        if let color = cache[key] { return color }
+        let color = NSColor(name: nil) { appearance in
+            let resolved = token.resolved(for: appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light)
+            return NSColor(srgbRed: resolved.red, green: resolved.green, blue: resolved.blue, alpha: resolved.alpha)
+        }
+        cache[key] = color
+        return color
     }
 }
 
@@ -77,4 +101,13 @@ public enum ViewerDesign {
             : NSFont.systemFont(ofSize: size, weight: weight)
     }
 }
+@MainActor
+public extension ViewerDesign {
+    static func refreshAppearance() {
+        for window in NSApplication.shared.windows {
+            if let content = window.contentView { AppearanceLayerColors.refresh(in: content) }
+        }
+    }
+}
+
 #endif

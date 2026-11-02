@@ -198,7 +198,7 @@ func runHostUpdateMenuItemTests() {
         let titles = appMenu.items.map(\.title)
         expect(
             titles == [
-                "About Sensorium Host", "Check for Updates\u{2026}", "", "Hide Sensorium Host", "Hide Others", "Show All", "",
+                "About Sensorium Host", "Check for Updates\u{2026}", "Appearance", "", "Hide Sensorium Host", "Hide Others", "Show All", "",
                 "Quit Sensorium Host"
             ],
             "the App menu offers Check for Updates… after About, got \(titles)"

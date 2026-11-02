@@ -746,8 +746,9 @@ func runLauncherDesignAndOperatorTests() async {
                 "the translucent accents carry the accent's own channels, at 0.10, 0.30 and 0.32"
             )
             expect(
-                CanvasDesign.bg == DesignColor(hex: 0x0A0A0C) && CanvasDesign.ink == DesignColor(hex: 0xF2EFEA),
-                "the deepest surface and the primary ink decode #0A0A0C and #F2EFEA"
+                CanvasDesign.bg.resolved(for: .dark) == DesignColor(hex: 0x0A0A0C)
+                    && CanvasDesign.ink.resolved(for: .dark) == DesignColor(hex: 0xF2EFEA),
+                "the deepest surface and the primary ink decode #0A0A0C and #F2EFEA in dark"
             )
             // `letter-spacing` is relative to the font size and `kern` is
             // absolute points; the conversion is the only place that can drift.

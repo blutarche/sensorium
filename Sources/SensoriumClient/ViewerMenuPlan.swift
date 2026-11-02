@@ -360,8 +360,14 @@ public enum ViewerMenuPlan {
                 )
             ]
         }
+        var appearanceItems: [ViewerMenuItem] = []
+        #if canImport(AppKit)
+        appearanceItems = [ViewerMenuItem(title: "Appearance", command: .submenu, submenu: ViewerMenu(title: "Appearance", items: AppearancePreference.allCases.map {
+            ViewerMenuItem(title: $0.rawValue.capitalized, command: .submenu, isSelected: $0 == AppearancePreferenceStore().preference)
+        }))]
+        #endif
         return [
-            ViewerMenu(title: appName, items: [ViewerMenuItem(title: "About \(appName)", command: .about)] + updateItems + [
+            ViewerMenu(title: appName, items: [ViewerMenuItem(title: "About \(appName)", command: .about)] + updateItems + appearanceItems + [
                 .separator,
                 ViewerMenuItem(
                     title: "Your Machines\u{2026}",

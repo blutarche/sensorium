@@ -22,9 +22,9 @@ final class TailnetDeviceRowButton: NSButton {
         // subtitle below are the row's only text.
         title = ""
         wantsLayer = true
-        layer?.backgroundColor = ViewerDesign.chromeBg2.cgColor
+        layer?.setAppearanceColor(ViewerDesign.chromeBg2.nsColor, for: "backgroundColor")
         layer?.borderWidth = 1
-        layer?.borderColor = ViewerDesign.chromeBorder2.cgColor
+        layer?.setAppearanceColor(ViewerDesign.chromeBorder2.nsColor, for: "borderColor")
         layer?.cornerRadius = ViewerDesign.Radius.base
 
         let title = NSTextField(labelWithString: row.title)

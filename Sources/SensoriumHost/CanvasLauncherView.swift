@@ -1,4 +1,5 @@
 import AppKit
+import SensoriumCore
 import Foundation
 
 /// One launch's result, as the off-main placement poll reports it: which
@@ -547,7 +548,7 @@ final class CanvasLauncherView: NSView, NSTableViewDataSource, NSTableViewDelega
             return
         }
         listIsActive = active
-        queryWell.layer?.borderColor = (active ? CanvasDesign.accentBorder : CanvasDesign.line2).cgColor
+        queryWell.layer?.setAppearanceColor((active ? CanvasDesign.accentBorder : CanvasDesign.line2).nsColor, for: "borderColor")
         tableView.enumerateAvailableRowViews { rowView, _ in
             (rowView as? LauncherRowView)?.isActive = active
         }

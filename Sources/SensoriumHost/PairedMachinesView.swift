@@ -1,4 +1,5 @@
 import AppKit
+import SensoriumCore
 import Foundation
 
 /// What the empty Paired machines section tells the person to do. It depends
@@ -276,7 +277,7 @@ final class HostScreenSharingToggleControl: NSControl {
     }
 
     private func layoutTrack() {
-        trackLayer.backgroundColor = (isOn ? CanvasDesign.accent : CanvasDesign.bg4).cgColor
+        trackLayer.setAppearanceColor((isOn ? CanvasDesign.accent : CanvasDesign.bg4).nsColor, for: "backgroundColor")
         let knobDiameter = Self.size.height - Self.inset * 2
         let knobX = isOn ? Self.size.width - Self.inset - knobDiameter : Self.inset
         knobLayer.frame = NSRect(x: knobX, y: Self.inset, width: knobDiameter, height: knobDiameter)
@@ -315,7 +316,7 @@ private final class PairedMachineRowView: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         wantsLayer = true
-        layer?.backgroundColor = CanvasDesign.bg2.cgColor
+        layer?.setAppearanceColor(CanvasDesign.bg2.nsColor, for: "backgroundColor")
         layer?.cornerRadius = CanvasDesign.Radius.base
 
         stack.orientation = .vertical
@@ -476,9 +477,9 @@ private final class PairedMachineRowView: NSView {
         button.isBordered = false
         button.wantsLayer = true
         button.layer?.cornerRadius = CanvasDesign.Radius.tight
-        button.layer?.backgroundColor = CanvasDesign.bg3.cgColor
+        button.layer?.setAppearanceColor(CanvasDesign.bg3.nsColor, for: "backgroundColor")
         button.layer?.borderWidth = 1
-        button.layer?.borderColor = CanvasDesign.line2.cgColor
+        button.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
         let attributedTitle = NSAttributedString(
             string: title,
             attributes: [

@@ -140,6 +140,7 @@ public final class HostMenuBarPresence: NSObject {
             return
         }
         menu.removeAllItems()
+        menu.addItem(AppAppearance.shared.menuItem())
         panel.frame = NSRect(origin: .zero, size: panel.fittingSize)
         let panelItem = NSMenuItem()
         panelItem.view = panel
@@ -390,7 +391,7 @@ final class HostOperatorPanelView: NSView {
         permissionButton.isBordered = false
         permissionButton.wantsLayer = true
         permissionButton.layer?.cornerRadius = CanvasDesign.Radius.base
-        permissionButton.layer?.backgroundColor = CanvasDesign.warn.cgColor
+        permissionButton.layer?.setAppearanceColor(CanvasDesign.warn.nsColor, for: "backgroundColor")
         permissionButton.target = self
         permissionButton.action = #selector(permissionTapped)
         permissionButton.isHidden = true

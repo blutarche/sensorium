@@ -1,4 +1,5 @@
 import AppKit
+import SensoriumCore
 import CoreGraphics
 import Foundation
 import QuartzCore
@@ -470,10 +471,10 @@ public final class HostScreenBadgeWindowController: NSObject {
     private func buildContent() {
         let content = BadgeSurfaceView()
         content.wantsLayer = true
-        content.layer?.backgroundColor = CanvasDesign.chromeBg.cgColor
+        content.layer?.setAppearanceColor(CanvasDesign.chromeBg.nsColor, for: "backgroundColor")
         content.layer?.cornerRadius = CanvasDesign.Radius.base
 
-        borderGradientLayer.colors = HostScreenBadgeState.borderGradientColors.map(\.cgColor)
+        borderGradientLayer.setAppearanceGradientColors(HostScreenBadgeState.borderGradientColors.map(\.nsColor))
         borderMaskLayer.fillColor = nil
         borderMaskLayer.strokeColor = NSColor.black.cgColor
         borderMaskLayer.lineWidth = Self.borderWidth
@@ -494,7 +495,7 @@ public final class HostScreenBadgeWindowController: NSObject {
         }
 
         statusDot.wantsLayer = true
-        statusDot.layer?.backgroundColor = CanvasDesign.bad.cgColor
+        statusDot.layer?.setAppearanceColor(CanvasDesign.bad.nsColor, for: "backgroundColor")
         statusDot.layer?.cornerRadius = 4
         statusDot.translatesAutoresizingMaskIntoConstraints = false
         statusDot.isHidden = true
@@ -502,7 +503,7 @@ public final class HostScreenBadgeWindowController: NSObject {
         stopButton.isBordered = false
         stopButton.wantsLayer = true
         stopButton.layer?.cornerRadius = CanvasDesign.Radius.tight
-        stopButton.layer?.backgroundColor = CanvasDesign.bad.cgColor
+        stopButton.layer?.setAppearanceColor(CanvasDesign.bad.nsColor, for: "backgroundColor")
         stopButton.target = self
         stopButton.action = #selector(stopTapped)
         stopButton.translatesAutoresizingMaskIntoConstraints = false

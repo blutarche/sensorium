@@ -1143,9 +1143,9 @@ final class ViewerSessionStatusOverlay: NSView {
 
         panel.translatesAutoresizingMaskIntoConstraints = false
         panel.wantsLayer = true
-        panel.layer?.backgroundColor = ViewerDesign.chromeBg2.cgColor
+        panel.layer?.setAppearanceColor(ViewerDesign.chromeBg2.nsColor, for: "backgroundColor")
         panel.layer?.borderWidth = 1
-        panel.layer?.borderColor = ViewerDesign.chromeBorder2.cgColor
+        panel.layer?.setAppearanceColor(ViewerDesign.chromeBorder2.nsColor, for: "borderColor")
         panel.layer?.cornerRadius = ViewerDesign.Radius.base
         addSubview(panel)
 
@@ -1259,10 +1259,10 @@ final class ViewerSessionStatusOverlay: NSView {
         guard status.isOverlayVisible else { return }
         // Opaque before a first frame exists, a scrim once there is a picture
         // underneath to mark as stale.
-        layer?.backgroundColor = status.dimsCanvas
-            ? NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.66).cgColor
-            : ViewerDesign.chromeBg.cgColor
-        toneDot.layer?.backgroundColor = ViewerDesign.color(for: status.tone).cgColor
+        layer?.setAppearanceColor(status.dimsCanvas
+            ? NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.66)
+            : ViewerDesign.chromeBg.nsColor, for: "backgroundColor")
+        toneDot.layer?.setAppearanceColor(ViewerDesign.color(for: status.tone).nsColor, for: "backgroundColor")
         eyebrow.attributedStringValue = NSAttributedString(
             string: status.eyebrow,
             attributes: [
@@ -1381,11 +1381,11 @@ final class ViewerActionButton: NSButton {
     }
 
     private func refreshAppearance(isFocused: Bool = false) {
-        layer?.backgroundColor = (isPrimaryAction ? ViewerDesign.accent : ViewerDesign.bg4).cgColor
+        layer?.setAppearanceColor((isPrimaryAction ? ViewerDesign.accent : ViewerDesign.bg4).nsColor, for: "backgroundColor")
         layer?.borderWidth = isFocused ? 1 : 0
         // The accent is the focus colour, except on the button that is already
         // filled with it.
-        layer?.borderColor = (isPrimaryAction ? ViewerDesign.ink : ViewerDesign.accent).cgColor
+        layer?.setAppearanceColor((isPrimaryAction ? ViewerDesign.ink : ViewerDesign.accent).nsColor, for: "borderColor")
     }
 }
 #endif
