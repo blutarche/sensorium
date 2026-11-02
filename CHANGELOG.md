@@ -8,6 +8,18 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-11-03
+
+### Added
+
+- System, Light and Dark appearance choices in both macOS apps. System is
+  the default, and each app remembers its own choice.
+
+### Changed
+
+- The host's connected indicator starts as the small corner pill.
+
+
 ## [0.5.9] - 2026-10-25
 
 ### Changed
