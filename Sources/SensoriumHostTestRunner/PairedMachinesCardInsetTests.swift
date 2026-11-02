@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 import SensoriumHost
 
-/// The host window's cards -- a paired machine's own row, the Last Screen
-/// Session card, and the status card `HostOperatorPanelView` draws -- must
-/// all inset their text by the same amount. Reads each card's own leading
+/// The host window's cards -- the paired machines card's rows, the Last
+/// Screen Session card, and the status card `HostOperatorPanelView` draws --
+/// must all inset their text by the same amount. Reads each card's own leading
 /// constraint constant directly, the same "read past `private` with
 /// `Mirror`" route `PairedMachinesSharingToggleTests` already uses, rather than
 /// forcing a real Auto Layout pass no window here ever gets.
@@ -49,9 +49,9 @@ func runPairedMachinesCardInsetTests() async {
     }
 
     do {
-        // A paired machine's own card insets its text by the same 16pt
-        // every other card in this window uses, so row text lines up with
-        // the text of the cards around it.
+        // A paired machine's row insets its text by the same 16pt every
+        // other card in this window uses, so row text lines up with the
+        // text of the cards around it.
         let row = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
@@ -66,11 +66,11 @@ func runPairedMachinesCardInsetTests() async {
 
         expect(
             leadingInset(of: innerStack, in: rowView) == CanvasDesign.Space.md,
-            "a paired machine's own card insets its text by the same 16pt every other card in this window uses "
+            "a paired machine's row insets its text by the same 16pt every other card in this window uses "
                 + "-- got: \(String(describing: leadingInset(of: innerStack, in: rowView)))"
         )
 
-        print("PASS: a paired machine's own card insets its text by 16pt")
+        print("PASS: a paired machine's row insets its text by 16pt")
     }
 
     do {

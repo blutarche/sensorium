@@ -6,7 +6,7 @@ import SensoriumHost
 /// from colour alone, not from `NSColor.controlAccentColor` -- a person can
 /// set that to Graphite, at which point a system-drawn `NSSwitch`'s on and
 /// off tracks are both the same grey. `Mirror` reaches every field here
-/// (`pairedMachines`, `toggle`, `toggleLabel`), the same past-`private`,
+/// (`pairedMachines`, `toggle`, `actionsMenu`), the same past-`private`,
 /// past-module-boundary route `HostSetupTailscaleButtonTests` already uses.
 @MainActor
 func runPairedMachinesSharingToggleTests() async {
@@ -42,7 +42,7 @@ func runPairedMachinesSharingToggleTests() async {
     do {
         // On: the toggle's own track is tinted with this app's
         // accent, independent of the system's own accent-colour
-        // preference. The label keeps one colour regardless of on
+        // preference. The name keeps one colour regardless of on
         // or off -- the switch itself already carries the state.
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
@@ -53,7 +53,7 @@ func runPairedMachinesSharingToggleTests() async {
         let rows = rowViews(in: controller(rows: [sharingRow]))
         expect(rows.count == 1, "one row for one paired machine")
         let toggle: NSControl = field("toggle", of: rows[0], as: NSControl.self)
-        let toggleLabel: NSTextField = field("toggleLabel", of: rows[0], as: NSTextField.self)
+        let nameLabel: NSTextField = field("nameLabel", of: rows[0], as: NSTextField.self)
         let trackLayer: CALayer = field("trackLayer", of: toggle, as: CALayer.self)
         let isOn: Bool = field("isOn", of: toggle, as: Bool.self)
 
@@ -63,20 +63,20 @@ func runPairedMachinesSharingToggleTests() async {
             "on, the track is tinted with this app's own accent colour, not left to NSColor.controlAccentColor -- which a person can set to Graphite, making on and off the same grey"
         )
         expect(
-            toggleLabel.textColor == CanvasDesign.ink.nsColor,
-            "on, the Share host screen label reads in ink -- one label colour regardless of state"
+            nameLabel.textColor == CanvasDesign.ink.nsColor,
+            "on, the machine's name reads in ink -- one name colour regardless of state"
         )
         expect(
-            toggle.alphaValue == 1 && toggleLabel.alphaValue == 1,
-            "an enabled toggle and its label are drawn at full opacity"
+            toggle.alphaValue == 1 && nameLabel.alphaValue == 1,
+            "an enabled toggle and the name beside it are drawn at full opacity"
         )
 
-        print("PASS: a sharing row's toggle takes the app accent, and its label stays the same ink either way")
+        print("PASS: a sharing row's toggle takes the app accent, and its name stays the same ink either way")
     }
 
     do {
         // Off: the track falls back to a plain dark fill, and the
-        // label stays in ink.
+        // name stays in ink.
         let idleRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xCD]),
             deviceName: "Kestrel Laptop Air",
@@ -84,7 +84,7 @@ func runPairedMachinesSharingToggleTests() async {
         )
         let rows = rowViews(in: controller(rows: [idleRow]))
         let toggle: NSControl = field("toggle", of: rows[0], as: NSControl.self)
-        let toggleLabel: NSTextField = field("toggleLabel", of: rows[0], as: NSTextField.self)
+        let nameLabel: NSTextField = field("nameLabel", of: rows[0], as: NSTextField.self)
         let trackLayer: CALayer = field("trackLayer", of: toggle, as: CALayer.self)
         let isOn: Bool = field("isOn", of: toggle, as: Bool.self)
 
@@ -94,15 +94,15 @@ func runPairedMachinesSharingToggleTests() async {
             "off, the track is not tinted with the accent colour -- it must read as visibly different from on"
         )
         expect(
-            toggleLabel.textColor == CanvasDesign.ink.nsColor,
-            "off, the Share host screen label stays in ink"
+            nameLabel.textColor == CanvasDesign.ink.nsColor,
+            "off, the machine's name stays in ink"
         )
         expect(
-            toggle.alphaValue == 1 && toggleLabel.alphaValue == 1,
-            "an enabled toggle and its label are drawn at full opacity"
+            toggle.alphaValue == 1 && nameLabel.alphaValue == 1,
+            "an enabled toggle and the name beside it are drawn at full opacity"
         )
 
-        print("PASS: an idle row's toggle track is not accent-tinted, and its label stays in ink")
+        print("PASS: an idle row's toggle track is not accent-tinted, and its name stays in ink")
     }
 
 
@@ -150,10 +150,9 @@ func runPairedMachinesSharingToggleTests() async {
     }
 
     do {
-        // The "ask me first" checkbox sits under the sharing toggle,
-        // visible only while this row is sharing -- the setting means
-        // nothing for a device whose session could not otherwise
-        // prompt at all.
+        // The "ask me first" item in the row's menu is offered only while
+        // this row is sharing -- the setting means nothing for a device
+        // whose session could not otherwise prompt at all.
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
             deviceName: "Kestrel Laptop Pro",
@@ -165,24 +164,27 @@ func runPairedMachinesSharingToggleTests() async {
             deviceName: "Kestrel Laptop Air",
             isSharingRealScreen: false
         )
+        func askFirstItem(in row: NSView) -> NSMenuItem? {
+            let menu: NSMenu = field("actionsMenu", of: row, as: NSMenu.self)
+            return menu.items.first { $0.action != nil && $0.title == HostScreenArmingPresentation.asksWhenInUseLabel }
+        }
         let sharingRows = rowViews(in: controller(rows: [sharingRow]))
-        let askFirstCheckbox: NSButton = field("askFirstCheckbox", of: sharingRows[0], as: NSButton.self)
-        expect(!askFirstCheckbox.isHidden, "the checkbox shows for a row that is currently sharing")
-        expect(askFirstCheckbox.state == .on, "the checkbox starts checked when the armed record's own flag is on")
+        let askFirst = askFirstItem(in: sharingRows[0])
+        expect(askFirst?.isEnabled == true, "ask first is offered for a row that is currently sharing")
+        expect(askFirst?.state == .on, "ask first starts checked when the armed record's own flag is on")
         expect(
-            askFirstCheckbox.title == HostScreenArmingPresentation.asksWhenInUseLabel,
-            "the checkbox reads the shared label constant, not a second copy of the words"
+            askFirst?.title == HostScreenArmingPresentation.asksWhenInUseLabel,
+            "the item reads the shared label constant, not a second copy of the words"
         )
 
         let idleRows = rowViews(in: controller(rows: [idleRow]))
-        let idleCheckbox: NSButton = field("askFirstCheckbox", of: idleRows[0], as: NSButton.self)
-        expect(idleCheckbox.isHidden, "the checkbox is hidden for a row that is not currently sharing")
+        expect(askFirstItem(in: idleRows[0])?.isEnabled == false, "ask first is not offered for a row that is not sharing")
 
-        print("PASS: the ask-first checkbox shows only while sharing, starts from the armed record's flag, and reads the shared label")
+        print("PASS: ask first is offered only while sharing, starts from the armed record's flag, and reads the shared label")
     }
 
     do {
-        // Toggling the checkbox reports the device key and new state
+        // Choosing ask first reports the device key and new state
         // through its own callback, distinct from the sharing toggle's.
         let sharingRow = HostScreenArmingPresentation.PairedMachineRow(
             devicePublicKey: Data([0xAB]),
@@ -201,12 +203,16 @@ func runPairedMachinesSharingToggleTests() async {
         )
         hostController.updatePairedMachines([sharingRow])
         let rows = rowViews(in: hostController)
-        let checkbox: NSButton = field("askFirstCheckbox", of: rows[0], as: NSButton.self)
-        expect(checkbox.state == .off, "the checkbox starts unchecked, matching the row's own flag, before it is clicked")
-        checkbox.performClick(nil)
+        let menu: NSMenu = field("actionsMenu", of: rows[0], as: NSMenu.self)
+        guard let index = menu.items.firstIndex(where: { $0.title == HostScreenArmingPresentation.asksWhenInUseLabel }) else {
+            expect(false, "the row's menu has no ask-first item -- got \(menu.items.map(\.title))")
+            return
+        }
+        expect(menu.items[index].state == .off, "the item starts unchecked, matching the row's own flag, before it is chosen")
+        menu.performActionForItem(at: index)
         expect(reported?.0 == sharingRow.devicePublicKey, "the callback names the row's own device key")
-        expect(reported?.1 == true, "a click that checks the box reports its new, checked state")
+        expect(reported?.1 == true, "choosing an unchecked item reports its new, checked state")
 
-        print("PASS: toggling the ask-first checkbox reports the device key and new state through its own callback")
+        print("PASS: choosing ask first reports the device key and new state through its own callback")
     }
 }

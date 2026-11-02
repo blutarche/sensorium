@@ -27,12 +27,11 @@ Top to bottom:
    - An actionable failure. *Screen Recording is not allowed.* comes with **Open Screen Recording Settings**. **Open Accessibility Settings** takes its place once Screen Recording is granted and Accessibility is not. *Tailscale is not running.* comes with **Open Tailscale**, and *Tailscale is not installed.* with **Download Tailscale**. *Sensorium Host could not read its own key.* comes with **Try Again** and **Make a New Key**.
    - *Quit Sensorium Host and open it again.* This outranks every other line once this machine stops handing the host any picture.
 2. **Pairing code.** Six digits in two groups of three, large, with **Hide Code** beneath them. Shown the moment a new machine asks to pair. Otherwise a **Show Pairing Code** button shows instead, never replacing the connected machine or its **Stop** button.
-3. **Paired machines.** One row per machine, named by the name it gave when it paired or the name chosen for it with **Rename**, never a key fingerprint. A machine with neither is titled **Unnamed machine**. Each row has:
-   - The name, with **Rename** and **Remove** right-aligned. Removing a machine ends every connection it has at once and refuses it from then on until it pairs again.
+3. **Paired machines.** One compact row per machine inside a single grouped card, named by the name it gave when it paired or the name chosen for it with **Rename**, never a key fingerprint. A machine with neither is titled **Unnamed machine**. Each row is one line of name over a muted line, with the share switch and a **More** button on the right:
+   - The name, and beneath it *May share Built-in Display* while sharing is on, or *Host screen sharing off*. A long name is cut short with an ellipsis, never wrapped.
+   - The switch arms or disarms the machine for host-screen sharing. It arms the machine, not one screen.
+   - **More** opens a menu: **Rename…**, **Ask me first if this machine is in use** (a checkmark, available while sharing is on, off by default), the key line *Key `<fingerprint>`* as plain text, and **Remove**. Removing a machine ends every connection it has at once and refuses it from then on until it pairs again.
    - **Rename** opens a small sheet headed *Rename `<name>`*, or *Rename the unnamed machine* for an **Unnamed machine**: a field holding the current name (empty for an **Unnamed machine**), **Cancel** and **Rename**. Return renames and Escape cancels. The name is trimmed, loses any invisible or text-reversing characters, becomes one line, and is kept to 64 characters. An empty name puts back the name the machine reports. The name is kept on this machine only. It is what the host shows everywhere it names that machine: this list, the status line, the menu bar, the ask-first prompt, the badge and the session record. The name a machine reports when it connects or pairs again never replaces it. Renaming changes nothing about what the machine may do.
-   - **Share host screen**. It arms the machine, not one screen.
-   - **Ask me first if this machine is in use**, shown while sharing is on, off by default.
-   - One line at the bottom of every row: *Key `<fingerprint>`*. While sharing is on, it goes on with the screens this machine can share right now, such as *May share Built-in Display*, or *No display on this machine can be shared right now.* when none can be. A middle dot separates them.
 
    With no machine paired, the section reads *No machine is paired.* and, beneath it, what to do: *Show a pairing code, then type it on the machine you are pairing.* while a code can be shown, *The machine appears here once the code is typed on it.* while one is on screen, and *Machines appear here once they pair.* when the host cannot show one yet.
 4. **Last host screen session.** Machine, display, and when, if there has been one.
@@ -47,7 +46,7 @@ Top to bottom:
 
 ### Menu bar
 
-The status item mirrors the status line. It names the connected machine while a session runs, and offers **Stop**. For each machine that may share a host screen, its menu says *Sharing host screen with `<machine name>`* and offers **Turn Off Share Host Screen for `<machine name>`**. It also offers **Host Setup…**, **About Sensorium Host**, **Check for Updates…** and **Quit Sensorium Host**.
+The status item mirrors the status line. It names the connected machine while a session runs, and offers **Stop**. When any machine may share a host screen, its menu has one item, *Sharing Host Screen (`<count>`)*, whose submenu lists each such machine by name with a check mark. Choosing a machine turns its sharing off, and **Turn Off for All Machines** turns off every one. The item is one row however many machines are paired. It also offers **Host Setup…**, **About Sensorium Host**, **Check for Updates…** and **Quit Sensorium Host**.
 
 ### While a host screen is being streamed
 

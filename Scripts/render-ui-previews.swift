@@ -759,8 +759,8 @@ MainActor.assumeIsolated {
     }
 
     // Every paired machine below is built through `pairedMachineRows`, the
-    // production path `sensoriumd` calls, so each row carries the key line and
-    // the display line a real host draws and none can drift from it.
+    // production path `sensoriumd` calls, so each row carries the display line
+    // and the key a real host shows and none can drift from it.
     let builtInDisplay = DisplaySnapshot(
         id: 1, pixelWidth: 1512, pixelHeight: 982, modeWidth: 1512, modeHeight: 982,
         modePixelWidth: 3024, modePixelHeight: 1964, bounds: CGRect(x: 0, y: 0, width: 1512, height: 982),
@@ -790,9 +790,8 @@ MainActor.assumeIsolated {
 
     // A machine that gave its own name at pairing, next to one that never gave
     // one -- built through `pairedMachineRows` itself, the same production path
-    // `sensoriumd` calls, so the card title and the small key-fingerprint line
-    // beneath it are exactly what a real approved-devices store produces,
-    // named and unnamed.
+    // `sensoriumd` calls, so each row's title is exactly what a real
+    // approved-devices store produces, named and unnamed.
     let namedDeviceKey = Data([0x5D, 0xB7, 0x42, 0xA2, 0x01])
     let unnamedLegacyDeviceKey = Data([0x6E, 0xC8, 0x53, 0xB3, 0x02])
     let namedAndUnnamedRows = HostScreenArmingPresentation.pairedMachineRows(
@@ -856,6 +855,32 @@ MainActor.assumeIsolated {
         arming: kestrelLaptopSharing,
         activeDisplays: [asleepDisplay]
     )
+
+    // Many paired machines at once: sharing on and off, a name far longer
+    // than the row, and one machine that never gave a name.
+    let manyMachineNames: [String?] = [
+        "Kestrel Laptop Pro", "Heron Desktop", nil,
+        "Kestrel Laptop Pro Max Studio Edition North Annex Workstation", "Osprey Studio", "Wren Notebook",
+        "Heron Desktop Kitchen", "Plover Mini", "Egret Tower", "Kestrel Laptop Air"
+    ]
+    let manyMachineDevices = manyMachineNames.enumerated().map { index, name in
+        (publicKey: Data([0x40 + UInt8(index), 0x1F, 0x7A, 0xC3, UInt8(index)]), name: name)
+    }
+    let manyMachineArming = HostScreenArming(devices: [0, 2, 3, 4, 7].map { index in
+        HostScreenDeviceArming(
+            devicePublicKey: manyMachineDevices[index].publicKey,
+            deviceName: manyMachineNames[index] ?? "",
+            armedAt: Date(),
+            asksWhenSomeoneIsUsingThisMachine: index == 4
+        )
+    })
+    func manyMachineRows(_ count: Int) -> [HostScreenArmingPresentation.PairedMachineRow] {
+        HostScreenArmingPresentation.pairedMachineRows(
+            approvedDevices: Array(manyMachineDevices.prefix(count)),
+            arming: manyMachineArming,
+            activeDisplays: [builtInDisplay]
+        )
+    }
 
     let hostWindowStates: [(
         String, String, HostOperatorStatus, [HostScreenArmingPresentation.PairedMachineRow]
@@ -930,8 +955,7 @@ MainActor.assumeIsolated {
         ),
         (
             "host-window-17-paired-machines-named-and-unnamed",
-            "one paired machine titled by the name it gave, next to one titled Unnamed machine, each with its key on a"
-                + " small line underneath",
+            "one paired machine titled by the name it gave, next to one titled Unnamed machine",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             namedAndUnnamedRows
         ),
@@ -989,6 +1013,18 @@ MainActor.assumeIsolated {
                 + " no display can be shared right now",
             HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
             noShareableDisplayRows
+        ),
+        (
+            "host-window-33-paired-machines-three",
+            "three paired machines in one card, two sharing host screen and one never named",
+            HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
+            manyMachineRows(3)
+        ),
+        (
+            "host-window-34-paired-machines-ten",
+            "ten paired machines in one card, sharing on and off, one name too long for its row",
+            HostOperatorStatus(connection: .hosting(address: "203.0.113.42"), permissions: granted),
+            manyMachineRows(10)
         )
     ]
     for (prefix, description, status, rows) in hostWindowStates {

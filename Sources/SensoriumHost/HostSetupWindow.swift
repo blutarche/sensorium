@@ -34,6 +34,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     private let tailscaleAppURLLookup: @MainActor () -> URL?
     private let onOpenTailscaleApp: @MainActor (URL) -> Void
     private let root = NSStackView()
+    /// Holds `root` at the window's width; `resizeToFit()` sets its height to
+    /// the content's, and `scrollView` shows as much of it as the window has.
+    private let document = FlippedDocumentView()
+    private let scrollView = NSScrollView()
     private let panel = HostOperatorPanelView()
     private let stopButton = NSButton()
     private let permissionButton = NSButton()
@@ -167,7 +171,7 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         pairedMachines.onToggleAskFirst = onToggleAskFirst
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: 420),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -177,6 +181,10 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         window.appearance = nil
         window.backgroundColor = CanvasDesign.chromeBg.nsColor
         window.isReleasedWhenClosed = false
+        // Vertical resizing only: the width is the one every section is laid
+        // out at.
+        window.contentMinSize = NSSize(width: Self.windowWidth, height: Self.minimumContentHeight)
+        window.contentMaxSize = NSSize(width: Self.windowWidth, height: .greatestFiniteMagnitude)
         window.delegate = self
         pairedMachines.onRenamePairedDevice = { [weak self, weak window] key, currentName in
             guard let self, let window else { return }
@@ -248,7 +256,18 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
         root.alignment = .leading
         root.spacing = CanvasDesign.Space.sm
         root.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(root)
+        document.addSubview(root)
+
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = CanvasDesign.chromeBg.nsColor
+        scrollView.documentView = document
+        content.addSubview(scrollView)
 
         panel.translatesAutoresizingMaskIntoConstraints = false
         // The code is drawn at the window's full width, outside the status
@@ -433,10 +452,12 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
 
         let inset = CanvasDesign.Space.xl
         NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: inset),
-            root.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -inset),
-            root.topAnchor.constraint(equalTo: content.topAnchor, constant: inset),
-            root.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -inset),
+            scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: content.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            root.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: inset),
+            root.topAnchor.constraint(equalTo: document.topAnchor, constant: inset),
             root.widthAnchor.constraint(equalToConstant: Self.contentWidth),
             stopButton.heightAnchor.constraint(equalToConstant: 32),
             permissionButton.heightAnchor.constraint(equalToConstant: 32),
@@ -794,14 +815,48 @@ public final class HostSetupWindowController: NSObject, NSWindowDelegate {
     /// and still read as between them.
     private static let minimumRowGap = CanvasDesign.Space.xs
 
-    /// The window has no scroll view: its height is whatever the panel and
-    /// the paired-machines section currently need.
+    /// The shortest the person can drag the window to.
+    private static let minimumContentHeight: CGFloat = 160
+    /// Left free of the window when it is as tall as the screen allows, so its
+    /// edges are not flush with the menu bar and the Dock.
+    private static let screenEdgeMargin = CanvasDesign.Space.lg
+
+    /// Sizes the window to its content, capped at what the screen's visible
+    /// area has room for: past that the content scrolls. The window keeps its
+    /// top edge where it was and is then brought fully inside the screen's
+    /// visible frame.
     private func resizeToFit() {
         guard let content = window.contentView else { return }
         content.layoutSubtreeIfNeeded()
-        let height = ceil(root.fittingSize.height) + CanvasDesign.Space.xl * 2
+        let contentHeight = ceil(root.fittingSize.height) + CanvasDesign.Space.xl * 2
+        document.setFrameSize(NSSize(width: Self.windowWidth, height: contentHeight))
+
+        let visible = (window.screen ?? NSScreen.main)?.visibleFrame
+        var height = contentHeight
+        if let visible {
+            let chrome = window.frameRect(
+                forContentRect: NSRect(x: 0, y: 0, width: Self.windowWidth, height: contentHeight)
+            ).height - contentHeight
+            let room = visible.height - chrome - Self.screenEdgeMargin * 2
+            height = min(contentHeight, max(Self.minimumContentHeight, room))
+        }
+        let top = window.frame.maxY
         window.setContentSize(NSSize(width: Self.windowWidth, height: height))
+        var frame = window.frame
+        frame.origin.y = top - frame.height
+        if let visible {
+            frame.origin.y = max(visible.minY, min(frame.origin.y, visible.maxY - frame.height))
+            frame.origin.x = max(visible.minX, min(frame.origin.x, visible.maxX - frame.width))
+        }
+        window.setFrame(frame, display: true)
+        content.layoutSubtreeIfNeeded()
     }
+}
+
+/// A scroll view's document that lays out from the top, so content shorter
+/// than the window starts at the top edge rather than the bottom.
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// The pairing code at the window's full width, outside the status card.

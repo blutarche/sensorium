@@ -474,9 +474,9 @@ func runPairedMachineRenameTests() async {
     }
 
     do {
-        // Each paired row offers Rename beside Remove; pressing it asks for a
-        // new name for exactly that row's machine, starting from the name it
-        // shows, and the typed name is handed on for that same machine.
+        // Each paired row's menu offers Rename and Remove; choosing Rename asks
+        // for a new name for exactly that row's machine, starting from the
+        // name it shows, and the typed name is handed on for that same machine.
         let rowKey = Data([0xAB])
         var prompted: [String] = []
         var finishPrompt: ((String) -> Void)?
@@ -507,23 +507,17 @@ func runPairedMachineRenameTests() async {
         let pairedMachines: NSView = field("pairedMachines", of: controller, as: NSView.self)
         let rowsStack: NSStackView = field("rowsStack", of: pairedMachines, as: NSStackView.self)
         let row = rowsStack.arrangedSubviews[1]
-        let renameButton: NSButton = field("renameButton", of: row, as: NSButton.self)
-        let removeButton: NSButton = field("removeButton", of: row, as: NSButton.self)
-        expect(renameButton.attributedTitle.string == "Rename", "the row's button reads Rename")
-        expect(renameButton.superview === removeButton.superview, "Rename sits on the same line as Remove")
-        expect(
-            renameButton.layer?.borderColor == removeButton.layer?.borderColor
-                && renameButton.layer?.backgroundColor == removeButton.layer?.backgroundColor,
-            "Rename is drawn the same way as Remove"
-        )
-        renameButton.performClick(nil)
+        let menu: NSMenu = field("actionsMenu", of: row, as: NSMenu.self)
+        expect(menu.items.first?.title == "Rename\u{2026}", "the row's menu starts with Rename")
+        expect(menu.items.last?.title == "Remove", "and ends with Remove")
+        menu.performActionForItem(at: 0)
         expect(prompted == ["Studio Laptop"], "Rename opens the prompt with this row's current name")
         finishPrompt?("Living Room")
         expect(
             renamed.count == 1 && renamed[0].0 == rowKey && renamed[0].1 == "Living Room",
             "the typed name is handed on for this row's machine"
         )
-        print("PASS: each paired row offers Rename beside Remove, for exactly its own machine")
+        print("PASS: each paired row's menu offers Rename and Remove, for exactly its own machine")
     }
 
     do {
@@ -550,8 +544,8 @@ func runPairedMachineRenameTests() async {
         )
         let pairedMachines: NSView = field("pairedMachines", of: controller, as: NSView.self)
         let rowsStack: NSStackView = field("rowsStack", of: pairedMachines, as: NSStackView.self)
-        let renameButton: NSButton = field("renameButton", of: rowsStack.arrangedSubviews[0], as: NSButton.self)
-        renameButton.performClick(nil)
+        let menu: NSMenu = field("actionsMenu", of: rowsStack.arrangedSubviews[0], as: NSMenu.self)
+        menu.performActionForItem(at: 0)
         expect(prompted == [""], "Rename on an unnamed machine opens on an empty field -- got \(prompted)")
         print("PASS: renaming an unnamed machine starts from an empty field, not the placeholder title")
     }

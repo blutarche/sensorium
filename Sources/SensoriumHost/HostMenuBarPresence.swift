@@ -67,6 +67,7 @@ public final class HostMenuBarPresence: NSObject {
         self.quit = quit
         self.activate = activate
         super.init()
+        panel.followsMenuWidth = true
         panel.onOpenSettings = { [weak self] url in self?.openSettings(url) }
     }
 
@@ -160,25 +161,41 @@ public final class HostMenuBarPresence: NSObject {
         }
         if !armingLines.isEmpty {
             menu.addItem(.separator())
+            // One item however many machines are armed: macOS scrolls a long
+            // submenu itself, where a row per machine would grow the menu
+            // without bound. Turning a machine off revokes its Share host
+            // screen permission; the Stop item above ends only the live
+            // session.
+            let sharingItem = NSMenuItem(
+                title: "Sharing Host Screen (\(armingLines.count))",
+                action: nil,
+                keyEquivalent: ""
+            )
+            let submenu = NSMenu()
+            let caption = NSMenuItem(title: "Choose a machine to turn off", action: nil, keyEquivalent: "")
+            caption.isEnabled = false
+            submenu.addItem(caption)
             for line in armingLines {
-                let stateItem = NSMenuItem(
-                    title: "Sharing host screen with \(line.deviceName)",
-                    action: nil,
-                    keyEquivalent: ""
-                )
-                stateItem.isEnabled = false
-                menu.addItem(stateItem)
-                // Revokes the Share host screen permission; the Stop item
-                // above ends only the live session.
-                let turnOffItem = NSMenuItem(
-                    title: "Turn Off Share Host Screen for \(line.deviceName)",
+                let machineItem = NSMenuItem(
+                    title: line.deviceName,
                     action: #selector(turnOffSharing(_:)),
                     keyEquivalent: ""
                 )
-                turnOffItem.target = self
-                turnOffItem.representedObject = line.devicePublicKey
-                menu.addItem(turnOffItem)
+                machineItem.target = self
+                machineItem.state = .on
+                machineItem.representedObject = line.devicePublicKey
+                submenu.addItem(machineItem)
             }
+            submenu.addItem(.separator())
+            let turnOffAllItem = NSMenuItem(
+                title: "Turn Off for All Machines",
+                action: #selector(turnOffSharingForAll),
+                keyEquivalent: ""
+            )
+            turnOffAllItem.target = self
+            submenu.addItem(turnOffAllItem)
+            sharingItem.submenu = submenu
+            menu.addItem(sharingItem)
         }
         // An alert the panel already carries a button for is not listed again.
         let listedAlerts = presentation.alerts.filter { !panel.showsButton(for: $0) }
@@ -274,47 +291,79 @@ public final class HostMenuBarPresence: NSObject {
         onTurnOffSharing?(key)
     }
 
-    /// A template image, as the menu bar requires: macOS recolours it for a
-    /// light or dark bar and for the highlighted state, which a fixed palette
-    /// colour cannot follow. The shape, not the colour, is what distinguishes
-    /// the four states.
+    @objc
+    private func turnOffSharingForAll() {
+        for line in armingLines {
+            onTurnOffSharing?(line.devicePublicKey)
+        }
+    }
+
+    /// The Sensorium mark as a template image, as the menu bar requires: macOS
+    /// recolours it for a light or dark bar and for the highlighted state,
+    /// which a fixed palette colour cannot follow. Two screens, the near one
+    /// down and to the right of the far one, with a clear moat between them.
+    /// The near screen carries the state, so the shape, not the colour, is
+    /// what distinguishes the five states.
     private static func icon(for indicator: HostOperatorIndicator) -> NSImage {
         let image = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { _ in
-            let canvas = NSBezierPath(
-                roundedRect: NSRect(x: 1.5, y: 3.5, width: 13, height: 9),
-                xRadius: CanvasDesign.Radius.tight,
-                yRadius: CanvasDesign.Radius.tight
-            )
-            canvas.lineWidth = 1
-            NSColor.black.setStroke()
+            let radius: CGFloat = 1.5
+            // 16:10 like the logo's screens, the near one down and to the right.
+            let far = NSRect(x: 0.75, y: 6.5, width: 10.5, height: 6.5)
+            let near = far.offsetBy(dx: 4, dy: -3.5)
+            let moat: CGFloat = 1.5
             NSColor.black.setFill()
+            NSColor.black.setStroke()
+            NSBezierPath(roundedRect: far, xRadius: radius, yRadius: radius).fill()
+            let context = NSGraphicsContext.current
+            context?.compositingOperation = .clear
+            NSBezierPath(
+                roundedRect: near.insetBy(dx: -moat, dy: -moat),
+                xRadius: radius + moat,
+                yRadius: radius + moat
+            ).fill()
+            context?.compositingOperation = .sourceOver
+            let screen = NSBezierPath(roundedRect: near, xRadius: radius, yRadius: radius)
             switch indicator {
             case .idle:
-                canvas.stroke()
+                Self.strokeInside(near, radius: radius)
             case .waiting:
-                canvas.stroke()
-                for offset in stride(from: 0, through: 8, by: 4) {
-                    NSBezierPath(rect: NSRect(x: 4 + CGFloat(offset), y: 7, width: 2, height: 2)).fill()
+                Self.strokeInside(near, radius: radius)
+                for offset in stride(from: 0, through: 4.5, by: 2.25) {
+                    NSBezierPath(rect: NSRect(x: 7 + offset, y: 5.5, width: 1.5, height: 1.5)).fill()
                 }
             case .serving:
-                canvas.fill()
+                screen.fill()
             case .servingHostScreen:
-                // Filled like `.serving` plus a centre ring: distinct
+                // Filled like `.serving` plus a hollow centre: distinct
                 // enough to read at menu-bar size. The title text itself
                 // is `HostOperatorPresentation.menuBarTitle`, drawn by the
                 // status item that owns this image, not here.
-                canvas.fill()
-                NSColor.white.setFill()
-                NSBezierPath(ovalIn: NSRect(x: 6.5, y: 6.5, width: 3, height: 3)).fill()
+                screen.fill()
+                context?.compositingOperation = .clear
+                NSBezierPath(ovalIn: NSRect(x: 8.5, y: 4.75, width: 3, height: 3)).fill()
+                context?.compositingOperation = .sourceOver
             case .attention:
-                canvas.stroke()
-                NSBezierPath(rect: NSRect(x: 7.5, y: 8, width: 1, height: 3)).fill()
-                NSBezierPath(rect: NSRect(x: 7.5, y: 5.5, width: 1, height: 1)).fill()
+                Self.strokeInside(near, radius: radius)
+                NSBezierPath(rect: NSRect(x: 9.5, y: 5.9, width: 1, height: 2)).fill()
+                NSBezierPath(rect: NSRect(x: 9.5, y: 4.6, width: 1, height: 1)).fill()
             }
             return true
         }
         image.isTemplate = true
         return image
+    }
+
+    /// An outline whose outer edge sits on `rect`, so outlined and filled
+    /// screens share one silhouette.
+    private static func strokeInside(_ rect: NSRect, radius: CGFloat) {
+        let width: CGFloat = 1.25
+        let path = NSBezierPath(
+            roundedRect: rect.insetBy(dx: width / 2, dy: width / 2),
+            xRadius: radius,
+            yRadius: radius
+        )
+        path.lineWidth = width
+        path.stroke()
     }
 }
 
@@ -341,6 +390,23 @@ final class HostOperatorPanelView: NSView {
             }
         }
     }
+    /// `true` when a menu hosts the card: the menu is as wide as its widest
+    /// row and resizes the card to match, and the card lays its text out
+    /// across that width instead of leaving the menu's own background showing
+    /// past a 288-point card. The Host Setup window sets `layoutWidth` itself.
+    var followsMenuWidth = false {
+        didSet {
+            autoresizingMask = followsMenuWidth ? [.width] : []
+        }
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        if followsMenuWidth, newSize.width != layoutWidth {
+            layoutWidth = newSize.width
+        }
+    }
+
     /// The code box's own internal padding -- top, around the digits, and
     /// bottom, around the countdown -- the same `Space.md` `PairingCodeView`
     /// (the Host Setup window's own code box) uses for the same purpose.

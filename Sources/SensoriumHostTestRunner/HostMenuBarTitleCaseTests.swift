@@ -20,11 +20,10 @@ func runHostMenuBarTitleCaseTests() async {
     }
 
     do {
-        // A device sharing its host screen: the status line stays
-        // sentence case, but turning it off is an action and reads
-        // in Title Case -- and names what it actually does: revoke
-        // the permission, not end the live session, which the plain
-        // Stop item already does.
+        // A device sharing its host screen: the submenu's caption stays
+        // sentence case, but turning sharing off is an action and reads
+        // in Title Case -- and revokes the permission, not the live
+        // session, which the plain Stop item already ends.
         let notGranted = HostPermissionRequestResult(screenCapture: .granted, accessibility: .granted)
         let presence = HostMenuBarPresence(
             status: HostOperatorStatus(
@@ -46,18 +45,26 @@ func runHostMenuBarTitleCaseTests() async {
         guard let menu = statusItem(in: presence).menu else {
             fatalError("the status item's menu was never installed")
         }
+        guard let sharing = menu.items.first(where: { $0.title == "Sharing Host Screen (1)" }),
+              let submenu = sharing.submenu
+        else {
+            fatalError("no Sharing Host Screen (1) item with a submenu in \(menu.items.map { $0.title })")
+        }
         expect(
-            menu.items.contains { $0.title == "Sharing host screen with Kestrel Laptop Pro" },
-            "the status line for an armed device stays sentence case -- it names no action of its own"
+            submenu.items.contains { $0.title == "Choose a machine to turn off" && !$0.isEnabled },
+            "the submenu's caption names no action of its own, so it stays sentence case"
         )
         expect(
-            menu.items.contains { $0.title == "Turn Off Share Host Screen for Kestrel Laptop Pro" },
-            "turning off sharing is an action, in Title Case, and names what it actually does: "
-                + "revoking the permission, which armingStore.disarm confirms -- got titles "
-                + "\(menu.items.map { $0.title })"
+            submenu.items.contains { $0.title == "Kestrel Laptop Pro" && $0.action != nil },
+            "the armed machine's own item revokes its permission, which armingStore.disarm confirms -- got titles "
+                + "\(submenu.items.map { $0.title })"
+        )
+        expect(
+            submenu.items.contains { $0.title == "Turn Off for All Machines" },
+            "turning off every machine is an action, in Title Case -- got titles \(submenu.items.map { $0.title })"
         )
 
-        print("PASS: an armed device's status line stays sentence case, and turning off its sharing reads in Title Case naming what it does")
+        print("PASS: the sharing submenu's caption stays sentence case, and its turn-off action reads in Title Case")
     }
 
     do {

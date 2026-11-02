@@ -2,8 +2,8 @@ import AppKit
 import Foundation
 import SensoriumHost
 
-/// How the paired machines section lays out: each row's name against its
-/// buttons, the ink of its labels, and the gaps between the section's parts.
+/// How the paired machines section lays out: each row's text against its
+/// controls, and the gaps between the section's parts.
 /// Reads each private view with `Mirror`, the route
 /// `PairedMachinesCardInsetTests` already uses.
 @MainActor
@@ -50,55 +50,53 @@ func runHostPairedMachineRowLayoutTests() async {
     }
 
     do {
-        // The name's middle is the buttons' middle.
+        // The name and the line under it are centred on the switch and the
+        // more button, all on the row's own middle.
         let host = controller(rows: [row("Kestrel Laptop")])
+        field("window", of: host, as: NSWindow.self).contentView?.layoutSubtreeIfNeeded()
         let rowView = firstRow(of: host)
-        let name: NSTextField = field("nameLabel", of: rowView, as: NSTextField.self)
-        let rename: NSButton = field("renameButton", of: rowView, as: NSButton.self)
-        let remove: NSButton = field("removeButton", of: rowView, as: NSButton.self)
+        let text: NSView = field("stack", of: rowView, as: NSStackView.self)
+        let toggle: NSControl = field("toggle", of: rowView, as: NSControl.self)
+        let more: NSButton = field("moreButton", of: rowView, as: NSButton.self)
         expect(
-            abs(name.frame.midY - rename.frame.midY) < 0.5 && abs(rename.frame.midY - remove.frame.midY) < 0.5,
-            "the machine name is centred on Rename and Remove -- name \(name.frame), Rename \(rename.frame), "
-                + "Remove \(remove.frame)"
+            abs(text.frame.midY - toggle.frame.midY) < 0.5 && abs(toggle.frame.midY - more.frame.midY) < 0.5,
+            "the machine's text is centred on its switch and more button -- text \(text.frame), switch \(toggle.frame), "
+                + "more \(more.frame)"
         )
-        print("PASS: a paired machine's name is centred on its Rename and Remove buttons")
+        print("PASS: a paired machine's text is centred on its switch and more button")
     }
 
     do {
         // Inset like every sibling card, a row still holds its widest content
-        // inside the card: a long name wraps beside Rename and Remove rather
-        // than running under them, and the ask-first checkbox and the key
-        // line stay inside the card's trailing inset.
+        // inside the card: a long name truncates on one line before the
+        // switch rather than running under it, and the more button stays
+        // inside the card's trailing edge.
         let longName = "Kestrel Laptop Pro Max Studio Edition North Annex Workstation"
         let host = controller(rows: [row(longName, sharing: true)])
         field("window", of: host, as: NSWindow.self).contentView?.layoutSubtreeIfNeeded()
         let rowView = firstRow(of: host)
         let name: NSTextField = field("nameLabel", of: rowView, as: NSTextField.self)
-        let rename: NSButton = field("renameButton", of: rowView, as: NSButton.self)
-        let remove: NSButton = field("removeButton", of: rowView, as: NSButton.self)
-        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
-        let meta: NSTextField = field("metaLabel", of: rowView, as: NSTextField.self)
-        let trailingLimit = rowView.bounds.width - CanvasDesign.Space.md + 0.5
-        func rightEdge(of view: NSView) -> CGFloat {
-            rowView.convert(view.bounds, from: view).maxX
+        let toggle: NSControl = field("toggle", of: rowView, as: NSControl.self)
+        let more: NSButton = field("moreButton", of: rowView, as: NSButton.self)
+        func frame(of view: NSView) -> NSRect {
+            rowView.convert(view.bounds, from: view)
         }
         expect(
-            name.frame.maxX <= rename.frame.minX && name.frame.height > (name.font?.boundingRectForFont.height ?? 0) * 1.5,
-            "a long name wraps before it reaches Rename -- name \(name.frame), Rename \(rename.frame)"
+            frame(of: name).maxX <= frame(of: toggle).minX
+                && name.frame.height < (name.font?.boundingRectForFont.height ?? 0) * 1.5,
+            "a long name stays on one line before it reaches the switch -- name \(frame(of: name)), switch \(frame(of: toggle))"
         )
         expect(
-            rightEdge(of: remove) <= trailingLimit && rightEdge(of: askFirst) <= trailingLimit
-                && rightEdge(of: meta) <= trailingLimit,
-            "the row's widest content stays inside the card's 16pt trailing inset in a \(rowView.bounds.width)pt-wide row"
-                + " -- Remove \(rightEdge(of: remove)), checkbox \(rightEdge(of: askFirst)), key line \(rightEdge(of: meta))"
+            frame(of: more).maxX <= rowView.bounds.width - CanvasDesign.Space.xs + 0.5,
+            "the more button stays inside the card's trailing inset in a \(rowView.bounds.width)pt-wide row"
+                + " -- more \(frame(of: more))"
         )
         print("PASS: a paired machine's long name and controls stay inside the card's inset")
     }
 
     do {
         // The line under a sharing machine says what its display list is
-        // ("May share"), and keeps each display name on one line whatever
-        // the width: a break may fall between names, never inside one.
+        // ("May share"), and the key fingerprint sits in the row's menu.
         let key = Data([0xEE, 0x47, 0x92, 0xC1])
         let mainDisplay = DisplaySnapshot(
             id: 1, pixelWidth: 1920, pixelHeight: 1080, modeWidth: 1920, modeHeight: 1080,
@@ -123,98 +121,23 @@ func runHostPairedMachineRowLayoutTests() async {
             activeDisplays: [mainDisplay, leftDisplay, rightDisplay]
         )
         let rowView = firstRow(of: controller(rows: rows))
-        let meta: NSTextField = field("metaLabel", of: rowView, as: NSTextField.self)
-        let shown = meta.stringValue
-        let labels = ["Built-in Display", "External Display (left)", "External Display (right)"]
-        let plainText = shown
-            .replacingOccurrences(of: HostTextFlow.noBreakSpace, with: " ")
-            .replacingOccurrences(of: HostTextFlow.nonBreakingHyphen, with: "-")
+        let subtitle: NSTextField = field("subtitleLabel", of: rowView, as: NSTextField.self)
+        let menu: NSMenu = field("actionsMenu", of: rowView, as: NSMenu.self)
         expect(
-            plainText == "Key EE4792C1 \u{00B7} May share Built-in Display, External Display (left), and External Display (right)",
-            "the line reads the key, then May share and the displays, without the closing full stop -- got \(plainText)"
+            subtitle.stringValue == "May share Built-in Display, External Display (left), and External Display (right)",
+            "the line reads May share and the displays, without the closing full stop -- got \(subtitle.stringValue)"
         )
         expect(
-            labels.allSatisfy { shown.contains(HostTextFlow.whole($0)) },
-            "every display name is held whole, so no line break can fall inside one -- got \(shown.debugDescription)"
+            menu.items.contains { $0.title == "Key EE4792C1" },
+            "the key moves to the row's menu -- got \(menu.items.map(\.title))"
         )
-        print("PASS: a paired machine's display line keeps May share and never splits a display name")
+        print("PASS: a paired machine's display line keeps May share, and its key is in the row's menu")
     }
 
     do {
-        // The label of a switch that is on reads as live, in the same ink as
-        // the checkbox under it.
-        let host = controller(rows: [row("Kestrel Laptop", sharing: true)])
-        let rowView = firstRow(of: host)
-        let label: NSTextField = field("toggleLabel", of: rowView, as: NSTextField.self)
-        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
-        var range = NSRange()
-        let askFirstInk = askFirst.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: &range) as? NSColor
-        expect(
-            label.textColor == CanvasDesign.ink.nsColor && askFirstInk == CanvasDesign.ink.nsColor,
-            "Share host screen and Ask me first read in the same ink -- label \(String(describing: label.textColor)), "
-                + "checkbox \(String(describing: askFirstInk))"
-        )
-        print("PASS: Share host screen reads in the same ink as the ask-first checkbox")
-    }
-
-    do {
-        // The ask-first checkbox belongs to Share host screen, so its box
-        // starts where that label's text does, not at the card's own inset.
-        // Measured on the drawn row: the first column of ink in each, since a
-        // frame says nothing about the padding a control draws inside it.
-        let host = controller(rows: [row("Kestrel Laptop", sharing: true)])
-        field("window", of: host, as: NSWindow.self).contentView?.layoutSubtreeIfNeeded()
-        let rowView = firstRow(of: host)
-        let label: NSTextField = field("toggleLabel", of: rowView, as: NSTextField.self)
-        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
-        guard let rep = rowView.bitmapImageRepForCachingDisplay(in: rowView.bounds) else {
-            expect(false, "AppKit gave no bitmap to measure the row in")
-            return
-        }
-        rowView.cacheDisplay(in: rowView.bounds, to: rep)
-        let pixelsPerPoint = CGFloat(rep.pixelsWide) / rowView.bounds.width
-        let background = rep.colorAt(x: 1, y: 1)?.usingColorSpace(.deviceRGB)
-
-        /// The left edge, in points from the row's own left edge, of the first
-        /// column inside `frame` that is not the card's fill.
-        func firstInk(in frame: NSRect) -> CGFloat? {
-            guard let background else { return nil }
-            let top = Int(((rowView.bounds.height - frame.maxY) * pixelsPerPoint).rounded(.down))
-            let bottom = Int(((rowView.bounds.height - frame.minY) * pixelsPerPoint).rounded(.up))
-            let first = Int((frame.minX * pixelsPerPoint).rounded(.down))
-            let last = min(rep.pixelsWide - 1, Int((frame.maxX * pixelsPerPoint).rounded(.up)))
-            for x in first...last {
-                for y in max(0, top)..<min(rep.pixelsHigh, bottom) {
-                    guard let color = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
-                    let difference = abs(color.redComponent - background.redComponent)
-                        + abs(color.greenComponent - background.greenComponent)
-                        + abs(color.blueComponent - background.blueComponent)
-                    if difference > 0.3 {
-                        return CGFloat(x) / pixelsPerPoint
-                    }
-                }
-            }
-            return nil
-        }
-
-        let labelFrame = rowView.convert(label.bounds, from: label)
-        let checkboxFrame = rowView.convert(askFirst.bounds, from: askFirst)
-        if let labelInk = firstInk(in: labelFrame), let boxInk = firstInk(in: checkboxFrame) {
-            expect(
-                abs(labelInk - boxInk) <= 1,
-                "the checkbox's box starts where the Share host screen text does -- text at \(labelInk), box at \(boxInk), "
-                    + "label frame \(labelFrame), checkbox frame \(checkboxFrame)"
-            )
-        } else {
-            expect(false, "no ink found to measure -- label frame \(labelFrame), checkbox frame \(checkboxFrame)")
-        }
-        print("PASS: the ask-first checkbox sits under the Share host screen text")
-    }
-
-    do {
-        // Indented under the label, the checkbox's title still wraps inside the
-        // card when the card is too narrow for it on one line.
-        let host = controller(rows: [row("Kestrel Laptop", sharing: true)])
+        // In a narrower window the row keeps its height: the name truncates
+        // further and the controls stay inside the card.
+        let host = controller(rows: [row("Kestrel Laptop Pro Max Studio Edition", sharing: true)])
         let root: NSStackView = field("root", of: host, as: NSStackView.self)
         let window: NSWindow = field("window", of: host, as: NSWindow.self)
         guard let widthConstraint = root.constraints.first(where: {
@@ -223,19 +146,22 @@ func runHostPairedMachineRowLayoutTests() async {
             expect(false, "the window's content has no fixed width to narrow")
             return
         }
-        window.contentView?.layoutSubtreeIfNeeded()
-        let rowView = firstRow(of: host)
-        let askFirst: NSButton = field("askFirstCheckbox", of: rowView, as: NSButton.self)
-        let oneLine = askFirst.frame.height
         widthConstraint.constant = 240
         window.contentView?.layoutSubtreeIfNeeded()
-        let frame = rowView.convert(askFirst.bounds, from: askFirst)
+        let rowView = firstRow(of: host)
+        let name: NSTextField = field("nameLabel", of: rowView, as: NSTextField.self)
+        let toggle: NSControl = field("toggle", of: rowView, as: NSControl.self)
+        let more: NSButton = field("moreButton", of: rowView, as: NSButton.self)
+        func frame(of view: NSView) -> NSRect {
+            rowView.convert(view.bounds, from: view)
+        }
         expect(
-            frame.maxX <= rowView.bounds.width - CanvasDesign.Space.md + 0.5 && frame.height > oneLine * 1.5,
-            "in a card \(rowView.bounds.width)pt wide the checkbox wraps to a second line inside the card's trailing inset"
-                + " -- frame \(frame), one line is \(oneLine)pt"
+            rowView.bounds.height <= 52 && frame(of: name).maxX <= frame(of: toggle).minX
+                && frame(of: more).maxX <= rowView.bounds.width + 0.5,
+            "in a card \(rowView.bounds.width)pt wide the row stays \(rowView.bounds.height)pt tall, the name ends before"
+                + " the switch and the more button stays inside -- name \(frame(of: name)), more \(frame(of: more))"
         )
-        print("PASS: the ask-first checkbox wraps inside a narrow card")
+        print("PASS: a narrow card keeps the row short and its controls inside")
     }
 
     do {

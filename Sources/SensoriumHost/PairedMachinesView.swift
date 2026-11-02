@@ -32,8 +32,9 @@ package enum PairedMachinesEmptyState {
     }
 }
 
-/// One row per machine that has ever paired, each with its own Rename,
-/// Remove and Share host screen controls. Visible in every state the surrounding
+/// One short row per machine that has ever paired, all in one card: its
+/// name, its Share host screen switch, and a menu holding its rarer actions.
+/// Visible in every state the surrounding
 /// `HostSetupWindowController` can be in, not only while a session is live
 /// -- someone who paired a machine months ago must see it without hunting.
 @MainActor
@@ -50,6 +51,7 @@ final class PairedMachinesView: NSView {
     private let lastSessionLabel = PairedMachinesView.label("", color: CanvasDesign.muted)
     private let lastSessionStack = NSStackView()
     private let stack = NSStackView()
+    /// The one card every machine's row sits in, edge to edge.
     private let rowsStack = NSStackView()
     private var rowViews: [PairedMachineRowView] = []
     private var emptyState = PairedMachinesEmptyState.canShowCode
@@ -81,10 +83,11 @@ final class PairedMachinesView: NSView {
 
         rowsStack.orientation = .vertical
         rowsStack.alignment = .leading
-        rowsStack.spacing = CanvasDesign.Space.sm
+        rowsStack.spacing = 0
         rowsStack.translatesAutoresizingMaskIntoConstraints = false
+        rowsStack.applyDesignSurface(fill: CanvasDesign.bg2, radius: CanvasDesign.Radius.base)
 
-        // Same card treatment as a paired machine's own row.
+        // Same card treatment as the paired machines' own card.
         lastSessionCard.applyDesignSurface(fill: CanvasDesign.bg2, radius: CanvasDesign.Radius.base)
         lastSessionCard.translatesAutoresizingMaskIntoConstraints = false
 
@@ -138,8 +141,8 @@ final class PairedMachinesView: NSView {
             rowsStack.removeArrangedSubview(row)
             row.removeFromSuperview()
         }
-        rowViews = rows.map { row in
-            let rowView = PairedMachineRowView(row: row)
+        rowViews = rows.enumerated().map { index, row in
+            let rowView = PairedMachineRowView(row: row, isFirst: index == 0)
             rowView.onToggle = { [weak self] isOn in self?.onToggleSharing?(row.devicePublicKey, isOn) }
             rowView.onRemove = { [weak self] in self?.onRemovePairedDevice?(row.devicePublicKey) }
             // The placeholder title is not a name to start from.
@@ -270,6 +273,16 @@ final class HostScreenSharingToggleControl: NSControl {
         fatalError("init(coder:) is not used")
     }
 
+    override func isAccessibilityElement() -> Bool { true }
+    override func accessibilityRole() -> NSAccessibility.Role? { .checkBox }
+    override func accessibilityValue() -> Any? { isOn ? 1 : 0 }
+    override func accessibilityPerformPress() -> Bool {
+        guard isEnabled else { return false }
+        isOn.toggle()
+        sendAction(action, to: target)
+        return true
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
         isOn.toggle()
@@ -284,143 +297,84 @@ final class HostScreenSharingToggleControl: NSControl {
     }
 }
 
-/// One machine's own row, four lines at most: its name beside Rename and Remove, the
-/// Share host screen toggle, the ask-first checkbox while it is sharing, and
-/// one wrapping line combining its key fingerprint, which display it may
-/// share, and why sharing is or is not available -- everything this row
-/// used to spread across as many separate paragraphs, said once.
+/// One machine's own row, one short line in the shared card: its name over
+/// a muted line saying what it may share, then its Share host screen switch
+/// and a "more" button. The button's menu holds the actions a person needs
+/// rarely: Rename, ask first, the key fingerprint, and Remove. The row's
+/// height is fixed, so ten machines take ten short lines whatever their
+/// names: text that does not fit truncates rather than wrapping.
 @MainActor
 private final class PairedMachineRowView: NSView {
-    private let nameLabel = PairedMachinesView.label()
-    private let toggle: HostScreenSharingToggleControl
-    private let toggleLabel = PairedMachinesView.label("Share host screen")
-    /// Visible only while this row is sharing -- the setting only means
-    /// anything for a machine whose session could prompt at all.
-    private let askFirstCheckbox = NSButton(
-        checkboxWithTitle: HostScreenArmingPresentation.asksWhenInUseLabel, target: nil, action: nil
-    )
-    /// Holds the checkbox, indented under the switch's label.
-    private let askFirstRow = NSStackView()
-    private let metaLabel = PairedMachinesView.label("", color: CanvasDesign.muted)
-    private let renameButton = NSButton()
-    private let removeButton = NSButton()
+    static let height: CGFloat = 48
+    private static let sharingOffLine = "Host screen sharing off"
+
+    /// The hairline above every row but the first, starting at the text's
+    /// inset, as in a settings list.
+    private let separator = NSView()
+    private let nameLabel = PairedMachineRowView.singleLineLabel(size: 13, color: CanvasDesign.ink)
+    private let subtitleLabel = PairedMachineRowView.singleLineLabel(size: 12, color: CanvasDesign.muted)
+    /// The name over the subtitle.
     private let stack = NSStackView()
+    private let toggle: HostScreenSharingToggleControl
+    private let moreButton = PairedMachineMoreButton()
+    private let actionsMenu = NSMenu()
+    private let asksWhenInUse: Bool
 
     var onToggle: ((Bool) -> Void)?
     var onRemove: (() -> Void)?
     var onRename: (() -> Void)?
     var onToggleAskFirst: ((Bool) -> Void)?
 
-    init(row: HostScreenArmingPresentation.PairedMachineRow) {
+    init(row: HostScreenArmingPresentation.PairedMachineRow, isFirst: Bool) {
         toggle = HostScreenSharingToggleControl(isOn: row.isSharingRealScreen)
+        asksWhenInUse = row.asksWhenInUse
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
-        wantsLayer = true
-        layer?.setAppearanceColor(CanvasDesign.bg2.nsColor, for: "backgroundColor")
-        layer?.cornerRadius = CanvasDesign.Radius.base
+
+        separator.applyDesignSurface(fill: CanvasDesign.line2, radius: CanvasDesign.Radius.none)
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.isHidden = isFirst
 
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = CanvasDesign.Space.xs
+        stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
+        for label in [nameLabel, subtitleLabel] {
+            stack.addArrangedSubview(label)
+            label.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
+        }
 
         toggle.target = self
+        toggle.setAccessibilityLabel("Share host screen with \(row.deviceName)")
         toggle.action = #selector(toggled)
-        let toggleRow = NSStackView(views: [toggle, toggleLabel])
-        toggleRow.orientation = .horizontal
-        toggleRow.alignment = .centerY
-        toggleRow.spacing = CanvasDesign.Space.sm
+        moreButton.target = self
+        moreButton.action = #selector(moreTapped)
+        moreButton.setAccessibilityLabel("More actions for \(row.deviceName)")
 
-        Self.styleRowButton(removeButton, title: "Remove", color: CanvasDesign.bad)
-        removeButton.target = self
-        removeButton.action = #selector(removeTapped)
-        Self.styleRowButton(renameButton, title: "Rename", color: CanvasDesign.ink)
-        renameButton.target = self
-        renameButton.action = #selector(renameTapped)
-
-        // The name, Rename and Remove share one line -- Remove pinned to the
-        // row's trailing edge with Rename just before it, the name taking
-        // whatever is left and wrapping before it ever runs under a button.
-        // The name is centred on the buttons; the row is as tall as the
-        // taller of the two, held to it by the weaker equalities below.
-        let nameRow = NSView()
-        nameRow.translatesAutoresizingMaskIntoConstraints = false
-        nameLabel.translatesAutoresizingMaskIntoConstraints = false
-        nameRow.addSubview(nameLabel)
-        nameRow.addSubview(renameButton)
-        nameRow.addSubview(removeButton)
-        NSLayoutConstraint.activate([
-            nameLabel.leadingAnchor.constraint(equalTo: nameRow.leadingAnchor),
-            nameLabel.centerYAnchor.constraint(equalTo: renameButton.centerYAnchor),
-            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: renameButton.leadingAnchor, constant: -CanvasDesign.Space.sm),
-            renameButton.trailingAnchor.constraint(equalTo: removeButton.leadingAnchor, constant: -CanvasDesign.Space.xs),
-            renameButton.centerYAnchor.constraint(equalTo: removeButton.centerYAnchor),
-            removeButton.trailingAnchor.constraint(equalTo: nameRow.trailingAnchor),
-            nameRow.topAnchor.constraint(lessThanOrEqualTo: nameLabel.topAnchor),
-            nameRow.topAnchor.constraint(lessThanOrEqualTo: removeButton.topAnchor),
-            nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: nameLabel.bottomAnchor),
-            nameRow.bottomAnchor.constraint(greaterThanOrEqualTo: removeButton.bottomAnchor)
-        ])
-        for anchor in [
-            nameRow.topAnchor.constraint(equalTo: nameLabel.topAnchor),
-            nameRow.topAnchor.constraint(equalTo: removeButton.topAnchor),
-            nameRow.bottomAnchor.constraint(equalTo: nameLabel.bottomAnchor),
-            nameRow.bottomAnchor.constraint(equalTo: removeButton.bottomAnchor)
-        ] {
-            anchor.priority = .defaultLow
-            anchor.isActive = true
+        for view: NSView in [separator, stack, toggle, moreButton] {
+            addSubview(view)
         }
-
-        askFirstCheckbox.font = CanvasDesign.font(.primary, size: 12)
-        (askFirstCheckbox.cell as? NSButtonCell)?.attributedTitle = NSAttributedString(
-            string: HostScreenArmingPresentation.asksWhenInUseLabel,
-            attributes: [
-                .font: CanvasDesign.font(.primary, size: 12),
-                .foregroundColor: CanvasDesign.ink.nsColor
-            ]
-        )
-        askFirstCheckbox.target = self
-        askFirstCheckbox.action = #selector(askFirstToggled)
-
-        // The checkbox is a setting of the switch above it, so its box starts
-        // where that switch's label does: past the switch and the gap.
-        askFirstRow.orientation = .horizontal
-        askFirstRow.alignment = .top
-        askFirstRow.edgeInsets = NSEdgeInsets(
-            top: 0,
-            left: HostScreenSharingToggleControl.size.width + CanvasDesign.Space.sm,
-            bottom: 0,
-            right: 0
-        )
-        askFirstRow.addArrangedSubview(askFirstCheckbox)
-
-        for view: NSView in [nameRow, toggleRow, askFirstRow, metaLabel] {
-            stack.addArrangedSubview(view)
-            view.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor).isActive = true
-        }
-        // The name/Remove line alone reaches the true trailing edge --
-        // every other line merely wraps under whatever width it needs.
-        nameRow.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-
         let inset = CanvasDesign.Space.md
         NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: Self.height),
+            separator.topAnchor.constraint(equalTo: topAnchor),
+            separator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            separator.trailingAnchor.constraint(equalTo: trailingAnchor),
+            separator.heightAnchor.constraint(equalToConstant: 1),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
-            stack.topAnchor.constraint(equalTo: topAnchor, constant: inset),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -inset)
+            stack.centerYAnchor.constraint(equalTo: centerYAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: toggle.leadingAnchor, constant: -CanvasDesign.Space.sm),
+            toggle.centerYAnchor.constraint(equalTo: centerYAnchor),
+            toggle.trailingAnchor.constraint(equalTo: moreButton.leadingAnchor, constant: -CanvasDesign.Space.xs),
+            moreButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            moreButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -CanvasDesign.Space.xs)
         ])
 
         nameLabel.stringValue = row.deviceName
-        toggle.isEnabled = true
-        toggle.alphaValue = 1
-        toggleLabel.alphaValue = 1
-        askFirstCheckbox.state = row.asksWhenInUse ? .on : .off
-        askFirstCheckbox.isHidden = !row.isSharingRealScreen
-        askFirstRow.isHidden = askFirstCheckbox.isHidden
-        let meta = Self.metaLine(for: row)
-        metaLabel.stringValue = meta ?? ""
-        metaLabel.isHidden = meta == nil
+        let subtitle = Self.subtitle(for: row)
+        subtitleLabel.stringValue = subtitle ?? ""
+        subtitleLabel.isHidden = subtitle == nil
+        buildActionsMenu(for: row)
     }
 
     @available(*, unavailable)
@@ -428,38 +382,79 @@ private final class PairedMachineRowView: NSView {
         fatalError("init(coder:) is not used")
     }
 
-    /// The key fingerprint and which display may be shared (or why not),
-    /// joined into the one secondary line this row has room for -- each
-    /// piece already reads as a plain sentence fragment on its own, so
-    /// " \u{00B7} " between them is the only punctuation this needs. A
-    /// display name stays whole wherever the line wraps.
-    private static func metaLine(for row: HostScreenArmingPresentation.PairedMachineRow) -> String? {
-        var parts: [String] = []
+    /// Rename, ask first, the key line when there is one, then Remove apart
+    /// from the rest. Ask first only means anything for a machine allowed to
+    /// share, so it is offered only then.
+    private func buildActionsMenu(for row: HostScreenArmingPresentation.PairedMachineRow) {
+        actionsMenu.autoenablesItems = false
+        let rename = NSMenuItem(title: "Rename\u{2026}", action: #selector(renameTapped), keyEquivalent: "")
+        rename.target = self
+        actionsMenu.addItem(rename)
+
+        let askFirst = NSMenuItem(
+            title: HostScreenArmingPresentation.asksWhenInUseLabel, action: #selector(askFirstToggled), keyEquivalent: ""
+        )
+        askFirst.target = self
+        askFirst.state = row.asksWhenInUse ? .on : .off
+        askFirst.isEnabled = row.isSharingRealScreen
+        actionsMenu.addItem(askFirst)
+
         if let keyFingerprintLine = row.keyFingerprintLine {
-            parts.append(keyFingerprintLine)
+            let key = NSMenuItem(title: keyFingerprintLine, action: nil, keyEquivalent: "")
+            key.isEnabled = false
+            actionsMenu.addItem(key)
         }
-        if let sharedDisplaysLine = row.sharedDisplaysLine {
-            parts.append(withoutClosingFullStop(sharedDisplaysLine))
-        } else if let notOfferedReason = row.notOfferedReason {
-            parts.append(notOfferedReason)
-        }
-        guard !parts.isEmpty else { return nil }
-        return HostTextFlow.flow(parts.joined(separator: " \u{00B7} "), names: row.sharedDisplayLabels)
+
+        actionsMenu.addItem(.separator())
+        let remove = NSMenuItem(title: "Remove", action: #selector(removeTapped), keyEquivalent: "")
+        remove.target = self
+        remove.attributedTitle = NSAttributedString(
+            string: remove.title,
+            attributes: [.font: NSFont.menuFont(ofSize: 0), .foregroundColor: CanvasDesign.bad.nsColor]
+        )
+        actionsMenu.addItem(remove)
     }
 
-    /// `sharedDisplaysLine` without its trailing period, so "May share
-    /// Built-in Display" sits as one segment beside this row's other
-    /// segments rather than reading as its own sentence.
+    /// What this machine may share, or why it shares nothing.
+    private static func subtitle(for row: HostScreenArmingPresentation.PairedMachineRow) -> String? {
+        guard row.isSharingRealScreen else { return sharingOffLine }
+        if let sharedDisplaysLine = row.sharedDisplaysLine {
+            return withoutClosingFullStop(sharedDisplaysLine)
+        }
+        return row.notOfferedReason
+    }
+
+    /// `sharedDisplaysLine` without its trailing period: a status line under
+    /// a name, not a sentence of its own.
     private static func withoutClosingFullStop(_ sharedDisplaysLine: String) -> String {
         sharedDisplaysLine.hasSuffix(".") ? String(sharedDisplaysLine.dropLast()) : sharedDisplaysLine
+    }
+
+    private static func singleLineLabel(size: CGFloat, color: DesignColor) -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        label.font = CanvasDesign.font(.primary, size: size)
+        label.textColor = color.nsColor
+        label.usesSingleLineMode = true
+        label.maximumNumberOfLines = 1
+        label.lineBreakMode = .byTruncatingTail
+        label.cell?.truncatesLastVisibleLine = true
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
     }
 
     @objc private func toggled() {
         onToggle?(toggle.isOn)
     }
 
+    @objc private func moreTapped() {
+        let below = moreButton.isFlipped
+            ? moreButton.bounds.maxY + CanvasDesign.Space.xxs
+            : moreButton.bounds.minY - CanvasDesign.Space.xxs
+        actionsMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: below), in: moreButton)
+    }
+
     @objc private func askFirstToggled() {
-        onToggleAskFirst?(askFirstCheckbox.state == .on)
+        onToggleAskFirst?(!asksWhenInUse)
     }
 
     @objc private func removeTapped() {
@@ -469,30 +464,40 @@ private final class PairedMachineRowView: NSView {
     @objc private func renameTapped() {
         onRename?()
     }
+}
 
-    /// A row's small bordered text button. Sized from the label itself, not
-    /// left to the bordered-off cell's own tight fit: without this the title
-    /// all but touches the border on every side.
-    private static func styleRowButton(_ button: NSButton, title: String, color: DesignColor) {
-        button.isBordered = false
-        button.wantsLayer = true
-        button.layer?.cornerRadius = CanvasDesign.Radius.tight
-        button.layer?.setAppearanceColor(CanvasDesign.bg3.nsColor, for: "backgroundColor")
-        button.layer?.borderWidth = 1
-        button.layer?.setAppearanceColor(CanvasDesign.line2.nsColor, for: "borderColor")
-        let attributedTitle = NSAttributedString(
-            string: title,
-            attributes: [
-                .font: CanvasDesign.font(.primary, size: 12, weight: .regular),
-                .foregroundColor: color.nsColor
-            ]
-        )
-        button.attributedTitle = attributedTitle
-        button.translatesAutoresizingMaskIntoConstraints = false
-        let titleSize = attributedTitle.size()
+/// A row's flat "more" button: three dots in muted ink, no border and no
+/// fill, drawn here rather than taken from a symbol image.
+@MainActor
+private final class PairedMachineMoreButton: NSButton {
+    static let size = NSSize(width: 24, height: 24)
+    private static let dotDiameter: CGFloat = 3
+    private static let dotGap: CGFloat = 3
+
+    init() {
+        super.init(frame: NSRect(origin: .zero, size: Self.size))
+        title = ""
+        isBordered = false
+        imagePosition = .noImage
+        translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: ceil(titleSize.width) + CanvasDesign.Space.sm * 2),
-            button.heightAnchor.constraint(equalToConstant: ceil(titleSize.height) + CanvasDesign.Space.xs * 2)
+            widthAnchor.constraint(equalToConstant: Self.size.width),
+            heightAnchor.constraint(equalToConstant: Self.size.height)
         ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let span = Self.dotDiameter * 3 + Self.dotGap * 2
+        let y = (bounds.height - Self.dotDiameter) / 2
+        CanvasDesign.muted.nsColor.setFill()
+        for index in 0..<3 {
+            let x = (bounds.width - span) / 2 + CGFloat(index) * (Self.dotDiameter + Self.dotGap)
+            NSBezierPath(ovalIn: NSRect(x: x, y: y, width: Self.dotDiameter, height: Self.dotDiameter)).fill()
+        }
     }
 }

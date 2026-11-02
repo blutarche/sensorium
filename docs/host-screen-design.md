@@ -36,7 +36,7 @@ The record lives at `~/Library/Application Support/Sensorium/host-screen-arming.
 
 ### 2.2 Seeing and revoking it later
 
-The menu bar shows the state at all times: "Sharing host screen with `<machine>`", with a one-click "Turn Off Share Host Screen for `<machine>`". The Host Setup window shows the same as the **Share host screen** switch on that machine's row, and the last host-screen session. Removing a paired machine removes its arming with it.
+The menu bar shows the state at all times: "Sharing Host Screen (`<count>`)", a single item whose submenu lists each machine that may share, checked, so one click turns that machine off, with "Turn Off for All Machines" below them. The Host Setup window shows the same as the **Share host screen** switch on that machine's row, and the last host-screen session. Removing a paired machine removes its arming with it.
 
 Turning **Share host screen** off for a machine ends that machine's live host-screen session at once. It ends the way the host's own Stop control ends it: the viewer is told `stopped-by-host` and does not redial, and the teardown, relock and session record all run. A session canvas of that machine is not ended by turning **Share host screen** off.
 

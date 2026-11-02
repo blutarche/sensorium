@@ -203,6 +203,22 @@ package enum CanvasHostTestHooks {
         return (panel.bounds.width, panel.testLayoutFrames())
     }
 
+    /// The menu-bar card after the menu it hangs in has grown to `width`, as it
+    /// does when a longer row (a paired machine's name) is added: whether the
+    /// menu would stretch it, and the frame of every text inside it.
+    @MainActor
+    package static func menuBarPanelAfterMenuWidens(
+        _ presence: HostMenuBarPresence,
+        to width: CGFloat
+    ) -> (stretches: Bool, width: CGFloat, textFrames: [NSRect]) {
+        guard let panel = Mirror(reflecting: presence).children.first(where: { $0.label == "panel" })?.value as? HostOperatorPanelView else {
+            fatalError("HostMenuBarPresence no longer has a stored property named panel")
+        }
+        let stretches = panel.autoresizingMask.contains(.width)
+        panel.setFrameSize(NSSize(width: width, height: panel.frame.height))
+        return (stretches, panel.frame.width, panel.testLayoutFrames())
+    }
+
     /// The menu-bar panel drawn into a bitmap from inside a window that is
     /// never shown, the way a menu hosts it, for judging the pixels a person
     /// would see. A view with no window is colour-converted on the way into a
