@@ -8,6 +8,13 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.13] - 2026-11-03
+
+### Fixed
+
+- The Fedora package carries the gradient app icon. Version 0.5.12 shipped it
+  with the previous solid icon.
+
 ## [0.5.12] - 2026-11-03
 
 ### Changed
