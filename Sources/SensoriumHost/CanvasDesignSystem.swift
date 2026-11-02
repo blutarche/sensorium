@@ -68,6 +68,16 @@ public struct DesignColor: Equatable, Sendable {
         return DesignColor(darkChannels: dark, lightChannels: light)
     }
 
+    /// The same colour at a different alpha in each appearance, for tokens the
+    /// system states at one opacity on dark and another on light.
+    public func withAlpha(dark: Double, light: Double) -> DesignColor {
+        var darkResult = darkChannels
+        var lightResult = lightChannels
+        darkResult.alpha = dark
+        lightResult.alpha = light
+        return DesignColor(darkChannels: darkResult, lightChannels: lightResult)
+    }
+
     /// The colour as one appearance draws it: its `red`, `green`, `blue` and
     /// `alpha` are that appearance's.
     public func resolved(for appearance: ResolvedAppearance) -> DesignColor {
@@ -152,58 +162,58 @@ public enum DesignTypeface: Sendable {
 public enum CanvasDesign {
     // MARK: - Workspace surfaces
 
-    public static let bg = DesignColor(dark: 0x0A0A0C, light: 0xF5F3EE)
-    public static let bg2 = DesignColor(dark: 0x121216, light: 0xFBFAF7)
-    public static let bg3 = DesignColor(dark: 0x1A1A20, light: 0xEAE7E0)
-    public static let bg4 = DesignColor(dark: 0x24242C, light: 0xE0DDD5)
+    public static let bg = DesignColor(dark: 0x0A0A0C, light: 0xF4F4F6)
+    public static let bg2 = DesignColor(dark: 0x121216, light: 0xFFFFFF)
+    public static let bg3 = DesignColor(dark: 0x1A1A20, light: 0xEAEAED)
+    public static let bg4 = DesignColor(dark: 0x24242C, light: 0xDCDCE0)
 
     // MARK: - Chrome
 
     /// The shell's housing, deliberately a shade apart from the workspace
     /// surfaces above.
-    public static let chromeBg = DesignColor(dark: 0x07070A, light: 0xECE9E2)
-    public static let chromeBg2 = DesignColor(dark: 0x0E0E14, light: 0xF3F1EB)
-    public static let chromeBgHover = DesignColor(dark: 0x14141A, light: 0xE3E0D8)
-    public static let chromeBorder = DesignColor(dark: 0x18181E, light: 0xD6D2C9)
-    public static let chromeBorder2 = DesignColor(dark: 0x1F1F26, light: 0xCCC8BE)
-    public static let chromeInk = DesignColor(dark: 0xE8E5DE, light: 0x1E1D1A)
-    public static let chromeInk2 = DesignColor(dark: 0xC8C5BD, light: 0x46433E)
-    public static let chromeMuted = DesignColor(dark: 0x8A8A92, light: 0x5F5E64)
-    public static let chromeMuted2 = DesignColor(dark: 0x5A5A63, light: 0x777680)
+    public static let chromeBg = DesignColor(dark: 0x07070A, light: 0xEDEDF0)
+    public static let chromeBg2 = DesignColor(dark: 0x0E0E14, light: 0xE4E4E8)
+    public static let chromeBgHover = DesignColor(dark: 0x14141A, light: 0xDDDDE2)
+    public static let chromeBorder = DesignColor(dark: 0x18181E, light: 0xD4D4D9)
+    public static let chromeBorder2 = DesignColor(dark: 0x1F1F26, light: 0xDDDDE2)
+    public static let chromeInk = DesignColor(dark: 0xE8E5DE, light: 0x0A0A0C)
+    public static let chromeInk2 = DesignColor(dark: 0xC8C5BD, light: 0x18181D)
+    public static let chromeMuted = DesignColor(dark: 0x8A8A92, light: 0x5E5E66)
+    public static let chromeMuted2 = DesignColor(dark: 0x5A5A63, light: 0x8C8C94)
 
     // MARK: - Lines
 
-    public static let line = DesignColor(dark: 0x24242C, light: 0xDAD6CD)
-    public static let line2 = DesignColor(dark: 0x34343F, light: 0xC6C2B8)
-    public static let lineHi = DesignColor(dark: 0x43434F, light: 0xAAA69B)
+    public static let line = DesignColor(dark: 0x24242C, light: 0xDDDDE2)
+    public static let line2 = DesignColor(dark: 0x34343F, light: 0xBFBFC6)
+    public static let lineHi = DesignColor(dark: 0x43434F, light: 0x8E8E96)
 
     // MARK: - Text
 
-    public static let ink = DesignColor(dark: 0xF2EFEA, light: 0x1A1917)
-    public static let ink2 = DesignColor(dark: 0xC8C5BD, light: 0x433F3A)
-    public static let muted = DesignColor(dark: 0x8C8C94, light: 0x626068)
-    public static let muted2 = DesignColor(dark: 0x5A5A63, light: 0x7C7A82)
-    public static let muted3 = DesignColor(dark: 0x3A3A44, light: 0xB3B0A8)
+    public static let ink = DesignColor(dark: 0xF2EFEA, light: 0x0A0A0C)
+    public static let ink2 = DesignColor(dark: 0xC8C5BD, light: 0x18181D)
+    public static let muted = DesignColor(dark: 0x8C8C94, light: 0x4A4A52)
+    public static let muted2 = DesignColor(dark: 0x5A5A63, light: 0x6C6C74)
+    public static let muted3 = DesignColor(dark: 0x3A3A44, light: 0x9C9CA4)
 
     // MARK: - Accent
 
     /// Selection, focus and active state only. Anywhere else it is decoration.
     /// The light accent is already the deep variant, so it reads as text on a
     /// light surface.
-    public static let accent = DesignColor(dark: 0x7C70F5, light: 0x5B4FDB)
-    public static let accentHi = DesignColor(dark: 0x9088F8, light: 0x6A5EEA)
-    public static let accentDeep = DesignColor(dark: 0x5A4FC0, light: 0x4338A8)
-    public static let accentSoft = accent.withAlpha(0.10)
-    public static let accentBorder = accent.withAlpha(0.30)
-    public static let selection = accent.withAlpha(0.32)
+    public static let accent = DesignColor(dark: 0x7C70F5, light: 0x5C51D0)
+    public static let accentHi = DesignColor(dark: 0x9088F8, light: 0x5047B8)
+    public static let accentDeep = DesignColor(dark: 0x5A4FC0, light: 0x3F356E)
+    public static let accentSoft = accent.withAlpha(dark: 0.10, light: 0.08)
+    public static let accentBorder = accent.withAlpha(dark: 0.30, light: 0.32)
+    public static let selection = accent.withAlpha(dark: 0.32, light: 0.20)
 
     /// Secondary accent, soft pink: data-viz highlights and the badge border
     /// gradient; never competes with the primary accent for actions.
-    public static let accent2 = DesignColor(dark: 0xF0A8D0, light: 0xB8437F)
-    public static let accent2Hi = DesignColor(dark: 0xF5BFE0, light: 0xC0508C)
-    public static let accent2Deep = DesignColor(dark: 0xC87AAA, light: 0x9A3366)
-    public static let accent2Soft = accent2.withAlpha(0.10)
-    public static let accent2Border = accent2.withAlpha(0.30)
+    public static let accent2 = DesignColor(dark: 0xF0A8D0, light: 0xC87AAA)
+    public static let accent2Hi = DesignColor(dark: 0xF5BFE0, light: 0xD48FBA)
+    public static let accent2Deep = DesignColor(dark: 0xC87AAA, light: 0xA05E88)
+    public static let accent2Soft = accent2.withAlpha(dark: 0.10, light: 0.08)
+    public static let accent2Border = accent2.withAlpha(dark: 0.30, light: 0.30)
 
     // MARK: - Status
 

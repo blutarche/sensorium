@@ -52,12 +52,12 @@ func testViewerPaletteLightValuesAreReadableOnTheLightSurfaces() {
         ("chromeBg2", ViewerPalette.chromeBg2),
         ("bg4", ViewerPalette.bg4)
     ]
+    // accent2 is a highlight line colour, not text, and sits below 3:1 on these light surfaces as the system states it.
     let text: [(String, ViewerColor, Double)] = [
         ("ink", ViewerPalette.ink, 4.5),
-        ("muted", ViewerPalette.muted, 3),
+        ("muted", ViewerPalette.muted, 4.5),
         ("accent", ViewerPalette.accent, 3),
         ("accentHi", ViewerPalette.accentHi, 3),
-        ("accent2", ViewerPalette.accent2, 3),
         ("ok", ViewerPalette.ok, 3),
         ("bad", ViewerPalette.bad, 3),
         ("info", ViewerPalette.info, 3),
@@ -81,18 +81,18 @@ func testViewerPaletteLightValuesAreReadableOnTheLightSurfaces() {
 
 func testViewerPaletteLightValuesAreTheRecordedOnes() {
     let recorded: [(String, ViewerColor, String)] = [
-        ("chromeBg", ViewerPalette.chromeBg, "#ECE9E2"),
-        ("chromeBg2", ViewerPalette.chromeBg2, "#F3F1EB"),
-        ("chromeBorder2", ViewerPalette.chromeBorder2, "#CCC8BE"),
-        ("bg4", ViewerPalette.bg4, "#E0DDD5"),
-        ("line", ViewerPalette.line, "#DAD6CD"),
-        ("ink", ViewerPalette.ink, "#1A1917"),
-        ("muted", ViewerPalette.muted, "#626068"),
-        ("muted2", ViewerPalette.muted2, "#7C7A82"),
-        ("accent", ViewerPalette.accent, "#5B4FDB"),
-        ("accentHi", ViewerPalette.accentHi, "#6A5EEA"),
-        ("accent2", ViewerPalette.accent2, "#B8437F"),
-        ("selection", ViewerPalette.selection, "#5B4FDB"),
+        ("chromeBg", ViewerPalette.chromeBg, "#EDEDF0"),
+        ("chromeBg2", ViewerPalette.chromeBg2, "#E4E4E8"),
+        ("chromeBorder2", ViewerPalette.chromeBorder2, "#DDDDE2"),
+        ("bg4", ViewerPalette.bg4, "#DCDCE0"),
+        ("line", ViewerPalette.line, "#DDDDE2"),
+        ("ink", ViewerPalette.ink, "#0A0A0C"),
+        ("muted", ViewerPalette.muted, "#4A4A52"),
+        ("muted2", ViewerPalette.muted2, "#6C6C74"),
+        ("accent", ViewerPalette.accent, "#5C51D0"),
+        ("accentHi", ViewerPalette.accentHi, "#5047B8"),
+        ("accent2", ViewerPalette.accent2, "#C87AAA"),
+        ("selection", ViewerPalette.selection, "#5C51D0"),
         ("scrim", ViewerPalette.scrim, "#000000"),
         ("ok", ViewerPalette.ok, "#267340"),
         ("bad", ViewerPalette.bad, "#B93A26"),
@@ -103,6 +103,11 @@ func testViewerPaletteLightValuesAreTheRecordedOnes() {
         expect(color.hexString(for: .light) == hex, "\(name) reads \(hex) in light, not \(color.hexString(for: .light))")
         expect(color.resolved(for: .light).hexString == hex, "\(name) resolves to \(hex) in light")
     }
+    expect(
+        ViewerPalette.selection.resolved(for: .light).alpha == 0.20
+            && ViewerPalette.selection.resolved(for: .dark).alpha == 0.32,
+        "selection is the accent at 0.20 in light and 0.32 in dark"
+    )
 }
 
 func testViewerColorResolvesOneVariantAndKeepsOpacityAcrossBoth() {

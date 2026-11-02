@@ -79,6 +79,16 @@ public struct ViewerColor: Equatable, Sendable {
         return "#" + channel(chosen.red) + channel(chosen.green) + channel(chosen.blue)
     }
 
+    /// The same colour at a different opacity in each appearance, for tokens
+    /// the system states at one opacity on dark and another on light.
+    public func withAlpha(dark: Double, light: Double) -> ViewerColor {
+        var darkResult = darkChannels
+        var lightResult = lightChannels
+        darkResult.alpha = dark
+        lightResult.alpha = light
+        return ViewerColor(darkChannels: darkResult, lightChannels: lightResult)
+    }
+
     /// The same colour at a different opacity -- a scrim, a translucent bar,
     /// a dimmed handle -- without a caller reaching for the raw channels.
     /// Each appearance keeps its own colour.
@@ -95,23 +105,23 @@ public struct ViewerColor: Equatable, Sendable {
 /// host's `CanvasDesignSystem.swift` states the same system for what the host
 /// draws on the canvas; this target cannot import `SensoriumHost`.
 public enum ViewerPalette {
-    public static let chromeBg = ViewerColor(dark: 0x07070A, light: 0xECE9E2)
-    public static let chromeBg2 = ViewerColor(dark: 0x0E0E14, light: 0xF3F1EB)
-    public static let chromeBorder2 = ViewerColor(dark: 0x1F1F26, light: 0xCCC8BE)
+    public static let chromeBg = ViewerColor(dark: 0x07070A, light: 0xEDEDF0)
+    public static let chromeBg2 = ViewerColor(dark: 0x0E0E14, light: 0xE4E4E8)
+    public static let chromeBorder2 = ViewerColor(dark: 0x1F1F26, light: 0xDDDDE2)
     /// The workspace input fill, `bg-4`. The one surface a text field sits on.
-    public static let bg4 = ViewerColor(dark: 0x24242C, light: 0xE0DDD5)
-    public static let line = ViewerColor(dark: 0x24242C, light: 0xDAD6CD)
-    public static let ink = ViewerColor(dark: 0xF2EFEA, light: 0x1A1917)
-    public static let muted = ViewerColor(dark: 0x8C8C94, light: 0x626068)
-    public static let muted2 = ViewerColor(dark: 0x5A5A63, light: 0x7C7A82)
+    public static let bg4 = ViewerColor(dark: 0x24242C, light: 0xDCDCE0)
+    public static let line = ViewerColor(dark: 0x24242C, light: 0xDDDDE2)
+    public static let ink = ViewerColor(dark: 0xF2EFEA, light: 0x0A0A0C)
+    public static let muted = ViewerColor(dark: 0x8C8C94, light: 0x4A4A52)
+    public static let muted2 = ViewerColor(dark: 0x5A5A63, light: 0x6C6C74)
 
     /// Sparingly: selection, focus, active. In the viewer's own chrome that is
     /// the focused field's border and the one button that commits.
-    public static let accent = ViewerColor(dark: 0x7C70F5, light: 0x5B4FDB)
-    public static let accentHi = ViewerColor(dark: 0x9088F8, light: 0x6A5EEA)
-    public static let accent2 = ViewerColor(dark: 0xF0A8D0, light: 0xB8437F)
+    public static let accent = ViewerColor(dark: 0x7C70F5, light: 0x5C51D0)
+    public static let accentHi = ViewerColor(dark: 0x9088F8, light: 0x5047B8)
+    public static let accent2 = ViewerColor(dark: 0xF0A8D0, light: 0xC87AAA)
     /// Behind selected text, under `ink`; the caret is `accentHi`.
-    public static let selection = accent.withAlpha(0.32)
+    public static let selection = accent.withAlpha(dark: 0.32, light: 0.20)
 
     /// Behind the status panel once a picture exists to mark as stale --
     /// the same colour and opacity `ViewerSessionStatusOverlay` fills its own

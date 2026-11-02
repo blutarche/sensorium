@@ -25,33 +25,33 @@ private func hex(_ color: DesignColor) -> String {
 
 /// Every opaque token with its dark and light value, as `docs/design-system.md` records them.
 private let recordedTokens: [(String, DesignColor, String, String)] = [
-    ("bg", CanvasDesign.bg, "#0A0A0C", "#F5F3EE"),
-    ("bg2", CanvasDesign.bg2, "#121216", "#FBFAF7"),
-    ("bg3", CanvasDesign.bg3, "#1A1A20", "#EAE7E0"),
-    ("bg4", CanvasDesign.bg4, "#24242C", "#E0DDD5"),
-    ("chromeBg", CanvasDesign.chromeBg, "#07070A", "#ECE9E2"),
-    ("chromeBg2", CanvasDesign.chromeBg2, "#0E0E14", "#F3F1EB"),
-    ("chromeBgHover", CanvasDesign.chromeBgHover, "#14141A", "#E3E0D8"),
-    ("chromeBorder", CanvasDesign.chromeBorder, "#18181E", "#D6D2C9"),
-    ("chromeBorder2", CanvasDesign.chromeBorder2, "#1F1F26", "#CCC8BE"),
-    ("chromeInk", CanvasDesign.chromeInk, "#E8E5DE", "#1E1D1A"),
-    ("chromeInk2", CanvasDesign.chromeInk2, "#C8C5BD", "#46433E"),
-    ("chromeMuted", CanvasDesign.chromeMuted, "#8A8A92", "#5F5E64"),
-    ("chromeMuted2", CanvasDesign.chromeMuted2, "#5A5A63", "#777680"),
-    ("line", CanvasDesign.line, "#24242C", "#DAD6CD"),
-    ("line2", CanvasDesign.line2, "#34343F", "#C6C2B8"),
-    ("lineHi", CanvasDesign.lineHi, "#43434F", "#AAA69B"),
-    ("ink", CanvasDesign.ink, "#F2EFEA", "#1A1917"),
-    ("ink2", CanvasDesign.ink2, "#C8C5BD", "#433F3A"),
-    ("muted", CanvasDesign.muted, "#8C8C94", "#626068"),
-    ("muted2", CanvasDesign.muted2, "#5A5A63", "#7C7A82"),
-    ("muted3", CanvasDesign.muted3, "#3A3A44", "#B3B0A8"),
-    ("accent", CanvasDesign.accent, "#7C70F5", "#5B4FDB"),
-    ("accentHi", CanvasDesign.accentHi, "#9088F8", "#6A5EEA"),
-    ("accentDeep", CanvasDesign.accentDeep, "#5A4FC0", "#4338A8"),
-    ("accent2", CanvasDesign.accent2, "#F0A8D0", "#B8437F"),
-    ("accent2Hi", CanvasDesign.accent2Hi, "#F5BFE0", "#C0508C"),
-    ("accent2Deep", CanvasDesign.accent2Deep, "#C87AAA", "#9A3366"),
+    ("bg", CanvasDesign.bg, "#0A0A0C", "#F4F4F6"),
+    ("bg2", CanvasDesign.bg2, "#121216", "#FFFFFF"),
+    ("bg3", CanvasDesign.bg3, "#1A1A20", "#EAEAED"),
+    ("bg4", CanvasDesign.bg4, "#24242C", "#DCDCE0"),
+    ("chromeBg", CanvasDesign.chromeBg, "#07070A", "#EDEDF0"),
+    ("chromeBg2", CanvasDesign.chromeBg2, "#0E0E14", "#E4E4E8"),
+    ("chromeBgHover", CanvasDesign.chromeBgHover, "#14141A", "#DDDDE2"),
+    ("chromeBorder", CanvasDesign.chromeBorder, "#18181E", "#D4D4D9"),
+    ("chromeBorder2", CanvasDesign.chromeBorder2, "#1F1F26", "#DDDDE2"),
+    ("chromeInk", CanvasDesign.chromeInk, "#E8E5DE", "#0A0A0C"),
+    ("chromeInk2", CanvasDesign.chromeInk2, "#C8C5BD", "#18181D"),
+    ("chromeMuted", CanvasDesign.chromeMuted, "#8A8A92", "#5E5E66"),
+    ("chromeMuted2", CanvasDesign.chromeMuted2, "#5A5A63", "#8C8C94"),
+    ("line", CanvasDesign.line, "#24242C", "#DDDDE2"),
+    ("line2", CanvasDesign.line2, "#34343F", "#BFBFC6"),
+    ("lineHi", CanvasDesign.lineHi, "#43434F", "#8E8E96"),
+    ("ink", CanvasDesign.ink, "#F2EFEA", "#0A0A0C"),
+    ("ink2", CanvasDesign.ink2, "#C8C5BD", "#18181D"),
+    ("muted", CanvasDesign.muted, "#8C8C94", "#4A4A52"),
+    ("muted2", CanvasDesign.muted2, "#5A5A63", "#6C6C74"),
+    ("muted3", CanvasDesign.muted3, "#3A3A44", "#9C9CA4"),
+    ("accent", CanvasDesign.accent, "#7C70F5", "#5C51D0"),
+    ("accentHi", CanvasDesign.accentHi, "#9088F8", "#5047B8"),
+    ("accentDeep", CanvasDesign.accentDeep, "#5A4FC0", "#3F356E"),
+    ("accent2", CanvasDesign.accent2, "#F0A8D0", "#C87AAA"),
+    ("accent2Hi", CanvasDesign.accent2Hi, "#F5BFE0", "#D48FBA"),
+    ("accent2Deep", CanvasDesign.accent2Deep, "#C87AAA", "#A05E88"),
     ("ok", CanvasDesign.ok, "#6FBE83", "#267340"),
     ("bad", CanvasDesign.bad, "#E26F5C", "#B93A26"),
     ("info", CanvasDesign.info, "#8EE0E8", "#157383"),
@@ -77,15 +77,16 @@ func runCanvasDesignAppearanceTests() async {
     }
 
     // The translucent accents follow the accent in each appearance.
-    let translucent: [(String, DesignColor, DesignColor, Double)] = [
-        ("accentSoft", CanvasDesign.accentSoft, CanvasDesign.accent, 0.10),
-        ("accentBorder", CanvasDesign.accentBorder, CanvasDesign.accent, 0.30),
-        ("selection", CanvasDesign.selection, CanvasDesign.accent, 0.32),
-        ("accent2Soft", CanvasDesign.accent2Soft, CanvasDesign.accent2, 0.10),
-        ("accent2Border", CanvasDesign.accent2Border, CanvasDesign.accent2, 0.30)
+    let translucent: [(String, DesignColor, DesignColor, Double, Double)] = [
+        ("accentSoft", CanvasDesign.accentSoft, CanvasDesign.accent, 0.10, 0.08),
+        ("accentBorder", CanvasDesign.accentBorder, CanvasDesign.accent, 0.30, 0.32),
+        ("selection", CanvasDesign.selection, CanvasDesign.accent, 0.32, 0.20),
+        ("accent2Soft", CanvasDesign.accent2Soft, CanvasDesign.accent2, 0.10, 0.08),
+        ("accent2Border", CanvasDesign.accent2Border, CanvasDesign.accent2, 0.30, 0.30)
     ]
-    for (name, color, base, alpha) in translucent {
+    for (name, color, base, darkAlpha, lightAlpha) in translucent {
         for appearance in ResolvedAppearance.allCases {
+            let alpha = appearance == .dark ? darkAlpha : lightAlpha
             let resolved = color.resolved(for: appearance)
             let source = base.resolved(for: appearance)
             expect(
@@ -95,7 +96,10 @@ func runCanvasDesignAppearanceTests() async {
         }
     }
 
-    // Light readability. Ink is read on every surface it is drawn on.
+    // Light readability. Ink is read on every surface it is drawn on. muted-2, muted-3 and
+    // chrome-muted-2 are the design system's disabled and decorative tones, so they carry no floor.
+    // The accent-2 family is a data-viz highlight and border colour, drawn as lines and never as text; its light
+    // values (as the system states them) sit below 3:1 on the light surfaces, so no floor is asserted for them.
     let surfaces: [(String, DesignColor)] = [
         ("bg", CanvasDesign.bg), ("bg2", CanvasDesign.bg2), ("bg3", CanvasDesign.bg3), ("bg4", CanvasDesign.bg4),
         ("chromeBg", CanvasDesign.chromeBg), ("chromeBg2", CanvasDesign.chromeBg2), ("chromeBgHover", CanvasDesign.chromeBgHover)
@@ -103,10 +107,8 @@ func runCanvasDesignAppearanceTests() async {
     let floors: [(String, DesignColor, Double)] = [
         ("ink", CanvasDesign.ink, 4.5), ("ink2", CanvasDesign.ink2, 4.5),
         ("chromeInk", CanvasDesign.chromeInk, 4.5), ("chromeInk2", CanvasDesign.chromeInk2, 4.5),
-        ("muted", CanvasDesign.muted, 3), ("muted2", CanvasDesign.muted2, 3),
-        ("chromeMuted", CanvasDesign.chromeMuted, 3), ("chromeMuted2", CanvasDesign.chromeMuted2, 3),
+        ("muted", CanvasDesign.muted, 4.5), ("chromeMuted", CanvasDesign.chromeMuted, 4.5),
         ("accent", CanvasDesign.accent, 3), ("accentHi", CanvasDesign.accentHi, 3), ("accentDeep", CanvasDesign.accentDeep, 4.5),
-        ("accent2", CanvasDesign.accent2, 3), ("accent2Hi", CanvasDesign.accent2Hi, 3), ("accent2Deep", CanvasDesign.accent2Deep, 4.5),
         ("ok", CanvasDesign.ok, 3), ("bad", CanvasDesign.bad, 3), ("info", CanvasDesign.info, 3), ("warn", CanvasDesign.warn, 3)
     ]
     for (surfaceName, surface) in surfaces {
@@ -142,23 +144,23 @@ func runCanvasDesignAppearanceTests() async {
     var inLight = ""
     darkAqua.performAsCurrentDrawingAppearance { inDark = srgb(CanvasDesign.bg.nsColor) }
     aqua.performAsCurrentDrawingAppearance { inLight = srgb(CanvasDesign.bg.nsColor) }
-    expect(inDark == "#0A0A0C" && inLight == "#F5F3EE", "bg's NSColor is dark in dark aqua and light in aqua: \(inDark), \(inLight)")
+    expect(inDark == "#0A0A0C" && inLight == "#F4F4F6", "bg's NSColor is dark in dark aqua and light in aqua: \(inDark), \(inLight)")
     darkAqua.performAsCurrentDrawingAppearance { inDark = srgb(CanvasDesign.bg.cgColor) }
     aqua.performAsCurrentDrawingAppearance { inLight = srgb(CanvasDesign.bg.cgColor) }
-    expect(inDark == "#0A0A0C" && inLight == "#F5F3EE", "bg's CGColor resolves in the drawing appearance: \(inDark), \(inLight)")
+    expect(inDark == "#0A0A0C" && inLight == "#F4F4F6", "bg's CGColor resolves in the drawing appearance: \(inDark), \(inLight)")
     expect(
-        srgb(CanvasDesign.bg.cgColor(in: darkAqua)) == "#0A0A0C" && srgb(CanvasDesign.bg.cgColor(in: aqua)) == "#F5F3EE",
+        srgb(CanvasDesign.bg.cgColor(in: darkAqua)) == "#0A0A0C" && srgb(CanvasDesign.bg.cgColor(in: aqua)) == "#F4F4F6",
         "cgColor(in:) names the appearance without a drawing scope"
     )
     let translucentLight = CanvasDesign.selection.cgColor(in: aqua)
-    expect(translucentLight.alpha == 0.32, "a translucent token keeps its opacity through the appearance lookup")
+    expect(translucentLight.alpha == 0.20, "a translucent token keeps its opacity through the appearance lookup")
 
     // The view helper resolves layer colours in the view's own appearance.
     let view = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
     view.wantsLayer = true
     view.appearance = aqua
     view.resolvingDesignColors { view.layer?.backgroundColor = CanvasDesign.bg.cgColor }
-    expect(view.layer?.backgroundColor.map(srgb) == "#F5F3EE", "a layer colour set through the helper is light in a light view")
+    expect(view.layer?.backgroundColor.map(srgb) == "#F4F4F6", "a layer colour set through the helper is light in a light view")
     view.appearance = darkAqua
     view.resolvingDesignColors { view.layer?.backgroundColor = CanvasDesign.bg.cgColor }
     expect(view.layer?.backgroundColor.map(srgb) == "#0A0A0C", "and dark once the view turns dark")

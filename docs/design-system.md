@@ -11,7 +11,7 @@ Each macOS app has an appearance setting with three choices. The setting is kept
 | Light  | always draws the light values.                     |
 | Dark   | always draws the dark values.                      |
 
-A missing or unreadable stored value counts as System. Dark is the original look of the product. Light keeps the same feel: warm off-white surfaces, near-black ink, borders instead of shadows, sharp radii.
+A missing or unreadable stored value counts as System. Dark is the original look of the product. Light keeps the same feel: cool near-white surfaces, white panels, near-black ink, borders instead of shadows, sharp radii.
 
 ## Tokens
 Every colour has a dark value and a light value. The dark values are the original ones, and the light values do not change them.
@@ -19,40 +19,40 @@ Every colour has a dark value and a light value. The dark values are the origina
 ### Workspace surfaces
 | token  | dark      | light     | use                 |
 | ------ | --------- | --------- | ------------------- |
-| bg     | `#0A0A0C` | `#F5F3EE` | deepest surface     |
-| bg-2   | `#121216` | `#FBFAF7` | panel               |
-| bg-3   | `#1A1A20` | `#EAE7E0` | elevated / hover    |
-| bg-4   | `#24242C` | `#E0DDD5` | input fill          |
+| bg     | `#0A0A0C` | `#F4F4F6` | deepest surface     |
+| bg-2   | `#121216` | `#FFFFFF` | panel               |
+| bg-3   | `#1A1A20` | `#EAEAED` | elevated / hover    |
+| bg-4   | `#24242C` | `#DCDCE0` | input fill          |
 
 ### Chrome
 The shell's own "housing", kept distinct from the workspace surfaces.
 | token             | dark      | light     |
 | ----------------- | --------- | --------- |
-| chrome-bg         | `#07070A` | `#ECE9E2` |
-| chrome-bg-2       | `#0E0E14` | `#F3F1EB` |
-| chrome-bg-hover   | `#14141A` | `#E3E0D8` |
-| chrome-border     | `#18181E` | `#D6D2C9` |
-| chrome-border-2   | `#1F1F26` | `#CCC8BE` |
-| chrome-ink        | `#E8E5DE` | `#1E1D1A` |
-| chrome-ink-2      | `#C8C5BD` | `#46433E` |
-| chrome-muted      | `#8A8A92` | `#5F5E64` |
-| chrome-muted-2    | `#5A5A63` | `#777680` |
+| chrome-bg         | `#07070A` | `#EDEDF0` |
+| chrome-bg-2       | `#0E0E14` | `#E4E4E8` |
+| chrome-bg-hover   | `#14141A` | `#DDDDE2` |
+| chrome-border     | `#18181E` | `#D4D4D9` |
+| chrome-border-2   | `#1F1F26` | `#DDDDE2` |
+| chrome-ink        | `#E8E5DE` | `#0A0A0C` |
+| chrome-ink-2      | `#C8C5BD` | `#18181D` |
+| chrome-muted      | `#8A8A92` | `#5E5E66` |
+| chrome-muted-2    | `#5A5A63` | `#8C8C94` |
 
 ### Lines
 | token   | dark      | light     |
 | ------- | --------- | --------- |
-| line    | `#24242C` | `#DAD6CD` |
-| line-2  | `#34343F` | `#C6C2B8` |
-| line-hi | `#43434F` | `#AAA69B` |
+| line    | `#24242C` | `#DDDDE2` |
+| line-2  | `#34343F` | `#BFBFC6` |
+| line-hi | `#43434F` | `#8E8E96` |
 
 ### Text
 | token   | dark      | light     |
 | ------- | --------- | --------- |
-| ink     | `#F2EFEA` | `#1A1917` |
-| ink-2   | `#C8C5BD` | `#433F3A` |
-| muted   | `#8C8C94` | `#626068` |
-| muted-2 | `#5A5A63` | `#7C7A82` |
-| muted-3 | `#3A3A44` | `#B3B0A8` |
+| ink     | `#F2EFEA` | `#0A0A0C` |
+| ink-2   | `#C8C5BD` | `#18181D` |
+| muted   | `#8C8C94` | `#4A4A52` |
+| muted-2 | `#5A5A63` | `#6C6C74` |
+| muted-3 | `#3A3A44` | `#9C9CA4` |
 
 ### Accent
 Use sparingly, for selection, focus, and active states only.
@@ -60,17 +60,17 @@ Use sparingly, for selection, focus, and active states only.
 The light accent is already the deep variant, so it reads as text on a light surface. The translucent tokens use the accent of their own appearance.
 | token         | dark                     | light                    |
 | ------------- | ------------------------ | ------------------------ |
-| accent        | `#7C70F5`                | `#5B4FDB`                |
-| accent-hi     | `#9088F8`                | `#6A5EEA`                |
-| accent-deep   | `#5A4FC0`                | `#4338A8`                |
-| accent-soft   | `rgba(124,112,245,0.10)` | `rgba(91,79,219,0.10)`   |
-| accent-bd     | `rgba(124,112,245,0.30)` | `rgba(91,79,219,0.30)`   |
-| selection     | `rgba(124,112,245,0.32)` | `rgba(91,79,219,0.32)`   |
-| accent-2      | `#F0A8D0`                | `#B8437F`                |
-| accent-2-hi   | `#F5BFE0`                | `#C0508C`                |
-| accent-2-deep | `#C87AAA`                | `#9A3366`                |
-| accent-2-soft | `rgba(240,168,208,0.10)` | `rgba(184,67,127,0.10)`  |
-| accent-2-bd   | `rgba(240,168,208,0.30)` | `rgba(184,67,127,0.30)`  |
+| accent        | `#7C70F5`                | `#5C51D0`                |
+| accent-hi     | `#9088F8`                | `#5047B8`                |
+| accent-deep   | `#5A4FC0`                | `#3F356E`                |
+| accent-soft   | `rgba(124,112,245,0.10)` | `rgba(92,81,208,0.08)`   |
+| accent-bd     | `rgba(124,112,245,0.30)` | `rgba(92,81,208,0.32)`   |
+| selection     | `rgba(124,112,245,0.32)` | `rgba(92,81,208,0.20)`   |
+| accent-2      | `#F0A8D0`                | `#C87AAA`                |
+| accent-2-hi   | `#F5BFE0`                | `#D48FBA`                |
+| accent-2-deep | `#C87AAA`                | `#A05E88`                |
+| accent-2-soft | `rgba(240,168,208,0.10)` | `rgba(200,122,170,0.08)` |
+| accent-2-bd   | `rgba(240,168,208,0.30)` | `rgba(200,122,170,0.30)` |
 
 Accent-2 comes from the Blutarche Studio design system.
 
@@ -85,13 +85,13 @@ Accent-2 comes from the Blutarche Studio design system.
 The viewer's scrim stays black at 0.66 opacity in both appearances.
 
 ### Contrast in light
-The tests compute WCAG contrast on every light surface a token is drawn on.
+The tests compute WCAG contrast on every light surface a token is drawn on. The light values come from the Blutarche Studio design system. The status colours are Sensorium's own, since that system defines none for light.
 
 | text                                              | minimum |
 | ------------------------------------------------- | ------- |
-| ink, ink-2, chrome-ink, chrome-ink-2, accent-deep | 4.5:1   |
-| muted, muted-2, chrome-muted, chrome-muted-2      | 3:1     |
-| accent, accent-hi, accent-2, status colours       | 3:1     |
+| ink, ink-2, chrome-ink, chrome-ink-2, muted, chrome-muted, accent-deep | 4.5:1   |
+| accent, accent-hi, status colours                 | 3:1     |
+| muted-2, muted-3, chrome-muted-2, accent-2 family | no floor |
 | a chrome-bg title on an accent or status fill     | 4.5:1   |
 
 ### Metrics
