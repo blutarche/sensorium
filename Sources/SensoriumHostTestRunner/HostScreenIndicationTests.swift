@@ -306,7 +306,7 @@ func runHostScreenIndicationTests() async {
         }
         let content = HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
         let state = HostScreenBadgeState(content: content)
-        let controller = HostScreenBadgeWindowController(state: state)
+        let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
         let displayLabel: NSTextField = field("displayLabel", of: controller)
         expect(
             displayLabel.stringValue == "Sees and controls Built-in Display",
@@ -323,7 +323,7 @@ func runHostScreenIndicationTests() async {
         // remotely injected click to dismiss the one window Sensorium
         // places on a physical display.
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
-        let controller = HostScreenBadgeWindowController(state: state)
+        let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
         expect(!controller.hasNativeCloseControl, "the badge window's style mask carries no .closable bit -- there is no close button for any click, local or injected, to hit")
 
         print("PASS: the badge window has no native close control")
@@ -342,7 +342,7 @@ func runHostScreenIndicationTests() async {
             fatalError("no stored property named \(name) of type \(T.self)")
         }
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
-        let controller = HostScreenBadgeWindowController(state: state)
+        let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
         let window: NSPanel = field("window", of: controller, as: NSPanel.self)
         expect(!window.canHide, "the badge window is exempt from Hide -- an app-wide Cmd-H must not take it down mid-session")
 
@@ -370,7 +370,7 @@ func runHostScreenIndicationTests() async {
                 content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
                 startsExpanded: startsExpanded
             )
-            let controller = HostScreenBadgeWindowController(state: state)
+            let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
             return (state, controller, CanvasHostTestHooks.hostScreenBadgeWindow(controller))
         }
 
@@ -418,7 +418,7 @@ func runHostScreenIndicationTests() async {
                 content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"),
                 startsExpanded: startsExpanded
             )
-            let controller = HostScreenBadgeWindowController(state: state)
+            let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
             let window = CanvasHostTestHooks.hostScreenBadgeWindow(controller)
             func find(in view: NSView) -> NSTextField? {
                 for subview in view.subviews {
@@ -470,6 +470,16 @@ func runHostScreenIndicationTests() async {
         expect(state.origin == CGPoint(x: 40, y: 60), "a drag's ending origin is recorded on the state")
 
         print("PASS: HostScreenBadgeState's collapse toggle is idempotent and observable, and its origin is a plain recorded fact")
+    }
+
+    do {
+        // The first badge of a host process opens as the small corner pill;
+        // the larger forms are only for a person who chose them.
+        let content = HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display")
+        let state = HostScreenBadgeState(content: content)
+        _ = HostScreenBadgeWindowController(state: state)
+        expect(state.isCollapsed, "a badge with nothing remembered opens as the small corner pill")
+        print("PASS: the first badge of a host process starts as the small corner pill")
     }
 
     do {
@@ -808,7 +818,7 @@ func runHostScreenIndicationTests() async {
         // The badge window's level: it must stay visible above the Dock
         // and the menu bar, since it can be dropped directly on either.
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
-        let controller = HostScreenBadgeWindowController(state: state)
+        let controller = HostScreenBadgeWindowController(state: state, restoresPersistedLayout: false)
         let window = CanvasHostTestHooks.hostScreenBadgeWindow(controller)
         let overlayLevel = Int(CGWindowLevelForKey(.overlayWindow))
         expect(
@@ -859,6 +869,7 @@ func runHostScreenIndicationTests() async {
 
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: "Kestrel Laptop Pro", displayLabel: "Built-in Display"))
         let controller = HostScreenBadgeWindowController(state: state, positionStore: store)
+        state.setCollapsed(false)
         let window = CanvasHostTestHooks.hostScreenBadgeWindow(controller)
         let expectedOrigin = CGPoint(x: fullFrame.minX + flushWithTop.x, y: fullFrame.minY + flushWithTop.y)
         expect(

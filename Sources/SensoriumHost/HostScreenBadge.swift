@@ -359,7 +359,8 @@ public final class HostScreenBadgeWindowController: NSObject {
     /// so the next one -- the next session, in the same host process --
     /// starts where the person left it. In memory only, never written to
     /// disk; the dropped position, by contrast, lives in `positionStore`.
-    private static var persistedCollapsed = false
+    /// The first badge of a host process opens as the small corner pill.
+    private static var persistedCollapsed = true
 
     /// Type sizes and insets per badge state. Shrunk keeps every element
     /// at smaller type; pill drops the eyebrow and display line, which is
