@@ -8,6 +8,21 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.12] - 2026-11-03
+
+### Changed
+
+- The app icons use an accent gradient: on the viewer's front screen and on
+  the host's back screen. The macOS icons are full-bleed, so macOS 26 no
+  longer sets them on a light plate.
+- The host's menu bar item draws the Sensorium mark instead of a plain
+  rectangle, and its status card fills the menu when a longer row widens it.
+- Host Setup lists paired machines as compact rows. Rename, ask first, the
+  key and Remove are in each row's More menu. The window now fits the screen
+  and scrolls.
+- The host menu shows sharing with paired machines as one submenu, so the
+  menu stays the same height however many machines are paired.
+
 ## [0.5.11] - 2026-11-03
 
 ### Changed
