@@ -8,6 +8,13 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.11] - 2026-11-03
+
+### Changed
+
+- Light appearance uses the Blutarche design system's own light theme: cool
+  near-white surfaces, white panels and near-black text.
+
 ## [0.5.10] - 2026-11-03
 
 ### Added
