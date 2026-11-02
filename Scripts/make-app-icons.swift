@@ -5,12 +5,18 @@
 // to the right of the far one -- one machine's screen seen from another. A moat
 // of tile background is knocked out around the near screen so the two never
 // merge into one blob at small sizes. The geometry is identical in both
-// bundles; they differ in the tone of the near screen, which is what survives
-// greyscale and a 16pt list row where a fiddly interior would not. The host is
-// solid ink -- it is the machine that is the screen being shared -- and the
-// viewer is solid accent -- it is the window you look through. The far screen
-// carries a fill too, for what the mark means, but it never shows: at this
-// offset it is reduced to a stroke-wide corner either way.
+// bundles; they differ in which screen carries the colour. The viewer's near
+// screen is the gradient -- it is the window you look through -- over an ink
+// outline. The host's near screen is solid ink and its far screen is the
+// gradient -- the machine being shared is the one behind. The gradient runs
+// from deep accent through accent to accent-2, the same three tones the
+// README logo melts between. At this offset the far screen is reduced to a
+// stroke-wide corner, so on the host the gradient shows as that corner.
+//
+// The macOS icons are full-bleed squares with no tile of their own: macOS 26
+// masks an icon itself, and one that arrives already rounded with a transparent
+// margin is treated as legacy artwork and set on a light plate. The Linux icon
+// keeps the rounded tile, since no desktop there masks it.
 //
 // Everything here is deterministic: fixed geometry, no timestamps, no system
 // fonts, no asset files. Scripts/test-package-apps.sh depends on packaging
@@ -35,6 +41,8 @@ let bg = 0x0A0A0C
 let line2 = 0x34343F
 let ink = 0xF2EFEA
 let accent = 0x7C70F5
+let accentDeep = 0x5A4FC0
+let accent2 = 0xF0A8D0
 
 func color(_ hex: Int, alpha: CGFloat = 1) -> CGColor {
     CGColor(
@@ -128,6 +136,9 @@ func squirclePath(in rect: CGRect, radius r: CGFloat, exponent n: CGFloat) -> CG
 enum ScreenStyle {
     case outline(Int)
     case solid(Int)
+    /// Accent-deep at the top left, through accent, to accent-2 at the bottom
+    /// right of the screen's own bounds.
+    case gradient
 }
 
 struct Mark {
@@ -137,8 +148,8 @@ struct Mark {
 }
 
 let marks = [
-    Mark(name: "Sensorium", far: .outline(ink), near: .solid(accent)),
-    Mark(name: "SensoriumHost", far: .solid(ink), near: .solid(ink)),
+    Mark(name: "Sensorium", far: .outline(ink), near: .gradient),
+    Mark(name: "SensoriumHost", far: .gradient, near: .solid(ink)),
 ]
 
 func screenPath(_ rect: CGRect, corner: CGFloat) -> CGPath {
@@ -151,6 +162,25 @@ func drawScreen(_ style: ScreenStyle, in rect: CGRect, into context: CGContext) 
         context.addPath(screenPath(rect, corner: screenCorner))
         context.setFillColor(color(hex))
         context.fillPath()
+    case .gradient:
+        guard
+            let gradient = CGGradient(
+                colorsSpace: CGColorSpace(name: CGColorSpace.sRGB),
+                colors: [color(accentDeep), color(accent), color(accent2)] as CFArray,
+                locations: [0, 0.5, 1]
+            )
+        else { fail("could not build the screen gradient") }
+        context.saveGState()
+        context.addPath(screenPath(rect, corner: screenCorner))
+        context.clip()
+        // Quartz's origin is bottom-left, so the top-left corner is (minX, maxY).
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: rect.minX, y: rect.maxY),
+            end: CGPoint(x: rect.maxX, y: rect.minY),
+            options: []
+        )
+        context.restoreGState()
     case .outline(let hex):
         // The stroke straddles the path, so inset by half of it to keep the
         // screen's outer edge on its stated bounds.
@@ -162,34 +192,42 @@ func drawScreen(_ style: ScreenStyle, in rect: CGRect, into context: CGContext) 
     }
 }
 
-func draw(_ mark: Mark, into context: CGContext, pixels: CGFloat) {
+func draw(_ mark: Mark, into context: CGContext, pixels: CGFloat, fullBleed: Bool) {
     let scale = pixels / grid
     context.setShouldAntialias(true)
     context.setAllowsAntialiasing(true)
     context.interpolationQuality = .high
     context.scaleBy(x: scale, y: scale)
 
-    let tile = CGRect(
-        x: (grid - tileSide) / 2, y: (grid - tileSide) / 2,
-        width: tileSide, height: tileSide
-    )
-    let tilePath = squirclePath(in: tile, radius: tileCorner, exponent: tileCornerExponent)
+    let canvas = CGRect(x: 0, y: 0, width: grid, height: grid)
+    let tile = fullBleed
+        ? canvas
+        : CGRect(
+            x: (grid - tileSide) / 2, y: (grid - tileSide) / 2,
+            width: tileSide, height: tileSide
+        )
+    let tilePath =
+        fullBleed
+        ? CGPath(rect: tile, transform: nil)
+        : squirclePath(in: tile, radius: tileCorner, exponent: tileCornerExponent)
     context.addPath(tilePath)
     context.setFillColor(color(bg))
     context.fillPath()
 
-    // Flat, no shadow: the tile edge is a border, exactly as panels are.
-    let borderRect = tile.insetBy(dx: tileBorderWidth / 2, dy: tileBorderWidth / 2)
-    context.addPath(
-        squirclePath(
-            in: borderRect,
-            radius: tileCorner - tileBorderWidth / 2,
-            exponent: tileCornerExponent
+    if !fullBleed {
+        // Flat, no shadow: the tile edge is a border, exactly as panels are.
+        let borderRect = tile.insetBy(dx: tileBorderWidth / 2, dy: tileBorderWidth / 2)
+        context.addPath(
+            squirclePath(
+                in: borderRect,
+                radius: tileCorner - tileBorderWidth / 2,
+                exponent: tileCornerExponent
+            )
         )
-    )
-    context.setStrokeColor(color(line2))
-    context.setLineWidth(tileBorderWidth)
-    context.strokePath()
+        context.setStrokeColor(color(line2))
+        context.setLineWidth(tileBorderWidth)
+        context.strokePath()
+    }
 
     // The moat is knocked out in the tile's own colour, so without this clip it
     // would punch an opaque bite through the tile edge and the border with it.
@@ -249,7 +287,7 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-func renderPNG(_ mark: Mark, pixels: Int, to url: URL) {
+func renderPNG(_ mark: Mark, pixels: Int, fullBleed: Bool, to url: URL) {
     guard
         let context = CGContext(
             data: nil,
@@ -259,7 +297,7 @@ func renderPNG(_ mark: Mark, pixels: Int, to url: URL) {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )
     else { fail("could not create a \(pixels)x\(pixels) bitmap context") }
-    draw(mark, into: context, pixels: CGFloat(pixels))
+    draw(mark, into: context, pixels: CGFloat(pixels), fullBleed: fullBleed)
     guard let image = context.makeImage() else { fail("could not snapshot \(url.lastPathComponent)") }
     guard
         let destination = CGImageDestinationCreateWithURL(
@@ -300,7 +338,7 @@ if arguments.first == "--linux" {
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let png = directory.appendingPathComponent("com.sensorium.viewer.png")
         try? fileManager.removeItem(at: png)
-        renderPNG(viewer, pixels: pixels, to: png)
+        renderPNG(viewer, pixels: pixels, fullBleed: false, to: png)
         print(png.path)
     }
     exit(0)
@@ -317,7 +355,7 @@ for mark in marks {
     try? fileManager.removeItem(at: iconset)
     try? fileManager.createDirectory(at: iconset, withIntermediateDirectories: true)
     for size in iconSizes {
-        renderPNG(mark, pixels: size.pixels, to: iconset.appendingPathComponent(size.name))
+        renderPNG(mark, pixels: size.pixels, fullBleed: true, to: iconset.appendingPathComponent(size.name))
     }
     let icns = outputDirectory.appendingPathComponent("\(mark.name).icns")
     try? fileManager.removeItem(at: icns)
