@@ -8,6 +8,14 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.5.14] - 2026-11-03
+
+### Added
+
+- **Dim When Unfocused** in the viewer's View menu: a slider from 0% to 100%,
+  default 0%. A session window that is not focused is darkened by that
+  amount and returns to full brightness when it is focused again.
+
 ## [0.5.13] - 2026-11-03
 
 ### Fixed
