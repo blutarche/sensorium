@@ -15,6 +15,7 @@ import VideoToolbox
 /// or Network.framework.
 @MainActor
 func runDarwinClientTests() async {
+    testViewerUnfocusedDimming()
     await testHostScreenSessionFlowTests()
     await testHostScreenViewerInputTests()
     await testInputMappingAndPresentationTests()

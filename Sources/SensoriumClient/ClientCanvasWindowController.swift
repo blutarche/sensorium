@@ -13,6 +13,7 @@ import MetalKit
 /// without a window.
 @MainActor
 public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow, SessionWindowChrome, ViewerMenuCommandTarget, @unchecked Sendable {
+    private var unfocusedDimming: ViewerWindowDimming?
     private let window: NSWindow
     /// The address-derived title until `updateTitle(_:)` learns the host's
     /// own name from `canvasReady`; `attach(session:)` resets to whatever
@@ -487,6 +488,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
             self?.onCloseRequested?()
         }
         window.delegate = closeDelegate
+        unfocusedDimming = ViewerWindowDimming(window: window)
     }
 
     /// Offsets a second canvas from the first, by AppKit's own cascade step

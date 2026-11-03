@@ -249,6 +249,7 @@ public final class ViewerMainMenuController: NSObject, NSMenuDelegate {
     }
 
     private func menuItem(for item: ViewerMenuItem) -> NSMenuItem {
+        if item.title == "Dim When Unfocused" { return ViewerUnfocusedDimming.shared.menuItem() }
         if item.title == "Appearance" { return AppAppearance.shared.menuItem() }
         guard item.command != .separator else { return .separator() }
         let result = NSMenuItem(

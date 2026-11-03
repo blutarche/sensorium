@@ -243,6 +243,14 @@ public struct ViewerMenuRow: Equatable, Sendable, CustomStringConvertible {
 
 public enum ViewerMenuPlan {
     /// The fixed menus as they read before any window has had focus.
+    private static var unfocusedDimmingItems: [ViewerMenuItem] {
+        #if canImport(AppKit)
+        [ViewerMenuItem(title: "Dim When Unfocused", command: .submenu)]
+        #else
+        []
+        #endif
+    }
+
     public static let menus: [ViewerMenu] = fixedMenus(.initial)
 
     /// The whole bar, in order: the app menu, Edit, View, then the session's
@@ -395,7 +403,7 @@ public enum ViewerMenuPlan {
                 ViewerMenuItem(title: "Paste", command: .paste, keyEquivalent: "v", modifiers: [.command]),
                 ViewerMenuItem(title: "Select All", command: .selectAll, keyEquivalent: "a", modifiers: [.command])
             ]),
-            ViewerMenu(title: "View", items: [
+            ViewerMenu(title: "View", items: unfocusedDimmingItems + [
                 ViewerMenuItem(
                     title: fullScreen.title,
                     command: .toggleFullScreen,
