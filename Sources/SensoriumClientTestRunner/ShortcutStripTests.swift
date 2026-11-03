@@ -932,6 +932,13 @@ func testShortcutStripConfirmationOrderAndDefaultTests() {
 /// circled cross used to ride two device pixels high.
 @MainActor
 func testShortcutStripIconsSitOnTheirButtonCentreTests() {
+    // The bound is in device pixels at 2x, and a view with no window lays out
+    // on the main screen's grid. On a 1x screen every symbol snaps to a whole
+    // point, which is two of these pixels.
+    guard NSScreen.main?.backingScaleFactor == 2 else {
+        print("SKIP: strip icon centring is measured on a 2x screen")
+        return
+    }
     let container = NSView(frame: NSRect(x: 0, y: 0, width: 1280, height: 700))
     let strip = ShortcutStripView(hostName: "Studio", pinMemoryStore: InMemoryShortcutStripPinMemoryStore(isPinned: false))
     container.addSubview(strip)
