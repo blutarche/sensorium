@@ -58,8 +58,11 @@ func runHostPairedMachineRowLayoutTests() async {
         let text: NSView = field("stack", of: rowView, as: NSStackView.self)
         let toggle: NSControl = field("toggle", of: rowView, as: NSControl.self)
         let more: NSButton = field("moreButton", of: rowView, as: NSButton.self)
+        // One device pixel: a 1x screen snaps the stack to whole points.
+        let pixel = 1 / (NSScreen.main?.backingScaleFactor ?? 2)
+        let bound = max(0.5, pixel)
         expect(
-            abs(text.frame.midY - toggle.frame.midY) < 0.5 && abs(toggle.frame.midY - more.frame.midY) < 0.5,
+            abs(text.frame.midY - toggle.frame.midY) <= bound && abs(toggle.frame.midY - more.frame.midY) <= bound,
             "the machine's text is centred on its switch and more button -- text \(text.frame), switch \(toggle.frame), "
                 + "more \(more.frame)"
         )
