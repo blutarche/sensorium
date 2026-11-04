@@ -38,6 +38,7 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 | `Scripts/test-make-dmg-background.sh` | The disk image backgrounds `Scripts/make-dmg-background.swift` draws for the viewer and the host: a 1x and 2x pair `tiffutil` joins, one window layout for both, identical bytes on every run, two different pictures that draw each machine pixel for pixel the same, a refused unknown role, and a light, clean panel wherever Finder draws an icon and its black label |
 | `Scripts/test-make-dmg-layout.sh` | The Finder window file `Scripts/make-dmg-layout.swift` writes into a scratch disk image: icon positions, window size and chrome, the background picture it points at, and that it names no path or disk of the machine that built it |
 | `Scripts/test-package-linux.sh` | The Fedora package `Scripts/package-linux.sh` builds: its desktop entry, its metainfo, its icons, the libraries it asks for, and that removing it leaves nothing behind. Runs only inside the CI Fedora container, where installing a package is safe |
+| `Scripts/test-sign-linux-update.py` | The Linux update tooling with no network and no real key: the archive check on good and malformed tarballs, the archive maker (when GNU tar is installed), and `Scripts/sign-linux-update.sh` against a stub `gh` and a throwaway key. It checks every refusal, the manifest bytes, and that the signature verifies |
 | `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-machine boundaries, and do not regress to an earlier, stale claim |
 | `Scripts/test-clean-build-output.py` | `Scripts/clean-build-output.py` against throwaway repositories with a bare remote and agent worktrees: what it removes, every guard that keeps a worktree or a build directory, and that it never follows a symbolic link |
 
@@ -124,7 +125,7 @@ only the two portable runners apply there.
 | `SensoriumCoreTestRunner` | The same suite as on macOS. Nothing in it is platform-specific |
 | `SensoriumClientTestRunner` | The portable half of the viewer suite. The Apple-framework tests are skipped by `Entry+Darwin.swift`, which is empty off Darwin |
 | `Scripts/test-linux-gui-reachable.sh` | Every capability `docs/ux-spec.md` names is reachable from the Linux window layer. `Scripts/linux-gui-pending.txt` lists the ones not brought over yet, and the script also fails when a pending capability has landed, so the list stays honest |
-| `Scripts/test-package-linux.sh` | The Fedora package, installed and removed inside the CI container |
+| `Scripts/test-package-linux.sh` | The Fedora package, installed and removed inside the CI container, and the update archive built beside it |
 
 The `linux-build-and-test` job in `.github/workflows/ci.yml` builds the four
 Linux products and runs the two runners and the reachability check in a

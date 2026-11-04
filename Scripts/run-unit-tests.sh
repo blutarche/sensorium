@@ -17,13 +17,14 @@ python3 Scripts/test-check-display-active.py
 python3 Scripts/test-documentation-status.py
 python3 Scripts/test-clean-build-output.py
 python3 Scripts/test-linux-build-version.py
+python3 Scripts/test-sign-linux-update.py
 # Both configurations. Release is what every packaging script ships, and it
 # is the only place the optimizer's freedom -- ARC releasing an object at its
 # last use, among others -- can change behaviour.
 for configuration in debug release; do
     swift build -c "$configuration"
 
-    for runner in Core Host Client Integration Update; do
+    for runner in Core Host Client Integration Update LinuxUpdate; do
         printf '== [%s] Sensorium%sTestRunner\n' "$configuration" "$runner"
         if [ "$runner" = "Host" ]; then
             # A real NSApplication window can leave this runner's own async

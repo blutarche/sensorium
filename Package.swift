@@ -14,6 +14,8 @@ let package = Package(
         .executable(name: "SensoriumIntegrationTestRunner", targets: ["SensoriumIntegrationTestRunner"]),
         .library(name: "SensoriumUpdate", targets: ["SensoriumUpdate"]),
         .executable(name: "SensoriumUpdateTestRunner", targets: ["SensoriumUpdateTestRunner"]),
+        .library(name: "SensoriumLinuxUpdate", targets: ["SensoriumLinuxUpdate"]),
+        .executable(name: "SensoriumLinuxUpdateTestRunner", targets: ["SensoriumLinuxUpdateTestRunner"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -149,6 +151,10 @@ let package = Package(
         // updates through its package and never links it.
         .target(name: "SensoriumUpdate", dependencies: ["SensoriumCore"]),
         .executableTarget(name: "SensoriumUpdateTestRunner", dependencies: ["SensoriumUpdate", "SensoriumCore"]),
+        // The Linux viewer's update engine. Platform-neutral, so its runner
+        // also passes on macOS.
+        .target(name: "SensoriumLinuxUpdate", dependencies: ["SensoriumCore"]),
+        .executableTarget(name: "SensoriumLinuxUpdateTestRunner", dependencies: ["SensoriumLinuxUpdate", "SensoriumCore"]),
         .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(
             name: "Sensorium",
