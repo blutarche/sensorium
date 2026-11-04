@@ -104,7 +104,7 @@ jobs:
       - name: Install dependencies
         # The same libraries the build job installs, plus what builds and
         # validates a package.
-        run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pkgconf-pkg-config python3 wayland-devel rpm-build desktop-file-utils appstream
+        run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pkgconf-pkg-config python3 wayland-devel rpm-build cpio desktop-file-utils appstream
 
       - uses: actions/checkout@v4
 

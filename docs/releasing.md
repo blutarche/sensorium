@@ -78,6 +78,27 @@ The workflow `release-linux` builds the Fedora package and attaches it, with its
 
 To fill in an older release, open Actions, choose `release-linux`, pick Run workflow and enter the tag, for example `v1.2.3`. The workflow checks out that tag and replaces the package on the release if one is already there.
 
+## The Linux update
+
+`release-linux` also attaches `Sensorium-<version>-linux-x86_64.tar.gz` and its `.sha256`. The tarball holds the viewer binary and nothing else. It is what the Linux viewer updates itself from.
+
+CI cannot sign it, because the update key stays on your machine. When the workflow has finished, run this on the machine that holds the key:
+
+```
+Scripts/sign-linux-update.sh v<version>
+```
+
+The script downloads the tarball, writes `sensorium-update-linux-x86_64.json`, signs it with the same key as the macOS manifest and uploads the manifest and its `.sig`. Add `--dry-run` to do everything except the upload. The files stay in a folder the script prints.
+
+The script refuses to continue when:
+
+- the tag does not match `VERSION`
+- the release has no tarball
+- the tarball holds anything but one executable named `Sensorium`
+- the key does not match the public key compiled into the apps
+
+Until you run it, Linux viewers find no manifest and report Up to date.
+
 ## Forks
 
 Set `SENSORIUM_RELEASE_CERT_LEAF` to the leaf of your own certificate, for example `H"0123..."`. Use your own update key and public key.

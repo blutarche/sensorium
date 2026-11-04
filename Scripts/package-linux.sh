@@ -5,7 +5,9 @@
 # by the public-repository audit, so a build tree can never reach the
 # repository. The result is Artifacts/sensorium-<version>-1.<dist>.x86_64.rpm
 # and a .sha256 beside it. The package is unsigned: that checksum is what a
-# download is checked against.
+# download is checked against. The viewer binary the package installs also
+# goes to Artifacts/Sensorium-<version>-linux-x86_64.tar.gz, with its own
+# .sha256, which is what the viewer updates itself from.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -48,6 +50,17 @@ fi
 
 cp "$built" "$OUTPUT/$(basename "$built")"
 (cd "$OUTPUT" && sha256sum "$(basename "$built")" > "$(basename "$built").sha256")
+
+# The update archive holds the binary taken out of the package, so it is the
+# one the package test installs and runs, and nothing is built twice.
+for tool in rpm2cpio cpio; do
+    command -v "$tool" > /dev/null 2>&1 || { echo "package-linux: $tool is not installed." >&2; exit 1; }
+done
+UNPACKED="$TOPDIR/unpacked"
+rm -rf "$UNPACKED"
+mkdir -p "$UNPACKED"
+rpm2cpio "$built" | (cd "$UNPACKED" && cpio --quiet -idm ./usr/bin/Sensorium)
+sh "$ROOT/Scripts/make-linux-update-archive.sh" "$UNPACKED/usr/bin/Sensorium" "$OUTPUT"
 
 echo "package-linux: $OUTPUT/$(basename "$built")"
 echo "package-linux: $OUTPUT/$(basename "$built").sha256"

@@ -1,5 +1,6 @@
 #!/bin/sh
-# Checks the package Scripts/package-linux.sh built, by installing it.
+# Checks the package Scripts/package-linux.sh built, by installing it, and the
+# update archive it built beside it.
 #
 # This installs and removes a package, so it runs inside the CI Fedora
 # container and nowhere else. It is not a check anyone should run on a machine
@@ -46,6 +47,17 @@ grep "x-scheme-handler/sensorium" /usr/share/applications/mimeinfo.cache \
 # The one thing the binary is asked to do here: answer without a display.
 usage="$(Sensorium --help)" || fail "Sensorium --help did not exit 0"
 echo "$usage" | grep -q "^usage: Sensorium " || fail "Sensorium --help printed no usage"
+
+# The archive the viewer updates itself from holds the binary the package
+# installs. Checked here, while the package's libraries are still installed,
+# because the archived binary is run too.
+archive="Artifacts/Sensorium-$VERSION-linux-x86_64.tar.gz"
+[ -f "$archive" ] || fail "no update archive for $VERSION in Artifacts; run Scripts/package-linux.sh first"
+(cd Artifacts && sha256sum -c "$(basename "$archive").sha256" > /dev/null) \
+    || fail "the checksum beside $archive does not match it"
+sh Scripts/test-linux-update-archive.sh --run "$archive" || fail "the update archive is not what the viewer expects"
+tar -xzOf "$archive" Sensorium | cmp -s - /usr/bin/Sensorium \
+    || fail "the update archive does not hold the binary the package installs"
 
 requires="$(rpm -qR sensorium | sed 's/(.*//' | grep '^lib.*\.so' | sort -u)"
 
