@@ -268,7 +268,6 @@ Still to test:
 
 ## 8. Out of scope
 
-- The Linux viewer's own update. It updates through its package.
 - A machine whose user cannot write to Applications. The app shows the *Not updatable* line.
 - An Intel machine as the host. The host is built for Apple silicon only, as before.
 - Delta updates, beta channels, and key rotation.
@@ -292,3 +291,55 @@ Still to test:
 3. The version refusal message from section 1.4, in both viewers and the host.
 4. The viewer's use of the update core.
 5. The host's use of it, with the idle rule, then the live tests in section 7.
+
+---
+
+## 11. The Linux viewer
+
+The Linux viewer updates itself the way the macOS apps do: it checks a signed manifest, downloads the named file, tests it, and switches to it. It needs no password and never runs a package manager.
+
+### 11.1 What the person sees
+
+The same update line as the macOS viewer, in Your Machines: *Checking*, *Up to date*, *Downloading*, *Restart Now*, *Failed*. Automatic updates are on by default. A viewer that cannot write to its own folder shows *Not updatable*.
+
+### 11.2 Release
+
+A Linux release adds three files beside the macOS ones:
+
+| File | What it is |
+| --- | --- |
+| `Sensorium-<version>-linux-x86_64.tar.gz` | The viewer binary, built by the same CI job as the Fedora package |
+| `sensorium-update-linux-x86_64.json` | Signed manifest: `format` 1, `version`, `file`, `size`, `sha256` |
+| `sensorium-update-linux-x86_64.json.sig` | Ed25519 signature on the manifest's exact bytes, by the macOS update key |
+
+The update key lives only on the maintainer's machine, so CI cannot sign. A last local step signs after CI has attached the tarball: it downloads the tarball, hashes it, writes and signs the manifest, and uploads both. Until it runs, Linux viewers find no manifest and report *Up to date*.
+
+### 11.3 Where it installs
+
+Everything lives in the person's own data folder, owner-only:
+
+- `versions/<version>/Sensorium`: one directory per installed version.
+- `current`: a symbolic link to the running version's directory. Switching versions is one `rename(2)` of this link, so there is never a moment with no viewer.
+- A pending marker, written before the switch and removed when the new version confirms it started.
+
+A viewer installed by the package lives under `/usr`. Its first update installs the new version into the data folder and writes a launcher entry and icons under the person's own applications and icons folders, which take precedence over the package's. Later updates only switch `current`. The package stays installed and untouched, and the status line names the version that is running.
+
+### 11.4 Install and rollback
+
+1. Download, then compare the size and SHA-256 with the signed manifest, as in section 3.2.
+2. Extract into a fresh private directory. Accept exactly one regular file named `Sensorium`: no links, devices, duplicate entries or paths that leave the directory. Bound the entry count and the extracted size.
+3. Run the new binary with `--update-self-test`. It must exit 0 within 10 seconds and print its own version, which must equal the manifest's.
+4. Write the pending marker, then switch `current`.
+5. **Restart Now** starts the new binary with `--replacing <pid> <ready file>`. The new viewer writes the ready file once its window is up. The old viewer exits when it sees the file, and switches `current` back if the file does not appear within 60 seconds.
+6. At the next launch, a pending marker with no ready file means the new version never confirmed: the launcher switches back before showing a window.
+
+The two previous versions are kept. Older ones are removed after a confirmed switch.
+
+### 11.5 Trust
+
+The Ed25519 signature on the manifest, then the SHA-256 of the file, are the only proofs, because the Linux binary carries no code signature to compare. The self-test and the version check catch a wrong file, not a hostile one. A failed check never installs.
+
+### 11.6 Not in this version
+
+Updating other architectures than x86_64, updating through a system package manager, and key rotation.
+
