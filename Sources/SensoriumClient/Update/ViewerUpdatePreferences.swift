@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import SensoriumCore
 
@@ -47,7 +46,7 @@ public final class InMemoryViewerUpdatePreferencesStore: ViewerUpdatePreferences
     }
 }
 
-/// One owner-only JSON file in the viewer's Application Support folder. The
+/// One owner-only JSON file in the viewer's own data folder. On macOS the
 /// host shares that folder, so the name says whose it is.
 public final class FileViewerUpdatePreferencesStore: ViewerUpdatePreferencesStoring, @unchecked Sendable {
     public static let fileName = "viewer-update-preferences.json"
@@ -68,4 +67,3 @@ public final class FileViewerUpdatePreferencesStore: ViewerUpdatePreferencesStor
         try? OwnerOnlyFileWrite.write(data, to: url)
     }
 }
-#endif

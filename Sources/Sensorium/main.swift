@@ -293,8 +293,10 @@ struct Sensorium {
 }
 #else
 import Foundation
+import FoundationNetworking
 import SensoriumClient
 import SensoriumCore
+import SensoriumLinuxUpdate
 
 /// The QUIC stack a Linux viewer dials with. There is one: this platform has
 /// no local-verification transport, so `--transport tcp-local-verification`
@@ -310,10 +312,173 @@ struct OpenSSLViewerTransportFactory: ViewerTransportFactory {
     }
 }
 
+/// The Linux viewer's real update transport: an ephemeral session that keeps
+/// no cookies, cache or credentials, names itself with
+/// `LinuxUpdateReleaseLocation.userAgent`, gives up on a request after
+/// `LinuxUpdateReleaseLocation.timeout` and on a whole transfer at its
+/// deadline, follows only https redirects, and cancels a response the moment
+/// it passes the caller's cap. GitHub answers every release address with a
+/// redirect to its file host; integrity rests on the manifest's signature
+/// and the archive's SHA-256, not on which server answered.
+struct URLSessionLinuxUpdateTransport: LinuxUpdateTransport {
+    static func makeConfiguration(deadline: TimeInterval) -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.urlCredentialStorage = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.timeoutIntervalForRequest = LinuxUpdateReleaseLocation.timeout
+        configuration.timeoutIntervalForResource = deadline
+        configuration.httpAdditionalHeaders = ["User-Agent": LinuxUpdateReleaseLocation.userAgent]
+        return configuration
+    }
+
+    func fetch(_ url: URL, maximumBytes: Int) async throws -> Data {
+        let sink = LinuxMemorySink()
+        try await transfer(url, maximumBytes: Int64(maximumBytes), deadline: LinuxUpdateReleaseLocation.smallFileDeadline, into: sink)
+        return sink.data
+    }
+
+    func download(_ url: URL, to destination: URL, maximumBytes: Int64) async throws {
+        let descriptor = open(destination.path, O_CREAT | O_EXCL | O_WRONLY, 0o600)
+        guard descriptor >= 0 else {
+            throw LinuxUpdateTransportError.failed("could not create \(destination.lastPathComponent)")
+        }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        try await transfer(url, maximumBytes: maximumBytes, deadline: LinuxUpdateReleaseLocation.archiveDeadline, into: LinuxFileSink(handle: handle))
+        try handle.synchronize()
+    }
+
+    private func transfer(_ url: URL, maximumBytes: Int64, deadline: TimeInterval, into sink: any LinuxTransferSink) async throws {
+        guard url.scheme == "https" else {
+            throw LinuxUpdateTransportError.failed("only https addresses are fetched")
+        }
+        var request = URLRequest(url: url)
+        request.setValue(LinuxUpdateReleaseLocation.userAgent, forHTTPHeaderField: "User-Agent")
+        let delegate = LinuxCappedTransferDelegate(maximumBytes: maximumBytes, sink: sink)
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        let session = URLSession(configuration: Self.makeConfiguration(deadline: deadline), delegate: delegate, delegateQueue: queue)
+        defer { session.finishTasksAndInvalidate() }
+        let task = session.dataTask(with: request)
+        // The task is also cancelled at the deadline, so the deadline holds
+        // whatever the session makes of its resource timeout.
+        let expiry = DispatchWorkItem { task.cancel() }
+        defer { expiry.cancel() }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            delegate.continuation = continuation
+            task.resume()
+            DispatchQueue.global().asyncAfter(deadline: .now() + deadline, execute: expiry)
+        }
+    }
+}
+
+private protocol LinuxTransferSink: AnyObject, Sendable {
+    func write(_ data: Data) throws
+}
+
+private final class LinuxMemorySink: LinuxTransferSink, @unchecked Sendable {
+    private(set) var data = Data()
+    func write(_ chunk: Data) { data.append(chunk) }
+}
+
+private final class LinuxFileSink: LinuxTransferSink, @unchecked Sendable {
+    let handle: FileHandle
+    init(handle: FileHandle) { self.handle = handle }
+    func write(_ chunk: Data) throws { try handle.write(contentsOf: chunk) }
+}
+
+/// Counts bytes as they arrive and cancels the task past the cap, so an
+/// oversized or endless response never lands in memory or on disk. Every
+/// callback runs on the session's one serial delegate queue.
+private final class LinuxCappedTransferDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    let maximumBytes: Int64
+    let sink: any LinuxTransferSink
+    var continuation: CheckedContinuation<Void, any Error>?
+    private var received: Int64 = 0
+    private var failure: LinuxUpdateTransportError?
+
+    init(maximumBytes: Int64, sink: any LinuxTransferSink) {
+        self.maximumBytes = maximumBytes
+        self.sink = sink
+    }
+
+    /// A redirect to anything but https is not followed, which leaves the
+    /// redirect itself as the response, refused below by its status.
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(request.url?.scheme == "https" ? request : nil)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            failure = .badStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
+            return completionHandler(.cancel)
+        }
+        if response.expectedContentLength > maximumBytes {
+            failure = .tooLarge
+            return completionHandler(.cancel)
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard failure == nil else { return }
+        received += Int64(data.count)
+        guard received <= maximumBytes else {
+            failure = .tooLarge
+            return dataTask.cancel()
+        }
+        do {
+            try sink.write(data)
+        } catch {
+            failure = .failed("could not write the download")
+            dataTask.cancel()
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        let continuation = continuation
+        self.continuation = nil
+        if let failure {
+            continuation?.resume(throwing: failure)
+        } else if let error {
+            continuation?.resume(throwing: LinuxUpdateTransportError.failed(error.localizedDescription))
+        } else {
+            continuation?.resume()
+        }
+    }
+}
+
 @main
 @MainActor
 struct Sensorium {
+    /// Nil in a build with no release version.
+    private static var updater: LinuxViewerUpdater?
+
     static func main() async {
+        // The self-test a staged update is run with, answered before
+        // anything else: it reads the saved machines and this machine's key
+        // without changing them, and needs no display.
+        guard case let .viewer(arguments, replacing) = ViewerLaunchRoute.route(Array(CommandLine.arguments.dropFirst())) else {
+            let directory = LinuxViewerLocations.applicationSupportDirectory(
+                environment: ProcessInfo.processInfo.environment,
+                homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+            )
+            exit(ViewerUpdateSelfTest.run(applicationSupportDirectory: directory, versionLine: "Sensorium \(ViewerRelease.version)"))
+        }
         // Before this actor has ever suspended, and before any window: the
         // event loop can only take over the process's main queue while the
         // queue is still bound to the thread it started on -- see
@@ -336,6 +501,38 @@ struct Sensorium {
             }
             let prompts = GtkViewerPrompts(launchWindow: launch)
             let registry = LinuxViewerWindowRegistry(environment: environment)
+            let updater = LinuxViewerUpdater.make(
+                releaseVersion: ViewerRelease.version,
+                dataRoot: environment.applicationSupportDirectory(),
+                replacing: replacing,
+                transport: URLSessionLinuxUpdateTransport(),
+                launcherFolders: LinuxViewerLocations.launcherFolders(
+                    environment: ProcessInfo.processInfo.environment,
+                    homeDirectory: FileManager.default.homeDirectoryForCurrentUser
+                ),
+                onTerminate: { quit.fire() }
+            )
+            Self.updater = updater
+            if let updater {
+                // Before the first window, as section 11.4 of the update
+                // design requires.
+                updater.rollBackUnconfirmedSwitch()
+                launch.setUpdateLine(updater.line)
+                updater.onLineChange = { launch.setUpdateLine($0) }
+                launch.onDidShow = { updater.windowDidShow() }
+                launch.onRestartNow = { Task { await updater.restartNow() } }
+                launch.checksForUpdatesAutomatically = updater.checksAutomatically
+                // Your Machines is where the answer is shown.
+                launch.onCheckForUpdates = {
+                    launch.show()
+                    Task { await updater.checkForUpdates() }
+                }
+                launch.onSetChecksAutomatically = { on in
+                    updater.setChecksAutomatically(on)
+                    launch.checksForUpdatesAutomatically = on
+                }
+                registry.checksForUpdatesAutomatically = { updater.checksAutomatically }
+            }
             let hide = {
                 launch.minimize()
                 registry.minimizeSessionWindows()
@@ -349,6 +546,9 @@ struct Sensorium {
                     launch.showList()
                     launch.show()
                 case .hide: hide()
+                case .checkForUpdates: launch.onCheckForUpdates?()
+                case .toggleAutomaticUpdates:
+                    if let updater { launch.onSetChecksAutomatically?(!updater.checksAutomatically) }
                 default: break
                 }
             }
@@ -366,6 +566,7 @@ struct Sensorium {
                     await prompts.showNotice(notice)
                 }
             }
+            updater?.start()
             return ViewerGUI(
                 launch: launch,
                 prompts: prompts,
@@ -379,7 +580,8 @@ struct Sensorium {
                 windowRegistry: registry
             )
         }
-        await viewer.run(arguments: Array(CommandLine.arguments.dropFirst()))
+        viewer.onSessionRunChange = { Self.updater?.sessionRunChanged($0) }
+        await viewer.run(arguments: arguments)
     }
 }
 

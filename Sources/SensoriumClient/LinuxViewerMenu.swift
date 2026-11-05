@@ -6,11 +6,9 @@ import SensoriumCore
 public enum LinuxViewerMenu {
     /// Hide Others, Show All and Bring All to Front act on every other
     /// application's windows through macOS's own application services. A
-    /// Wayland client can neither hide nor raise another application. The
-    /// update items are left out because the Linux viewer is updated by its
-    /// package, never by itself.
+    /// Wayland client can neither hide nor raise another application.
     public static let omitted: [ViewerMenuCommand] = [
-        .hideOthers, .showAll, .bringAllToFront, .checkForUpdates, .toggleAutomaticUpdates
+        .hideOthers, .showAll, .bringAllToFront
     ]
 
     public static func bar(_ state: ViewerMenuBarState) -> [ViewerMenu] {
@@ -138,7 +136,7 @@ public enum LinuxViewerMenu {
     /// What `command` does when a session window's menu chooses it.
     public static func sessionAction(for command: ViewerMenuCommand, clipboardSharingEnabled: Bool) -> LinuxSessionMenuAction {
         switch command {
-        case .about, .hide, .quit, .showYourMachines:
+        case .about, .hide, .quit, .showYourMachines, .checkForUpdates, .toggleAutomaticUpdates:
             .application(command)
         case .toggleFullScreen: .toggleFullScreen
         case .toggleTelemetryOverlay: .toggleDiagnostics
@@ -152,7 +150,7 @@ public enum LinuxViewerMenu {
         case let .selectRealScreen(token): .sessionChoice(.selectRealScreen(token))
         case let .selectHostScreenMode(modeID): .sessionChoice(.selectHostScreenMode(modeID))
         case let .selectStartTarget(target): .sessionChoice(.selectStartTarget(target))
-        case .hideOthers, .showAll, .bringAllToFront, .checkForUpdates, .toggleAutomaticUpdates,
+        case .hideOthers, .showAll, .bringAllToFront,
              .undo, .redo, .cut, .copy, .paste, .selectAll,
              .streamScaleClampNotice, .escapeGestureHint, .separator, .submenu:
             .none

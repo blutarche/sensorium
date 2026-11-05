@@ -15,6 +15,13 @@ public enum LinuxUpdateReleaseLocation {
     public static let userAgent = "Sensorium-Update/1"
     public static let timeout: TimeInterval = 30
 
+    /// The most a whole transfer may take, redirects and body included, so a
+    /// server that keeps sending a few bytes at a time still cannot hold a
+    /// check or a download open: one for the manifest or its signature, one
+    /// for the archive.
+    public static let smallFileDeadline: TimeInterval = 30
+    public static let archiveDeadline: TimeInterval = 10 * 60
+
     /// `LinuxUpdateManifest.parse` has already held `manifest.file` to
     /// exactly `Sensorium-<version>-linux-x86_64.tar.gz`.
     public static func downloadURL(for manifest: LinuxUpdateManifest) -> URL {
@@ -32,8 +39,9 @@ public enum LinuxUpdateTransportError: Error, Equatable {
 /// Fetches the release page's files. Behind a protocol so tests use a local
 /// fake and make no network request. A real transport sends no cookies,
 /// keeps no cache, names itself with `LinuxUpdateReleaseLocation.userAgent`,
-/// gives up after `LinuxUpdateReleaseLocation.timeout`, and stops reading
-/// past the cap rather than after it.
+/// gives up on a request after `LinuxUpdateReleaseLocation.timeout` and on a
+/// whole transfer at `smallFileDeadline` or `archiveDeadline`, and stops
+/// reading past the cap rather than after it.
 public protocol LinuxUpdateTransport: Sendable {
     /// The whole body of `url`, or `LinuxUpdateTransportError.tooLarge` past
     /// `maximumBytes`.

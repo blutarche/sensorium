@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import SensoriumCore
 
@@ -12,18 +11,27 @@ import SensoriumCore
 /// they tidy away partial files left by an interrupted write, and the key
 /// store makes a key when there is none.
 public enum ViewerUpdateSelfTest {
-    public static func run(applicationSupportDirectory directory: URL) -> Int32 {
+    /// `versionLine` is printed first when given: the Linux updater accepts
+    /// a staged binary only when its first line is `Sensorium <version>`.
+    public static func run(
+        applicationSupportDirectory directory: URL,
+        versionLine: String? = nil,
+        output: (String) -> Void = { print($0) }
+    ) -> Int32 {
+        if let versionLine {
+            output(versionLine)
+        }
         let savedHosts = directory.appendingPathComponent(ViewerApplication.savedHostFileName)
         if let failure = check(savedHosts, readsAs: savedMachinesParse) {
-            print("Sensorium: update self-test: the saved machines \(failure)")
+            output("Sensorium: update self-test: the saved machines \(failure)")
             return 1
         }
         let identity = directory.appendingPathComponent(ViewerApplication.identityFileName)
         if let failure = check(identity, readsAs: identityParses) {
-            print("Sensorium: update self-test: this machine's key \(failure)")
+            output("Sensorium: update self-test: this machine's key \(failure)")
             return 1
         }
-        print("Sensorium: update self-test passed")
+        output("Sensorium: update self-test passed")
         return 0
     }
 
@@ -60,4 +68,3 @@ public enum ViewerUpdateSelfTest {
         return (try? DeviceIdentity(privateKeyData: key)) != nil
     }
 }
-#endif

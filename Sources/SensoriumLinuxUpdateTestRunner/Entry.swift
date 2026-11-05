@@ -2,6 +2,7 @@
 /// either.
 @main
 struct SensoriumLinuxUpdateTestRunner {
+    @MainActor
     static func main() async {
         let tests: [(String, () async -> Void)] = [
             ("versions parse strictly and compare numerically", testVersionsParseStrictlyAndCompareNumerically),
@@ -34,10 +35,18 @@ struct SensoriumLinuxUpdateTestRunner {
             ("the switch writes the pending marker, then moves current in one step", testSwitchWritesThePendingMarkerThenMovesCurrentInOneStep),
             ("an unconfirmed switch is rolled back", testAnUnconfirmedSwitchIsRolledBack),
             ("confirmation removes the marker and keeps two previous versions", testConfirmationRemovesTheMarkerAndKeepsTwoPreviousVersions),
+            ("abandoned work folders are removed only when old and exactly named", testAbandonedWorkFoldersAreRemovedOnlyWhenOldAndExactlyNamed),
             ("staging a signed release end to end", testStagingASignedReleaseEndToEnd),
             ("staging failures are classified and leave nothing behind", testStagingFailuresAreClassifiedAndLeaveNothingBehind),
             ("the launcher entry runs current and the icons are copied", testLauncherEntryRunsCurrentAndTheIconsAreCopied),
-            ("the Exec argument is quoted as the desktop entry specification requires", testExecArgumentIsQuotedAsTheDesktopEntrySpecificationRequires)
+            ("the Exec argument is quoted as the desktop entry specification requires", testExecArgumentIsQuotedAsTheDesktopEntrySpecificationRequires),
+            ("the self-test and the replacing launch are routed before anything else", testLaunchCommandRoutesTheSelfTestAndTheReplacingLaunch),
+            ("the ready report is written only into an owner-only folder", testReadyReportIsWrittenOnlyIntoAnOwnerOnlyFolder),
+            ("Restart Now hands over only to a new version that reports ready", testRestartHandsOverOnlyToANewVersionThatReportsReady),
+            ("the scheduler checks at launch and every six hours while on", testSchedulerChecksAtLaunchAndEverySixHoursWhileOn),
+            ("the scheduler stages an update and reports each answer", testSchedulerStagesAnUpdateAndReportsEachAnswer),
+            ("the scheduler records failures and clears them on a chosen check", testSchedulerRecordsFailuresAndClearsThemOnAChosenCheck),
+            ("the scheduler keeps checking after a transfer times out", testSchedulerKeepsCheckingAfterATransferTimesOut)
         ]
 
         for (name, test) in tests {

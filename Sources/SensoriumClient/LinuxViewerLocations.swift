@@ -18,15 +18,36 @@ public enum LinuxViewerLocations {
         environment: [String: String],
         homeDirectory: URL
     ) -> URL {
-        let base: URL
+        dataHome(environment: environment, homeDirectory: homeDirectory)
+            .appendingPathComponent("sensorium", isDirectory: true)
+    }
+
+    /// The package's own launcher entry and icon theme folder, read when a
+    /// packaged viewer adopts its first update. Never written.
+    public static let packagedDesktopFile = URL(fileURLWithPath: "/usr/share/applications/com.sensorium.viewer.desktop")
+    public static let packagedIconsFolder = URL(fileURLWithPath: "/usr/share/icons", isDirectory: true)
+
+    /// Where the person's own launcher entries and icons go, by the same
+    /// rule as `applicationSupportDirectory`. Entries there take precedence
+    /// over the package's ones of the same name.
+    public static func launcherFolders(
+        environment: [String: String],
+        homeDirectory: URL
+    ) -> LinuxViewerLauncherFolders {
+        let base = dataHome(environment: environment, homeDirectory: homeDirectory)
+        return LinuxViewerLauncherFolders(
+            applications: base.appendingPathComponent("applications", isDirectory: true),
+            icons: base.appendingPathComponent("icons", isDirectory: true)
+        )
+    }
+
+    private static func dataHome(environment: [String: String], homeDirectory: URL) -> URL {
         if let configured = environment["XDG_DATA_HOME"], !configured.isEmpty {
-            base = URL(fileURLWithPath: configured, isDirectory: true)
-        } else {
-            base = homeDirectory
-                .appendingPathComponent(".local", isDirectory: true)
-                .appendingPathComponent("share", isDirectory: true)
+            return URL(fileURLWithPath: configured, isDirectory: true)
         }
-        return base.appendingPathComponent("sensorium", isDirectory: true)
+        return homeDirectory
+            .appendingPathComponent(".local", isDirectory: true)
+            .appendingPathComponent("share", isDirectory: true)
     }
 
     /// The name the kernel reports, the one written down in `/etc/hostname`
@@ -41,4 +62,9 @@ public enum LinuxViewerLocations {
         }
         return unnamedMachine
     }
+}
+
+public struct LinuxViewerLauncherFolders: Equatable, Sendable {
+    public let applications: URL
+    public let icons: URL
 }

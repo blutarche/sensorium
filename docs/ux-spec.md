@@ -78,6 +78,8 @@ When a newer Sensorium has downloaded, the window shows one line beneath the lis
 
 **Check for Updates…** brings this window forward. The line reads *Checking for updates…*, then *Sensorium `<version>` is up to date.* until the window is shown again. A check that cannot reach the release page leaves the line empty. An update that fails reads *Sensorium could not update: `<reason>`. It keeps running `<version>`.*, drawn in the warning colour. A copy that cannot replace itself, such as one opened from the Downloads folder, reads *Move Sensorium to Applications and open it again to receive updates.*
 
+On Linux, an update installs only at **Restart Now**. Quitting installs nothing, and the next launch checks again. While a session window is open, the line reads *Sensorium `<version>` is ready.* with no **Restart Now**. A viewer that cannot write to its own data folder reads *Sensorium cannot update itself because it cannot write to its own folder.* The other lines, and both menu items, are the same as on macOS.
+
 ### Adding a machine
 
 Two steps, in that same window, with a **Back** link returning from each:

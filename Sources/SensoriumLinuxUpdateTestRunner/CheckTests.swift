@@ -22,6 +22,8 @@ func testReleaseAddressesAreBuiltFromConstantsAndManifestFields() {
     expect(LinuxUpdateReleaseLocation.maximumSmallFileBytes == 64 * 1024, "the manifest and signature are capped at 64 KB")
     expect(LinuxUpdateReleaseLocation.userAgent == "Sensorium-Update/1", "every request carries the fixed user agent")
     expect(LinuxUpdateReleaseLocation.timeout == 30, "a request times out after 30 seconds")
+    expect(LinuxUpdateReleaseLocation.smallFileDeadline == 30, "fetching the manifest or its signature ends within 30 seconds")
+    expect(LinuxUpdateReleaseLocation.archiveDeadline == 10 * 60, "downloading the archive ends within 10 minutes")
 }
 
 private struct SigningKey {

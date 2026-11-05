@@ -4,6 +4,7 @@ import SensoriumCore
 
 #if canImport(CGtk4)
 import CGtk4
+import SensoriumLinuxUpdate
 
 /// `render-gtk <output-dir>`: puts every window the Linux viewer shows on
 /// screen, in each state a person meets it in, and writes what each one draws
@@ -169,6 +170,24 @@ enum RenderGtkVerb {
         }
     }
 
+    /// The update line exactly as `LinuxViewerUpdater` makes it, for a
+    /// viewer running 0.5.0.
+    private static func updateLine(
+        _ status: ViewerUpdateLineStatus,
+        manualCheck: ViewerManualCheck = .none,
+        sessionInProgress: Bool = false
+    ) -> ViewerUpdateLine? {
+        ViewerUpdateLine.make(
+            status: status,
+            runningVersion: "0.5.0",
+            platform: .linux,
+            manualCheck: manualCheck,
+            sessionInProgress: sessionInProgress,
+            isRestarting: false,
+            restartFailureReason: nil
+        )
+    }
+
     private static var fixtures: [Fixture] {
         [
             Fixture(name: "viewer-about") {
@@ -227,6 +246,27 @@ enum RenderGtkVerb {
                 ))
             ]),
             machines("viewer-machines-8-long-address", hosts: [wrappedAddressHost], tailnet: [wrappedAddressPeer]),
+            machines("viewer-update-1-checking", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.setUpdateLine(updateLine(.busy, manualCheck: .pending))
+            },
+            machines("viewer-update-2-up-to-date", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.setUpdateLine(updateLine(.current, manualCheck: .answered(upToDate: true)))
+            },
+            machines("viewer-update-3-ready", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.setUpdateLine(updateLine(.ready(version: "0.6.0")))
+            },
+            machines("viewer-update-4-ready-during-session", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.setUpdateLine(updateLine(.ready(version: "0.6.0"), sessionInProgress: true))
+            },
+            machines("viewer-update-5-failed", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.setUpdateLine(updateLine(.failed(reason: LinuxUpdateFailure.readyLate.reason)))
+            },
+            machines("viewer-update-6-not-updatable", hosts: [miniHost, studioHost], withTailnet: true) { window in
+                window.setUpdateLine(updateLine(.notUpdatable))
+            },
+            machines("viewer-update-7-ready-nothing-paired", hosts: []) { window in
+                window.setUpdateLine(updateLine(.ready(version: "0.6.0")))
+            },
             machines("viewer-rename-1", hosts: [miniHost, studioHost], withTailnet: true) { window in
                 window.beginRename(hostPublicKey: miniHost.hostPublicKey)
             },

@@ -48,7 +48,7 @@ func testGtkViewerStylesheetTests() {
 
 /// Each text role takes the token macOS draws it in: ink for primary text,
 /// `muted` for secondary and for a placeholder, and `warn` for the
-/// startup-failure eyebrow. An offline device's row takes the same colours as
+/// startup-failure eyebrow and the update line's failure. An offline device's row takes the same colours as
 /// an online one's.
 func testGtkTextRoleColoursMatchMacOSTests() {
     let css = GtkViewerStyle.stylesheet
@@ -63,6 +63,7 @@ func testGtkTextRoleColoursMatchMacOSTests() {
         (".\(Class.rowDetail)", palette.muted, "secondary: a saved machine's address"),
         (".\(Class.deviceSubtitle)", palette.muted, "secondary: a device's address"),
         (".\(Class.eyebrow)", palette.warn, "warning: the startup-failure eyebrow"),
+        (".\(Class.detail).\(Class.warn)", palette.warn, "warning: the update line that reports a failure"),
         ("window.sensorium entry > text > placeholder", palette.muted, "secondary: a placeholder, which muted2 would leave under 4.5:1 on the field")
     ]
     for (selector, token, role) in roles {

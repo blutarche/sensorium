@@ -143,7 +143,10 @@ func testSwitchWritesThePendingMarkerThenMovesCurrentInOneStep() {
     expect(installation.currentVersion() == version("0.5.0"), "current names the running version")
 
     let update = staged("0.6.0", in: installation)
-    expect(installation.switchCurrent(to: update) == nil, "the switch succeeds")
+    expect(
+        installation.switchCurrent(to: update) == .success(LinuxUpdatePendingSwitch(version: version("0.6.0"), sha256: sampleDigest, previous: version("0.5.0"))),
+        "the switch succeeds and names the version it switched from"
+    )
     expect(symlinkTarget(of: installation.currentLink) == "versions/0.6.0", "current is a relative link to the new version")
     expect(installation.currentVersion() == version("0.6.0"), "current names the new version")
     expect(
@@ -157,12 +160,12 @@ func testSwitchWritesThePendingMarkerThenMovesCurrentInOneStep() {
     )
 
     let missing = LinuxStagedUpdate(version: version("0.7.0"), sha256: sampleDigest, executable: installation.versionDirectory(for: version("0.7.0")).appendingPathComponent("Sensorium"))
-    expect(installation.switchCurrent(to: missing) == .switchFailed, "a version that is not in place is never switched to")
+    expect(installation.switchCurrent(to: missing) == .failure(.switchFailed), "a version that is not in place is never switched to")
     expect(installation.currentVersion() == version("0.6.0"), "a refused switch leaves current alone")
 
     let fromPackage = makeInstallation(directory.appendingPathComponent("package", isDirectory: true))
     expect(fromPackage.currentVersion() == nil, "a viewer from the package has no current yet")
-    expect(fromPackage.switchCurrent(to: staged("0.6.0", in: fromPackage)) == nil, "the first switch succeeds")
+    expect((try? fromPackage.switchCurrent(to: staged("0.6.0", in: fromPackage)).get()) != nil, "the first switch succeeds")
     expect(fromPackage.pendingSwitch()?.previous == nil, "the first switch has no version to go back to")
 }
 
@@ -197,10 +200,37 @@ func testAnUnconfirmedSwitchIsRolledBack() {
         "a --replacing start of another version than the pending one rolls back"
     )
 
-    _ = installation.switchCurrent(to: staged("0.6.0", in: installation))
-    let late = installation.pendingSwitch()!
-    expect(installation.rollBack() == .rolledBack(late), "the old viewer rolls back when the ready file is late")
+    let late = try! installation.switchCurrent(to: staged("0.6.0", in: installation)).get()
+    expect(installation.rollBack(late) == .rolledBack(late), "the old viewer rolls back when the ready file is late")
     expect(installation.currentVersion() == version("0.5.0"), "after a late ready file current is the previous version")
+
+    // The marker is gone, as a confirmation leaves it, and the old viewer's
+    // wait ran out all the same.
+    let confirmedLate = try! installation.switchCurrent(to: staged("0.6.0", in: installation)).get()
+    expect(installation.markConfirmed(version: version("0.6.0")) == .confirmed, "the new version confirms")
+    expect(installation.rollBack(confirmedLate) == .rolledBack(confirmedLate), "the old viewer still rolls back the switch it made")
+    expect(
+        installation.currentVersion() == version("0.5.0") && installation.pendingSwitch() == nil,
+        "current is the previous version again, with no marker"
+    )
+
+    let reported = try! installation.switchCurrent(to: staged("0.6.0", in: installation)).get()
+    expect(
+        installation.rollBack(reported, unlessReported: { true }) == .awaitingConfirmation(reported),
+        "a ready report found under the lock keeps the switch"
+    )
+    expect(
+        installation.currentVersion() == version("0.6.0") && installation.pendingSwitch() == reported,
+        "current stays on the new version, which confirms the switch itself"
+    )
+    expect(installation.rollBack(reported) == .rolledBack(reported), "without a report the same switch rolls back")
+
+    let undone = try! installation.switchCurrent(to: staged("0.6.0", in: installation)).get()
+    _ = installation.rollbackIfUnconfirmed(startup: .normal)
+    pointCurrent(at: "0.4.0", in: installation)
+    expect(installation.rollBack(undone) == .nothingPending, "a switch already undone elsewhere is left as it is")
+    expect(installation.currentVersion() == version("0.4.0"), "and current is not moved")
+    pointCurrent(at: "0.5.0", in: installation)
 
     // An interrupted rollback: current already back, the marker still there.
     _ = installation.switchCurrent(to: staged("0.6.0", in: installation))
@@ -253,4 +283,79 @@ func testConfirmationRemovesTheMarkerAndKeepsTwoPreviousVersions() {
     _ = installation.switchCurrent(to: staged("0.5.0", in: installation))
     expect(installation.markConfirmed(version: version("0.5.0")) == .confirmed, "a switch to an older version confirms too")
     expect(versionNames(installation) == ["0.4.0", "0.5.0", "notes"], "versions newer than current are not previous versions and are removed")
+}
+
+private func makeFolder(_ url: URL, modified: Date) {
+    try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    chmod(url.path, 0o700)
+    try! FileManager.default.setAttributes([.modificationDate: modified], ofItemAtPath: url.path)
+}
+
+func testAbandonedWorkFoldersAreRemovedOnlyWhenOldAndExactlyNamed() {
+    let directory = makeTemporaryDirectory("abandoned")
+    defer { removeTemporaryDirectory(directory) }
+    let installation = makeInstallation(directory)
+    placeVersion("0.5.0", in: installation)
+    pointCurrent(at: "0.5.0", in: installation)
+    let now = Date()
+    let old = now.addingTimeInterval(-2 * 60 * 60)
+    let recent = now.addingTimeInterval(-30 * 60)
+    expect(LinuxUpdateInstallation.abandonedFolderAge == 60 * 60, "a work folder is abandoned an hour after it last changed")
+
+    let outside = directory.appendingPathComponent("outside", isDirectory: true)
+    writeFile("kept", to: outside.appendingPathComponent("file"))
+    makeFolder(outside, modified: old)
+
+    let staleStaging = installation.versionsDirectory.appendingPathComponent(".staging-\(UUID().uuidString)", isDirectory: true)
+    writeFile("partial", to: staleStaging.appendingPathComponent("Sensorium-0.6.0-linux-x86_64.tar.gz"))
+    expect(symlink(outside.path, staleStaging.appendingPathComponent("link").path) == 0, "a test can put a link in a stale folder")
+    makeFolder(staleStaging, modified: old)
+    let staleHandoff = installation.dataRoot.appendingPathComponent(".handoff-\(UUID().uuidString)", isDirectory: true)
+    makeFolder(staleHandoff, modified: old)
+
+    let freshStaging = installation.versionsDirectory.appendingPathComponent(".staging-\(UUID().uuidString)", isDirectory: true)
+    makeFolder(freshStaging, modified: recent)
+    let freshHandoff = installation.dataRoot.appendingPathComponent(".handoff-\(UUID().uuidString)", isDirectory: true)
+    makeFolder(freshHandoff, modified: recent)
+    let linkedStaging = installation.versionsDirectory.appendingPathComponent(".staging-\(UUID().uuidString)")
+    expect(symlink(outside.path, linkedStaging.path) == 0, "a test can link a staging name to another folder")
+    let linkedHandoff = installation.dataRoot.appendingPathComponent(".handoff-\(UUID().uuidString)")
+    expect(symlink(outside.path, linkedHandoff.path) == 0, "a test can link a handoff name to another folder")
+    let lowercase = installation.versionsDirectory.appendingPathComponent(".staging-\(UUID().uuidString.lowercased())", isDirectory: true)
+    makeFolder(lowercase, modified: old)
+    let notAUUID = installation.dataRoot.appendingPathComponent(".handoff-notes", isDirectory: true)
+    makeFolder(notAUUID, modified: old)
+    let suffixed = installation.dataRoot.appendingPathComponent(".handoff-\(UUID().uuidString)-copy", isDirectory: true)
+    makeFolder(suffixed, modified: old)
+    let wrongPlace = installation.dataRoot.appendingPathComponent(".staging-\(UUID().uuidString)", isDirectory: true)
+    makeFolder(wrongPlace, modified: old)
+    let plainFile = installation.dataRoot.appendingPathComponent(".handoff-\(UUID().uuidString)")
+    writeFile("x", to: plainFile)
+    try! FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: plainFile.path)
+
+    let asSomeoneElse = installation.removeAbandonedWorkFolders(now: now, userID: getuid() + 1)
+    expect(asSomeoneElse.isEmpty, "folders another account owns are left alone")
+    expect(fileType(of: staleStaging) == S_IFDIR && fileType(of: staleHandoff) == S_IFDIR, "and are still there")
+
+    let removed = installation.removeAbandonedWorkFolders(now: now)
+    expect(
+        Set(removed.map(\.lastPathComponent)) == [staleStaging.lastPathComponent, staleHandoff.lastPathComponent],
+        "an old staging folder and an old handoff folder are removed, got \(removed.map(\.lastPathComponent))"
+    )
+    expect(fileType(of: staleStaging) == nil && fileType(of: staleHandoff) == nil, "and are gone")
+    expect(fileType(of: outside.appendingPathComponent("file")) == S_IFREG, "a link inside a removed folder is not followed")
+    for kept in [freshStaging, freshHandoff, lowercase, notAUUID, suffixed, wrongPlace] {
+        expect(fileType(of: kept) == S_IFDIR, "\(kept.lastPathComponent) is kept")
+    }
+    expect(fileType(of: linkedStaging) == S_IFLNK && fileType(of: linkedHandoff) == S_IFLNK, "a link with a work folder's name is kept")
+    expect(fileType(of: plainFile) == S_IFREG, "a file with a work folder's name is kept")
+    expect(installation.currentVersion() == version("0.5.0") && fileType(of: installation.versionDirectory(for: version("0.5.0"))) == S_IFDIR, "versions are never touched")
+
+    let linkedVersions = makeInstallation(directory.appendingPathComponent("linked", isDirectory: true))
+    let elsewhere = directory.appendingPathComponent("elsewhere", isDirectory: true)
+    let elsewhereStaging = elsewhere.appendingPathComponent(".staging-\(UUID().uuidString)", isDirectory: true)
+    makeFolder(elsewhereStaging, modified: old)
+    expect(symlink(elsewhere.path, linkedVersions.versionsDirectory.path) == 0, "a test can link the versions folder away")
+    expect(linkedVersions.removeAbandonedWorkFolders(now: now).isEmpty, "a versions folder that is a link is not looked into")
+    expect(fileType(of: elsewhereStaging) == S_IFDIR, "and what it links to is left alone")
 }

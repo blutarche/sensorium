@@ -56,11 +56,11 @@ jobs:
       - name: Release script
         run: sh Scripts/test-release-macos.sh
 
-  # Only SensoriumCoreTestRunner and SensoriumClientTestRunner are
-  # portable to Linux; SensoriumHostTestRunner and
-  # SensoriumIntegrationTestRunner depend on macOS-only capture and
-  # display APIs. The container image is the same Fedora release as the
-  # reference viewer machine.
+  # Only SensoriumCoreTestRunner, SensoriumClientTestRunner and
+  # SensoriumLinuxUpdateTestRunner are portable to Linux;
+  # SensoriumHostTestRunner and SensoriumIntegrationTestRunner depend on
+  # macOS-only capture and display APIs. The container image is the same
+  # Fedora release as the reference viewer machine.
   linux-build-and-test:
     runs-on: ubuntu-latest
     container: fedora:44
@@ -78,6 +78,7 @@ jobs:
         run: |
           swift build -c release --product SensoriumCoreTestRunner
           swift build -c release --product SensoriumClientTestRunner
+          swift build -c release --product SensoriumLinuxUpdateTestRunner
           swift build -c release --product SensoriumViewerProbe
           swift build -c release --product Sensorium
 
@@ -93,6 +94,9 @@ jobs:
 
       - name: SensoriumClientTestRunner (release)
         run: swift run -c release SensoriumClientTestRunner
+
+      - name: SensoriumLinuxUpdateTestRunner (release)
+        run: swift run -c release SensoriumLinuxUpdateTestRunner
 
   # The package is built and installed in a container, never on a machine
   # anybody uses: installing and removing an RPM is the only honest check

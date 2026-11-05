@@ -75,6 +75,10 @@ Menus open from the session bar|WaylandMenuPopup
 Session menus drawn|SessionChromePainter.drawMenuPopup
 Session bar hides in full screen|menuBarFullscreenChanged
 Session menu choices applied|applySessionControl
+Update line in Your Machines|func setUpdateLine
+Restart Now|ViewerUpdateLine.restartNowTitle
+Check for Updates|onCheckForUpdates?
+Check for Updates Automatically|onSetChecksAutomatically?
 EOF
 )
 

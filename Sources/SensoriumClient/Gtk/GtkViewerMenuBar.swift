@@ -76,8 +76,8 @@ package final class GtkViewerMenuBar {
 
     private static func isCheckable(_ command: ViewerMenuCommand) -> Bool {
         switch command {
-        case .togglePointerCapture, .toggleClipboardSharing, .setStreamScale, .selectDisplayCount,
-             .selectRealScreen, .selectHostScreenMode, .selectStartTarget:
+        case .togglePointerCapture, .toggleClipboardSharing, .toggleAutomaticUpdates, .setStreamScale,
+             .selectDisplayCount, .selectRealScreen, .selectHostScreenMode, .selectStartTarget:
             true
         default:
             false

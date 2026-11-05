@@ -52,6 +52,9 @@ public enum GtkViewerStyle {
         public static let headline = "sensorium-headline"
         /// The smaller muted line under a headline.
         public static let detail = "sensorium-detail"
+        /// Added beside `detail` on the one update line that reports a
+        /// failure, drawn in the warning colour as on macOS.
+        public static let warn = "sensorium-warn"
         /// Added beside `muted` or `bad` on the line under a field, which is
         /// smaller than a sentence.
         public static let hint = "sensorium-hint"
@@ -372,6 +375,7 @@ public enum GtkViewerStyle {
         .\(Class.bad) { \(text(13)); \(weight(Weight.body)) color: \(palette.bad.hexString); }
         .\(Class.headline) { \(text(13)); \(weight(Weight.headline)) }
         .\(Class.detail) { \(text(12)); \(weight(Weight.detail)) color: \(muted); }
+        .\(Class.detail).\(Class.warn) { color: \(palette.warn.hexString); }
         .\(Class.hint) { \(text(12)); \(weight(Weight.hint)) }
         .\(Class.rowName) { font-size: 14px; \(weight(Weight.rowName)) color: \(ink); }
         .\(Class.rowDetail) { \(text(12)); \(weight(Weight.rowDetail)) color: \(muted); }

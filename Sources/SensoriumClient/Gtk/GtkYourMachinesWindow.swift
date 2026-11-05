@@ -47,6 +47,21 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     public var onHide: (() -> Void)?
     /// Opens a web page in the person's browser: where Tailscale is downloaded.
     public var onOpenURL: @MainActor (String) -> Void = { GtkURIOpener.open($0) }
+    /// The window is on screen, at the end of every `show()`.
+    public var onDidShow: (() -> Void)?
+    /// The update line's **Restart Now**.
+    public var onRestartNow: (() -> Void)?
+    /// The Sensorium menu's **Check for Updates…**.
+    public var onCheckForUpdates: (() -> Void)?
+    /// The Sensorium menu's **Check for Updates Automatically**, with the
+    /// value it is turned to.
+    public var onSetChecksAutomatically: ((Bool) -> Void)?
+    /// Whether automatic checks are on, which puts the two update items in
+    /// the Sensorium menu. Nil, and no items, in a build that does not
+    /// update itself.
+    public var checksForUpdatesAutomatically: Bool? {
+        didSet { menuBar.update(LinuxViewerMenu.bar(menuBarState)) }
+    }
 
     private let store: any SavedHostStoring
     private let window: GtkRef
@@ -56,6 +71,10 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
     private let pickerPage: GtkRef
     private let codePage: GtkRef
     private let renamePage: GtkRef
+    /// Beneath whichever step is showing, so it is never cleared with one.
+    private let updateLine: GtkRef
+    private let updateLabel: GtkRef
+    private let restartNowButton: GtkRef
 
     private var step: Step = .list
     private var model = YourMachinesWindowModel(hosts: [])
@@ -125,13 +144,21 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(pickerPage), "picker")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(codePage), "code")
         gtk_stack_add_named(sensorium_gtk_stack(stack), sensorium_gtk_widget(renamePage), "rename")
+        let built = Self.buildUpdateLine()
+        updateLine = built.line
+        updateLabel = built.label
+        restartNowButton = built.button
         menuBar = GtkViewerMenuBar(window: window)
-        menuBar.update(LinuxViewerMenu.bar(Self.menuBarState))
         menuBar.onCommand = { [weak self] in self?.perform($0) }
         let content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)
         gtk_box_append(sensorium_gtk_box(content), sensorium_gtk_widget(menuBar.widget))
         gtk_box_append(sensorium_gtk_box(content), sensorium_gtk_widget(stack))
+        gtk_box_append(sensorium_gtk_box(content), sensorium_gtk_widget(updateLine))
         gtk_window_set_child(sensorium_gtk_window(window), content)
+        menuBar.update(LinuxViewerMenu.bar(menuBarState))
+        let restartNow = GtkCallback { [weak self] in self?.onRestartNow?() }
+        windowCallbacks.append(restartNow)
+        gtkConnect(restartNowButton, "clicked", gtkClickedHandler, Unmanaged.passUnretained(restartNow).toOpaque())
 
         installRowMenuActions()
         installKeys()
@@ -141,7 +168,11 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
 
     /// The menus as macOS shows them while this window is in front: it can be
     /// minimized, but neither resized nor made full screen.
-    private static let menuBarState = ViewerMenuBarState(canFullScreen: false, zoomEnabled: false)
+    private var menuBarState: ViewerMenuBarState {
+        var state = ViewerMenuBarState(canFullScreen: false, zoomEnabled: false)
+        state.checksForUpdatesAutomatically = checksForUpdatesAutomatically
+        return state
+    }
 
     public func minimize() {
         gtk_window_minimize(sensorium_gtk_window(window))
@@ -165,6 +196,12 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             onHide?()
         case .minimize:
             minimize()
+        case .checkForUpdates:
+            onCheckForUpdates?()
+        case .toggleAutomaticUpdates:
+            if let checksForUpdatesAutomatically {
+                onSetChecksAutomatically?(!checksForUpdatesAutomatically)
+            }
         default:
             break
         }
@@ -187,6 +224,53 @@ public final class GtkYourMachinesWindow: ViewerLaunchWindow {
             focusSelectedRow()
         }
         reloadTailnet()
+        onDidShow?()
+    }
+
+    // MARK: - The update line
+
+    /// The one line about updates, or none.
+    public func setUpdateLine(_ line: ViewerUpdateLine?) {
+        gtk_label_set_text(sensorium_gtk_label(updateLabel), line?.text ?? "")
+        if line?.isFailure == true {
+            gtk_widget_add_css_class(sensorium_gtk_widget(updateLabel), GtkViewerStyle.Class.warn)
+        } else {
+            gtk_widget_remove_css_class(sensorium_gtk_widget(updateLabel), GtkViewerStyle.Class.warn)
+        }
+        gtk_widget_set_visible(sensorium_gtk_widget(restartNowButton), line?.offersRestartNow == true ? 1 : 0)
+        gtk_widget_set_visible(sensorium_gtk_widget(updateLine), line == nil ? 0 : 1)
+        // macOS sets the line `Space.md` beneath the step and keeps the
+        // window's `Space.xl` inset below the line.
+        let bottom = Int32(line == nil ? ViewerChromeMetrics.Space.xl : ViewerChromeMetrics.Space.md)
+        for page in [listPage, pickerPage, codePage, renamePage] {
+            gtk_widget_set_margin_bottom(sensorium_gtk_widget(page), bottom)
+        }
+    }
+
+    package var updateLineWidget: UnsafeMutableRawPointer { updateLine }
+    package var updateLabelWidget: UnsafeMutableRawPointer { updateLabel }
+    package var restartNowWidget: UnsafeMutableRawPointer { restartNowButton }
+
+    /// The line `YourMachinesWindowController` draws beneath its steps: a
+    /// 12-point muted label, and **Restart Now** beside it, `Space.sm` apart
+    /// and centred on each other.
+    private static func buildUpdateLine() -> (line: GtkRef, label: GtkRef, button: GtkRef) {
+        let space = ViewerChromeMetrics.Space.self
+        let line = GtkWidgets.box(vertical: false, spacing: Int32(space.sm))
+        gtk_widget_set_size_request(sensorium_gtk_widget(line), contentWidth, -1)
+        gtk_widget_set_margin_start(sensorium_gtk_widget(line), Int32(space.xl))
+        gtk_widget_set_margin_end(sensorium_gtk_widget(line), Int32(space.xl))
+        gtk_widget_set_margin_bottom(sensorium_gtk_widget(line), Int32(space.xl))
+        let label = GtkWidgets.label("", cssClass: GtkViewerStyle.Class.detail)
+        let text = GtkWidgets.onTextLine(label, size: 12)
+        gtk_widget_set_valign(sensorium_gtk_widget(text), GTK_ALIGN_CENTER)
+        GtkWidgets.append(text, to: line)
+        let button = GtkWidgets.button(ViewerUpdateLine.restartNowTitle, cssClass: GtkViewerStyle.Class.secondary)
+        gtk_widget_set_valign(sensorium_gtk_widget(button), GTK_ALIGN_CENTER)
+        GtkWidgets.append(button, to: line)
+        gtk_widget_set_visible(sensorium_gtk_widget(button), 0)
+        gtk_widget_set_visible(sensorium_gtk_widget(line), 0)
+        return (line, label, button)
     }
 
     /// Takes the window away without ending anything. The picture is up, so

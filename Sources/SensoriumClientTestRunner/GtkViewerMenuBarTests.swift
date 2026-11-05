@@ -18,7 +18,11 @@ func testGtkViewerMenuBarMatchesModelTests() {
     let window = gtk_window_new()!
     defer { gtk_window_destroy(sensorium_gtk_window(window)) }
     let bar = GtkViewerMenuBar(window: UnsafeMutableRawPointer(window))
-    for state in [ViewerMenuBarState.initial, menuBarFixtureState()] {
+    var updatesOn = menuBarFixtureState()
+    updatesOn.checksForUpdatesAutomatically = true
+    var updatesOff = ViewerMenuBarState.initial
+    updatesOff.checksForUpdatesAutomatically = false
+    for state in [ViewerMenuBarState.initial, menuBarFixtureState(), updatesOn, updatesOff] {
         let model = LinuxViewerMenu.bar(state)
         bar.update(model)
         let expected = ViewerMenuPlan.rows(of: model)

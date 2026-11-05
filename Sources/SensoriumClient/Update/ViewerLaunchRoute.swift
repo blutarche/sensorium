@@ -1,6 +1,10 @@
-#if os(macOS)
+#if os(macOS) || os(Linux)
 import Foundation
+#if os(macOS)
 import SensoriumUpdate
+#else
+import SensoriumLinuxUpdate
+#endif
 
 /// A new version launched to replace the running one: the process it
 /// replaces, and where to report once its window is up.
@@ -14,7 +18,7 @@ public struct ViewerReplacement: Equatable, Sendable {
     }
 }
 
-/// What a launch of the macOS viewer does, decided before
+/// What a launch of the viewer does, decided before
 /// `ViewerApplication.run(arguments:)` parses anything: that parser ends an
 /// argument it does not know with a usage message and exit status 2, which
 /// the update self-test must never reach.
@@ -27,13 +31,18 @@ public enum ViewerLaunchRoute: Equatable, Sendable {
 
     /// `arguments` excludes the program's own path.
     public static func route(_ arguments: [String]) -> ViewerLaunchRoute {
-        switch UpdateLaunchCommand.parse(arguments) {
+        #if os(macOS)
+        let command = UpdateLaunchCommand.parse(arguments)
+        #else
+        let command = LinuxUpdateLaunchCommand.parse(arguments)
+        #endif
+        switch command {
         case .selfTest:
-            .updateSelfTest
+            return .updateSelfTest
         case let .replacing(pid, readyFile):
-            .viewer(arguments: [], replacing: ViewerReplacement(pid: pid, readyFile: readyFile))
+            return .viewer(arguments: [], replacing: ViewerReplacement(pid: pid, readyFile: readyFile))
         case let .normal(arguments):
-            .viewer(arguments: arguments, replacing: nil)
+            return .viewer(arguments: arguments, replacing: nil)
         }
     }
 }

@@ -119,6 +119,7 @@ let package = Package(
             dependencies: [
                 "SensoriumCore",
                 .target(name: "SensoriumUpdate", condition: .when(platforms: [.macOS])),
+                .target(name: "SensoriumLinuxUpdate", condition: .when(platforms: [.linux])),
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "CWayland", condition: .when(platforms: [.linux])),
@@ -139,6 +140,7 @@ let package = Package(
             dependencies: [
                 "SensoriumClient",
                 .target(name: "SensoriumUpdate", condition: .when(platforms: [.macOS])),
+                .target(name: "SensoriumLinuxUpdate", condition: .when(platforms: [.linux])),
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "CGLib", condition: .when(platforms: [.linux])),
@@ -148,7 +150,7 @@ let package = Package(
         ),
         .executableTarget(name: "SensoriumIntegrationTestRunner", dependencies: ["SensoriumClient", "SensoriumHost", "SensoriumCore"]),
         // macOS only: every source is inside `#if os(macOS)`. The Linux viewer
-        // updates through its package and never links it.
+        // updates itself through `SensoriumLinuxUpdate` instead.
         .target(name: "SensoriumUpdate", dependencies: ["SensoriumCore"]),
         .executableTarget(name: "SensoriumUpdateTestRunner", dependencies: ["SensoriumUpdate", "SensoriumCore"]),
         // The Linux viewer's update engine. Platform-neutral, so its runner
@@ -162,6 +164,7 @@ let package = Package(
                 "SensoriumClient",
                 "SensoriumCore",
                 .target(name: "SensoriumUpdate", condition: .when(platforms: [.macOS])),
+                .target(name: "SensoriumLinuxUpdate", condition: .when(platforms: [.linux])),
                 .target(name: "CGtk4", condition: .when(platforms: [.linux]))
             ]
         ),
@@ -182,6 +185,7 @@ let package = Package(
             dependencies: [
                 "SensoriumClient",
                 "SensoriumCore",
+                .target(name: "SensoriumLinuxUpdate", condition: .when(platforms: [.linux])),
                 .target(name: "CCairo", condition: .when(platforms: [.linux])),
                 .target(name: "CGtk4", condition: .when(platforms: [.linux]))
             ]

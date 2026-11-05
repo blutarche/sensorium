@@ -7,9 +7,7 @@ import SensoriumCore
 private let macOSOnlyMenuItems: [(command: ViewerMenuCommand, title: String, reason: String)] = [
     (.hideOthers, "Hide Others", "acts on other applications' windows, which a Wayland client cannot"),
     (.showAll, "Show All", "acts on other applications' windows, which a Wayland client cannot"),
-    (.bringAllToFront, "Bring All to Front", "raises windows through a macOS application service"),
-    (.checkForUpdates, "Check for Updates\u{2026}", "the Linux viewer is updated by its package, never by itself"),
-    (.toggleAutomaticUpdates, "Check for Updates Automatically", "the Linux viewer is updated by its package, never by itself")
+    (.bringAllToFront, "Bring All to Front", "raises windows through a macOS application service")
 ]
 
 /// The Linux menu bar is the macOS one less the items that only exist on
@@ -37,7 +35,7 @@ func testLinuxViewerMenuMatchesMacOSTests() {
         "only the listed macOS-only items are left out, got \(LinuxViewerMenu.omitted)"
     )
     expect(macOSOnlyMenuItems.allSatisfy { !$0.reason.isEmpty }, "each with its reason")
-    print("PASS: the Linux menu bar is the macOS one less the macOS app-service items and the self-update items")
+    print("PASS: the Linux menu bar is the macOS one less the macOS app-service items")
 }
 
 /// Each macOS chord in the GTK accelerator syntax, Ctrl standing in for
@@ -239,8 +237,8 @@ func testLinuxSessionMenuActionsTests() {
         (.selectHostScreenMode("m1"), .sessionChoice(.selectHostScreenMode("m1"))),
         (.selectStartTarget(.virtualDisplay), .sessionChoice(.selectStartTarget(.virtualDisplay))),
         (.copy, .none),
-        (.checkForUpdates, .none),
-        (.toggleAutomaticUpdates, .none),
+        (.checkForUpdates, .application(.checkForUpdates)),
+        (.toggleAutomaticUpdates, .application(.toggleAutomaticUpdates)),
         (.streamScaleClampNotice, .none),
         (.escapeGestureHint, .none)
     ]

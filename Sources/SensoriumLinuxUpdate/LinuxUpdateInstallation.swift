@@ -65,8 +65,10 @@ public enum LinuxUpdateStartup: Equatable, Sendable {
 
 public enum LinuxUpdateRollback: Equatable, Sendable {
     case nothingPending
-    /// This process is the new version the switch waits on. It calls
-    /// `markConfirmed(version:)` once its window is up.
+    /// The switch stands until the new version confirms it. At launch, this
+    /// process is that version, and calls `markConfirmed(version:)` once its
+    /// window is up. From `rollBack(_:unlessReported:)`, the new version
+    /// reported ready in time.
     case awaitingConfirmation(LinuxUpdatePendingSwitch)
     /// `current` names the previous version again, or is gone when there was
     /// none. The caller records `.readyLate` against the pending version.
@@ -103,6 +105,12 @@ public struct LinuxUpdateInstallation: Sendable {
     public static let executableName = LinuxUpdateArchive.binaryName
     /// Versions kept below the current one after a confirmed switch.
     public static let previousVersionsKept = 2
+
+    /// How long after it last changed a staging or handoff folder counts as
+    /// abandoned. A live one lasts minutes at most: a download ends by
+    /// `LinuxUpdateReleaseLocation.archiveDeadline`, a handoff by
+    /// `LinuxUpdateRestart.readyTimeout`.
+    public static let abandonedFolderAge: TimeInterval = 60 * 60
 
     static let lockName = ".update.lock"
     static let stagingPrefix = ".staging-"
@@ -237,6 +245,47 @@ public struct LinuxUpdateInstallation: Sendable {
         return directory
     }
 
+    /// Removes the `.staging-<UUID>` folders in `versions` and the
+    /// `.handoff-<UUID>` folders in the data root that a crash left behind.
+    /// Only real folders owned by `userID`, named exactly as the engine
+    /// names them and unchanged for `abandonedFolderAge`, are removed. A
+    /// link is never followed, and a `versions` that is a link is not
+    /// looked into. Call at launch.
+    @discardableResult
+    public func removeAbandonedWorkFolders(now: Date = Date(), userID: uid_t = getuid()) -> [URL] {
+        withLock { () -> [URL] in
+            var places = [(dataRoot, LinuxUpdateHandoff.folderPrefix)]
+            if lstatInfo(versionsDirectory.path).map({ $0.st_mode & S_IFMT == S_IFDIR }) == true {
+                places.append((versionsDirectory, Self.stagingPrefix))
+            }
+            var removed: [URL] = []
+            for (parent, prefix) in places {
+                let names = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
+                for name in names where Self.isWorkFolderName(name, prefix: prefix) {
+                    let folder = parent.appendingPathComponent(name, isDirectory: true)
+                    guard let info = lstatInfo(folder.path),
+                          info.st_mode & S_IFMT == S_IFDIR,
+                          info.st_uid == userID,
+                          now.timeIntervalSince1970 - modificationTime(of: info) > Self.abandonedFolderAge,
+                          (try? FileManager.default.removeItem(at: folder)) != nil else {
+                        continue
+                    }
+                    removed.append(folder)
+                }
+                syncDirectory(parent)
+            }
+            return removed
+        } ?? []
+    }
+
+    /// `prefix` followed by a UUID in the uppercase form `UUID().uuidString`
+    /// writes, and nothing else.
+    static func isWorkFolderName(_ name: String, prefix: String) -> Bool {
+        guard name.hasPrefix(prefix) else { return false }
+        let suffix = String(name.dropFirst(prefix.count))
+        return UUID(uuidString: suffix)?.uuidString == suffix
+    }
+
     /// Renames a tested staging folder to `versions/<version>`, replacing a
     /// folder of that version left by an earlier try. The version `current`
     /// names is never replaced.
@@ -258,26 +307,28 @@ public struct LinuxUpdateInstallation: Sendable {
     /// Writes the pending marker, then points `current` at the staged
     /// version. Call right before starting the new version with
     /// `--replacing`: any other launch that finds the marker rolls the
-    /// switch back.
-    public func switchCurrent(to staged: LinuxStagedUpdate) -> LinuxUpdateFailure? {
-        withLock { () -> LinuxUpdateFailure? in
+    /// switch back. Returns what the marker records, which the caller keeps
+    /// to undo this switch with `rollBack(_:unlessReported:)`.
+    @discardableResult
+    public func switchCurrent(to staged: LinuxStagedUpdate) -> Result<LinuxUpdatePendingSwitch, LinuxUpdateFailure> {
+        withLock { () -> Result<LinuxUpdatePendingSwitch, LinuxUpdateFailure> in
             let executable = versionDirectory(for: staged.version).appendingPathComponent(Self.executableName)
             guard lstatInfo(executable.path).map({ $0.st_mode & S_IFMT == S_IFREG }) == true else {
-                return .switchFailed
+                return .failure(.switchFailed)
             }
             let pending = LinuxUpdatePendingSwitch(version: staged.version, sha256: staged.sha256, previous: currentVersion())
             do {
                 try OwnerOnlyFileWrite.write(try JSONEncoder().encode(pending), to: pendingMarker)
             } catch {
-                return .switchFailed
+                return .failure(.switchFailed)
             }
             guard point(currentAt: staged.version) else {
                 unlink(pendingMarker.path)
                 syncDirectory(dataRoot)
-                return .switchFailed
+                return .failure(.switchFailed)
             }
-            return nil
-        } ?? .switchFailed
+            return .success(pending)
+        } ?? .failure(.switchFailed)
     }
 
     /// Called by the new version once its window is up: removes the pending
@@ -317,12 +368,22 @@ public struct LinuxUpdateInstallation: Sendable {
     }
 
     /// Step 5 of section 11.4: the old viewer's wait for the ready file ran
-    /// out. Rolls back whatever switch is pending.
-    public func rollBack() -> LinuxUpdateRollback {
+    /// out, or the new version could not be started. Undoes `switched`, the
+    /// switch this process made with `switchCurrent(to:)`, while `current`
+    /// still names its version. The marker may already be gone, so the
+    /// version to go back to comes from `switched`, not from the marker.
+    ///
+    /// `hasReported` is asked first, under the lock `markConfirmed(version:)`
+    /// takes. When it answers true the switch stands, and the result is
+    /// `.awaitingConfirmation`.
+    public func rollBack(_ switched: LinuxUpdatePendingSwitch, unlessReported hasReported: () -> Bool = { false }) -> LinuxUpdateRollback {
         withLock { () -> LinuxUpdateRollback in
-            guard let pending = pendingSwitch() else { return .nothingPending }
-            return switchBack(pending)
-        } ?? .nothingPending
+            if hasReported() {
+                return .awaitingConfirmation(switched)
+            }
+            guard currentVersion() == switched.version else { return .nothingPending }
+            return switchBack(switched)
+        } ?? .failed(switched)
     }
 
     /// `current` goes back first and the marker goes after, so an
@@ -397,4 +458,13 @@ public struct LinuxUpdateInstallation: Sendable {
 func lstatInfo(_ path: String) -> stat? {
     var info = stat()
     return lstat(path, &info) == 0 ? info : nil
+}
+
+/// Seconds since 1970, whole.
+func modificationTime(of info: stat) -> TimeInterval {
+    #if canImport(Darwin)
+    TimeInterval(info.st_mtimespec.tv_sec)
+    #else
+    TimeInterval(info.st_mtim.tv_sec)
+    #endif
 }

@@ -1,6 +1,6 @@
 # How this repository is verified
 
-Five executables assert and exit non-zero on the first failure, instead of XCTest.
+Six executables assert and exit non-zero on the first failure, instead of XCTest.
 
 ## Runners
 
@@ -17,8 +17,9 @@ The toolchain this project targets is Swift from Command Line Tools without Xcod
 | `SensoriumClientTestRunner` | Viewport, surface events, frame admission, saved host, key pinning, locked-host key routing, and that no unlock request is sent |
 | `SensoriumIntegrationTestRunner` | Authenticated loopback, recovery scenarios, end-to-end input path |
 | `SensoriumUpdateTestRunner` | The macOS update core: manifest, signature, version decision, failure record, staging, swap and handoff, against a local fake of the release page. Signs temporary app bundles ad hoc with `codesign -s -`; makes no network request and launches no app |
+| `SensoriumLinuxUpdateTestRunner` | The Linux viewer's update engine: manifest, signature, version decision, failure record, archive, staging, the `current` switch and rollback, the removal of abandoned work folders, the ready file, **Restart Now**'s handoff and the check schedule, against a local fake of the release page in temporary folders. Runs only the system's `gzip` and `tar`, and shell scripts standing in for a new viewer; makes no network request. Platform-neutral, so it runs on macOS too |
 
-The script builds and runs all five twice, once in `debug` and once in `release`. An optimized build can release an object at its last use, so assertions that depend on a pipeline's lifetime hold it with `withExtendedLifetime`.
+The script builds and runs all six twice, once in `debug` and once in `release`. An optimized build can release an object at its last use, so assertions that depend on a pipeline's lifetime hold it with `withExtendedLifetime`.
 
 The runners never open a window, start `NSApplication`, bind a socket, capture a screen, inject an event, read a stored key, or touch a display. Every such boundary goes through a fake.
 
@@ -38,7 +39,7 @@ The runners never open a window, start `NSApplication`, bind a socket, capture a
 | `Scripts/test-make-dmg-background.sh` | The disk image backgrounds `Scripts/make-dmg-background.swift` draws for the viewer and the host: a 1x and 2x pair `tiffutil` joins, one window layout for both, identical bytes on every run, two different pictures that draw each machine pixel for pixel the same, a refused unknown role, and a light, clean panel wherever Finder draws an icon and its black label |
 | `Scripts/test-make-dmg-layout.sh` | The Finder window file `Scripts/make-dmg-layout.swift` writes into a scratch disk image: icon positions, window size and chrome, the background picture it points at, and that it names no path or disk of the machine that built it |
 | `Scripts/test-package-linux.sh` | The Fedora package `Scripts/package-linux.sh` builds: its desktop entry, its metainfo, its icons, the libraries it asks for, and that removing it leaves nothing behind. Runs only inside the CI Fedora container, where installing a package is safe |
-| `Scripts/test-sign-linux-update.py` | The Linux update tooling with no network and no real key: the archive check on good and malformed tarballs, the archive maker (when GNU tar is installed), and `Scripts/sign-linux-update.sh` against a stub `gh` and a throwaway key. It checks every refusal, the manifest bytes, and that the signature verifies |
+| `Scripts/test-sign-linux-update.py` | The Linux update tooling with no network and no real key: the archive check on good and malformed tarballs, the archive maker (when GNU tar is installed), and `Scripts/sign-linux-update.sh` against a stub `gh` and a throwaway key. It checks every refusal, including a tarball whose build provenance does not verify, the exact provenance check, the manifest bytes, and that the signature verifies |
 | `Scripts/test-documentation-status.py` | That README.md and docs/install.md still state the verified local and pending cross-machine boundaries, and do not regress to an earlier, stale claim |
 | `Scripts/test-clean-build-output.py` | `Scripts/clean-build-output.py` against throwaway repositories with a bare remote and agent worktrees: what it removes, every guard that keeps a worktree or a build directory, and that it never follows a symbolic link |
 
@@ -118,17 +119,18 @@ The link, the viewer's presentation and the fidelity controller are not in it. I
 ## Linux
 
 The viewer also runs on Fedora 44 with Wayland. There is no Linux host, so
-only the two portable runners apply there.
+only the three portable runners apply there.
 
 | Check | What it does |
 |---|---|
 | `SensoriumCoreTestRunner` | The same suite as on macOS. Nothing in it is platform-specific |
 | `SensoriumClientTestRunner` | The portable half of the viewer suite. The Apple-framework tests are skipped by `Entry+Darwin.swift`, which is empty off Darwin |
+| `SensoriumLinuxUpdateTestRunner` | The same suite as on macOS |
 | `Scripts/test-linux-gui-reachable.sh` | Every capability `docs/ux-spec.md` names is reachable from the Linux window layer. `Scripts/linux-gui-pending.txt` lists the ones not brought over yet, and the script also fails when a pending capability has landed, so the list stays honest |
 | `Scripts/test-package-linux.sh` | The Fedora package, installed and removed inside the CI container, and the update archive built beside it |
 
-The `linux-build-and-test` job in `.github/workflows/ci.yml` builds the four
-Linux products and runs the two runners and the reachability check in a
+The `linux-build-and-test` job in `.github/workflows/ci.yml` builds the five
+Linux products and runs the three runners and the reachability check in a
 `fedora:44` container. The `linux-package` job builds the RPM in the same
 image and runs the packaging test against it.
 

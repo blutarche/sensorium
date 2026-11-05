@@ -70,7 +70,7 @@ func testStagingASignedReleaseEndToEnd() async {
     )
     expect(installation.currentVersion() == version("0.5.0"), "staging does not switch current")
 
-    expect(installation.switchCurrent(to: staged) == nil, "the staged update can be switched to")
+    expect((try? installation.switchCurrent(to: staged).get()) != nil, "the staged update can be switched to")
     expect(installation.currentVersion() == version("0.6.0"), "current names the staged version after the switch")
 }
 

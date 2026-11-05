@@ -179,8 +179,12 @@ public final class WaylandSessionWindow:
     /// back by the time this runs.
     public var onReleaseToLocalMachine: (() -> Void)?
     /// The app menu's own items, which act beyond this window: About, Your
-    /// Machines, Hide and Quit.
+    /// Machines, Hide, Quit and the two update items.
     public var onMenuCommand: ((ViewerMenuCommand) -> Void)?
+    /// Whether automatic update checks are on, read each time the menus are
+    /// built. Nil, and no update items, in a build that does not update
+    /// itself.
+    public var checksForUpdatesAutomatically: (() -> Bool?)?
     /// Decides, with `SystemShortcutRouter`, which menu chords reach the host
     /// rather than the menu.
     public var shortcutMode: SystemShortcutMode = .default
@@ -1041,7 +1045,9 @@ public final class WaylandSessionWindow:
 
     /// The menus as they stand for this window now.
     public var menuBarState: ViewerMenuBarState {
-        chrome.state.controls.menuBarState(isPointerCaptured: isPointerCaptured, isFullscreen: isFullscreen)
+        var state = chrome.state.controls.menuBarState(isPointerCaptured: isPointerCaptured, isFullscreen: isFullscreen)
+        state.checksForUpdatesAutomatically = checksForUpdatesAutomatically?()
+        return state
     }
 
     private var menuKeys: WaylandSessionMenuKeys {

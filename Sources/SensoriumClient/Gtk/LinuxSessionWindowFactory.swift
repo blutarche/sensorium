@@ -74,6 +74,9 @@ public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
     private var secondaryInterceptors: [ObjectIdentifier: WaylandShortcutInterceptor] = [:]
     /// The app menu's own items, chosen in any session window.
     public var onApplicationCommand: ((ViewerMenuCommand) -> Void)?
+    /// What every session window's Sensorium menu shows for automatic
+    /// update checks. Nil, and no update items, without an updater.
+    public var checksForUpdatesAutomatically: (() -> Bool?)?
 
     public init(environment: LinuxViewerEnvironment) {
         self.environment = environment
@@ -83,6 +86,7 @@ public final class LinuxViewerWindowRegistry: ViewerWindowRegistry {
         guard let window = window as? WaylandSessionWindow else { return }
         windows.append(WeakSessionWindow(window: window))
         window.onMenuCommand = { [weak self] in self?.onApplicationCommand?($0) }
+        window.checksForUpdatesAutomatically = { [weak self] in self?.checksForUpdatesAutomatically?() }
         guard window.surfaceID == 0 else {
             let interceptor = WaylandShortcutInterceptor(inhibiting: window, leader: environment.shortcutInterceptor)
             secondaryInterceptors[ObjectIdentifier(window)] = interceptor
