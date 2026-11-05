@@ -8,6 +8,21 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-05
+
+### Added
+
+- The Linux viewer updates itself. It checks a signed manifest at launch and
+  every six hours, downloads the signed archive, tests it, and switches to it
+  when you choose **Restart Now**. It needs no password and does not touch
+  the system package. If the new version does not start, the previous one is
+  restored. Your Machines shows the same update line as the macOS viewer, and
+  the Sensorium menu gains **Check for Updates** and
+  **Check for Updates Automatically**.
+- The Linux release carries `Sensorium-<version>-linux-x86_64.tar.gz` beside
+  the Fedora package. Install this version from the package once; later
+  versions arrive through the viewer.
+
 ## [0.5.14] - 2026-11-03
 
 ### Added
