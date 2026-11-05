@@ -76,26 +76,33 @@ It uploads the zips, the disk images and `SHA256SUMS` first, then the manifest a
 
 The workflow `release-linux` builds the Fedora package and attaches it, with its checksum, when a release is published. It refuses a tag that does not match `VERSION`.
 
-To fill in an older release, open Actions, choose `release-linux`, pick Run workflow and enter the tag, for example `v1.2.3`. The workflow checks out that tag and replaces the package on the release if one is already there.
+To fill in an older release, open Actions, choose `release-linux`, pick Run workflow and enter the tag, for example `v1.2.3`. The workflow checks out that tag and replaces the package on the release if one is already there. It replaces nothing on a release whose Linux update is already signed, and fails instead.
 
 ## The Linux update
 
 `release-linux` also attaches `Sensorium-<version>-linux-x86_64.tar.gz` and its `.sha256`. The tarball holds the viewer binary and nothing else. It is what the Linux viewer updates itself from.
 
-CI cannot sign it, because the update key stays on your machine. When the workflow has finished, run this on the machine that holds the key:
+The workflow also records the tarball's build provenance. This is a statement signed with the workflow run's own GitHub identity. It names the tarball's SHA-256, the workflow and the ref the run was for.
+
+CI cannot sign the update, because the update key stays on your machine. When the workflow has finished, run this on the machine that holds the key:
 
 ```
 Scripts/sign-linux-update.sh v<version>
 ```
 
-The script downloads the tarball, writes `sensorium-update-linux-x86_64.json`, signs it with the same key as the macOS manifest and uploads the manifest and its `.sig`. Add `--dry-run` to do everything except the upload. The files stay in a folder the script prints.
+The script needs `gh`, logged in to GitHub. It downloads the tarball and checks its build provenance with `gh attestation verify`. Then it writes `sensorium-update-linux-x86_64.json`, signs it with the same key as the macOS manifest and uploads the manifest and its `.sig`. Add `--dry-run` to do everything except the upload. The dry run checks the provenance too. The files stay in a folder the script prints.
 
 The script refuses to continue when:
 
 - the tag does not match `VERSION`
 - the release has no tarball
+- the tarball's build provenance does not verify, or `gh` cannot check it
 - the tarball holds anything but one executable named `Sensorium`
 - the key does not match the public key compiled into the apps
+
+A provenance failure means the tarball on the release is not the one CI built from the tag. Someone with write access to the release may have replaced it. Find out how before you sign anything. Running `release-linux` again for the tag replaces the tarball with a new build.
+
+The script signs only a tarball from a run for the tag. A release's own run is one. When you run the workflow again for a tarball you will sign, pick the tag under Use workflow from, not a branch.
 
 Until you run it, Linux viewers find no manifest and report Up to date.
 

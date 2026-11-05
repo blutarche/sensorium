@@ -312,7 +312,7 @@ A Linux release adds three files beside the macOS ones:
 | `sensorium-update-linux-x86_64.json` | Signed manifest: `format` 1, `version`, `file`, `size`, `sha256` |
 | `sensorium-update-linux-x86_64.json.sig` | Ed25519 signature on the manifest's exact bytes, by the macOS update key |
 
-The update key lives only on the maintainer's machine, so CI cannot sign. A last local step signs after CI has attached the tarball: it downloads the tarball, hashes it, writes and signs the manifest, and uploads both. Until it runs, Linux viewers find no manifest and report *Up to date*.
+The update key lives only on the maintainer's machine, so CI cannot sign. CI records the tarball's build provenance before it attaches the tarball. A last local step signs after that: it downloads the tarball, verifies the provenance, hashes it, writes and signs the manifest, and uploads both. Until it runs, Linux viewers find no manifest and report *Up to date*. Once a release carries the signature, CI never replaces its files.
 
 ### 11.3 Where it installs
 
@@ -337,7 +337,9 @@ The two previous versions are kept. Older ones are removed after a confirmed swi
 
 ### 11.5 Trust
 
-The Ed25519 signature on the manifest, then the SHA-256 of the file, are the only proofs, because the Linux binary carries no code signature to compare. The self-test and the version check catch a wrong file, not a hostile one. A failed check never installs.
+The Ed25519 signature on the manifest, then the SHA-256 of the file, are the only proofs the viewer checks, because the Linux binary carries no code signature to compare. The self-test and the version check catch a wrong file, not a hostile one. A failed check never installs.
+
+The signature vouches for the tarball CI built. Anyone who can write to the release's files could replace the tarball between CI's upload and the signing step. So before it hashes anything, the signing step verifies the tarball's build provenance with `gh attestation verify`. The provenance must name the tarball's exact bytes, this repository, the `release-linux` workflow and the release's tag. If it does not, nothing is signed.
 
 ### 11.6 Not in this version
 

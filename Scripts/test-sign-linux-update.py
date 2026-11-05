@@ -172,10 +172,20 @@ try:
     fixture_dir.mkdir()
     # A release page with a tarball on it: `release download` copies the file
     # named by --pattern from the fixture folder, `release upload` is logged.
+    # `attestation verify` passes for a file that exists unless
+    # STUB_GH_VERIFY says otherwise.
     write_executable(
         stubs / "gh",
         """#!/bin/sh
 printf '%s\\n' "gh $*" >> "$STUB_GH_LOG"
+if [ "$1 $2" = "attestation verify" ]; then
+    [ -f "$3" ] || { echo "no file at $3" >&2; exit 1; }
+    case "${STUB_GH_VERIFY:-}" in
+        fail) echo "no attestation matched the artifact" >&2; exit 1 ;;
+        unknown) echo 'unknown command "attestation" for "gh"' >&2; exit 1 ;;
+    esac
+    exit 0
+fi
 [ "$1 $2" = "release download" ] || exit 0
 [ "${STUB_GH_MODE:-}" = fail ] && exit 1
 tag="$3"; shift 3
@@ -194,7 +204,7 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
     release_tarball = fixture_dir / TARBALL
     build_archive(release_tarball, GOOD)
 
-    def sign(*args, tag=TAG, mode="", output=None, extra_env=None):
+    def sign(*args, tag=TAG, mode="", verify="", output=None, extra_env=None):
         gh_log.write_text("")
         (work / "tmp").mkdir(exist_ok=True)
         env = {
@@ -202,6 +212,7 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
             "STUB_GH_LOG": str(gh_log),
             "STUB_GH_FIXTURES": str(fixture_dir),
             "STUB_GH_MODE": mode,
+            "STUB_GH_VERIFY": verify,
             "SENSORIUM_UPDATE_KEY": str(key),
             "TMPDIR": str(work / "tmp"),
         }
@@ -260,6 +271,17 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
         any(call.startswith(f"gh release download {TAG}") and TARBALL in call for call in gh_calls()),
         "the tarball is downloaded from the release by name",
     )
+    verify_call = (
+        f"gh attestation verify {out / TARBALL} --repo blutarche/sensorium"
+        " --signer-workflow blutarche/sensorium/.github/workflows/release-linux.yml"
+        f" --source-ref refs/tags/{TAG}"
+    )
+    check(
+        verify_call in gh_calls(),
+        f"the downloaded tarball's provenance is verified against the release-linux workflow run for the tag {gh_calls()}",
+    )
+    download_index = next(i for i, call in enumerate(gh_calls()) if call.startswith("gh release download"))
+    check(gh_calls().index(verify_call) > download_index, "the provenance is verified after the download")
 
     manifest = out / MANIFEST
     signature = out / f"{MANIFEST}.sig"
@@ -296,6 +318,26 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
 
     reuse = sign("--dry-run", output=out)
     check(reuse.returncode != 0, "a working folder that is not empty is refused")
+
+    for verify, label in (("fail", "whose provenance does not verify"), ("unknown", "when gh cannot verify provenance")):
+        for dry_run in (True, False):
+            refused_out = work / f"out-refused-{verify}-{dry_run}"
+            refused_out.mkdir()
+            args = ("--dry-run",) if dry_run else ()
+            result = sign(*args, verify=verify, output=refused_out)
+            run_name = "a dry run" if dry_run else "a real run"
+            check(
+                result.returncode != 0 and "not the one" in result.stderr,
+                f"{run_name} refuses a tarball {label} ({result.stderr.strip()})",
+            )
+            check(
+                sorted(p.name for p in refused_out.iterdir()) == [TARBALL],
+                f"and {run_name} writes no manifest or signature for it",
+            )
+            check(
+                not any(call.startswith("gh release upload") for call in gh_calls()),
+                f"and {run_name} uploads nothing",
+            )
 
     leftovers = [p for p in (work / "tmp").iterdir() if p.name.startswith("sensorium-linux-update.")]
     check(leftovers == [], f"no scratch folder is left behind {leftovers}")

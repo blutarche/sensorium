@@ -5,7 +5,8 @@
 #
 #   Scripts/sign-linux-update.sh [--dry-run] v<version>
 #
-# Downloads the tarball, hashes it, writes sensorium-update-linux-x86_64.json
+# Downloads the tarball, verifies its build provenance names the release-linux
+# workflow run for the tag, hashes it, writes sensorium-update-linux-x86_64.json
 # (docs/self-update-design.md section 11.2), signs its exact bytes with the key
 # Scripts/release-macos.sh uses (SENSORIUM_UPDATE_KEY, else
 # $HOME/.sensorium-release/update-key), checks the signature against the public
@@ -20,6 +21,8 @@ VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 SIGN="$ROOT/Scripts/sign-update.swift"
 KEY="${SENSORIUM_UPDATE_KEY:-$HOME/.sensorium-release/update-key}"
 MANIFEST_NAME="sensorium-update-linux-x86_64.json"
+REPOSITORY="blutarche/sensorium"
+BUILD_WORKFLOW="$REPOSITORY/.github/workflows/release-linux.yml"
 
 die() {
     printf 'error: %s\n' "$*" >&2
@@ -80,6 +83,15 @@ command -v gh > /dev/null 2>&1 || die "gh is not installed, so the tarball canno
 (cd "$ROOT" && gh release download "$TAG" --pattern "$TARBALL" --dir "$WORK") ||
     die "the tarball $TARBALL could not be downloaded from release $TAG. Has the release-linux workflow finished?"
 [ -f "$WORK/$TARBALL" ] || die "release $TAG has no tarball named $TARBALL"
+
+# Anyone who can write to the release's files could have replaced the
+# tarball since CI uploaded it. The attestation CI made when it built the
+# tarball names its exact bytes, so only that build is ever signed.
+gh attestation verify "$WORK/$TARBALL" \
+    --repo "$REPOSITORY" \
+    --signer-workflow "$BUILD_WORKFLOW" \
+    --source-ref "refs/tags/$TAG" ||
+    die "the tarball on release $TAG is not the one the release-linux workflow built from $TAG, or gh could not check (it needs the attestation command and a login), so nothing was signed"
 
 sh "$ROOT/Scripts/test-linux-update-archive.sh" "$WORK/$TARBALL" ||
     die "$TARBALL is not the archive the viewer expects, so nothing was signed"

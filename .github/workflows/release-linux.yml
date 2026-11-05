@@ -18,6 +18,10 @@ jobs:
     container: fedora:44
     permissions:
       contents: write
+      # The build provenance of the update archive: a signed statement, made
+      # here, of which workflow run built which bytes.
+      id-token: write
+      attestations: write
     env:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
@@ -26,7 +30,7 @@ jobs:
         # reach the release.
         run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pkgconf-pkg-config python3 wayland-devel rpm-build cpio desktop-file-utils appstream gh
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: refs/tags/${{ env.TAG }}
 
@@ -43,12 +47,31 @@ jobs:
       - name: Install, check and remove the package, and check the update archive
         run: sh Scripts/test-package-linux.sh
 
-      - name: Attach the package and the update archive to the release
+      - name: Attest the update archive's build provenance
+        # Scripts/sign-linux-update.sh signs a tarball only when this
+        # attestation names its exact bytes and this workflow run for the tag.
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: Artifacts/Sensorium-*-linux-x86_64.tar.gz
+
+      - name: Refuse to replace the files of a signed release
+        # Once the manifest's signature is up it vouches for the tarball's
+        # exact bytes, so nothing on that release is replaced.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # gh runs git in the workspace, which the container user does not own.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          assets="$(gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq '.assets[].name')"
+          if printf '%s\n' "$assets" | grep -qx 'sensorium-update-linux-x86_64\.json\.sig'; then
+            echo "Release $TAG is already signed, so its files are not replaced." >&2
+            exit 1
+          fi
+
+      - name: Attach the package and the update archive to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
           gh release upload "$TAG" Artifacts/*.rpm Artifacts/*.rpm.sha256 Artifacts/*.tar.gz Artifacts/*.tar.gz.sha256 --clobber -R "${{ github.repository }}"
 
       - name: Check the release carries the package and the update archive
