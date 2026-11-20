@@ -173,6 +173,9 @@ let package = Package(
             dependencies: [
                 "SensoriumLinuxHost",
                 "SensoriumCore",
+                // The viewer's own decoder, so a round trip proves the
+                // encoder's output is what the viewer actually opens.
+                .target(name: "SensoriumClient", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux]))
             ]
         ),
