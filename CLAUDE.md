@@ -14,7 +14,7 @@ This repository will be published as open source. Write every comment, document 
 
 ## Safety boundary — strict
 - Do NOT call private display APIs, third-party display tools, `displayplacer`, `screencapture`, `system_profiler`, System Settings, `launchctl`, `defaults`, PF, `sudo`, network/firewall commands, or write outside this repository unless the task explicitly says it is an approved opt-in macOS integration test.
-- Do NOT install packages, Xcode, Homebrew formulae, applications, services, agents, launch daemons, login items, or permissions on a development machine. Shipping code may register the host app as its own login item (Open at login) through `SMAppService`; installing a build on the owner's machines happens only when the owner asks.
+- Do NOT install packages, Xcode, Homebrew formulae, applications, services, agents, launch daemons, login items, or permissions on a development machine. Shipping code may register the host app as its own login item (Open at login): through `SMAppService` on macOS, and on Linux by writing its own XDG autostart entry under `$XDG_CONFIG_HOME/autostart`; installing a build on the owner's machines happens only when the owner asks.
 - Do NOT read keychains, credentials, or shell histories.
 - Never put a real address, hostname, device name, account, path or other identifying detail of the owner's machines into any file, fixture, render, commit or commit message. Samples use invented values only: `100.64.1.x`, `*.tail1234.ts.net`, `mini.local`. Before every commit, run `python3 Scripts/audit-public-repo.py`, and grep the staged diff and every unpushed commit for each real address seen during the session. An audit exemption never covers a real value.
 - Do NOT open network listeners, perform network calls, or access external websites.
@@ -69,6 +69,13 @@ permission is allowed; a mode change through `CGDisplaySetDisplayMode` or
 is streaming, on the viewer's request, and is always undone, and for the
 sharp screen as the host creates it.
 
+On Linux the same rules hold with Linux mechanisms. Capturing a display
+through a PipeWire stream from the xdg-desktop-portal ScreenCast portal,
+under a portal session the person at the host granted, stands in for
+ScreenCaptureKit under Screen Recording. Input through the RemoteDesktop
+portal stands in for CoreGraphics events. The Linux host offers no session
+canvas, no sharp screen and no display mode change.
+
 Host screen is gated, and no frame of it may leave the host until all of
 these hold. Screen Recording is granted. The connecting device is paired
 with this host and armed. Pairing arms a device: the person at the host
@@ -94,7 +101,7 @@ A locked host is unlocked the way it would be at the machine. While a live
 host-screen session shows the host's lock screen, the viewer's keystrokes,
 clicks and scrolls reach it as ordinary forwarded input, posted through
 public CoreGraphics event APIs at the HID event tap while the screen is
-locked. The viewer draws no password prompt. Sensorium never recognises,
+locked, or on Linux through the RemoteDesktop portal. The viewer draws no password prompt. Sensorium never recognises,
 extracts, stores or logs a password as such: it is ordinary input like any
 other typing. Screen Sharing is not needed. FileVault's pre-boot unlock is
 out of scope.
