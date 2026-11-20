@@ -16,6 +16,9 @@ let package = Package(
         .executable(name: "SensoriumUpdateTestRunner", targets: ["SensoriumUpdateTestRunner"]),
         .library(name: "SensoriumLinuxUpdate", targets: ["SensoriumLinuxUpdate"]),
         .executable(name: "SensoriumLinuxUpdateTestRunner", targets: ["SensoriumLinuxUpdateTestRunner"]),
+        .library(name: "SensoriumLinuxHost", targets: ["SensoriumLinuxHost"]),
+        .executable(name: "SensoriumLinuxHostTestRunner", targets: ["SensoriumLinuxHostTestRunner"]),
+        .executable(name: "SensoriumPortalProbe", targets: ["SensoriumPortalProbe"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -69,6 +72,20 @@ let package = Package(
             pkgConfig: "glib-2.0",
             providers: [.yum(["glib2-devel"]), .apt(["libglib2.0-dev"])]
         ),
+        // GDBus and the Unix file-descriptor list the portal hands a
+        // PipeWire remote over. Both ship in the GLib development package.
+        .systemLibrary(
+            name: "CGio",
+            path: "Sources/CGio",
+            pkgConfig: "gio-unix-2.0",
+            providers: [.yum(["glib2-devel"]), .apt(["libglib2.0-dev"])]
+        ),
+        .systemLibrary(
+            name: "CPipeWire",
+            path: "Sources/CPipeWire",
+            pkgConfig: "libpipewire-0.3",
+            providers: [.yum(["pipewire-devel"]), .apt(["libpipewire-0.3-dev"])]
+        ),
         .systemLibrary(
             name: "CGtk4",
             path: "Sources/CGtk4",
@@ -99,6 +116,15 @@ let package = Package(
             name: "CWaylandGlue",
             dependencies: ["CWayland", "CWaylandProtocols"],
             path: "Sources/CWaylandGlue",
+            publicHeadersPath: "include"
+        ),
+        // The PipeWire stream callbacks and format pods are C macros and
+        // inline functions Swift cannot import; this wraps them behind a plain
+        // C interface. Empty off Linux.
+        .target(
+            name: "CSensoriumPipeWireGlue",
+            dependencies: ["CPipeWire"],
+            path: "Sources/CSensoriumPipeWireGlue",
             publicHeadersPath: "include"
         ),
         .target(
@@ -157,6 +183,32 @@ let package = Package(
         // also passes on macOS.
         .target(name: "SensoriumLinuxUpdate", dependencies: ["SensoriumCore"]),
         .executableTarget(name: "SensoriumLinuxUpdateTestRunner", dependencies: ["SensoriumLinuxUpdate", "SensoriumCore"]),
+        // The Linux host's portal session, PipeWire capture and input
+        // injection. Every source is inside `#if os(Linux)`.
+        .target(
+            name: "SensoriumLinuxHost",
+            dependencies: [
+                "SensoriumCore",
+                .target(name: "CGio", condition: .when(platforms: [.linux])),
+                .target(name: "CSensoriumPipeWireGlue", condition: .when(platforms: [.linux]))
+            ]
+        ),
+        // SensoriumClient is only here to check the key map against the
+        // Linux viewer's own table.
+        .executableTarget(
+            name: "SensoriumLinuxHostTestRunner",
+            dependencies: [
+                "SensoriumLinuxHost",
+                "SensoriumCore",
+                .target(name: "SensoriumClient", condition: .when(platforms: [.linux]))
+            ]
+        ),
+        // Test scaffolding: asks the portal for a session and reports what it
+        // granted. Refuses to run outside a nested session bus.
+        .executableTarget(
+            name: "SensoriumPortalProbe",
+            dependencies: ["SensoriumLinuxHost", "SensoriumCore"]
+        ),
         .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(
             name: "Sensorium",
