@@ -47,7 +47,9 @@ typedef struct {
 
     // Cursor metadata, present only when the producer sent any.
     bool has_cursor;
-    // False when the cursor is hidden (the producer sent an id of zero).
+    // False when the producer sent a bitmap with no image data, which hides
+    // the cursor. True otherwise, including when the cursor image is
+    // unchanged and only its position is new.
     bool cursor_visible;
     int32_t cursor_x;
     int32_t cursor_y;
