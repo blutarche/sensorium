@@ -1,8 +1,7 @@
 # Linux host design
 
 Status: draft. Nothing here ships until the open questions at the end are
-answered on a real machine. Two items also need the owner to change
-`CLAUDE.md` first; they are listed under "Rule changes this needs".
+answered on a real machine.
 
 ## Scope
 
@@ -38,7 +37,7 @@ platform through a few seams:
 | lock | CoreGraphics lock request | `org.freedesktop.ScreenSaver.Lock` |
 | local activity | HID idle seconds | `org.freedesktop.ScreenSaver.GetSessionIdleTime` |
 | indicator | menu bar badge, corner pill | layer-shell corner pill, tray item |
-| login item | `SMAppService` | XDG autostart entry (needs a rule change) |
+| login item | `SMAppService` | XDG autostart entry |
 
 `SensoriumHost` is made to compile on Linux. Files that are macOS only
 are wrapped in `#if os(macOS)`. The Linux implementations live in a new
@@ -202,17 +201,11 @@ no Linux counterpart in this first version. The host never advertises
 them, and every message about them is refused the way a macOS host with
 the feature off refuses it.
 
-## Rule changes this needs
+## Rules
 
-`CLAUDE.md` allows exactly one login item mechanism (`SMAppService`) and
-names ScreenCaptureKit and CoreGraphics in the invariant. Before the Linux
-host ships, the owner decides on:
-
-1. letting the Linux host write its own XDG autostart entry for Open at
-   login;
-2. Linux wording for the invariant: PipeWire capture under a granted
-   portal session in place of ScreenCaptureKit under Screen Recording,
-   and portal input in place of CoreGraphics events.
+`CLAUDE.md` lets the Linux host write its own XDG autostart entry for
+Open at login, and words the invariant for PipeWire capture and portal
+input.
 
 ## Open questions
 
