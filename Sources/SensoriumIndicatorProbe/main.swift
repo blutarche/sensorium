@@ -101,7 +101,7 @@ if let png {
     print("probe: wrote \(bitmap.pixelWidth)x\(bitmap.pixelHeight) pixels to \(png)")
 } else if show {
     let display = ProcessInfo.processInfo.environment["WAYLAND_DISPLAY"] ?? ""
-    guard !display.isEmpty, display != "wayland-0" else {
+    guard !display.isEmpty, (display as NSString).lastPathComponent != "wayland-0" else {
         fail("refusing to run: WAYLAND_DISPLAY is '\(display)', which is not an explicitly chosen nested socket")
     }
     runShow(display: display)

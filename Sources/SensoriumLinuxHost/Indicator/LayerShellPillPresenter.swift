@@ -147,13 +147,18 @@ final class WaylandPillSession: @unchecked Sendable {
             createPill(on: output)
         }
         var rounds = 0
-        while !allConfigured, rounds < 5 {
+        while !allPresented, rounds < 5 {
             guard wl_display_roundtrip(display) >= 0 else {
                 throw IndicatorError.noDisplay("the compositor stopped answering")
             }
             rounds += 1
         }
-        guard allConfigured, !outputs.isEmpty else { throw IndicatorError.surfaceRefused }
+        // One more round trip, so a protocol error raised by the last commit
+        // surfaces here and not after `show` has already said yes.
+        guard wl_display_roundtrip(display) >= 0 else {
+            throw IndicatorError.surfaceRefused
+        }
+        guard allPresented, !outputs.isEmpty else { throw IndicatorError.surfaceRefused }
 
         isLive = true
         fdSource = g_unix_fd_add(
@@ -167,8 +172,10 @@ final class WaylandPillSession: @unchecked Sendable {
         )
     }
 
-    private var allConfigured: Bool {
-        outputs.values.allSatisfy { $0.pill?.isConfigured == true }
+    /// Whether every output has a pill that is configured and has a buffer
+    /// on it. A pill that is merely configured can still be invisible.
+    private var allPresented: Bool {
+        outputs.values.allSatisfy { $0.pill?.isPresented == true }
     }
 
     // MARK: - Event loop
@@ -384,6 +391,8 @@ private final class PillSurface {
     var failures = 0
 
     private(set) var isConfigured = false
+    /// A buffer has been attached and committed, so the pill is on screen.
+    private(set) var isPresented = false
     private var surface: OpaquePointer?
     private var layerSurface: OpaquePointer?
     private var viewport: OpaquePointer?
@@ -445,26 +454,36 @@ private final class PillSurface {
         guard let layerSurface else { return }
         zwlr_layer_surface_v1_ack_configure(layerSurface, serial)
         isConfigured = true
-        draw()
+        redraw()
     }
 
     func scaleChanged(_ scale: Double) {
         preferredScale = scale
-        if isConfigured { draw() }
+        if isConfigured { redraw() }
     }
 
     func outputScaleChanged() {
-        if isConfigured, fractionalScale == nil { draw() }
+        if isConfigured, fractionalScale == nil { redraw() }
     }
 
-    private func draw() {
-        guard let surface, let shm = session.shmFactory else { return }
+    /// Draws again. A pill that never got its first buffer, in a session that
+    /// is already live, cannot be shown at all, which ends the session; a
+    /// failed redraw of a pill already on screen leaves the old picture up.
+    private func redraw() {
+        if !draw(), !isPresented, session.isLive {
+            session.giveUp("the indicator could not be drawn")
+        }
+    }
+
+    /// Whether a buffer was attached and committed.
+    private func draw() -> Bool {
+        guard let surface, let shm = session.shmFactory else { return false }
         let size = session.renderedLayout
         let scale = fractionalScale != nil ? (preferredScale ?? Double(output.scale)) : Double(output.scale)
         let bitmap = IndicatorPillRenderer.render(
             deviceName: session.shownDeviceName, appearance: session.shownAppearance, scale: scale
         )
-        guard let newBuffer = makeBuffer(bitmap, shm: shm) else { return }
+        guard let newBuffer = makeBuffer(bitmap, shm: shm) else { return false }
 
         if let viewport {
             wp_viewport_set_destination(viewport, Int32(size.logicalWidth), Int32(size.logicalHeight))
@@ -477,7 +496,9 @@ private final class PillSurface {
         // The new buffer is attached, so the one it replaced is no longer needed.
         if let previous = buffer { wl_buffer_destroy(previous) }
         buffer = newBuffer
+        isPresented = true
         wl_display_flush(session.displayProxy)
+        return true
     }
 
     /// Copies `bitmap` into a fresh shared-memory buffer.
@@ -519,6 +540,7 @@ private final class PillSurface {
         }
         surface = nil
         isConfigured = false
+        isPresented = false
     }
 }
 
