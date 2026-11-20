@@ -21,6 +21,7 @@ const char *sensorium_build_version(void)
 #include "presentation-time-client-protocol.h"
 #include "relative-pointer-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "xdg-decoration-unstable-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
@@ -43,6 +44,7 @@ static const struct wl_interface *description_named(const char *interface)
     if (!strcmp(interface, "zwp_pointer_constraints_v1")) return &zwp_pointer_constraints_v1_interface;
     if (!strcmp(interface, "zwp_keyboard_shortcuts_inhibit_manager_v1")) return &zwp_keyboard_shortcuts_inhibit_manager_v1_interface;
     if (!strcmp(interface, "zwp_linux_dmabuf_v1")) return &zwp_linux_dmabuf_v1_interface;
+    if (!strcmp(interface, "zwlr_layer_shell_v1")) return &zwlr_layer_shell_v1_interface;
     return NULL;
 }
 

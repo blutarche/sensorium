@@ -8,14 +8,17 @@
 # protocol list below changes, and record the wayland-protocols version the
 # result came from in Sources/CWaylandProtocols/README.md.
 #
-# Requires: wayland-scanner, and the wayland-protocols XML definitions under
-# /usr/share/wayland-protocols (override with WAYLAND_PROTOCOLS_DIR).
+# Requires: wayland-scanner, the wayland-protocols XML definitions under
+# /usr/share/wayland-protocols (override with WAYLAND_PROTOCOLS_DIR), and the
+# wlroots protocol definitions under /usr/share/wlr-protocols (override with
+# WLR_PROTOCOLS_DIR), which Fedora ships as wlr-protocols-devel.
 
 set -euo pipefail
 
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 target="$repository/Sources/CWaylandProtocols"
 protocols="${WAYLAND_PROTOCOLS_DIR:-/usr/share/wayland-protocols}"
+wlr_protocols="${WLR_PROTOCOLS_DIR:-/usr/share/wlr-protocols}"
 
 definitions=(
     "stable/xdg-shell/xdg-shell.xml"
@@ -29,14 +32,27 @@ definitions=(
     "stable/linux-dmabuf/linux-dmabuf-v1.xml"
 )
 
+wlr_definitions=(
+    "unstable/wlr-layer-shell-unstable-v1.xml"
+)
+
 mkdir -p "$target/include"
 
-for definition in "${definitions[@]}"; do
-    xml="$protocols/$definition"
-    name="$(basename "$definition" .xml)"
+generate() {
+    local xml="$1"
+    local name
+    name="$(basename "$xml" .xml)"
     wayland-scanner client-header "$xml" "$target/include/$name-client-protocol.h"
     wayland-scanner private-code "$xml" "$target/$name-protocol.c"
     echo "generated $name"
+}
+
+for definition in "${definitions[@]}"; do
+    generate "$protocols/$definition"
+done
+
+for definition in "${wlr_definitions[@]}"; do
+    generate "$wlr_protocols/$definition"
 done
 
 echo "wayland-scanner $(wayland-scanner --version 2>&1)"
