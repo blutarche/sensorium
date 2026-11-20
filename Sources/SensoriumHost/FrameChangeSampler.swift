@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -136,3 +137,4 @@ package final class FrameChangeSampler: @unchecked Sendable {
         tileChanged = [UInt8](repeating: 0, count: tilesAcross * tilesDown)
     }
 }
+#endif

@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(os)
 import os
+#endif
 
 /// Where the host's session lines are recorded: connections, refusals,
 /// capture and display events, and host-screen input diagnostics. A host
@@ -21,7 +23,9 @@ import os
 /// host name and no colon ("Sensorium host bound ...") is printed as it is:
 /// the smoke scripts wait on that wording in the host's standard output.
 public enum HostSessionLog {
+    #if canImport(os)
     private static let logger = Logger(subsystem: "com.sensorium.host", category: "session")
+    #endif
     private static let prefix = "Sensorium host: "
     private static let subject = "Sensorium host "
 
@@ -60,11 +64,14 @@ public enum HostSessionLog {
         print(printedLine(line))
     }
 
+    /// Where there is no unified log, standard output is the whole record.
     private static func writeToUnifiedLog(_ privacy: UnifiedLogPrivacy, _ line: String) {
+        #if canImport(os)
         switch privacy {
         case .redacted: logger.notice("\(line, privacy: .private)")
         case .readable: logger.notice("\(line, privacy: .public)")
         }
+        #endif
     }
 
     public static func printedLine(_ line: String) -> String {

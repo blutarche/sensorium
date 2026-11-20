@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -402,3 +403,4 @@ public extension CanvasDesign {
         }
     }
 }
+#endif

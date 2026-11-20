@@ -208,6 +208,7 @@ public struct HostOperatorPresentation: Equatable, Sendable {
     /// its "Make a New Key" button for.
     public let identityProblem: HostIdentityFailureCopy?
 
+    #if os(macOS)
     /// Gold for an eyebrow that says something needs action or failed --
     /// "COULD NOT START", "SCREEN RECORDING NEEDED" -- grey for a neutral
     /// status like "READY". Every surface that draws `eyebrow` reads this
@@ -220,6 +221,7 @@ public struct HostOperatorPresentation: Equatable, Sendable {
             return CanvasDesign.muted
         }
     }
+    #endif
 
     /// Shown under the code and its countdown, in both the host window's
     /// own card and the menu bar's own panel -- whoever reads six digits

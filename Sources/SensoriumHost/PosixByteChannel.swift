@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 
 public enum PosixByteChannelError: Error, Equatable {
@@ -116,3 +117,4 @@ public final class PosixByteChannel: @unchecked Sendable {
         }
     }
 }
+#endif

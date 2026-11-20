@@ -70,7 +70,7 @@ private func makeHostScreenFixture(
     modeController: FakeHostScreenModeController? = nil,
     localActivitySignal: (any HostLocalActivitySignal)? = nil,
     presenceGate: (any HostScreenPresenceGating)? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -841,6 +841,7 @@ func runHostScreenModeAccountabilityTests() async {
         var captureConfigurations: [VideoEncoderConfiguration] = []
         var captures: [FakeScalableCanvasMedia] = []
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { configuration, _ in
                 captureConfigurations.append(configuration)
                 let capture = FakeScalableCanvasMedia()
@@ -856,7 +857,7 @@ func runHostScreenModeAccountabilityTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -903,6 +904,7 @@ func runHostScreenModeAccountabilityTests() async {
         var captureCount = 0
         let recovered = FakeScalableCanvasMedia()
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 captureCount += 1
                 switch captureCount {
@@ -920,7 +922,7 @@ func runHostScreenModeAccountabilityTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -965,6 +967,7 @@ func runHostScreenModeAccountabilityTests() async {
         let events = DiagnosticsRecorder()
         var captures: [FakeScalableCanvasMedia] = []
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 let capture = FakeScalableCanvasMedia()
                 captures.append(capture)
@@ -980,7 +983,7 @@ func runHostScreenModeAccountabilityTests() async {
             display: display,
             onEvent: { events.record($0) },
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(

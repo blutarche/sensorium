@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// A snapshot of everything about a device's own arming record that a
 /// resumed session must not silently outlive: when it was armed, and
@@ -227,15 +226,10 @@ public final class HostScreenResumeTicketStore: HostScreenResumeTicketStoring, @
     /// anything this method already knows, or any other value a viewer
     /// could derive. Fatal on failure rather than falling back to a weaker
     /// source, matching `HostSessionController.secureRandomToken()`'s own
-    /// reasoning: `SecRandomCopyBytes` failing is not a condition this
+    /// reasoning: a failing random source is not a condition this
     /// function can recover from and still hand back something that is
     /// actually unguessable.
     private static func secureRandomToken() -> Data {
-        var bytes = Data(count: 32)
-        let status = bytes.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
-        }
-        precondition(status == errSecSuccess, "SecRandomCopyBytes failed: \(status)")
-        return bytes
+        HostSecureRandom.bytes(32)
     }
 }

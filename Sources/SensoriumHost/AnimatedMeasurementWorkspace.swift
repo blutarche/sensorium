@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -220,3 +221,4 @@ private final class AnimatedMeasurementContentView: NSView {
         NSBezierPath(ovalIn: NSRect(x: x, y: y, width: side, height: side)).fill()
     }
 }
+#endif

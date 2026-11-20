@@ -1,5 +1,4 @@
-import CoreGraphics
-
+import Foundation
 /// A single observation of whether a freshly created session canvas is usable
 /// yet. Kept free of AppKit/CoreGraphics calls so the waiting policy below can
 /// be driven by a fake in tests that must never open a window or touch a real

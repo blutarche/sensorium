@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SensoriumCore
 import Foundation
@@ -232,3 +233,4 @@ enum PairedMachineRenameSheet {
         window.beginSheet(sheet) { _ in scrim?.removeFromSuperview() }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import os
 import SensoriumUpdate
@@ -66,3 +67,4 @@ public enum HostUpdateLog {
         "\(failure), \(failure.kind.rawValue): \(failure.reason)"
     }
 }
+#endif

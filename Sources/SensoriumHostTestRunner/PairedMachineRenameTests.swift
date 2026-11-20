@@ -441,6 +441,7 @@ func runPairedMachineRenameTests() async {
         defer { try? FileManager.default.removeItem(at: logURL) }
         let log = HostScreenSessionLogStore(url: logURL)
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in FakeScalableCanvasMedia() },
             sessionLog: log,
             deviceName: { controller.hostScreenDeviceName ?? "" },
@@ -449,7 +450,7 @@ func runPairedMachineRenameTests() async {
             onBadgeStop: {},
             badgeFactory: { _, _ in RenameBadgeDisplay() }
         )
-        _ = media.makeMedia(.fullHiDPI, displayID: 7)
+        _ = try! media.makeMedia(.fullHiDPI, displayID: 7)
         expect(media.badgeState?.content.deviceName == "Studio Laptop", "the live indicator names the chosen name")
         expect(log.lastRecord?.deviceName == "Studio Laptop", "the session record names the chosen name")
         expect(log.lastRecord?.reportedDeviceName == "Kestrel Laptop Air", "and keeps the reported name alongside")

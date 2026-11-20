@@ -1,28 +1,22 @@
-import CoreGraphics
-
 public enum ScreenCapturePermissionStatus: Equatable {
     case granted
     case approvalRequired
 }
 
-/// Boundary around macOS Screen Recording trust. Status reads never present UI;
+/// Boundary around the platform's screen-capture trust: Screen Recording on
+/// macOS, the screen-sharing grant on Linux. Status reads never present UI;
 /// the caller must explicitly choose to request approval.
 public protocol ScreenCapturePermissionChecking: AnyObject {
     func check(prompt: Bool) -> Bool
 }
 
-public final class SystemScreenCapturePermissionChecker: ScreenCapturePermissionChecking {
-    public init() {}
-
-    public func check(prompt: Bool) -> Bool {
-        prompt ? CGRequestScreenCaptureAccess() : CGPreflightScreenCaptureAccess()
-    }
-}
-
+/// There is no default checker here: each platform supplies the one that asks
+/// its own system, so a host cannot be built whose permission check was
+/// silently skipped.
 public final class ScreenCapturePermissionGate {
     private let checker: any ScreenCapturePermissionChecking
 
-    public init(checker: any ScreenCapturePermissionChecking = SystemScreenCapturePermissionChecker()) {
+    public init(checker: any ScreenCapturePermissionChecking) {
         self.checker = checker
     }
 

@@ -1,3 +1,4 @@
+#if os(macOS)
 import SensoriumCore
 import Network
 import Security
@@ -521,3 +522,4 @@ public final class HostNetworkListener: @unchecked Sendable {
         HostListenerInterfaceIdentity(name: interface.name, index: interface.index)
     }
 }
+#endif

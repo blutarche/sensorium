@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 /// What address to host on, decided without ever asking: local interface
@@ -52,11 +56,11 @@ public enum TailnetAddressEnumerator {
             defer { cursor = entry.pointee.ifa_next }
             guard let rawAddress = entry.pointee.ifa_addr else { continue }
             let family = rawAddress.pointee.sa_family
-            guard family == UInt8(AF_INET) || family == UInt8(AF_INET6) else { continue }
+            guard Int32(family) == AF_INET || Int32(family) == AF_INET6 else { continue }
             var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             let resolved = getnameinfo(
                 rawAddress,
-                socklen_t(rawAddress.pointee.sa_len),
+                socklen_t(socketAddressLength(rawAddress)),
                 &host,
                 socklen_t(host.count),
                 nil,

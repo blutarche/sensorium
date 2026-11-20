@@ -103,7 +103,7 @@ private func makeFidelityFixture(
     // that runs after it.
     captureAvailability: HostCaptureAvailability = HostCaptureAvailability(),
     streamScaleClock: SteppedClock? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -393,6 +393,7 @@ func runHostScreenFidelityTests() async {
             .appendingPathComponent("sensorium-host-screen-fidelity-log-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: logURL) }
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 let capture = FakeScalableCanvasMedia()
                 captures.append(capture)
@@ -407,7 +408,7 @@ func runHostScreenFidelityTests() async {
         let fixture = makeFidelityFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         await startFidelitySession(fixture)
         await fixture.coordinator.tickFidelity(atSeconds: 0)

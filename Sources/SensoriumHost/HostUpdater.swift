@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumUpdate
 
@@ -206,3 +207,4 @@ public final class HostUpdater {
         )
     }
 }
+#endif

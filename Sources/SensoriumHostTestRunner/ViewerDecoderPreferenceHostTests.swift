@@ -165,7 +165,7 @@ private final class IdlePreferenceSignal: HostLocalActivitySignal, @unchecked Se
 func makeHostScreenPreferenceFixture(
     videoSink: any CanvasVideoSending = FakeVideoSink(),
     onEvent: (@Sendable (String) -> Void)? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController) {
     let display = DisplaySnapshot(
         id: 7,

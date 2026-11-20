@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Foundation
 
 /// What the host window shows when Sensorium Host cannot read its own key --
@@ -47,6 +49,7 @@ public struct HostIdentityFailureCopy: Equatable, Sendable {
     private static let retryTitle = "Try Again"
     private static let replaceTitle = "Make a New Key"
 
+    #if os(macOS)
     package func makeReplacementConfirmation() -> NSAlert {
         let alert = NSAlert()
         alert.alertStyle = .warning
@@ -56,6 +59,7 @@ public struct HostIdentityFailureCopy: Equatable, Sendable {
         alert.addButton(withTitle: "Cancel")
         return alert
     }
+    #endif
 
     package static func replacementFailure(reason: String) -> String {
         "Sensorium Host could not replace this machine\u{2019}s key: \(reason)."

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SensoriumCore
 import Foundation
@@ -355,3 +356,4 @@ public final class HostScreenPresencePanel: HostScreenPresencePrompting {
         return answer
     }
 }
+#endif

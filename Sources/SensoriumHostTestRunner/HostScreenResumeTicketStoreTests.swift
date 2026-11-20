@@ -265,4 +265,14 @@ func runHostScreenResumeTicketStoreTests() async {
 
         print("PASS: a matching ticket past either window classifies as expired; every other refusal classifies as invalid")
     }
+
+    // The random source behind every ticket and token.
+    do {
+        let first = HostSecureRandom.bytes(32)
+        let second = HostSecureRandom.bytes(32)
+        expect(first.count == 32 && second.count == 32, "secure random bytes come back at the length asked for")
+        expect(first != second, "two draws of secure random bytes differ")
+        expect(HostSecureRandom.bytes(0).isEmpty, "a zero-length draw is empty")
+        print("PASS: secure random bytes are the length asked for and are not repeated")
+    }
 }

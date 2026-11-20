@@ -1,24 +1,8 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
 import VideoToolbox
-
-@available(macOS 13.0, *)
-public enum StillFrameEncoderError: Error, Equatable {
-    case sessionCreationFailed(OSStatus)
-    case propertyUpdateFailed(OSStatus)
-    case frameSubmissionFailed(OSStatus)
-    /// VideoToolbox accepted the frame, finished, and produced nothing. Named
-    /// rather than reported as a submission failure: there is a picture to
-    /// send and no frame carrying it, which is a different thing from the
-    /// encoder having refused it.
-    case noEncodedFrame
-    /// Every quality this picture was allowed to try still produced more bytes
-    /// than the wire format accepts. Reported rather than returned: the write
-    /// would refuse it, and by then the frame has already been counted and
-    /// logged as the picture that went out.
-    case frameExceedsTransportLimit(bytes: Int)
-}
 
 /// A session of its own because `kVTCompressionPropertyKey_Quality` is
 /// ignored once a bit rate is set, and average-bitrate control spends only
@@ -249,3 +233,4 @@ private final class EncodedFrameBox: @unchecked Sendable {
         failure = nil
     }
 }
+#endif

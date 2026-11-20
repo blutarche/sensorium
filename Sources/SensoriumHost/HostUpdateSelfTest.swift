@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import Security
 import SensoriumCore
@@ -97,3 +98,4 @@ public enum HostUpdateSelfTest {
         return keys.allSatisfy { Data(base64Encoded: $0) != nil }
     }
 }
+#endif

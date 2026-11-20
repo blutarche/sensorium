@@ -880,6 +880,7 @@ struct sensoriumd {
                 // and are only readable once a request has actually been
                 // admitted, which is also the earliest `makeMedia` can run.
                 let hostScreenAccountableMedia = HostScreenAccountableMedia(
+                    capturePermission: ScreenCapturePermissionGate(),
                     rawFactory: { configuration, sequencer in
                         HostScreenCaptureMedia(
                             configuration: configuration,

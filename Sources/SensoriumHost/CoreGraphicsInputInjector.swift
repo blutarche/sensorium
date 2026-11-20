@@ -1,13 +1,8 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
 import SensoriumCore
-
-public enum CoreGraphicsInputInjectorError: Error, Equatable {
-    case eventSourceUnavailable
-    case eventCreationFailed
-    case canvasDisplayUnavailable
-}
 
 /// Posts input into the session-owned canvas only. Coordinates arrive in canvas
 /// logical points and are translated through that display's own bounds, so a
@@ -595,3 +590,4 @@ public enum CoreGraphicsInputTranslation {
     /// navigation cluster the arrow keys belong to.
     private static let navigationClusterKeyCodes: Set<UInt16> = [115, 119, 116, 121, 117]
 }
+#endif

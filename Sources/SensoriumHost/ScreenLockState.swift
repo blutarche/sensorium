@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// Reads whether this machine's screen is locked right now. Behind a protocol so
@@ -11,18 +10,4 @@ public protocol ScreenLockStateReading: Sendable {
     /// locked" as "nothing to unlock" rather than typing a password into a
     /// screen that may already be in use.
     func isScreenLocked() -> Bool
-}
-
-/// The real reader, over the public CoreGraphics session dictionary. macOS
-/// publishes the lock state there under `CGSSessionScreenIsLocked`; an absent
-/// or false value is a screen that is not locked.
-public struct CGSessionScreenLockState: ScreenLockStateReading {
-    public init() {}
-
-    public func isScreenLocked() -> Bool {
-        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else {
-            return false
-        }
-        return (session["CGSSessionScreenIsLocked"] as? Bool) ?? false
-    }
 }

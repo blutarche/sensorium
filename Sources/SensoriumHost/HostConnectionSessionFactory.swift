@@ -55,7 +55,7 @@ public final class HostConnectionSessionFactory {
     /// Shared for the same reason the mode controller is: this machine has
     /// one power state, so the hold that keeps its displays awake belongs to
     /// the process rather than to whichever connection happened to take it.
-    private let displayWake: DisplayWakeController?
+    private let displayWake: (any DisplayWaking)?
     /// The SHA-256 of this host's own TLS certificate, forwarded to every
     /// controller: an `authenticatedHello` is bound to the host it was sent
     /// to, and this is what each connection checks that binding against.
@@ -88,7 +88,7 @@ public final class HostConnectionSessionFactory {
         hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
-        displayWake: DisplayWakeController? = nil,
+        displayWake: (any DisplayWaking)? = nil,
         privateDesktopOffered: @escaping () -> Bool = { false },
         log: @escaping @MainActor (String) -> Void = { print($0) },
         inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil

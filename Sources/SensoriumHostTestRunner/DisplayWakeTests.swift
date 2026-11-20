@@ -261,7 +261,7 @@ func makeWakeHostScreenFixture(
     wake: DisplayWakeController,
     availability: HostCaptureAvailability,
     onStreamUnrecoverable: @escaping @Sendable (String) -> Void,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController, token: Data) {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey

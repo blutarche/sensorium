@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumUpdate
 
@@ -99,3 +100,4 @@ public enum HostUpdateSwapBackRecovery {
         return .readyLate
     }
 }
+#endif

@@ -1,6 +1,4 @@
-import CoreMedia
 import Foundation
-import Security
 import SensoriumCore
 
 struct CanvasInputLocation: Equatable {
@@ -321,7 +319,7 @@ public final class HostSessionController {
     /// every refusal it causes stands. Readable so the coordinator, which
     /// owns the session's own start and end, holds and drops the same hold
     /// this connection's controller was built with rather than a second one.
-    public let displayWake: DisplayWakeController?
+    public let displayWake: (any DisplayWaking)?
     /// The retry in flight, if any: one at a time, since one connection has
     /// one host screen. Held so a later restore cannot end up racing an
     /// earlier one for the same display.
@@ -377,7 +375,7 @@ public final class HostSessionController {
     /// slot leaked into it could never be reclaimed.
     /// It bounds this session only; the bound on the machine's media engines
     /// is `SharedEncodeAdmissionGate.machineWide`, which this one defers to.
-    public nonisolated let encodeAdmission: SharedEncodeAdmissionGate<CMSampleBuffer>
+    public nonisolated let encodeAdmission: SharedEncodeAdmissionGate<HostVideoFrame>
 
     /// Which canvas the viewer last reported it is looking at, or `nil` for
     /// both of the states that mean "prefer nobody": no focus report has ever
@@ -501,7 +499,11 @@ public final class HostSessionController {
     /// Read once per forwarded host-screen input event, only to say in the
     /// session log whether that input lands on the lock screen. The injector
     /// reads its own reader to choose where to post.
-    private let hostScreenLockStateReader: any ScreenLockStateReading
+    private let hostScreenLockStateReader: (any ScreenLockStateReading)?
+    private var isScreenLockedNow: Bool {
+        guard let hostScreenLockStateReader else { return false }
+        return hostScreenLockStateReader.isScreenLocked()
+    }
 
     public init(
         sessions: CanvasSurfaceSlots<VirtualDisplaySession>,
@@ -514,8 +516,8 @@ public final class HostSessionController {
         onClipboardSharingChanged: ((Bool) -> Void)? = nil,
         keyConfinement: HostKeyConfinement,
         maxSurfaceCount: Int = CanvasSurfaceID.capacity,
-        encodeAdmission: SharedEncodeAdmissionGate<CMSampleBuffer> = SharedEncodeAdmissionGate(
-            capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.sessionCapacity,
+        encodeAdmission: SharedEncodeAdmissionGate<HostVideoFrame> = SharedEncodeAdmissionGate(
+            capacity: SharedEncodeAdmissionGate<HostVideoFrame>.sessionCapacity,
             machineGate: .machineWide
         ),
         hostCertificateHash: Data? = nil,
@@ -530,10 +532,10 @@ public final class HostSessionController {
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
         hostScreenModeRestorePolicy: HostScreenModeRestorePolicy = .standard,
-        displayWake: DisplayWakeController? = nil,
+        displayWake: (any DisplayWaking)? = nil,
         captureAvailability: HostCaptureAvailability = .shared,
         privateDesktopOffered: @escaping () -> Bool = { false },
-        hostScreenLockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
+        hostScreenLockStateReader: (any ScreenLockStateReading)? = HostPlatformDefaults.screenLockState,
         log: @escaping @MainActor (String) -> Void = { print($0) },
         inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil
     ) {
@@ -550,7 +552,14 @@ public final class HostSessionController {
         self.onClipboardSharingChanged = onClipboardSharingChanged
         self.maxSurfaceCount = min(max(maxSurfaceCount, 1), CanvasSurfaceID.capacity)
         self.hostCertificateHash = hostCertificateHash
-        self.hostScreenArmingProvider = hostScreenArmingProvider
+        // With no lock-state reader there is no basis for saying what a
+        // viewer's input would reach, so no arming record is consulted and
+        // no host screen is ever offered or admitted.
+        if hostScreenLockStateReader == nil {
+            self.hostScreenArmingProvider = nil
+        } else {
+            self.hostScreenArmingProvider = hostScreenArmingProvider
+        }
         self.hostScreenCurrentDisplaysProvider = hostScreenCurrentDisplaysProvider
         self.hostScreenResumeTicketStore = hostScreenResumeTicketStore
         self.hostScreenUnlockThrottle = hostScreenUnlockThrottle
@@ -1346,16 +1355,11 @@ public final class HostSessionController {
     /// 32 bytes from the platform CSPRNG -- never a counter, a hash of
     /// anything this method already knows, or any other value a viewer
     /// could derive. Fatal on failure rather than falling back to a weaker
-    /// source: `SecRandomCopyBytes` failing is not a condition this
+    /// source: a failing random source is not a condition this
     /// function can recover from and still hand back something that is
     /// actually unguessable.
     private static func secureRandomToken() -> Data {
-        var bytes = Data(count: 32)
-        let status = bytes.withUnsafeMutableBytes { buffer in
-            SecRandomCopyBytes(kSecRandomDefault, buffer.count, buffer.baseAddress!)
-        }
-        precondition(status == errSecSuccess, "SecRandomCopyBytes failed: \(status)")
-        return bytes
+        HostSecureRandom.bytes(32)
     }
 
     /// Whether a resume ticket this request offered really does resume a
@@ -2552,7 +2556,7 @@ public final class HostSessionController {
         // The injector factory is available exactly when Accessibility is
         // granted: the host wires it behind `AccessibilityGatedInputInjectorFactory`.
         let inputLine = surface.inputDiagnostics.input(
-            locked: hostScreenLockStateReader.isScreenLocked(),
+            locked: isScreenLockedNow,
             accessibilityTrusted: { inputInjectorFactory?.isAvailable == true }
         )
         hostScreenSurface = surface
