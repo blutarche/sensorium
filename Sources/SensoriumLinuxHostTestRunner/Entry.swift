@@ -1,10 +1,14 @@
 import Foundation
+#if os(Linux)
+import SensoriumLinuxHost
+#endif
 
 /// Checks for the Linux host's own code. The host is Linux only, so on any
 /// other platform this runner has nothing to run.
 @main
 struct SensoriumLinuxHostTestRunner {
-    static func main() {
+    @MainActor
+    static func main() async {
         #if os(Linux)
         let tests: [(String, () throws -> Void)] = [
             ("BGRx converts to NV12 across padded rows", testBGRxConvertsToNV12WithPaddedRows),
@@ -38,7 +42,15 @@ struct SensoriumLinuxHostTestRunner {
             }
             print("PASS: \(name)")
         }
-        print("PASS: \(tests.count - skipped) tests, \(skipped) skipped")
+        // Checks that drive the indicator's main-actor state run after the
+        // synchronous ones; each fails the run itself through `expect`.
+        let mainActorTests: [(String, () async -> Void)] = IndicatorTests.all + TrayTests.all + ShowTests.all
+        for (name, test) in mainActorTests {
+            await test()
+            print("PASS: \(name)")
+        }
+        let passed = tests.count - skipped + mainActorTests.count
+        print("PASS: \(passed) tests, \(skipped) skipped")
         #else
         print("SKIP: the Linux host's checks run on Linux only")
         #endif
