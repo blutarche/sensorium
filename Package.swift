@@ -16,6 +16,9 @@ let package = Package(
         .executable(name: "SensoriumUpdateTestRunner", targets: ["SensoriumUpdateTestRunner"]),
         .library(name: "SensoriumLinuxUpdate", targets: ["SensoriumLinuxUpdate"]),
         .executable(name: "SensoriumLinuxUpdateTestRunner", targets: ["SensoriumLinuxUpdateTestRunner"]),
+        .library(name: "SensoriumLinuxHost", targets: ["SensoriumLinuxHost"]),
+        .executable(name: "SensoriumLinuxHostTestRunner", targets: ["SensoriumLinuxHostTestRunner"]),
+        .executable(name: "SensoriumIndicatorProbe", targets: ["SensoriumIndicatorProbe"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -74,6 +77,12 @@ let package = Package(
             path: "Sources/CGtk4",
             pkgConfig: "gtk4",
             providers: [.yum(["gtk4-devel"]), .apt(["libgtk-4-dev"])]
+        ),
+        .systemLibrary(
+            name: "CGio",
+            path: "Sources/CGio",
+            pkgConfig: "gio-2.0",
+            providers: [.yum(["glib2-devel"]), .apt(["libglib2.0-dev"])]
         ),
         .systemLibrary(
             name: "CCairo",
@@ -157,6 +166,25 @@ let package = Package(
         // also passes on macOS.
         .target(name: "SensoriumLinuxUpdate", dependencies: ["SensoriumCore"]),
         .executableTarget(name: "SensoriumLinuxUpdateTestRunner", dependencies: ["SensoriumLinuxUpdate", "SensoriumCore"]),
+        // The Linux host's own code. Every source is inside `#if os(Linux)`.
+        .target(
+            name: "SensoriumLinuxHost",
+            dependencies: [
+                .target(name: "CCairo", condition: .when(platforms: [.linux])),
+                .target(name: "CWayland", condition: .when(platforms: [.linux])),
+                .target(name: "CWaylandProtocols", condition: .when(platforms: [.linux])),
+                .target(name: "CWaylandGlue", condition: .when(platforms: [.linux])),
+                .target(name: "CGLib", condition: .when(platforms: [.linux])),
+                .target(name: "CGio", condition: .when(platforms: [.linux]))
+            ]
+        ),
+        .executableTarget(name: "SensoriumLinuxHostTestRunner", dependencies: ["SensoriumLinuxHost"]),
+        // Test scaffolding, never bundled: shows the live-session indicator
+        // for a sample device name, on screen or into a PNG.
+        .executableTarget(
+            name: "SensoriumIndicatorProbe",
+            dependencies: ["SensoriumLinuxHost", .target(name: "CGLib", condition: .when(platforms: [.linux]))]
+        ),
         .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(
             name: "Sensorium",
