@@ -3,7 +3,7 @@
 @main
 struct SensoriumLinuxHostTestRunner {
     static func main() async {
-        let tests: [NamedTest] = keyMapTests() + restoreTokenStoreTests() + portalSessionTests()
+        let tests: [NamedTest] = keyMapTests() + restoreTokenStoreTests() + portalSessionTests() + geometryTests() + inputInjectorTests() + screenSaverTests()
 
         for (name, test) in tests {
             await test()
