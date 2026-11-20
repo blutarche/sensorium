@@ -111,6 +111,11 @@ as the owner's user can already read the screen and type through other
 means on most desktops, so this widens nothing that matters, but it is
 stated rather than hidden.
 
+**Encoder.** Stock Fedora's VA-API driver has no H.264 profiles. A host
+with the RPM Fusion `mesa-va-drivers-freeworld` driver encodes on the GPU
+(about 9 ms a frame at 2560x1440 on the reference machine); every other
+host falls back to OpenH264 on the CPU. The host never installs a driver.
+
 **Frames.** The portal hands back a PipeWire node. The host reads it with
 libpipewire. It prefers DMA-BUF frames and imports them into VA-API for
 encoding, with shared-memory frames as the fallback. The cursor arrives
