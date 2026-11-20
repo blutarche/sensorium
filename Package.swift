@@ -16,6 +16,8 @@ let package = Package(
         .executable(name: "SensoriumUpdateTestRunner", targets: ["SensoriumUpdateTestRunner"]),
         .library(name: "SensoriumLinuxUpdate", targets: ["SensoriumLinuxUpdate"]),
         .executable(name: "SensoriumLinuxUpdateTestRunner", targets: ["SensoriumLinuxUpdateTestRunner"]),
+        .library(name: "SensoriumLinuxHost", targets: ["SensoriumLinuxHost"]),
+        .executable(name: "SensoriumLinuxHostTestRunner", targets: ["SensoriumLinuxHostTestRunner"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -157,6 +159,26 @@ let package = Package(
         // also passes on macOS.
         .target(name: "SensoriumLinuxUpdate", dependencies: ["SensoriumCore"]),
         .executableTarget(name: "SensoriumLinuxUpdateTestRunner", dependencies: ["SensoriumLinuxUpdate", "SensoriumCore"]),
+        // The Linux host. Every source is inside `#if os(Linux)`.
+        .target(
+            name: "SensoriumLinuxHost",
+            dependencies: [
+                "SensoriumCore",
+                .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
+                .target(name: "CAVCodec", condition: .when(platforms: [.linux]))
+            ]
+        ),
+        .executableTarget(
+            name: "SensoriumLinuxHostTestRunner",
+            dependencies: [
+                "SensoriumLinuxHost",
+                "SensoriumCore",
+                // The viewer's own decoder, so a round trip proves the
+                // encoder's output is what the viewer actually opens.
+                .target(name: "SensoriumClient", condition: .when(platforms: [.linux])),
+                .target(name: "CAVCodec", condition: .when(platforms: [.linux]))
+            ]
+        ),
         .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(
             name: "Sensorium",

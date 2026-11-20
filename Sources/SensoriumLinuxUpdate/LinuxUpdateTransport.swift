@@ -39,9 +39,12 @@ public enum LinuxUpdateTransportError: Error, Equatable {
 /// Fetches the release page's files. Behind a protocol so tests use a local
 /// fake and make no network request. A real transport sends no cookies,
 /// keeps no cache, names itself with `LinuxUpdateReleaseLocation.userAgent`,
-/// gives up on a request after `LinuxUpdateReleaseLocation.timeout` and on a
-/// whole transfer at `smallFileDeadline` or `archiveDeadline`, and stops
-/// reading past the cap rather than after it.
+/// gives up on a request after `LinuxUpdateReleaseLocation.timeout`, stops
+/// the network side of a whole transfer at `smallFileDeadline` or
+/// `archiveDeadline` and fails any transfer that ran past it, and stops
+/// reading past the cap rather than after it. A local write already under way
+/// is never abandoned: a stuck disk delays the failure until it returns, so
+/// nothing writes to the destination after the call has thrown.
 public protocol LinuxUpdateTransport: Sendable {
     /// The whole body of `url`, or `LinuxUpdateTransportError.tooLarge` past
     /// `maximumBytes`.

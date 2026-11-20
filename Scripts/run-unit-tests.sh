@@ -18,6 +18,9 @@ python3 Scripts/test-documentation-status.py
 python3 Scripts/test-clean-build-output.py
 python3 Scripts/test-linux-build-version.py
 python3 Scripts/test-sign-linux-update.py
+if [ "$(uname -s)" = Linux ]; then
+    python3 Scripts/test-linux-update-transport.py
+fi
 # Both configurations. Release is what every packaging script ships, and it
 # is the only place the optimizer's freedom -- ARC releasing an object at its
 # last use, among others -- can change behaviour.
