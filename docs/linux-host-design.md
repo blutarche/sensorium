@@ -67,7 +67,10 @@ viewer through Network.framework, the Linux viewer through
 writes `hello` first, so the host accepts that stream and every packet
 travels on it, as today.
 
-OpenSSL 3.5's server does not support connection migration. A viewer
+OpenSSL 3.5's server sends a Retry before the handshake, which costs one
+round trip and which Network.framework handles. It does not support
+connection migration, and it does not report an accepted connection's
+peer address, which the source address rule needs. A viewer
 whose address changes reconnects, and the resume ticket brings the
 session back the way it does after any other drop.
 
@@ -88,10 +91,11 @@ grant covers both.
 monitor in the system dialog. This is the Linux counterpart of granting
 Screen Recording on macOS, and it happens in the host's setup window.
 
-**Restore tokens.** Every successful `Start` returns a new token and the
-old one stops working. The host writes the new token atomically before
-it does anything else with the session, owner only, in its own data
-folder.
+**Restore tokens.** The portal may hand back a new token on every
+successful `Start`, and then the old one stops working. KDE 6.7 hands back
+the same token again. The host writes whatever token it gets atomically
+before it does anything else with the session, owner only, in its own
+data folder.
 
 A token the portal cannot use is not refused. The portal ignores it and
 shows the dialog on the host's screen. A host that nobody is sitting at
@@ -217,8 +221,9 @@ input.
 These need a person at the reference machine, because each involves the
 portal dialog or the lock screen.
 
-1. **Silent restore.** Does KDE restore a RemoteDesktop session from its
-   token with no dialog, after a reboot and a fresh login?
+1. **Silent restore.** In a nested KWin 6.7 session, a stored token
+   restores the session with no dialog. Still open: does that hold after
+   a reboot and a fresh login on the real session?
 2. **Lock screen frames.** While the session is locked, does the portal
    stream show the lock screen, a frozen frame, or nothing?
 3. **Lock screen input.** Does portal input reach the lock screen, so a
