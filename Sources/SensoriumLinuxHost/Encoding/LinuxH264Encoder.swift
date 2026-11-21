@@ -2,6 +2,7 @@
 import CAVCodec
 import Foundation
 import SensoriumCore
+import SensoriumHost
 
 /// The Linux host's H.264 encoder, producing the packets the macOS host's
 /// `VideoToolboxEncoder` does, so a viewer decodes either unchanged:
@@ -25,7 +26,7 @@ public final class LinuxH264Encoder: LinuxVideoFrameEncoding, @unchecked Sendabl
     public private(set) var backend: LinuxEncoderBackend = .openH264
 
     private let outcomeHandler: @Sendable (LinuxVideoEncodeOutcome) -> Void
-    private let sequencer: LinuxVideoPacketSequencer
+    private let sequencer: VideoPacketSequencer
     private let lock = NSLock()
 
     private var context: UnsafeMutablePointer<AVCodecContext>?
@@ -63,7 +64,7 @@ public final class LinuxH264Encoder: LinuxVideoFrameEncoding, @unchecked Sendabl
     /// backwards.
     public init(
         configuration: LinuxEncoderConfiguration,
-        sequencer: LinuxVideoPacketSequencer = LinuxVideoPacketSequencer(),
+        sequencer: VideoPacketSequencer = VideoPacketSequencer(),
         outcomeHandler: @escaping @Sendable (LinuxVideoEncodeOutcome) -> Void
     ) throws {
         guard configuration.isEncodable else {

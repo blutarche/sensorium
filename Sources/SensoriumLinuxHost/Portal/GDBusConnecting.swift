@@ -89,6 +89,15 @@ public final class GDBusConnecting: DBusConnecting, @unchecked Sendable {
         return GDBusConnecting(connection: connection)
     }
 
+    /// Connects to the system bus, where logind describes the login session.
+    public static func connectToSystemBus() throws -> GDBusConnecting {
+        var error: UnsafeMutablePointer<GError>?
+        guard let connection = g_bus_get_sync(G_BUS_TYPE_SYSTEM, nil, &error) else {
+            throw Self.error(from: error)
+        }
+        return GDBusConnecting(connection: connection)
+    }
+
     /// Connects to the message bus at `address`.
     public static func connect(address: String) throws -> GDBusConnecting {
         var error: UnsafeMutablePointer<GError>?

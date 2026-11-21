@@ -14,10 +14,41 @@ import SensoriumCore
 /// echoes. `identity` loads a stored identity file the way the macOS host
 /// would and prints its pin, which proves Security accepts a certificate and
 /// key that OpenSSL wrote.
+///
+/// Two more prove the whole Linux host against the macOS viewer:
+///
+///     SensoriumLinuxHostTestRunner host <data-folder> <bind-address> <port>
+///     SensoriumLinuxHostTestRunner view <host> <port> <pairing-code> <frames>
+///
+/// `host` runs on Linux: the real runtime, with a made-up monitor in place of
+/// the portal and stand-ins for the indicator and the screen saver. It prints
+/// its pin and a pairing code, then serves until it is stopped. `view` runs
+/// on macOS with the viewer's own connection, session controller and
+/// VideoToolbox decoder: it pairs with the code, reconnects pinned, asks for
+/// the host screen, and decodes until `frames` pictures have arrived.
 enum InteropModes {
     static func run(_ arguments: [String]) async -> Int32? {
         guard let mode = arguments.first else { return nil }
         switch mode {
+        case "host" where arguments.count == 4:
+            #if os(Linux)
+            return await host(dataFolder: arguments[1], bindAddress: arguments[2], port: UInt16(arguments[3]) ?? 0)
+            #else
+            print("host runs on Linux only")
+            return 2
+            #endif
+        case "view" where arguments.count == 5:
+            #if canImport(Network)
+            return await view(
+                host: arguments[1],
+                port: UInt16(arguments[2]) ?? 0,
+                code: arguments[3],
+                frames: Int(arguments[4]) ?? 30
+            )
+            #else
+            print("view runs on macOS only")
+            return 2
+            #endif
         case "serve" where arguments.count == 4:
             #if os(Linux)
             return await serve(identityPath: arguments[1], bindAddress: arguments[2], port: UInt16(arguments[3]) ?? 0)
@@ -95,6 +126,66 @@ extension InteropModes {
         }
     }
 
+    @MainActor
+    private static func host(dataFolder: String, bindAddress: String, port: UInt16) async -> Int32 {
+        let folder = URL(fileURLWithPath: dataFolder, isDirectory: true)
+        let stream = PortalStream(
+            nodeID: 71,
+            id: "monitor-interop",
+            position: PortalPoint(x: 0, y: 0),
+            size: PortalSize(width: 1280, height: 720)
+        )
+        let source = SyntheticScreenSource(width: 1280, height: 720)
+        let pill = StubIndicatorSurface()
+        let tray = StubIndicatorSurface()
+        let platform = LinuxHostPlatform(
+            grantOpener: FakeGrantOpener(stream: stream, source: source, sink: RecordingSink()),
+            makeIndicator: { LinuxHostIndicator(pill: pill, tray: tray) },
+            indicatorSupport: { nil },
+            lockState: FakeLockState(),
+            localActivity: FakeActivity(),
+            relocker: FakeRelocker(),
+            sessionAge: { nil },
+            encoderBackend: .openH264
+        )
+        let runtime = LinuxHostRuntime(
+            dataFolder: folder,
+            platform: platform,
+            listen: .testOnly(address: bindAddress, port: port),
+            log: { print($0) }
+        )
+        await runtime.start()
+        guard runtime.boundPort != nil else {
+            print("HOST failed to listen: \(runtime.state.status)")
+            return 1
+        }
+        let tls = FileHostTLSIdentityStore(
+            url: folder.appendingPathComponent("host-tls-identity.json"),
+            commonName: "Sensorium Host"
+        )
+        guard let identity = try? tls.loadOrCreate() else {
+            print("HOST has no TLS identity")
+            return 1
+        }
+        print("PIN \(hex(identity.certificateHash))")
+        runtime.showPairingCode()
+        guard case let .showing(code, _, _) = runtime.state.pairing else {
+            print("HOST shows no pairing code")
+            return 1
+        }
+        print("PAIRING \(code)")
+        // The screen is offered once the made-up monitor's first frame has
+        // said its size.
+        let offerDeadline = Date().addingTimeInterval(10)
+        while !runtime.offersHostScreen, Date() < offerDeadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        print("LISTENING \(runtime.boundPort ?? 0), host screen offered: \(runtime.offersHostScreen)")
+        while true {
+            try? await Task.sleep(for: .seconds(3_600))
+        }
+    }
+
     private static func echo(_ channel: OpenSSLQUICServerChannel) async {
         do {
             while true {
@@ -152,5 +243,75 @@ extension InteropModes {
             return 1
         }
     }
+
+    private static func view(host: String, port: UInt16, code: String, frames wanted: Int) async -> Int32 {
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            print("VIEW bad port")
+            return 2
+        }
+        let deviceName = "Kestrel Laptop"
+        do {
+            let identity = try DeviceIdentity.generate()
+            // The one-time pairing dial carries no pin; the signed approval
+            // is what binds the certificate hash it returns to the host key.
+            let pairing = NetworkControlConnection(host: NWEndpoint.Host(host), port: nwPort)
+            try await pairing.start(timeout: 15)
+            let approval = try await ClientSessionController(transport: pairing, identity: identity)
+                .pair(deviceName: deviceName, code: code)
+            await pairing.close()
+            guard let pin = approval.tlsCertificateHash else {
+                print("VIEW the approval named no certificate")
+                return 1
+            }
+            print("VIEW paired, pin \(hex(pin))")
+
+            let connection = NetworkControlConnection(host: NWEndpoint.Host(host), port: nwPort, tlsCertificateHash: pin)
+            try await connection.start(timeout: 15)
+            let client = ClientSessionController(
+                transport: connection,
+                identity: identity,
+                pinnedHostPublicKey: approval.hostPublicKey
+            )
+            let outcome = try await client.connect(
+                deviceName: deviceName,
+                target: .offeredHostScreen(preferredDisplayIdentity: nil)
+            )
+            guard case let .hostScreen(geometry, _, offer) = outcome else {
+                print("VIEW was not given the host screen: \(outcome)")
+                await client.disconnect()
+                return 1
+            }
+            print("VIEW host screen \(geometry.logicalWidth)x\(geometry.logicalHeight) points at \(geometry.backingScale), \(offer.count) offered")
+
+            let decoded = DecodedSizes()
+            let decoder = VideoToolboxDecoder(outputHandler: { decoded.append("\($0.width)x\($0.height)") })
+            var packets = 0
+            let deadline = Date().addingTimeInterval(30)
+            while decoded.count < wanted, Date() < deadline {
+                if case let .video(frame) = try await connection.receivePacket() {
+                    packets += 1
+                    try decoder.decode(frame)
+                }
+            }
+            await client.disconnect()
+            let sizes = decoded.sizes
+            print("VIEW \(packets) video packets, \(sizes.count) pictures decoded, sizes \(Set(sizes).sorted())")
+            let passed = sizes.count >= wanted
+            print(passed ? "VIEW OK" : "VIEW FAILED")
+            return passed ? 0 : 1
+        } catch {
+            print("VIEW failed: \(error)")
+            return 1
+        }
+    }
+}
+
+/// Decoded picture sizes, appended from VideoToolbox's own thread.
+private final class DecodedSizes: @unchecked Sendable {
+    private let lock = NSLock()
+    private var all: [String] = []
+    func append(_ size: String) { lock.withLock { all.append(size) } }
+    var sizes: [String] { lock.withLock { all } }
+    var count: Int { lock.withLock { all.count } }
 }
 #endif
