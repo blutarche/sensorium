@@ -184,7 +184,7 @@ final class RuntimeRig {
         id: "monitor-b",
         position: PortalPoint(x: 0, y: 0),
         size: PortalSize(width: 320, height: 180)
-    ), bufferWidth: Int = 640, bufferHeight: Int = 360) {
+    ), bufferWidth: Int = 640, bufferHeight: Int = 360, indicatorSupport: @escaping @MainActor () -> IndicatorError? = { nil }) {
         folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("sensorium-runtime-\(UUID().uuidString)", isDirectory: true)
         self.stream = stream
@@ -194,7 +194,7 @@ final class RuntimeRig {
         let platform = LinuxHostPlatform(
             grantOpener: opener,
             makeIndicator: { [pill, tray] in LinuxHostIndicator(pill: pill, tray: tray) },
-            indicatorSupport: { nil },
+            indicatorSupport: indicatorSupport,
             lockState: lockState,
             localActivity: activity,
             relocker: relocker,
@@ -343,8 +343,9 @@ private func testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput() async {
             geometry.logicalWidth == 320 && geometry.logicalHeight == 180 && geometry.backingScale == 2,
             "the screen is offered at its logical size and the buffer's scale, saw \(geometry)"
         )
-        let presented = rig.pill.presented
-        expect(presented == ["Kestrel Laptop"], "the indicator names the device, saw \(presented)")
+        // The host says the screen is ready before it builds the media that
+        // shows the indicator, so the pill can come up just after.
+        await expectEventually("the indicator names the device") { rig.pill.presented == ["Kestrel Laptop"] }
 
         let (pictures, _) = try await collectPictures(from: link.connection, frames: 30, seconds: 20)
         expect(pictures.count >= 30, "thirty pictures decoded, saw \(pictures.count)")
@@ -576,6 +577,44 @@ private func testAnIndicatorThatCannotShowRefusesWithNoFrame() async {
     await rig.finish()
 }
 
+/// A desktop the launch probe found unable to show the indicator, such as
+/// one whose compositor has no layer shell, offers no host screen at all,
+/// even with the grant open and frames arriving.
+@MainActor
+private func testADesktopThatCannotShowTheIndicatorOffersNoHostScreen() async {
+    let rig = RuntimeRig(indicatorSupport: { .layerShellUnavailable })
+    await rig.runtime.start()
+    await expectEventually("the grant opens") { rig.runtime.state.grant == .allowed }
+    try? await Task.sleep(for: .seconds(1))
+    expect(rig.runtime.state.desktop == .unsupported, "the host says this desktop cannot show the host screen")
+    expect(!rig.runtime.offersHostScreen, "and offers none")
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        let raw = try await RawViewer.connect(viewer, port: rig.port)
+        let offer = await raw.offer()
+        let offersNothing: Bool
+        switch offer {
+        case let .hostScreenList(displays, _)?: offersNothing = displays.isEmpty
+        case .hostScreenRefused?: offersNothing = true
+        default: offersNothing = false
+        }
+        expect(offersNothing, "a paired, armed device is offered no screen, saw \(String(describing: offer))")
+        try? await Task.sleep(for: .seconds(2))
+        let control = raw.tap.control
+        let ready = control.contains { if case .hostScreenReady = $0 { true } else { false } }
+        expect(!ready, "the host never says a screen is ready, saw \(control)")
+        let videoPackets = raw.tap.videoCount
+        expect(videoPackets == 0, "and sends no frame, saw \(videoPackets)")
+        await raw.close()
+        let presented = rig.pill.presented
+        expect(presented.isEmpty, "no indicator was shown")
+        expect(rig.sessionRecords.isEmpty, "and no session was recorded")
+    } catch {
+        expect(false, "the unsupported desktop ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
 @MainActor
 private func testAWithdrawnGrantRefusesWithNoFrame() async {
     let rig = RuntimeRig()
@@ -773,6 +812,7 @@ func linuxHostRuntimeTests() -> [NamedTest] { [
     ("a paired viewer streams the granted monitor and drives input", testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput),
     ("a disarmed device is refused with no frame", testADisarmedDeviceIsRefusedWithNoFrame),
     ("an indicator that cannot show refuses with no frame", testAnIndicatorThatCannotShowRefusesWithNoFrame),
+    ("a desktop that cannot show the indicator offers no host screen", testADesktopThatCannotShowTheIndicatorOffersNoHostScreen),
     ("a withdrawn grant refuses with no frame", testAWithdrawnGrantRefusesWithNoFrame),
     ("ask first with recent use and a denial refuses with no frame", testAskFirstWithRecentUseAndADenialRefusesWithNoFrame),
     ("a fractionally scaled monitor streams at its logical size", testAFractionallyScaledMonitorStreamsAtItsLogicalSize),
