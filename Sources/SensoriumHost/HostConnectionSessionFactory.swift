@@ -47,6 +47,9 @@ public final class HostConnectionSessionFactory {
     /// self-post-discounted -- see that property's own doc comment.
     private let hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)?
     private let hostScreenPresenceGate: (any HostScreenPresenceGating)?
+    /// Forwarded to every controller: what says whether the screen is locked,
+    /// and without which no host screen is offered.
+    private let hostScreenLockStateReader: (any ScreenLockStateReading)?
     /// Shared rather than per-connection for a reason of its own: this is
     /// what remembers the mode each display was on before any session
     /// changed it, and that memory has to outlive the connection that made
@@ -90,6 +93,7 @@ public final class HostConnectionSessionFactory {
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
         displayWake: (any DisplayWaking)? = nil,
         privateDesktopOffered: @escaping () -> Bool = { false },
+        hostScreenLockStateReader: (any ScreenLockStateReading)? = HostPlatformDefaults.screenLockState,
         log: @escaping @MainActor (String) -> Void = { print($0) },
         inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil
     ) {
@@ -113,6 +117,7 @@ public final class HostConnectionSessionFactory {
         self.hostScreenModeController = hostScreenModeController
         self.displayWake = displayWake
         self.privateDesktopOffered = privateDesktopOffered
+        self.hostScreenLockStateReader = hostScreenLockStateReader
         self.log = log
         self.inputDiagnosticLog = inputDiagnosticLog
     }
@@ -144,6 +149,7 @@ public final class HostConnectionSessionFactory {
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake,
             privateDesktopOffered: privateDesktopOffered,
+            hostScreenLockStateReader: hostScreenLockStateReader,
             log: log,
             inputDiagnosticLog: inputDiagnosticLog
         )
