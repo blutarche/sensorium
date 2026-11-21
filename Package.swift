@@ -197,6 +197,7 @@ let package = Package(
             name: "SensoriumLinuxHost",
             dependencies: [
                 "SensoriumCore",
+                "SensoriumHost",
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "CCairo", condition: .when(platforms: [.linux])),
@@ -214,6 +215,9 @@ let package = Package(
             dependencies: [
                 "SensoriumLinuxHost",
                 "SensoriumCore",
+                // The shared session core the Linux host runs, for the
+                // end-to-end checks that drive it through the runtime.
+                "SensoriumHost",
                 // The viewer's own decoder, so a round trip proves the
                 // encoder's output is what the viewer actually opens.
                 // Also the macOS viewer's own connection, for the interop

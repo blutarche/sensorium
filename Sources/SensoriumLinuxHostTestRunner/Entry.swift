@@ -61,7 +61,8 @@ struct SensoriumLinuxHostTestRunner {
             ("large packets cross both ways and a client close ends the channel", testLargePacketsCrossBothWaysAndAClientCloseEndsTheChannel),
             ("a client with the wrong pin is refused", testAClientWithTheWrongPinIsRefused),
             ("a client offering another protocol is refused", testAClientOfferingAnotherProtocolIsRefused),
-            ("the server asks for a thirty second idle timeout", testTheServerAsksForAThirtySecondIdleTimeout)
+            ("the server asks for a thirty second idle timeout", testTheServerAsksForAThirtySecondIdleTimeout),
+            ("the server channel carries a host session's bytes", testTheServerChannelCarriesAHostSessionsBytes)
         ]
         for (name, test) in transportTests {
             do {
