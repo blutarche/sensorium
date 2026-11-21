@@ -174,6 +174,12 @@ extension InteropModes {
             return 1
         }
         print("PAIRING \(code)")
+        // The screen is offered once the made-up monitor's first frame has
+        // said its size.
+        let offerDeadline = Date().addingTimeInterval(10)
+        while !runtime.offersHostScreen, Date() < offerDeadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
         print("LISTENING \(runtime.boundPort ?? 0), host screen offered: \(runtime.offersHostScreen)")
         while true {
             try? await Task.sleep(for: .seconds(3_600))
