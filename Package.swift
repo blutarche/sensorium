@@ -20,6 +20,7 @@ let package = Package(
         .executable(name: "SensoriumLinuxHostTestRunner", targets: ["SensoriumLinuxHostTestRunner"]),
         .executable(name: "SensoriumIndicatorProbe", targets: ["SensoriumIndicatorProbe"]),
         .executable(name: "SensoriumPortalProbe", targets: ["SensoriumPortalProbe"]),
+        .executable(name: "SensoriumHostWindowProbe", targets: ["SensoriumHostWindowProbe"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -204,7 +205,8 @@ let package = Package(
                 .target(name: "CWaylandGlue", condition: .when(platforms: [.linux])),
                 .target(name: "CGLib", condition: .when(platforms: [.linux])),
                 .target(name: "CGio", condition: .when(platforms: [.linux])),
-                .target(name: "CSensoriumPipeWireGlue", condition: .when(platforms: [.linux]))
+                .target(name: "CSensoriumPipeWireGlue", condition: .when(platforms: [.linux])),
+                .target(name: "CGtk4", condition: .when(platforms: [.linux]))
             ]
         ),
         .executableTarget(
@@ -232,6 +234,16 @@ let package = Package(
         .executableTarget(
             name: "SensoriumPortalProbe",
             dependencies: ["SensoriumLinuxHost", "SensoriumCore"]
+        ),
+        // Test scaffolding, never bundled: draws the host windows' states
+        // into PNGs from invented sample data.
+        .executableTarget(
+            name: "SensoriumHostWindowProbe",
+            dependencies: [
+                "SensoriumLinuxHost",
+                .target(name: "CGLib", condition: .when(platforms: [.linux])),
+                .target(name: "CGtk4", condition: .when(platforms: [.linux]))
+            ]
         ),
         .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(

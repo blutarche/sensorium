@@ -215,6 +215,15 @@ static inline void sensorium_prefer_dark_theme(void) {
     }
 }
 
+// The toolkit's own light or dark preference, so the widgets a window does not
+// restyle -- scrollbars, the text caret -- match the appearance it draws in.
+static inline void sensorium_set_prefer_dark_theme(int dark) {
+    GtkSettings *settings = gtk_settings_get_default();
+    if (settings != NULL) {
+        g_object_set(settings, "gtk-application-prefer-dark-theme", dark ? TRUE : FALSE, NULL);
+    }
+}
+
 // Draws what `window` currently shows inside its content -- the child's own
 // box plus its margins, over the window's own background, without the title
 // bar or any client-side shadow -- at the scale the window's surface has, and
