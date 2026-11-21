@@ -23,6 +23,7 @@ struct SensoriumLinuxHostTestRunner {
             ("a requested key frame lands on the next frame only", testARequestedKeyFrameLandsOnTheNextFrameOnly),
             ("a key frame follows when the interval passes in presentation time", testAKeyFrameFollowsWhenTheIntervalPassesInPresentationTime),
             ("there are no B-frames, so presentation order is output order", testThereAreNoBFramesSoPresentationOrderIsOutputOrder),
+            ("the encoder continues the session's shared sequence", testTheEncoderContinuesTheSessionsSharedSequence),
             ("a refused frame keeps the key frame request", testAnEncodeThatCannotProceedFailsWithoutLosingAKeyFrameRequest),
             ("bit rate and configuration follow the macOS rule", testBitRateAndConfigurationFollowTheMacOSRule),
             ("automatic falls back to OpenH264 when the render node cannot open", testAutomaticFallsBackToOpenH264WhenTheRenderNodeCannotOpen),

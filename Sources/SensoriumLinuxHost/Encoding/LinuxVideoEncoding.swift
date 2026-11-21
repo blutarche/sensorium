@@ -95,33 +95,4 @@ public struct LinuxEncodeTimings: Equatable, Sendable {
     /// Submitting the frame and waiting for its packet.
     public var encode: UInt64 = 0
 }
-
-/// Numbers encoder output, so the viewer's ingress, which discards any packet
-/// not newer than the last it admitted, never sees the counter go back. Shared
-/// by every encoder a session builds in turn.
-public final class LinuxVideoPacketSequencer: @unchecked Sendable {
-    private let lock = NSLock()
-    private var nextSequence: UInt64 = 0
-
-    public init() {}
-
-    func packet(
-        presentationTimeNanoseconds: UInt64,
-        isKeyFrame: Bool,
-        codecConfiguration: Data?,
-        payload: Data
-    ) -> EncodedVideoFramePacket {
-        lock.lock()
-        defer { lock.unlock() }
-        let sequence = nextSequence
-        nextSequence &+= 1
-        return EncodedVideoFramePacket(
-            sequence: sequence,
-            presentationTimeNanoseconds: presentationTimeNanoseconds,
-            isKeyFrame: isKeyFrame,
-            codecConfiguration: isKeyFrame ? codecConfiguration : nil,
-            payload: payload
-        )
-    }
-}
 #endif
