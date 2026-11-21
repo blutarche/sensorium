@@ -52,7 +52,7 @@ struct SensoriumLinuxHostTestRunner {
             + keyMapTests() + restoreTokenStoreTests() + portalSessionTests() + geometryTests()
             + inputInjectorTests() + screenSaverTests() + gvariantBridgeTests() + portalInputFactoryTests()
             + indicatorBadgeTests() + portalCapturePermissionTests() + lockAtLaunchTests()
-            + screenFeedTests()
+            + screenFeedTests() + linuxHostScreenMediaTests()
             + HostWindowStatusTests.all + HostWindowPairingTests.all + HostWindowMachinesTests.all + AskFirstPromptTests.all
         for (name, test) in mainActorTests {
             await test()
