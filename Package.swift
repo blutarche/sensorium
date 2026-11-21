@@ -18,6 +18,7 @@ let package = Package(
         .executable(name: "SensoriumLinuxUpdateTestRunner", targets: ["SensoriumLinuxUpdateTestRunner"]),
         .library(name: "SensoriumLinuxHost", targets: ["SensoriumLinuxHost"]),
         .executable(name: "SensoriumLinuxHostTestRunner", targets: ["SensoriumLinuxHostTestRunner"]),
+        .executable(name: "sensorium-host", targets: ["SensoriumLinuxHostApp"]),
         .executable(name: "SensoriumIndicatorProbe", targets: ["SensoriumIndicatorProbe"]),
         .executable(name: "SensoriumPortalProbe", targets: ["SensoriumPortalProbe"]),
         .executable(name: "SensoriumHostWindowProbe", targets: ["SensoriumHostWindowProbe"]),
@@ -225,6 +226,16 @@ let package = Package(
                 "SensoriumClient",
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux]))
+            ]
+        ),
+        // The Linux host executable. Today it runs headless with `--serve`,
+        // for tests; the host window comes later.
+        .executableTarget(
+            name: "SensoriumLinuxHostApp",
+            dependencies: [
+                "SensoriumLinuxHost",
+                .target(name: "CGLib", condition: .when(platforms: [.linux])),
+                .target(name: "CGLibDispatchBridge", condition: .when(platforms: [.linux]))
             ]
         ),
         // Test scaffolding, never bundled: shows the live-session indicator
