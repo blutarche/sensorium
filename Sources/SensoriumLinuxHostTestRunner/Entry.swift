@@ -50,7 +50,7 @@ struct SensoriumLinuxHostTestRunner {
         // synchronous ones; each fails the run itself through `expect`.
         let mainActorTests: [(String, () async -> Void)] = IndicatorTests.all + TrayTests.all + ShowTests.all
             + keyMapTests() + restoreTokenStoreTests() + portalSessionTests() + geometryTests()
-            + inputInjectorTests() + screenSaverTests() + gvariantBridgeTests()
+            + inputInjectorTests() + screenSaverTests() + gvariantBridgeTests() + portalInputFactoryTests()
             + HostWindowStatusTests.all + HostWindowPairingTests.all + HostWindowMachinesTests.all + AskFirstPromptTests.all
         for (name, test) in mainActorTests {
             await test()
