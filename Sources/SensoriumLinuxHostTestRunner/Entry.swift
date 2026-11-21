@@ -51,6 +51,7 @@ struct SensoriumLinuxHostTestRunner {
         let mainActorTests: [(String, () async -> Void)] = IndicatorTests.all + TrayTests.all + ShowTests.all
             + keyMapTests() + restoreTokenStoreTests() + portalSessionTests() + geometryTests()
             + inputInjectorTests() + screenSaverTests() + gvariantBridgeTests() + portalInputFactoryTests()
+            + indicatorBadgeTests()
             + HostWindowStatusTests.all + HostWindowPairingTests.all + HostWindowMachinesTests.all + AskFirstPromptTests.all
         for (name, test) in mainActorTests {
             await test()
