@@ -45,6 +45,8 @@ struct SensoriumLinuxHostTestRunner {
         // Checks that drive the indicator's main-actor state run after the
         // synchronous ones; each fails the run itself through `expect`.
         let mainActorTests: [(String, () async -> Void)] = IndicatorTests.all + TrayTests.all + ShowTests.all
+            + keyMapTests() + restoreTokenStoreTests() + portalSessionTests() + geometryTests()
+            + inputInjectorTests() + screenSaverTests() + gvariantBridgeTests()
         for (name, test) in mainActorTests {
             await test()
             print("PASS: \(name)")

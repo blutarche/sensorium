@@ -2,5 +2,6 @@
 #define SENSORIUM_CGIO_SHIM_H
 
 #include <gio/gio.h>
+#include <gio/gunixfdlist.h>
 
 #endif

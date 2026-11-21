@@ -13,3 +13,5 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
         exit(1)
     }
 }
+
+typealias NamedTest = (String, () async -> Void)
