@@ -229,6 +229,10 @@ final class RuntimeRig {
 
     var port: UInt16 { runtime.boundPort ?? 0 }
 
+    var sessionRecords: [HostScreenSessionRecord] {
+        HostScreenSessionLogStore(url: folder.appendingPathComponent("host-screen-sessions.log")).records()
+    }
+
     /// Shows a code on the host and pairs a new viewer identity with it.
     func pairViewer(named name: String) async throws -> PairedViewer {
         runtime.showPairingCode()
@@ -385,7 +389,253 @@ private func testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput() async {
     await rig.finish()
 }
 
+/// Everything a raw viewer connection receives, read by one task so no two
+/// reads ever overlap.
+final class PacketTap: @unchecked Sendable {
+    private let lock = NSLock()
+    private var received: [SensoriumTransportPacket] = []
+    private var ended = false
+    private var task: Task<Void, Never>?
+
+    init(_ connection: OpenSSLQUICConnection) {
+        task = Task { [weak self] in
+            while true {
+                guard let packet = try? await connection.receiveWirePacket() else {
+                    self?.lock.withLock { self?.ended = true }
+                    return
+                }
+                self?.lock.withLock { self?.received.append(packet) }
+            }
+        }
+    }
+
+    /// Whether the host closed the connection.
+    var hasEnded: Bool { lock.withLock { ended } }
+
+    var packets: [SensoriumTransportPacket] { lock.withLock { received } }
+
+    var control: [SensoriumMessage] {
+        packets.compactMap { if case let .control(message) = $0 { message } else { nil } }
+    }
+
+    var videoCount: Int {
+        packets.filter {
+            switch $0 {
+            case .video, .videoForSurface: true
+            default: false
+            }
+        }.count
+    }
+
+    func firstControl(where matches: (SensoriumMessage) -> Bool) -> SensoriumMessage? {
+        control.first(where: matches)
+    }
+}
+
+/// A viewer that speaks the wire by hand, so a refusal can be followed by a
+/// look at everything else the host sent.
+struct RawViewer {
+    let connection: OpenSSLQUICConnection
+    let tap: PacketTap
+
+    static func connect(_ viewer: PairedViewer, port: UInt16) async throws -> RawViewer {
+        let connection = OpenSSLQUICConnection(host: "127.0.0.1", port: port, tlsCertificateHash: viewer.pin)
+        try await connection.start(timeout: 10)
+        let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
+            protocolVersion: 1,
+            deviceName: viewer.name,
+            publicKey: viewer.identity.publicKey,
+            hostCertificateHash: viewer.pin
+        )
+        try await connection.send(.authenticatedHello(
+            protocolVersion: 1,
+            deviceName: viewer.name,
+            publicKey: viewer.identity.publicKey,
+            hostCertificateHash: viewer.pin,
+            signature: try viewer.identity.sign(transcript)
+        ))
+        return RawViewer(connection: connection, tap: PacketTap(connection))
+    }
+
+    /// The host's first word after the hello: its host-screen offer.
+    @MainActor
+    func offer() async -> SensoriumMessage? {
+        _ = await eventually(10) { tap.firstControl(where: Self.isOffer) != nil }
+        return tap.firstControl(where: Self.isOffer)
+    }
+
+    func request(_ entry: HostScreenListEntry) async throws {
+        try await connection.send(.hostScreenRequest(token: entry.opaqueToken, resumeTicket: nil))
+    }
+
+    /// The host's answer to the request.
+    @MainActor
+    func answer() async -> SensoriumMessage? {
+        _ = await eventually(15) { tap.firstControl(where: Self.isAnswer) != nil }
+        return tap.firstControl(where: Self.isAnswer)
+    }
+
+    private static func isOffer(_ message: SensoriumMessage) -> Bool {
+        switch message {
+        case .hostScreenList, .hostScreenRefused: true
+        default: false
+        }
+    }
+
+    private static func isAnswer(_ message: SensoriumMessage) -> Bool {
+        switch message {
+        case .hostScreenReady, .hostScreenRefused: true
+        default: false
+        }
+    }
+
+    func close() async {
+        await connection.close()
+    }
+}
+
+/// Requests the offered host screen over a raw connection and returns the
+/// answer once two quiet seconds have passed, with every video packet the
+/// host sent counted.
+@MainActor
+func requestOverRawConnection(
+    _ rig: RuntimeRig,
+    _ viewer: PairedViewer,
+    beforeRequest: @MainActor () async -> Void = {}
+) async throws -> (answer: SensoriumMessage?, videoPackets: Int, control: [SensoriumMessage], ended: Bool) {
+    let raw = try await RawViewer.connect(viewer, port: rig.port)
+    guard case let .hostScreenList(displays, _)? = await raw.offer(), let entry = displays.first else {
+        await raw.close()
+        throw CheckFailure("the host offered no screen to request")
+    }
+    await beforeRequest()
+    try await raw.request(entry)
+    let answer = await raw.answer()
+    try? await Task.sleep(for: .seconds(2))
+    let videoPackets = raw.tap.videoCount
+    let control = raw.tap.control
+    let ended = raw.tap.hasEnded
+    await raw.close()
+    return (answer, videoPackets, control, ended)
+}
+
+func isRefusal(_ message: SensoriumMessage?) -> Bool {
+    if case .hostScreenRefused? = message { return true }
+    return false
+}
+
+@MainActor
+private func testADisarmedDeviceIsRefusedWithNoFrame() async {
+    let rig = RuntimeRig()
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        let machineID = viewer.identity.publicKey.base64EncodedString()
+        expect(rig.runtime.state.machines.first?.isArmed == true, "pairing armed the device")
+        rig.runtime.setSharing(machineID: machineID, isOn: false)
+        expect(rig.runtime.state.machines.first?.isArmed == false, "the person at the host turned it off")
+        let raw = try await RawViewer.connect(viewer, port: rig.port)
+        let offer = await raw.offer()
+        expect(isRefusal(offer), "a disarmed device is offered nothing, saw \(String(describing: offer))")
+        try? await Task.sleep(for: .seconds(2))
+        let videoPackets = raw.tap.videoCount
+        expect(videoPackets == 0, "and sent no frame, saw \(videoPackets)")
+        await raw.close()
+        let presented = rig.pill.presented
+        expect(presented.isEmpty, "no indicator was shown")
+        expect(rig.sessionRecords.isEmpty, "and no session was recorded")
+    } catch {
+        expect(false, "the refusal ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
+@MainActor
+private func testAnIndicatorThatCannotShowRefusesWithNoFrame() async {
+    let rig = RuntimeRig()
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        rig.pill.failure = .surfaceRefused
+        let (answer, videoPackets, control, ended) = try await requestOverRawConnection(rig, viewer)
+        // The shared bring-up tells the viewer the screen is ready before it
+        // builds the media, and the indicator is shown as the media is
+        // built; a failure there ends the session and closes the connection.
+        if case .hostScreenReady? = answer {
+            expect(ended, "the session ends when the indicator fails, saw \(control)")
+        } else {
+            expect(isRefusal(answer), "the session is refused when the indicator fails, saw \(control)")
+        }
+        expect(videoPackets == 0, "and no frame was sent, saw \(videoPackets)")
+        let records = rig.sessionRecords
+        expect(records.count == 1 && records[0].outcome != nil, "the record it opened is closed, saw \(records)")
+        expect(rig.runtime.state.status == .waiting, "the host is not sharing")
+    } catch {
+        expect(false, "the refusal ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
+@MainActor
+private func testAWithdrawnGrantRefusesWithNoFrame() async {
+    let rig = RuntimeRig()
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        // The grant ends after the screen was offered and before it is
+        // asked for, as when the person at the host revokes it.
+        let (answer, videoPackets, _, _) = try await requestOverRawConnection(rig, viewer, beforeRequest: {
+            rig.opener.closeFromPortal()
+            await expectEventually("the host sees the grant end") { rig.runtime.state.grant == .needed }
+        })
+        expect(isRefusal(answer), "a request without a grant is refused, saw \(String(describing: answer))")
+        expect(videoPackets == 0, "and no frame was sent, saw \(videoPackets)")
+        let presented = rig.pill.presented
+        expect(presented.isEmpty, "no indicator was shown")
+        expect(rig.sessionRecords.isEmpty, "and no session was recorded")
+        let raw = try await RawViewer.connect(viewer, port: rig.port)
+        let offer = await raw.offer()
+        if case let .hostScreenList(displays, _)? = offer {
+            expect(displays.isEmpty, "a new viewer is offered no screen while there is no grant")
+        } else {
+            expect(isRefusal(offer), "a new viewer is offered no screen while there is no grant, saw \(String(describing: offer))")
+        }
+        await raw.close()
+    } catch {
+        expect(false, "the refusal ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
+@MainActor
+private func testAskFirstWithRecentUseAndADenialRefusesWithNoFrame() async {
+    let rig = RuntimeRig()
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        rig.runtime.setAsksFirst(machineID: viewer.identity.publicKey.base64EncodedString(), isOn: true)
+        expect(rig.runtime.state.machines.first?.asksFirst == true, "asking first is on for the device")
+        rig.activity.set(idleSeconds: 5)
+        rig.askFirstOutcome = .denied
+        let (answer, videoPackets, _, _) = try await requestOverRawConnection(rig, viewer)
+        expect(isRefusal(answer), "a denied request is refused, saw \(String(describing: answer))")
+        expect(videoPackets == 0, "and no frame was sent, saw \(videoPackets)")
+        let questions = rig.askFirstQuestions
+        expect(questions.map(\.deviceName) == ["Kestrel Laptop"], "the person at the host was asked, naming the device, saw \(questions)")
+        let presented = rig.pill.presented
+        expect(presented.isEmpty, "no indicator was shown")
+        expect(rig.sessionRecords.isEmpty, "and no session was recorded")
+    } catch {
+        expect(false, "the refusal ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
 func linuxHostRuntimeTests() -> [NamedTest] { [
-    ("a paired viewer streams the granted monitor and drives input", testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput)
+    ("a paired viewer streams the granted monitor and drives input", testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput),
+    ("a disarmed device is refused with no frame", testADisarmedDeviceIsRefusedWithNoFrame),
+    ("an indicator that cannot show refuses with no frame", testAnIndicatorThatCannotShowRefusesWithNoFrame),
+    ("a withdrawn grant refuses with no frame", testAWithdrawnGrantRefusesWithNoFrame),
+    ("ask first with recent use and a denial refuses with no frame", testAskFirstWithRecentUseAndADenialRefusesWithNoFrame)
 ] }
 #endif
