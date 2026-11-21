@@ -9,6 +9,9 @@ import SensoriumLinuxHost
 struct SensoriumLinuxHostTestRunner {
     @MainActor
     static func main() async {
+        if let code = await InteropModes.run(Array(CommandLine.arguments.dropFirst())) {
+            exit(code)
+        }
         #if os(Linux)
         let tests: [(String, () throws -> Void)] = [
             ("BGRx converts to NV12 across padded rows", testBGRxConvertsToNV12WithPaddedRows),
@@ -51,7 +54,24 @@ struct SensoriumLinuxHostTestRunner {
             await test()
             print("PASS: \(name)")
         }
-        let passed = tests.count - skipped + mainActorTests.count
+        let transportTests: [(String, () async throws -> Void)] = [
+            ("a Linux host identity mints, stores and loads", testIdentityMintsStoresAndLoads),
+            ("a client and the server exchange packets both ways", testClientAndServerExchangePacketsBothWays),
+            ("large packets cross both ways and a client close ends the channel", testLargePacketsCrossBothWaysAndAClientCloseEndsTheChannel),
+            ("a client with the wrong pin is refused", testAClientWithTheWrongPinIsRefused),
+            ("a client offering another protocol is refused", testAClientOfferingAnotherProtocolIsRefused),
+            ("the server asks for a thirty second idle timeout", testTheServerAsksForAThirtySecondIdleTimeout)
+        ]
+        for (name, test) in transportTests {
+            do {
+                try await test()
+            } catch {
+                print("FAIL: \(name): \(error)")
+                exit(1)
+            }
+            print("PASS: \(name)")
+        }
+        let passed = tests.count - skipped + mainActorTests.count + transportTests.count
         print("PASS: \(passed) tests, \(skipped) skipped")
         #else
         print("SKIP: the Linux host's checks run on Linux only")

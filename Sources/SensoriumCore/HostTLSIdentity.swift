@@ -73,6 +73,10 @@ public struct HostTLSIdentity: Sendable {
             privateKeyData: privateKeyData
         )
     }
+    #elseif canImport(COpenSSL)
+    public static func generate(commonName: String) throws -> HostTLSIdentity {
+        try generateWithOpenSSL(commonName: commonName)
+    }
     #else
     /// A platform whose keys and certificates this project does not know how
     /// to mint yet. Reading a certificate pin works everywhere; making one
@@ -111,7 +115,7 @@ public struct HostTLSIdentity: Sendable {
     }
     #endif
 
-    private static func tbsCertificate(commonName: String, publicKeyData: Data) -> Data {
+    static func tbsCertificate(commonName: String, publicKeyData: Data) -> Data {
         let serial = SensoriumCrypto.randomBytes(16)
         let subject = DER.name(commonName)
         let validity = DER.sequence([
@@ -154,12 +158,12 @@ public struct HostTLSIdentity: Sendable {
         ])
     }
 
-    private static let ecdsaWithSHA256Algorithm = DER.sequence([
+    static let ecdsaWithSHA256Algorithm = DER.sequence([
         DER.oid("1.2.840.10045.4.3.2")
     ])
 }
 
-private enum DER {
+enum DER {
     static func sequence(_ values: [Data]) -> Data { tagged(0x30, values.reduce(into: Data(), { $0.append($1) })) }
     static func set(_ values: [Data]) -> Data { tagged(0x31, values.reduce(into: Data(), { $0.append($1) })) }
     static func explicit(tag: UInt8, value: Data) -> Data { tagged(0xA0 | tag, value) }

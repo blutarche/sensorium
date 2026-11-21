@@ -207,8 +207,11 @@ let package = Package(
                 "SensoriumCore",
                 // The viewer's own decoder, so a round trip proves the
                 // encoder's output is what the viewer actually opens.
-                .target(name: "SensoriumClient", condition: .when(platforms: [.linux])),
-                .target(name: "CAVCodec", condition: .when(platforms: [.linux]))
+                // Also the macOS viewer's own connection, for the interop
+                // dial mode that proves the Linux server against it.
+                "SensoriumClient",
+                .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
+                .target(name: "COpenSSL", condition: .when(platforms: [.linux]))
             ]
         ),
         // Test scaffolding, never bundled: shows the live-session indicator
