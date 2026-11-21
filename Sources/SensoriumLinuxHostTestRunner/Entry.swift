@@ -31,7 +31,7 @@ struct SensoriumLinuxHostTestRunner {
             ("the viewer's decoder opens the stream and the luma matches", testTheViewersDecoderOpensTheStreamAndTheLumaMatches),
             ("a VA-API stream decodes in the viewer as constrained baseline", testVAAPIStreamDecodesInTheViewerWithConstrainedBaseline),
             ("VA-API latency at 2560x1440", testVAAPILatencyAt1440p)
-        ] + screenSaverAdapterTests() + portalDisplayInventoryTests() + bgrxScalerTests()
+        ] + screenSaverAdapterTests() + portalDisplayInventoryTests() + bgrxScalerTests() + layerShellProbeTests()
         var skipped = 0
         for (name, test) in tests {
             do {
