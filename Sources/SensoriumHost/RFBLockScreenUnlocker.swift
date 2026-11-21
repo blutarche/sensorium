@@ -1,3 +1,4 @@
+#if os(macOS)
 import CommonCrypto
 import CryptoKit
 import Foundation
@@ -5,34 +6,6 @@ import Security
 import SensoriumCore
 import SystemConfiguration
 
-/// Unlocks this machine's locked login window on the viewer operator's behalf, by
-/// typing the login password into the login window through the built-in
-/// screen-sharing service (screensharingd) over a loopback RFB connection.
-///
-/// This route rather than the ordinary CGEvent injector because Secure Event
-/// Input blocks synthesized key events at the login window: screensharingd is
-/// the one path macOS itself leaves open there. The password is used for one
-/// unlock and is never written to disk and never logged; every buffer this code
-/// builds from it -- the credential block and the byte copy behind it -- is
-/// zeroed as soon as the credentials are sent.
-///
-/// Provenance: the RFB security-type-30 handshake this speaks -- Diffie-
-/// Hellman key agreement, AES-128-ECB with a key derived as MD5 of the shared
-/// secret, the 128-byte credential block's layout, and the KeyEvent message
-/// framing -- was derived independently from the public RFB protocol
-/// specification, never from another implementation's source.
-///
-/// Out of scope: FileVault's pre-login, cold-boot unlock screen.
-/// screensharingd is not running there, so this only ever reaches a machine that
-/// is already past FileVault and sitting at its ordinary login window, locked.
-///
-/// Operator note: turning on the built-in screen-sharing service this speaks
-/// to makes port 5900 listen on every interface, not only loopback -- that is
-/// the operating system's own service, not this code's. Sensorium opens no
-/// listener of its own for this and only ever connects out, to 127.0.0.1.
-public protocol LockScreenUnlocking: Sendable {
-    func unlock(password: Data) async -> HostScreenUnlockOutcome
-}
 
 /// The bytes of one RFB connection, behind a seam so the handshake and the
 /// message encoding can be driven against scripted server bytes without a live
@@ -427,6 +400,31 @@ package final class RFBLoopbackSocketChannel: RFBByteChannel {
 /// user whose password unlocks the screen, which `getpwuid(getuid())` would
 /// not be if the host ran as a different user. `getpwuid` is the fallback when
 /// the store answers nothing usable.
+/// Unlocks this machine's locked login window on the viewer operator's behalf, by
+/// typing the login password into the login window through the built-in
+/// screen-sharing service (screensharingd) over a loopback RFB connection.
+///
+/// This route rather than the ordinary CGEvent injector because Secure Event
+/// Input blocks synthesized key events at the login window: screensharingd is
+/// the one path macOS itself leaves open there. The password is used for one
+/// unlock and is never written to disk and never logged; every buffer this code
+/// builds from it -- the credential block and the byte copy behind it -- is
+/// zeroed as soon as the credentials are sent.
+///
+/// Provenance: the RFB security-type-30 handshake this speaks -- Diffie-
+/// Hellman key agreement, AES-128-ECB with a key derived as MD5 of the shared
+/// secret, the 128-byte credential block's layout, and the KeyEvent message
+/// framing -- was derived independently from the public RFB protocol
+/// specification, never from another implementation's source.
+///
+/// Out of scope: FileVault's pre-login, cold-boot unlock screen.
+/// screensharingd is not running there, so this only ever reaches a machine that
+/// is already past FileVault and sitting at its ordinary login window, locked.
+///
+/// Operator note: turning on the built-in screen-sharing service this speaks
+/// to makes port 5900 listen on every interface, not only loopback -- that is
+/// the operating system's own service, not this code's. Sensorium opens no
+/// listener of its own for this and only ever connects out, to 127.0.0.1.
 public struct RFBLockScreenUnlocker: LockScreenUnlocking {
     private let lockStateReader: any ScreenLockStateReading
     private let makeChannel: @Sendable () -> RFBByteChannel?
@@ -602,3 +600,4 @@ public struct RFBLockScreenUnlocker: LockScreenUnlocking {
         return nil
     }
 }
+#endif

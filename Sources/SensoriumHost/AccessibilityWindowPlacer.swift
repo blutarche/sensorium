@@ -1,3 +1,4 @@
+#if os(macOS)
 @preconcurrency import AppKit
 @preconcurrency import ApplicationServices
 import CoreGraphics
@@ -126,3 +127,4 @@ public final class WorkspaceApplicationOpener: CanvasApplicationOpening {
         }
     }
 }
+#endif

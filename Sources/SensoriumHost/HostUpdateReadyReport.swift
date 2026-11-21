@@ -1,3 +1,4 @@
+#if os(macOS)
 import CryptoKit
 import Foundation
 import SensoriumUpdate
@@ -100,3 +101,4 @@ public enum HostUpdateReadyReport {
         data.map { String(format: "%02x", $0) }.joined()
     }
 }
+#endif

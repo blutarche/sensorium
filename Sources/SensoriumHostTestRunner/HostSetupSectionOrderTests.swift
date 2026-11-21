@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -48,3 +49,4 @@ func runHostSetupSectionOrderTests() async {
 
     print("PASS: the host window lists its sections in docs/ux-spec.md's order")
 }
+#endif

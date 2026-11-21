@@ -1,3 +1,4 @@
+#if os(macOS)
 import SensoriumCore
 import CoreMedia
 import Foundation
@@ -171,3 +172,4 @@ public final class H264SampleBufferPacketizer: @unchecked Sendable {
         ))
     }
 }
+#endif

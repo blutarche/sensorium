@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import IOKit.pwr_mgt
@@ -426,3 +427,6 @@ public final class DisplayWakeController {
         power.endUserActivity()
     }
 }
+
+extension DisplayWakeController: DisplayWaking {}
+#endif

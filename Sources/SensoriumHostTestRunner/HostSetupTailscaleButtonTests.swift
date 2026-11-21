@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -167,3 +168,4 @@ func runHostSetupTailscaleButtonTests() async {
         print("PASS: tapping the not-installed-case button opens https://tailscale.com/download through onOpenTailscaleApp")
     }
 }
+#endif

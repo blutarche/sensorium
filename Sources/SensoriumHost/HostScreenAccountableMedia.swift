@@ -1,18 +1,18 @@
-import CoreGraphics
 import Foundation
 import SensoriumCore
 
-/// What `makeMedia` needs from a badge window: shown before media is ever
-/// returned, hidden on every teardown path. A protocol, not
-/// `HostScreenBadgeWindowController`, so a test can record show/hide
-/// without opening a real `NSPanel`.
+/// What `makeMedia` needs from the indicator a platform draws: shown before
+/// media is ever returned, hidden on every teardown path. A protocol, not a
+/// window type, so a test can record show/hide without opening a window.
+///
+/// `show()` throws when the indicator cannot be put on screen. The person at
+/// this machine must always see who is connected, so a session whose
+/// indicator failed streams nothing.
 @MainActor
 public protocol HostScreenBadgeDisplaying {
-    func show()
+    func show() throws
     func hide()
 }
-
-extension HostScreenBadgeWindowController: HostScreenBadgeDisplaying {}
 
 /// Thrown by `start(canvasDisplayID:onPacket:)` if it is ever called before
 /// `makeMedia` has run -- `HostSessionCoordinator` never does this itself,
@@ -20,8 +20,11 @@ extension HostScreenBadgeWindowController: HostScreenBadgeDisplaying {}
 /// calling `hostScreenMediaFactory` (`makeMedia`) first, but a silent no-op
 /// here would be the one soft seam in a type whose entire purpose is
 /// making the accounting invariant impossible to route around.
-public enum HostScreenAccountableMediaError: Error {
+public enum HostScreenAccountableMediaError: Error, Equatable {
     case startedBeforeMakeMedia
+    /// The capture permission gate did not report granted when media was
+    /// requested, so no record was opened and no frame can be captured.
+    case screenCapturePermissionNotGranted
 }
 
 /// Media that can throw away its capture and build another one at a new size
@@ -62,6 +65,9 @@ public protocol HostScreenCaptureReplacing: CanvasMediaStreaming {
 /// `makeMedia` already did.
 @MainActor
 public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
+    /// Asked every time media is built, never cached: a permission revoked
+    /// while the host runs stops the next session before it opens a record.
+    private let capturePermission: ScreenCapturePermissionGate
     private let rawFactory: (VideoEncoderConfiguration, VideoPacketSequencer) -> any CanvasMediaStreaming
     /// Shared across every capture this session builds, so a display-mode
     /// change never restarts the packet sequence the viewer's
@@ -75,11 +81,11 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     /// to whatever actually ends the live connection; this type's own job
     /// is only ever the accounting, never the teardown itself.
     private let onBadgeStop: @MainActor () -> Void
-    /// The real `HostScreenBadgeWindowController` by default; a test
-    /// supplies a fake that records `show`/`hide` instead of opening a
-    /// real window. Takes the display the badge belongs on -- the one this
-    /// session streams -- so it is never left to guess.
-    private let badgeFactory: (HostScreenBadgeState, CGDirectDisplayID) -> any HostScreenBadgeDisplaying
+    /// The platform's indicator; a test supplies a fake that records
+    /// `show`/`hide` instead of opening a real window. Takes the display the
+    /// badge belongs on -- the one this session streams -- so it is never left
+    /// to guess. There is no default here: each platform names its own.
+    private let badgeFactory: (HostScreenBadgeState, UInt32) -> any HostScreenBadgeDisplaying
 
     private var inner: (any CanvasMediaStreaming)?
     /// Re-applied to `inner` every time `makeMedia` or `replaceCapture`
@@ -101,16 +107,16 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     private var badgeDisplay: (any HostScreenBadgeDisplaying)?
 
     public init(
+        capturePermission: ScreenCapturePermissionGate,
         rawFactory: @escaping (VideoEncoderConfiguration, VideoPacketSequencer) -> any CanvasMediaStreaming,
         sessionLog: HostScreenSessionLogStore,
         deviceName: @escaping () -> String,
         reportedDeviceName: @escaping () -> String? = { nil },
         displayLabel: @escaping () -> String,
         onBadgeStop: @escaping @MainActor () -> Void,
-        badgeFactory: @escaping (HostScreenBadgeState, CGDirectDisplayID) -> any HostScreenBadgeDisplaying = {
-            HostScreenBadgeWindowController(state: $0, targetDisplayID: $1)
-        }
+        badgeFactory: @escaping (HostScreenBadgeState, UInt32) -> any HostScreenBadgeDisplaying
     ) {
+        self.capturePermission = capturePermission
         self.rawFactory = rawFactory
         self.sessionLog = sessionLog
         self.deviceName = deviceName
@@ -126,7 +132,14 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
     /// actually been admitted -- `HostSessionController.hostScreenDeviceName`/
     /// `hostScreenDisplayLabel` are `nil` until then, and this method only
     /// runs after the request has been admitted.
-    public func makeMedia(_ configuration: VideoEncoderConfiguration, displayID: CGDirectDisplayID) -> any CanvasMediaStreaming {
+    ///
+    /// Throws, building nothing and opening no record, when capture is not
+    /// permitted; throws after closing the record it opened when the badge
+    /// cannot be shown. Either way the session refuses before a frame exists.
+    public func makeMedia(_ configuration: VideoEncoderConfiguration, displayID: UInt32) throws -> any CanvasMediaStreaming {
+        guard capturePermission.currentStatus == .granted else {
+            throw HostScreenAccountableMediaError.screenCapturePermissionNotGranted
+        }
         let name = deviceName()
         let label = displayLabel()
         recordID = sessionLog.beginSession(
@@ -138,7 +151,12 @@ public final class HostScreenAccountableMedia: HostScreenCaptureReplacing {
         let state = HostScreenBadgeState(content: HostScreenBadgeContent(deviceName: name, displayLabel: label))
         state.onStop = onBadgeStop
         let display = badgeFactory(state, displayID)
-        display.show()
+        do {
+            try display.show()
+        } catch {
+            endAccounting()
+            throw error
+        }
         badgeState = state
         badgeDisplay = display
         inner = rawFactory(configuration, sequencer)

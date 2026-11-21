@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -140,3 +141,4 @@ private func flatSampleBuffer(width: Int, height: Int, shade: UInt8, frameIndex:
     }
     return sampleBuffer
 }
+#endif

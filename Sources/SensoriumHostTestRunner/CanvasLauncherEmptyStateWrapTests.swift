@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -116,3 +117,4 @@ func runCanvasLauncherEmptyStateWrapTests() async {
 
     print("PASS: the query field's placeholder reads Filter by name, not a second Type instruction")
 }
+#endif

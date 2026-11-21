@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -424,6 +434,7 @@ final class FirstWrittenResponseBox: @unchecked Sendable {
     }
 }
 
+#if os(macOS)
 /// Stands in for `VideoToolboxEncoder` at the one seam `EncodeAdmissionGate`
 /// uses it through, so a runner that may never create a real
 /// `VTCompressionSession` can still drive both submission outcomes: accepted,
@@ -485,6 +496,7 @@ func makeCaptureSampleBuffer(presentationTimeNanoseconds: Int64 = 0) -> CMSample
     }
     return sampleBuffer
 }
+#endif
 
 /// Records the structured launch outcomes a launcher hands to its UI, which is
 /// a different channel from the host's log line and has to be proved separately.
@@ -527,7 +539,7 @@ func expect(_ condition: Bool, _ message: String) {
         // Both this line and the completion guard's own report go to stderr,
         // with everything printed so far flushed first, so a combined log
         // keeps all three in the order they happened.
-        fflush(stdout)
+        fflush(nil)
         FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8))
         Foundation.exit(1)
     }
@@ -580,10 +592,12 @@ func expectThrows<T: Error & Equatable>(_ expected: T, _ operation: () throws ->
 /// silently reporting that the code under test misbehaved.
 @MainActor
 func expectRunLoopPumpCanDispatchQueuedWork(_ testName: String) {
+    #if os(macOS)
     expect(
         CFRunLoopCopyCurrentMode(CFRunLoopGetMain()) == nil,
         "\(testName) ran after this runner's main task had already suspended, so the main run loop is running and a nested pump dispatches no queued @MainActor work. Move it above every `await Task.sleep` in main(); the run-loop-pumped tests are kept first for exactly this reason."
     )
+    #endif
 }
 
 @MainActor

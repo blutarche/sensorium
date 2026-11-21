@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -124,3 +125,4 @@ func runHostSetupRevealButtonTests() async {
         print("PASS: with the Screen Recording alert showing, Show Pairing Code is a plain button, still 32pt tall")
     }
 }
+#endif

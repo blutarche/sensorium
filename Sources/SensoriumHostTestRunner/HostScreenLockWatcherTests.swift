@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -102,7 +104,8 @@ private func makeLockWatcherFixture(
         hostScreenLiveSessionRegistry: nil,
         hostScreenPresenceActivitySignal: LockWatcherTestIdleSignal(),
         hostScreenPresenceGate: nil,
-        hostScreenModeController: nil
+        hostScreenModeController: nil,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
@@ -116,6 +119,7 @@ private func makeLockWatcherFixture(
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: FakeVideoSink(),
         hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
+        requiresAccountableHostScreenMedia: false,
         lockStateReader: lockStateReader,
         lockScreenUnlocker: unlocker
     )

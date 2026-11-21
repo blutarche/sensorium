@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import SensoriumCore
 
@@ -258,25 +259,6 @@ public final class EncodeAdmissionGate: @unchecked Sendable {
     }
 }
 
-/// Swift does not allow a generic type's extension to add a stored property
-/// — even one constrained to a single concrete `Frame` — so the actual
-/// process-wide instance lives at file scope; `machineWide` below only exposes
-/// it. A top-level `let` is initialised at most once, lazily, the first time
-/// anything reads it, and that initialisation is already thread-safe.
-private let machineWideCMSampleBufferGate = SharedEncodeAdmissionGate<CMSampleBuffer>(
-    capacity: SharedEncodeAdmissionGate<CMSampleBuffer>.machineCapacity
-)
-
-extension SharedEncodeAdmissionGate where Frame == CMSampleBuffer {
-    /// The bound on this machine's media engines. Process-wide on purpose, and
-    /// the one gate that legitimately is: the hardware it stands for belongs
-    /// to the machine, so sessions must contend for it rather than each
-    /// getting their own copy of it. Every *session* gate is per session and
-    /// supplied by its owner instead — see `HostSessionController`. Tests that
-    /// need to observe a bound in isolation construct their own instances.
-    public static var machineWide: SharedEncodeAdmissionGate<CMSampleBuffer> { machineWideCMSampleBufferGate }
-}
-
 @available(macOS 13.0, *)
 extension EncodeAdmissionGate: VideoSendFeedbackListener {
     /// Submits the capture held for the slot, unless the encoder is still busy
@@ -297,3 +279,4 @@ extension EncodeAdmissionGate: VideoSendFeedbackListener {
         encoder?.requestKeyFrame()
     }
 }
+#endif

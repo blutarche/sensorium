@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import Network
 import SensoriumCore
@@ -253,3 +254,4 @@ func runHostUnscopedListenerEventTests() {
     )
     print("PASS: an unscoped listener that fails falls back to the tailnet instead of leaving nothing listening")
 }
+#endif

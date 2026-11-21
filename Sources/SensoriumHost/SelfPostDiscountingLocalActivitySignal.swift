@@ -43,7 +43,7 @@ public struct SelfPostDiscountingLocalActivitySignal: HostLocalActivitySignal {
 
     public init(
         raw: any HostLocalActivitySignal,
-        ownActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared
+        ownActivity: any HostInjectedHIDActivity
     ) {
         self.raw = raw
         self.ownActivity = ownActivity
@@ -106,9 +106,23 @@ public struct HostScreenActivitySignals: Sendable {
 
     public init(
         raw: any HostLocalActivitySignal,
-        ownActivity: any HostInjectedHIDActivity = MutableHostInjectedHIDActivity.shared
+        ownActivity: any HostInjectedHIDActivity
     ) {
         presence = raw
         relock = SelfPostDiscountingLocalActivitySignal(raw: raw, ownActivity: ownActivity)
     }
 }
+
+#if os(macOS)
+extension SelfPostDiscountingLocalActivitySignal {
+    public init(raw: any HostLocalActivitySignal) {
+        self.init(raw: raw, ownActivity: MutableHostInjectedHIDActivity.shared)
+    }
+}
+
+extension HostScreenActivitySignals {
+    public init(raw: any HostLocalActivitySignal) {
+        self.init(raw: raw, ownActivity: MutableHostInjectedHIDActivity.shared)
+    }
+}
+#endif

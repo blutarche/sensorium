@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -398,3 +399,4 @@ private func expectASmallStreamHasNoMotionSize() {
     let justOver = motionTestCanvas(width: 2560, height: 1440)
     expect(justOver.motionConfiguration != nil, "a 2560x1440 stream has a motion size")
 }
+#endif

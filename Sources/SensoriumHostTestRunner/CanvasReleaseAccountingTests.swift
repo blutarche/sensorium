@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -210,3 +211,4 @@ func runCanvasReleaseAccountingTests() async {
 
     print("PASS: shutting down releases every canvas this process still holds, once, however often it is asked")
 }
+#endif

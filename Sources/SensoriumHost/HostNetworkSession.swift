@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Network)
 import Network
+#endif
 import SensoriumCore
 
 public enum HostNetworkSessionError: Error, Equatable {
@@ -115,6 +117,7 @@ extension HostByteChannel {
     public var peerAddress: String? { nil }
 }
 
+#if os(macOS)
 extension PosixByteChannel: HostByteChannel {
     public func start() {}
 
@@ -178,6 +181,7 @@ public final class NWByteChannel: HostByteChannel, @unchecked Sendable {
         }
     }
 }
+#endif
 
 /// How often a live connection rereads this machine's lock state while a
 /// host-screen session may be running. `HostSessionCoordinator.tickHostScreenLockState()`
@@ -521,6 +525,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
         self.onViewerPing = onViewerPing
     }
 
+    #if os(macOS)
     public convenience init(
         connection: NWConnection,
         controller: HostSessionController,
@@ -546,6 +551,7 @@ public final class HostNetworkSession: CanvasVideoSending, @unchecked Sendable {
             onViewerPing: onViewerPing
         )
     }
+    #endif
 
     /// The coordinator needs this session as its video sink, so it is attached
     /// after construction rather than passed in.

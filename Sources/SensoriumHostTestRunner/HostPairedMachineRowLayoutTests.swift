@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -213,3 +214,4 @@ func runHostPairedMachineRowLayoutTests() async {
         print("PASS: the empty state stays hidden only while a pairing finishes")
     }
 }
+#endif

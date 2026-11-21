@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -187,3 +188,4 @@ func runHostRenameSheetPlacementTests() async {
         print("PASS: the window behind the rename sheet is dimmed by a scrim that swallows clicks")
     }
 }
+#endif

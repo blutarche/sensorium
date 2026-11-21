@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -1039,3 +1040,4 @@ func runHostScreenIndicationTests() async {
         print("PASS: the badge's Stop button carries an accessibility label naming the connected device, expanded or collapsed")
     }
 }
+#endif

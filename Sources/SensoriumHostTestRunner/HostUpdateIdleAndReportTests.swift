@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumHost
 import SensoriumUpdate
@@ -208,3 +209,4 @@ func runHostUpdateReadyReportTests() {
     expect(!looked, "no interface is looked up for an unscoped listener")
     print("PASS: the listening values name the interface only when the listener is scoped to one")
 }
+#endif

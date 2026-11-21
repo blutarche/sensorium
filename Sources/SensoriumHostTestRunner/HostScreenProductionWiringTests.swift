@@ -1,10 +1,22 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -113,7 +125,8 @@ func runHostScreenProductionWiringTests() async {
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
-            hostScreenPresenceActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -164,7 +177,8 @@ func runHostScreenProductionWiringTests() async {
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
-            hostScreenPresenceActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -235,7 +249,8 @@ func runHostScreenProductionWiringTests() async {
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
             hostScreenPresenceActivitySignal: signals.presence,
-            hostScreenPresenceGate: gate
+            hostScreenPresenceGate: gate,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -272,6 +287,7 @@ func runHostScreenProductionWiringTests() async {
         var rawFactoryCallCount = 0
         let badge = FakeHostScreenBadgeDisplaying()
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 rawFactoryCallCount += 1
                 return FakeCanvasMedia()
@@ -313,6 +329,7 @@ func runHostScreenProductionWiringTests() async {
         var innerMedia: FakeCanvasMedia?
         let badge = FakeHostScreenBadgeDisplaying()
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 let fake = FakeCanvasMedia()
                 innerMedia = fake
@@ -325,7 +342,7 @@ func runHostScreenProductionWiringTests() async {
             badgeFactory: { _, _ in badge }
         )
 
-        let produced = media.makeMedia(.remoteDefault, displayID: 1)
+        let produced = try! media.makeMedia(.remoteDefault, displayID: 1)
         expect(
             sessionLog.records().count == 1 && sessionLog.records().first?.outcome == nil,
             "makeMedia writes exactly one open log record before returning media to stream with"
@@ -351,6 +368,7 @@ func runHostScreenProductionWiringTests() async {
         let sessionLog = HostScreenSessionLogStore(url: logURL)
         let badge = FakeHostScreenBadgeDisplaying()
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in FakeCanvasMedia() },
             sessionLog: sessionLog,
             deviceName: { "Kestrel Laptop Pro" },
@@ -358,7 +376,7 @@ func runHostScreenProductionWiringTests() async {
             onBadgeStop: {},
             badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault, displayID: 1)
+        _ = try! media.makeMedia(.remoteDefault, displayID: 1)
         await media.stop()
 
         expect(
@@ -380,6 +398,7 @@ func runHostScreenProductionWiringTests() async {
         let sessionLog = HostScreenSessionLogStore(url: logURL)
         let badge = FakeHostScreenBadgeDisplaying()
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in FailingCanvasMedia() },
             sessionLog: sessionLog,
             deviceName: { "Kestrel Laptop Pro" },
@@ -387,7 +406,7 @@ func runHostScreenProductionWiringTests() async {
             onBadgeStop: {},
             badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault, displayID: 1)
+        _ = try! media.makeMedia(.remoteDefault, displayID: 1)
         do {
             try await media.start(canvasDisplayID: 1) { _ in true }
             expect(false, "FailingCanvasMedia.start() always throws")
@@ -415,6 +434,7 @@ func runHostScreenProductionWiringTests() async {
         var stopRequestCount = 0
         let badge = FakeHostScreenBadgeDisplaying()
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in FakeCanvasMedia() },
             sessionLog: sessionLog,
             deviceName: { "Kestrel Laptop Pro" },
@@ -422,7 +442,7 @@ func runHostScreenProductionWiringTests() async {
             onBadgeStop: { stopRequestCount += 1 },
             badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault, displayID: 1)
+        _ = try! media.makeMedia(.remoteDefault, displayID: 1)
 
         media.badgeState?.stopTapped()
         expect(stopRequestCount == 1, "tapping the badge's Stop invokes the caller's teardown immediately, once")
@@ -449,6 +469,7 @@ func runHostScreenProductionWiringTests() async {
         var sequencersSeen: [VideoPacketSequencer] = []
         var sequenceNumbersProduced: [UInt64] = []
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, sequencer in
                 sequencersSeen.append(sequencer)
                 // Stands in for `HostScreenCaptureMedia`, which numbers
@@ -466,7 +487,7 @@ func runHostScreenProductionWiringTests() async {
             onBadgeStop: {},
             badgeFactory: { _, _ in badge }
         )
-        _ = media.makeMedia(.remoteDefault, displayID: 1)
+        _ = try! media.makeMedia(.remoteDefault, displayID: 1)
         await media.replaceCapture(with: .remoteDefault, note: "mode changed to 1920x1080")
         await media.replaceCapture(with: .remoteDefault, note: "mode changed to 2560x1440")
 

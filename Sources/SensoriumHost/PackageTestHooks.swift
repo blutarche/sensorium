@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 
@@ -256,3 +257,4 @@ package enum CanvasHostTestHooks {
         controller.isPairingCountdownTickerRunning
     }
 }
+#endif

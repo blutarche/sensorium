@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -135,3 +136,4 @@ func runScreenCaptureCanvasMediaStopSignalTests() async {
 
     print("PASS: a canvas capture that stops on its own is reported only for the live pipeline")
 }
+#endif

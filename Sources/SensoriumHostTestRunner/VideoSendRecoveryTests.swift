@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -805,3 +806,4 @@ private func expectViewerRequestsArePacedLikeSendLosses() async {
     channel.cancel()
     print("PASS: a viewer's key-frame request is paced like a send loss: one outstanding, one per interval, a held one dropped if a key frame came first")
 }
+#endif

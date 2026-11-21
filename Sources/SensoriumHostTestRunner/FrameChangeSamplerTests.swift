@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreVideo
 import Foundation
@@ -118,3 +119,4 @@ private func expectAnUnreadableFormatAnswersWithTheDirtyRects() {
     }
     print("PASS: a format the sampler cannot read answers with the dirty rects")
 }
+#endif

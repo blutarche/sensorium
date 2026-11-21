@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -209,3 +210,4 @@ func runHostUpdateMenuItemTests() {
         print("PASS: the App menu offers Check for Updates… after About")
     }
 }
+#endif

@@ -21,8 +21,8 @@ public struct HostPermissionRequestResult: Equatable {
 /// display, pairing, or session side effects.
 public enum HostPermissionRequester {
     public static func request(
-        screenCapture: ScreenCapturePermissionGate = ScreenCapturePermissionGate(),
-        accessibility: AccessibilityPermissionGate = AccessibilityPermissionGate()
+        screenCapture: ScreenCapturePermissionGate,
+        accessibility: AccessibilityPermissionGate
     ) -> HostPermissionRequestResult {
         HostPermissionRequestResult(
             screenCapture: screenCapture.requestApproval(),
@@ -30,6 +30,14 @@ public enum HostPermissionRequester {
         )
     }
 }
+
+#if os(macOS)
+extension HostPermissionRequester {
+    public static func request() -> HostPermissionRequestResult {
+        request(screenCapture: ScreenCapturePermissionGate(), accessibility: AccessibilityPermissionGate())
+    }
+}
+#endif
 
 /// Whether this process is attached to a controlling terminal. macOS TCC
 /// attributes a check performed by an unsigned/raw binary to its
@@ -48,6 +56,6 @@ public final class SystemTerminalLaunchDetector {
     public init() {}
 
     public var launchContext: HostPermissionLaunchContext {
-        isatty(fileno(stdin)) != 0 ? .terminalAttached : .notTerminalAttached
+        isatty(STDIN_FILENO) != 0 ? .terminalAttached : .notTerminalAttached
     }
 }

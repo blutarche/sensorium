@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -70,7 +80,7 @@ private func makeHostScreenFixture(
     modeController: FakeHostScreenModeController? = nil,
     localActivitySignal: (any HostLocalActivitySignal)? = nil,
     presenceGate: (any HostScreenPresenceGating)? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, UInt32) throws -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -104,7 +114,8 @@ private func makeHostScreenFixture(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceActivitySignal: localActivitySignal ?? AlwaysIdleSignal(),
         hostScreenPresenceGate: presenceGate,
-        hostScreenModeController: modeController
+        hostScreenModeController: modeController,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
@@ -123,7 +134,9 @@ private func makeHostScreenFixture(
         workspaces: CanvasSurfaceSlots { surface in canvasWorkspaces[surface] },
         onEvent: onEvent,
         onSessionEnded: onSessionEnded,
-        hostScreenMediaFactory: hostScreenMediaFactory
+        hostScreenMediaFactory: hostScreenMediaFactory,
+        requiresAccountableHostScreenMedia: false,
+        lockStateReader: FakeScreenLockState(locked: false)
     )
     return (coordinator, controller, injectorFactory, canvasMedia, canvasWorkspaces)
 }
@@ -143,7 +156,7 @@ func runHostScreenCoordinatorTests() async {
         // Bring-up: no workspace, encoder sized from real geometry
         let display = hostScreenTestDisplay()
         var capturedConfiguration: VideoEncoderConfiguration?
-        var badgeDisplayID: CGDirectDisplayID?
+        var badgeDisplayID: UInt32?
         let hostScreenMedia = FakeScalableCanvasMedia()
         let events = DiagnosticsRecorder()
         let fixture = makeHostScreenFixture(
@@ -288,7 +301,8 @@ func runHostScreenCoordinatorTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -841,6 +855,7 @@ func runHostScreenModeAccountabilityTests() async {
         var captureConfigurations: [VideoEncoderConfiguration] = []
         var captures: [FakeScalableCanvasMedia] = []
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { configuration, _ in
                 captureConfigurations.append(configuration)
                 let capture = FakeScalableCanvasMedia()
@@ -856,7 +871,7 @@ func runHostScreenModeAccountabilityTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -903,6 +918,7 @@ func runHostScreenModeAccountabilityTests() async {
         var captureCount = 0
         let recovered = FakeScalableCanvasMedia()
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 captureCount += 1
                 switch captureCount {
@@ -920,7 +936,7 @@ func runHostScreenModeAccountabilityTests() async {
         let fixture = makeHostScreenFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(
@@ -965,6 +981,7 @@ func runHostScreenModeAccountabilityTests() async {
         let events = DiagnosticsRecorder()
         var captures: [FakeScalableCanvasMedia] = []
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 let capture = FakeScalableCanvasMedia()
                 captures.append(capture)
@@ -980,7 +997,7 @@ func runHostScreenModeAccountabilityTests() async {
             display: display,
             onEvent: { events.record($0) },
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         let token = offerAndExtractToken(fixture.controller)
         _ = try! await fixture.coordinator.handleWritingResponse(.hostScreenRequest(

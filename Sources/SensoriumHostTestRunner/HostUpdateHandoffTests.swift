@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumHost
 import SensoriumUpdate
@@ -241,3 +242,4 @@ func runHostUpdateArgumentOrderTests() {
     expect(corrupt.status != 0, "the built host's self-test fails on its own corrupt file, got \(corrupt.status)")
     print("PASS: the built host reads --update-self-test before its own arguments, and an unknown one still exits 2")
 }
+#endif

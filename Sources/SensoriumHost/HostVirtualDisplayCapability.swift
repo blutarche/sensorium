@@ -44,7 +44,13 @@ public enum HostVirtualDisplayCapability {
         shutdown: CanvasShutdown? = nil,
         makeAdapter: ((@escaping (String) -> Void) -> any VirtualDisplayAdapter)? = nil
     ) -> Verdict {
+        #if os(macOS)
         let adapter = makeAdapter?(log) ?? defaultProbeAdapter(shutdown: shutdown, log: log)
+        #else
+        guard let adapter = makeAdapter?(log) else {
+            return .unsupported(reason: Self.runtimeMissingReason)
+        }
+        #endif
         do {
             let handle = try adapter.acquire(configuration: .remoteDefault)
             adapter.release(handle)
@@ -56,6 +62,7 @@ public enum HostVirtualDisplayCapability {
         }
     }
 
+    #if os(macOS)
     /// The canvas the probe creates when no test has injected an adapter.
     ///
     /// Its own purpose, so its identities are none of the ones a session
@@ -73,6 +80,7 @@ public enum HostVirtualDisplayCapability {
             log: log
         )
     }
+    #endif
 
     /// The two reasons name the step that failed, because they call for
     /// different things from whoever reads them: nothing will ever give the

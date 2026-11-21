@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumCore
@@ -149,3 +150,4 @@ func runHostLocalNetworkSwitchTests() {
     expect(checkbox.state == .off, "and the checkbox reads it back as off")
     print("PASS: the host window's local network checkbox shows the stored setting and changes it")
 }
+#endif

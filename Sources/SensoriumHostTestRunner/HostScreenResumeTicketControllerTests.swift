@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -69,7 +79,8 @@ private func makeReconnectableController(
         hostScreenResumeTicketStore: resumeTicketStore,
         hostScreenLiveSessionRegistry: liveSessionRegistry,
         hostScreenPresenceActivitySignal: presenceSignal,
-        hostScreenPresenceGate: presenceGate
+        hostScreenPresenceGate: presenceGate,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -325,7 +336,8 @@ func runHostScreenResumeTicketControllerTests() async {
                 hostScreenArmingProvider: { arming },
                 hostScreenCurrentDisplaysProvider: { [mintedDisplay, otherDisplay] },
                 hostScreenResumeTicketStore: store,
-                hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+                hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+                hostScreenLockStateReader: FakeScreenLockState(locked: false)
             )
             let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
                 protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -912,7 +924,8 @@ private func makeDisplaysBoxController(
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { displaysBox.displays },
         hostScreenResumeTicketStore: resumeTicketStore,
-        hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+        hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

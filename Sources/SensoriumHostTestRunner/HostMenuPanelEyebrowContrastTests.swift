@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -65,3 +66,4 @@ func runHostMenuPanelEyebrowContrastTests() async {
 
     print("PASS: the menu-bar panel's READY eyebrow reaches AA contrast as drawn")
 }
+#endif

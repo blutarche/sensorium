@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -213,6 +214,7 @@ private func makeDecliningWakeFixture(
         hostScreenPresenceActivitySignal: WakeGateActivitySignal(),
         hostScreenPresenceGate: WakeGatePresenceGate(outcome: outcome),
         displayWake: wake,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false),
         log: { _ in }
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -261,7 +263,7 @@ func makeWakeHostScreenFixture(
     wake: DisplayWakeController,
     availability: HostCaptureAvailability,
     onStreamUnrecoverable: @escaping @Sendable (String) -> Void,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController, token: Data) {
     let identity = try! DeviceIdentity.generate()
     let deviceKey = identity.publicKey
@@ -280,6 +282,7 @@ func makeWakeHostScreenFixture(
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
         displayWake: wake,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false),
         log: { _ in }
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -297,7 +300,9 @@ func makeWakeHostScreenFixture(
         flowReportSeconds: 1,
         onStreamUnrecoverable: onStreamUnrecoverable,
         hostScreenMediaFactory: hostScreenMediaFactory,
-        captureAvailability: availability
+        requiresAccountableHostScreenMedia: false,
+        captureAvailability: availability,
+        lockStateReader: FakeScreenLockState(locked: false)
     )
     guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(),
           let entry = displays.first else {
@@ -355,6 +360,7 @@ func wakeGateController(
         hostScreenCurrentDisplaysProvider: { displays.read() },
         deviceConnectionRegistry: connections,
         displayWake: displayWake,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false),
         log: { _ in }
     )
     if authenticate {
@@ -427,6 +433,7 @@ private func makeMutableArmingWakeFixture(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenResumeTicketStore: resumeTicketStore,
         displayWake: wake,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false),
         log: { _ in }
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -1735,6 +1742,7 @@ func runDisplayWakeTests() async {
                 hostScreenCurrentDisplaysProvider: { list.read() },
                 hostScreenResumeTicketStore: resumeStore,
                 displayWake: wake,
+                hostScreenLockStateReader: FakeScreenLockState(locked: false),
                 log: { _ in }
             )
             let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -1750,7 +1758,9 @@ func runDisplayWakeTests() async {
                 videoSink: FakeVideoSink(),
                 workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
                 hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
-                captureAvailability: HostCaptureAvailability()
+                requiresAccountableHostScreenMedia: false,
+                captureAvailability: HostCaptureAvailability(),
+                lockStateReader: FakeScreenLockState(locked: false)
             )
             return (coordinator, controller)
         }
@@ -1949,6 +1959,7 @@ func runDisplayWakeTests() async {
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
             displayWake: wake,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false),
             log: { _ in }
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -2048,7 +2059,9 @@ func runDisplayWakeTests() async {
             videoSink: FakeVideoSink(),
             workspaces: CanvasSurfaceSlots { _ in FakeCanvasWorkspace() },
             hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
-            captureAvailability: HostCaptureAvailability()
+            requiresAccountableHostScreenMedia: false,
+            captureAvailability: HostCaptureAvailability(),
+            lockStateReader: FakeScreenLockState(locked: false)
         )
         guard case let .hostScreenList(displays, _) = try! await controller.offerHostScreenListWakingDisplays(),
               let entry = displays.first else {
@@ -2102,3 +2115,4 @@ func runDisplayWakeTests() async {
 
     print("PASS: a connection that is offered its screens and drops without a request releases the declaration")
 }
+#endif

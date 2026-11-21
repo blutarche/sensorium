@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumCore
@@ -420,7 +421,8 @@ func runPairedMachineRenameTests() async {
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceActivitySignal: RenameRecentlyActiveSignal(),
-            hostScreenPresenceGate: gate
+            hostScreenPresenceGate: gate,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         _ = try! controller.handle(signedHello(device, deviceName: "Kestrel Laptop Air"))
         guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
@@ -441,6 +443,7 @@ func runPairedMachineRenameTests() async {
         defer { try? FileManager.default.removeItem(at: logURL) }
         let log = HostScreenSessionLogStore(url: logURL)
         let media = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in FakeScalableCanvasMedia() },
             sessionLog: log,
             deviceName: { controller.hostScreenDeviceName ?? "" },
@@ -449,7 +452,7 @@ func runPairedMachineRenameTests() async {
             onBadgeStop: {},
             badgeFactory: { _, _ in RenameBadgeDisplay() }
         )
-        _ = media.makeMedia(.fullHiDPI, displayID: 7)
+        _ = try! media.makeMedia(.fullHiDPI, displayID: 7)
         expect(media.badgeState?.content.deviceName == "Studio Laptop", "the live indicator names the chosen name")
         expect(log.lastRecord?.deviceName == "Studio Laptop", "the session record names the chosen name")
         expect(log.lastRecord?.reportedDeviceName == "Kestrel Laptop Air", "and keeps the reported name alongside")
@@ -621,3 +624,4 @@ func runPairedMachineRenameTests() async {
         print("PASS: the rename sheet's heading names the machine being renamed, held whole")
     }
 }
+#endif

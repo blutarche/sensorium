@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -195,3 +196,4 @@ func runHostCapsLockRealTextFieldTests() {
     expect(thenWithout == "Aa", "and with it off types a, got \"\(thenWithout)\"")
     print("PASS: key 0 types A into a real text field with the viewer's Caps Lock on, and a with it off")
 }
+#endif

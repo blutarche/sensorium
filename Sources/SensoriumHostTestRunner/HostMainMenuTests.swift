@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -82,3 +83,4 @@ func runHostMainMenuTests() async {
 
     print("PASS: the host's own windows get a standard App, Edit and Window menu, with Quit going through the clean-quit path")
 }
+#endif

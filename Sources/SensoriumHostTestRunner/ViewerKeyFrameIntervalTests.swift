@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -302,3 +303,4 @@ private func expectAHostScreenStretchesItsIntervalOnlyOnceTheViewerDeclared() as
         )
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumHost
 import SensoriumUpdate
@@ -434,3 +435,4 @@ func runHostUpdateLogLineTests() {
     }
     print("PASS: each update step has its own log line, with no address in it")
 }
+#endif

@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -71,7 +81,8 @@ func runHostScreenOfferOnHelloTests() async {
             requireAuthentication: true,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { arming },
-            hostScreenCurrentDisplaysProvider: { [display] }
+            hostScreenCurrentDisplaysProvider: { [display] },
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let channel = FakeHostByteChannel(scriptedMessages: [helloScript(for: identity)])
         let session = HostNetworkSession(connection: channel, controller: controller)
@@ -97,7 +108,8 @@ func runHostScreenOfferOnHelloTests() async {
             requireAuthentication: true,
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { HostScreenArming() },
-            hostScreenCurrentDisplaysProvider: { [] }
+            hostScreenCurrentDisplaysProvider: { [] },
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let channel = FakeHostByteChannel(scriptedMessages: [helloScript(for: identity)])
         let session = HostNetworkSession(connection: channel, controller: controller)
@@ -125,7 +137,8 @@ func runHostScreenOfferOnHelloTests() async {
             keyConfinement: .unconfined,
             hostScreenArmingProvider: { HostScreenArming() },
             hostScreenCurrentDisplaysProvider: { [] },
-            privateDesktopOffered: { true }
+            privateDesktopOffered: { true },
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let channel = FakeHostByteChannel(scriptedMessages: [
             helloScript(for: identity),

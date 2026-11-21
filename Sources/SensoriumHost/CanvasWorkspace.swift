@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /// Identifies one installed workspace window, so a caller that fronted a

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -43,3 +44,4 @@ func runHostMenuBarAboutMenuItemTests() async {
 
     print("PASS: the menu bar offers an About Sensorium Host item wired to the standard About panel")
 }
+#endif

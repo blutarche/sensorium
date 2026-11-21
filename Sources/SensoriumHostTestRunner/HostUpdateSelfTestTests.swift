@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -110,3 +111,4 @@ func runHostUpdateSelfTestTests() {
         print("PASS: the self-test fails on a file it cannot read at all")
     }
 }
+#endif

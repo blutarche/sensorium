@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -447,6 +457,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             expect(sessionB.isActive, "stop(owner:) with a non-owning token still does nothing")
         }
 
+        #if os(macOS)
         // `AnimatedMeasurementWorkspace` is test-only and never shipped in
         // the default `serve` path, but it still places a session canvas,
         // and until now did so without sharing `CanvasCreationGate` -- a
@@ -474,6 +485,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 "AnimatedMeasurementWorkspace now shares the single-flight gate: a canvas request that arrives while another creation is in flight is rejected, exactly like NativeCanvasWorkspace, instead of racing real AppKit/display state"
             )
         }
+        #endif
 
         expect(VideoEncoderConfiguration.remoteDefault.width == 1920, "encoder defaults to 1920 width")
         expect(VideoEncoderConfiguration.remoteDefault.height == 1200, "encoder defaults to 1200 height")
@@ -1217,6 +1229,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             expect(!SourceAddressPolicy.isTailnetSource(source), "non-tailnet source \(source) is rejected")
         }
 
+        #if os(macOS)
         expect(
             HostConnectionAdmission.admits(endpoint: .hostPort(host: "100.100.0.2", port: 7777), transport: .quic),
             "tailnet endpoint is admitted"
@@ -1237,6 +1250,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             !HostConnectionAdmission.admits(endpoint: .unix(path: "/tmp/socket"), transport: .quic),
             "a non-IP endpoint is refused"
         )
+        #endif
 
         let pairingAdapter = FakeVirtualDisplayAdapter()
         let pairingSession = VirtualDisplaySession(adapter: pairingAdapter)
@@ -1441,6 +1455,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             "the host proves its identity over the canvas it just created"
         )
 
+        #if os(macOS)
         expect(
             CoreGraphicsInputTranslation.motionType(heldButton: nil) == .mouseMoved,
             "motion with no button held is a plain move"
@@ -1465,7 +1480,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             CoreGraphicsInputTranslation.flags([]) == [],
             "no modifiers means no event flags"
         )
+        #endif
 
+        #if os(macOS)
         // Two virtual canvases share one system cursor. A CGEvent scroll
         // carries no location of its own, so it lands wherever that one
         // cursor is standing: scrolling in the second canvas's window after
@@ -1503,7 +1520,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             CoreGraphicsInputTranslation.cursorPositioning(for: .releaseAllInput) == nil,
             "release-all is turned into positioned releases by the controller before it reaches the injector"
         )
+        #endif
 
+        #if os(macOS)
         // A trackpad's own per-event deltas are routinely well under one
         // pixel. `CGEvent(scrollWheelEvent2Source:...)`'s integer wheel
         // fields floor a delta like this to zero -- that truncation is the
@@ -1514,6 +1533,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             expect(false, "a HID-state event source can be created for this translation check")
             return
         }
+        #if os(macOS)
         guard let subPixelScroll = CoreGraphicsInputTranslation.scrollEvent(
             source: scrollSource,
             deltaX: 0,
@@ -1524,6 +1544,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             expect(false, "a scroll event is created for a sub-pixel delta")
             return
         }
+        #endif
+        #endif
+        #if os(macOS)
         expect(
             subPixelScroll.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1) != 0,
             "a sub-pixel scroll delta is not truncated to zero on the axis that carries precise motion"
@@ -1532,7 +1555,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             abs(subPixelScroll.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1) - 0.4) < 0.001,
             "the fixed-point delta field carries the exact fractional value, not a rounded one"
         )
+        #endif
 
+        #if os(macOS)
         guard let phasedScroll = CoreGraphicsInputTranslation.scrollEvent(
             source: scrollSource,
             deltaX: -2,
@@ -1557,7 +1582,9 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
             )?.getIntegerValueField(.scrollWheelEventScrollPhase) == 0,
             "an ordinary scroll-wheel mouse, which reports no phase, leaves the phase field untouched"
         )
+        #endif
 
+        #if os(macOS)
         guard let momentumScroll = CoreGraphicsInputTranslation.scrollEvent(
             source: scrollSource,
             deltaX: 0,
@@ -1573,6 +1600,7 @@ func runCoreSessionTestsPart1(_ fixtures: CoreSessionSharedFixtures) async {
                 == Int64(CoreGraphicsInputTranslation.cgMomentumScrollPhase(.continue).rawValue),
             "a trackpad flick's momentum-continue phase is written onto the injected scroll event"
         )
+        #endif
 
         let mediaAdapter = FakeVirtualDisplayAdapter()
         let mediaSession = VirtualDisplaySession(adapter: mediaAdapter)

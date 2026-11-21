@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 
 /// The frame a capture pipeline last delivered, held across the capture queue
@@ -55,3 +56,4 @@ public final class LastCapturedFrame: @unchecked Sendable {
         sampleBuffer = nil
     }
 }
+#endif

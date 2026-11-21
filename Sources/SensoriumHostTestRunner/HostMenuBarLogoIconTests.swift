@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -54,3 +55,4 @@ func runHostMenuBarLogoIconTests() async {
 
     print("PASS: the menu bar item draws the Sensorium mark with state shown on the near screen")
 }
+#endif

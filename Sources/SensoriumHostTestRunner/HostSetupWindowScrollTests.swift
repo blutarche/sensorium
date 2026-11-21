@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -147,3 +148,4 @@ func runHostSetupWindowScrollTests() async {
         print("PASS: a resize leaves the Host Setup window inside the screen's visible frame")
     }
 }
+#endif

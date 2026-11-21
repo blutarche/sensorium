@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -29,3 +30,4 @@ func runHostMenuBarPanelMenuWidthTests() async {
 
     print("PASS: the menu-bar status card fills a menu wider than itself")
 }
+#endif

@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 import SensoriumCore
 
@@ -225,6 +224,28 @@ public enum HostScreenBringUpError: Error, Equatable {
     case noMediaFactoryConfigured
     /// The controller admitted a request but reports no resolved display.
     case displayIDUnavailable
+    /// The platform supplied no screen-lock reader, so this host cannot say
+    /// what the viewer's input would reach and streams nothing.
+    case screenLockStateUnavailable
+    /// The factory returned media that is not a `HostScreenAccountableMedia`,
+    /// so no indicator and no session record stand behind it.
+    case mediaNotAccountable
+}
+
+/// Whether a host-screen capture must come from `HostScreenAccountableMedia`,
+/// the one type that opens the session record and shows the indicator before
+/// a frame exists.
+public enum HostScreenAccountability {
+    /// Required wherever no host app wires the wrapper by hand: a platform
+    /// host that builds its media through another path would otherwise
+    /// stream with nothing on screen naming the viewer. macOS production
+    /// wiring builds the wrapper itself, and this package's tests drive the
+    /// coordinator with doubles that stand in for it.
+    #if os(macOS)
+    public static let requiredByDefault = false
+    #else
+    public static let requiredByDefault = true
+    #endif
 }
 
 /// Ties the control protocol to the media pipelines: streaming begins only after
@@ -287,10 +308,18 @@ public final class HostSessionCoordinator {
     /// (`HostScreenEncoderSizing.resolve(for:)`, computed by this
     /// coordinator) rather than raw geometry, so this factory only ever
     /// has to construct a media object, never decide how big to make it.
-    private let hostScreenMediaFactory: ((VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming)?
+    private let hostScreenMediaFactory: ((VideoEncoderConfiguration, UInt32) throws -> any CanvasMediaStreaming)?
+    /// See `HostScreenAccountability`.
+    private let requiresAccountableHostScreenMedia: Bool
     /// Reads whether this machine's screen is locked, so the viewer is told whether
     /// to offer the unlock prompt and so an unlock is confirmed after it types.
-    private let lockStateReader: any ScreenLockStateReading
+    private let lockStateReader: (any ScreenLockStateReading)?
+    /// Whether the screen is locked right now; unlocked when no reader was
+    /// given, which `startHostScreenStreaming` refuses a host screen for.
+    private var isScreenLockedNow: Bool {
+        guard let lockStateReader else { return false }
+        return lockStateReader.isScreenLocked()
+    }
     /// The lock state this session last told the viewer, from bring-up, an
     /// unlock attempt, or an earlier `tickHostScreenLockState()` -- what a new
     /// tick compares its own reading against so it reports only a real
@@ -582,11 +611,12 @@ public final class HostSessionCoordinator {
         onEvent: (@Sendable (String) -> Void)? = nil,
         onSessionEnded: (@Sendable () -> Void)? = nil,
         onStreamUnrecoverable: (@Sendable (String) -> Void)? = nil,
-        hostScreenMediaFactory: ((VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming)? = nil,
+        hostScreenMediaFactory: ((VideoEncoderConfiguration, UInt32) throws -> any CanvasMediaStreaming)? = nil,
+        requiresAccountableHostScreenMedia: Bool = HostScreenAccountability.requiredByDefault,
         captureAvailability: HostCaptureAvailability = .shared,
-        lockStateReader: any ScreenLockStateReading = CGSessionScreenLockState(),
-        lockScreenUnlocker: any LockScreenUnlocking = RFBLockScreenUnlocker(),
-        hostScreenRelockPoster: any HostScreenRelocking = CoreGraphicsHostScreenRelockPoster(),
+        lockStateReader: (any ScreenLockStateReading)? = HostPlatformDefaults.screenLockState,
+        lockScreenUnlocker: any LockScreenUnlocking = PlatformLockScreenUnlocker(),
+        hostScreenRelockPoster: any HostScreenRelocking = PlatformScreenRelocker(),
         hostScreenRelockActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenCaptureRecoveryBoundSeconds: Double = 30,
         hostScreenCaptureRecoveryPollSeconds: Double = 1,
@@ -622,6 +652,7 @@ public final class HostSessionCoordinator {
         self.onSessionEnded = onSessionEnded
         self.onStreamUnrecoverable = onStreamUnrecoverable
         self.hostScreenMediaFactory = hostScreenMediaFactory
+        self.requiresAccountableHostScreenMedia = requiresAccountableHostScreenMedia
         flow = FlowBox(reportSeconds: flowReportSeconds)
         captureDeliveryReportSeconds = flowReportSeconds
         streamScale = CanvasSurfaceSlots { surface in
@@ -688,7 +719,7 @@ public final class HostSessionCoordinator {
             let outcome = await unlock(password: password)
             try await writeResponse(.hostScreenUnlockResult(outcome))
             if mayObserveLockState {
-                let isLocked = lockStateReader.isScreenLocked()
+                let isLocked = isScreenLockedNow
                 hostScreenRelockTracker.observe(isLocked: isLocked, hardwareActivityNearby: hardwareActivityNearby())
                 // Recorded so the change watcher's next tick compares against
                 // what was just announced here, rather than an older reading,
@@ -1000,7 +1031,7 @@ public final class HostSessionCoordinator {
                 // Whether this machine is locked, so the viewer knows to offer the
                 // unlock prompt. Last, like the mode list: it describes a
                 // session that has now actually started streaming.
-                let isLocked = lockStateReader.isScreenLocked()
+                let isLocked = isScreenLockedNow
                 hostScreenRelockTracker.observe(isLocked: isLocked, hardwareActivityNearby: hardwareActivityNearby())
                 // Seeds the change watcher's baseline, so a first tick against
                 // an unchanged lock state reports nothing.
@@ -1110,7 +1141,7 @@ public final class HostSessionCoordinator {
         guard controller.canObserveHostScreenLockState() else {
             return nil
         }
-        let isLocked = lockStateReader.isScreenLocked()
+        let isLocked = isScreenLockedNow
         hostScreenRelockTracker.observe(isLocked: isLocked, hardwareActivityNearby: hardwareActivityNearby())
         guard isLocked != lastAnnouncedHostScreenLockState else {
             return nil
@@ -1170,7 +1201,7 @@ public final class HostSessionCoordinator {
                 controller.refund(reservation)
             }
         }
-        guard lockStateReader.isScreenLocked() else {
+        guard isScreenLockedNow else {
             return .notLocked
         }
         let outcome = await lockScreenUnlocker.unlock(password: password)
@@ -1255,7 +1286,7 @@ public final class HostSessionCoordinator {
 
     /// How this session wakes this machine's displays and keeps them awake.
     /// The controller's own, not a second one: one session has one hold.
-    private var displayWake: DisplayWakeController? {
+    private var displayWake: (any DisplayWaking)? {
         controller.displayWake
     }
 
@@ -1482,7 +1513,7 @@ public final class HostSessionCoordinator {
             // reading, not two: `observe` and `consumeShouldRelock` below
             // must agree on the same moment.
             let activityNearby = hardwareActivityNearby()
-            hostScreenRelockTracker.observe(isLocked: lockStateReader.isScreenLocked(), hardwareActivityNearby: activityNearby)
+            hostScreenRelockTracker.observe(isLocked: isScreenLockedNow, hardwareActivityNearby: activityNearby)
             if hostScreenRelockTracker.consumeShouldRelock(hardwareActivityNearby: activityNearby) {
                 hostScreenRelockPoster.relock()
             }
@@ -3088,8 +3119,15 @@ public final class HostSessionCoordinator {
         guard let displayID = controller.hostScreenDisplayID else {
             throw HostScreenBringUpError.displayIDUnavailable
         }
+        guard lockStateReader != nil else {
+            throw HostScreenBringUpError.screenLockStateUnavailable
+        }
         let sizing = hostScreenEncoderSizing(for: geometry)
-        let media = hostScreenMediaFactory(sizing.configuration, displayID)
+        let media = try hostScreenMediaFactory(sizing.configuration, displayID)
+        if requiresAccountableHostScreenMedia, !(media is HostScreenAccountableMedia) {
+            await media.stop()
+            throw HostScreenBringUpError.mediaNotAccountable
+        }
         hostScreenMedia = media
         isHostScreenStreaming = true
         try await beginHostScreenCapture(media: media, sizing: sizing, displayID: displayID)

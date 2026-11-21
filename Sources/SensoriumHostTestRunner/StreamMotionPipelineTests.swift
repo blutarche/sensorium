@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -470,3 +471,4 @@ private func expectAScrollOfRealPixelsStillReachesTheMovingEncoder() async {
     try? await stream.pipeline.stop()
     print("PASS: pixels that really change across the screen reach the moving encoder")
 }
+#endif

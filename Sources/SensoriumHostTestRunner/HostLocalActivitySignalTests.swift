@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumHost
@@ -73,3 +74,4 @@ private final class RequestedEventQueries: @unchecked Sendable {
         return queries
     }
 }
+#endif

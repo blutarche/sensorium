@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -366,3 +367,4 @@ public final class HostScreenCaptureMedia: CanvasMediaStreaming {
         configuration = kept
     }
 }
+#endif

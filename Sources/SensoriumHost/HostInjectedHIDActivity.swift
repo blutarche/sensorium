@@ -34,14 +34,6 @@ public protocol HostInjectedHIDActivity: Sendable {
 }
 
 public final class MutableHostInjectedHIDActivity: HostInjectedHIDActivity, @unchecked Sendable {
-    /// One instance for the whole process: every post site must record into
-    /// the same clock the decorator reads from, or a post from one site
-    /// could not be told apart from a real person by a reading taken
-    /// through another. Defaulted at every call site that needs one, the
-    /// same way `HostCaptureAvailability.shared` is, rather than threaded
-    /// as an explicit parameter through every construction site.
-    public static let shared = MutableHostInjectedHIDActivity()
-
     private let lock = NSLock()
     private let rawActivity: any HostLocalActivitySignal
     /// `ProcessInfo.processInfo.systemUptime` by default, not `Date()`:
@@ -58,7 +50,7 @@ public final class MutableHostInjectedHIDActivity: HostInjectedHIDActivity, @unc
     private var provenHardwareTime: TimeInterval?
 
     public init(
-        rawActivity: any HostLocalActivitySignal = CoreGraphicsLocalActivitySignal(),
+        rawActivity: any HostLocalActivitySignal,
         now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     ) {
         self.rawActivity = rawActivity
@@ -107,3 +99,15 @@ public final class MutableHostInjectedHIDActivity: HostInjectedHIDActivity, @unc
         return now() - provenHardwareTime
     }
 }
+
+#if os(macOS)
+extension MutableHostInjectedHIDActivity {
+    /// One instance for the whole process: every post site must record into
+    /// the same clock the decorator reads from, or a post from one site
+    /// could not be told apart from a real person by a reading taken
+    /// through another. Defaulted at every call site that needs one, the
+    /// same way `HostCaptureAvailability.shared` is, rather than threaded
+    /// as an explicit parameter through every construction site.
+    public static let shared = MutableHostInjectedHIDActivity(rawActivity: CoreGraphicsLocalActivitySignal())
+}
+#endif

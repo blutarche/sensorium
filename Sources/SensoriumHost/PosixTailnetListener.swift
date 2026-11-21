@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 
 public enum PosixTailnetListenerError: Error, Equatable {
@@ -97,3 +98,4 @@ public final class PosixTailnetListener: @unchecked Sendable {
         close(socketDescriptor)
     }
 }
+#endif

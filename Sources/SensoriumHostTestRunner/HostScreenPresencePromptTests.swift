@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -527,3 +528,4 @@ func runHostScreenPresencePromptTests() async {
         print("PASS: the presence prompt cannot be hidden by the app's own Hide")
     }
 }
+#endif

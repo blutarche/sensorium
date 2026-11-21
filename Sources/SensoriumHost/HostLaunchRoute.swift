@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumUpdate
 
@@ -38,3 +39,4 @@ public enum HostLaunchRoute: Equatable, Sendable {
         }
     }
 }
+#endif

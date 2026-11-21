@@ -1,3 +1,4 @@
+#if os(macOS)
 import ScreenCaptureKit
 
 public enum HostScreenCaptureError: Error, Equatable {
@@ -60,3 +61,4 @@ public enum HostScreenCapture {
         return try contentFilter(displayID: displayID, shareableContent: content)
     }
 }
+#endif

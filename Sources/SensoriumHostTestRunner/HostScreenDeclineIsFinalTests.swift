@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -65,7 +67,8 @@ private func makeDecliningFixture() -> (
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceActivitySignal: DeclineTestActivitySignal(),
-        hostScreenPresenceGate: gate
+        hostScreenPresenceGate: gate,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     _ = try! controller.handle(.authenticatedHello(
         protocolVersion: 1,
@@ -171,7 +174,8 @@ func runHostScreenDeclineIsFinalTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         _ = try! controller.handle(.authenticatedHello(
             protocolVersion: 1,

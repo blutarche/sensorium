@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumCore
@@ -813,3 +814,4 @@ extension HostOperatorStatus {
         return names
     }
 }
+#endif

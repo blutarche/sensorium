@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -39,3 +40,4 @@ func runCanvasLauncherHostNameTests() async {
 
     print("PASS: the launcher's empty-catalog subtext and its launch-failed status both name the machine from one stored hostName")
 }
+#endif

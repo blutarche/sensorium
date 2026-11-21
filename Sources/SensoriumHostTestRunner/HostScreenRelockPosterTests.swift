@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumHost
@@ -60,3 +61,4 @@ private final class SpyRelockPosterHIDActivity: HostInjectedHIDActivity, @unchec
     func sampleBeforePost() { sampleCount += 1 }
     func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
 }
+#endif

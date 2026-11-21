@@ -47,6 +47,9 @@ public final class HostConnectionSessionFactory {
     /// self-post-discounted -- see that property's own doc comment.
     private let hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)?
     private let hostScreenPresenceGate: (any HostScreenPresenceGating)?
+    /// Forwarded to every controller: what says whether the screen is locked,
+    /// and without which no host screen is offered.
+    private let hostScreenLockStateReader: (any ScreenLockStateReading)?
     /// Shared rather than per-connection for a reason of its own: this is
     /// what remembers the mode each display was on before any session
     /// changed it, and that memory has to outlive the connection that made
@@ -55,7 +58,7 @@ public final class HostConnectionSessionFactory {
     /// Shared for the same reason the mode controller is: this machine has
     /// one power state, so the hold that keeps its displays awake belongs to
     /// the process rather than to whichever connection happened to take it.
-    private let displayWake: DisplayWakeController?
+    private let displayWake: (any DisplayWaking)?
     /// The SHA-256 of this host's own TLS certificate, forwarded to every
     /// controller: an `authenticatedHello` is bound to the host it was sent
     /// to, and this is what each connection checks that binding against.
@@ -88,8 +91,9 @@ public final class HostConnectionSessionFactory {
         hostScreenPresenceActivitySignal: (any HostLocalActivitySignal)? = nil,
         hostScreenPresenceGate: (any HostScreenPresenceGating)? = nil,
         hostScreenModeController: (any HostScreenModeControlling)? = nil,
-        displayWake: DisplayWakeController? = nil,
+        displayWake: (any DisplayWaking)? = nil,
         privateDesktopOffered: @escaping () -> Bool = { false },
+        hostScreenLockStateReader: (any ScreenLockStateReading)? = HostPlatformDefaults.screenLockState,
         log: @escaping @MainActor (String) -> Void = { print($0) },
         inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil
     ) {
@@ -113,6 +117,7 @@ public final class HostConnectionSessionFactory {
         self.hostScreenModeController = hostScreenModeController
         self.displayWake = displayWake
         self.privateDesktopOffered = privateDesktopOffered
+        self.hostScreenLockStateReader = hostScreenLockStateReader
         self.log = log
         self.inputDiagnosticLog = inputDiagnosticLog
     }
@@ -144,6 +149,7 @@ public final class HostConnectionSessionFactory {
             hostScreenModeController: hostScreenModeController,
             displayWake: displayWake,
             privateDesktopOffered: privateDesktopOffered,
+            hostScreenLockStateReader: hostScreenLockStateReader,
             log: log,
             inputDiagnosticLog: inputDiagnosticLog
         )

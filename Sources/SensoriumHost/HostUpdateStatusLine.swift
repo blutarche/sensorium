@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumUpdate
 
@@ -35,3 +36,4 @@ public enum HostUpdateStatusLine {
 
     private static let failurePrefix = "Sensorium Host could not update: "
 }
+#endif

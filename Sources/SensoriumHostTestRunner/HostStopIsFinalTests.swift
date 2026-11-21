@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -373,7 +375,8 @@ func runHostStopIsFinalTests() async {
             hostScreenLiveSessionRegistry: world.liveSessions,
             deviceConnectionRegistry: world.connections,
             hostScreenPresenceActivitySignal: InUseLocalActivitySignal(),
-            hostScreenPresenceGate: gate
+            hostScreenPresenceGate: gate,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         _ = try! controller.handle(world.hello(from: device))
         let channel = FakeHostByteChannel(scriptedMessages: [])
@@ -621,7 +624,8 @@ private func makeLiveHostScreenFixture() async -> LiveHostScreenFixture {
         deviceConnectionRegistry: connections,
         hostScreenPresenceActivitySignal: FakeHostScreenIdleSignal(),
         hostScreenPresenceGate: nil,
-        hostScreenModeController: nil
+        hostScreenModeController: nil,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey, hostCertificateHash: nil
@@ -634,6 +638,7 @@ private func makeLiveHostScreenFixture() async -> LiveHostScreenFixture {
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: FakeVideoSink(),
         hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
+        requiresAccountableHostScreenMedia: false,
         lockStateReader: FakeScreenLockState(locked: false)
     )
     let channel = FakeHostByteChannel(scriptedMessages: [])

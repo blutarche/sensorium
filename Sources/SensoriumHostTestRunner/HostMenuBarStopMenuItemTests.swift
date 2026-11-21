@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -69,3 +70,4 @@ func runHostMenuBarStopMenuItemTests() async {
         print("PASS: the status item offers no Stop menu item while nothing is connected")
     }
 }
+#endif

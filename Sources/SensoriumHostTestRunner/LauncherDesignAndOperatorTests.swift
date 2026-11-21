@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import CoreMedia
@@ -1377,3 +1378,4 @@ func runLauncherDesignAndOperatorTests() async {
         print("PASS: a reported problem raises the same attention icon a missing permission does, and starting hosting successfully clears it")
         print("PASS: an approved device reads as Waiting for it to finish pairing until it connects or the attempt drops")
 }
+#endif

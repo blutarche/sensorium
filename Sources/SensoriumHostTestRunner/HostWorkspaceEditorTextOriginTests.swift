@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -21,3 +22,4 @@ func runHostWorkspaceEditorTextOriginTests() async {
 
     print("PASS: the workspace editor's body text shares the keyboard hint's left edge")
 }
+#endif

@@ -1,4 +1,6 @@
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
 import Foundation
 import SensoriumCore
 import SensoriumHost

@@ -140,7 +140,14 @@ let package = Package(
         ),
         .executableTarget(name: "SensoriumCoreTestRunner", dependencies: ["SensoriumCore"]),
         .target(name: "SensoriumVirtualDisplayBridge", path: "Sources/SensoriumVirtualDisplayBridge", publicHeadersPath: "include"),
-        .target(name: "SensoriumHost", dependencies: ["SensoriumCore", "SensoriumVirtualDisplayBridge", "SensoriumUpdate"]),
+        .target(
+            name: "SensoriumHost",
+            dependencies: [
+                "SensoriumCore",
+                .target(name: "SensoriumVirtualDisplayBridge", condition: .when(platforms: [.macOS])),
+                "SensoriumUpdate"
+            ]
+        ),
         .target(
             name: "SensoriumClient",
             dependencies: [

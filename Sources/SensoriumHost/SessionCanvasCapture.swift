@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import ScreenCaptureKit
@@ -32,3 +33,4 @@ public enum SessionCanvasCapture {
         return try contentFilter(ownedHandle: ownedHandle, shareableContent: content)
     }
 }
+#endif

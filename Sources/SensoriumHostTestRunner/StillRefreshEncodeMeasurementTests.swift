@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreMedia
 import CoreText
@@ -237,3 +238,4 @@ private func measurementSampleBuffer(_ pixelBuffer: CVPixelBuffer, frameIndex: I
     }
     return sampleBuffer
 }
+#endif

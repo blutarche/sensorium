@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -593,13 +603,18 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             "one physical display alongside anything else is a testable baseline"
         )
 
+        #if os(macOS)
         let tlsIdentity = try! HostTLSIdentity.generate(commonName: "Sensorium Host")
         fixtures.tlsIdentity = tlsIdentity
         let boundParameters = try! HostNetworkListener.parameters(
             boundToTailnetAddress: "100.100.0.4",
             tlsIdentity: tlsIdentity
         )
+        #endif
+        #if os(macOS)
         // An address-pinned QUIC listener is a defect, not a defence: accepted
+        #endif
+        #if os(macOS)
         // connections inherit `requiredLocalEndpoint`, re-bind the listener's
         // own address and port, and die with EADDRINUSE before the handshake —
         // for every client, remote ones included. The tailnet restriction is
@@ -612,6 +627,8 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             boundParameters.requiredInterface != nil || !TailnetInterfaceLocator.isAvailable(address: "100.100.0.4"),
             "the listener is scoped to the interface that owns the tailnet address when one exists"
         )
+        #endif
+        #if os(macOS)
         expect(
             boundParameters.defaultProtocolStack.transportProtocol is NWProtocolQUIC.Options,
             "the production host listener uses QUIC rather than a TCP fallback"
@@ -636,6 +653,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
         } catch {
             expect(false, "scoping to every interface reports the expected error")
         }
+        #endif
 
         // Synthetic documentation-only fixtures exercise the tailnet admission
         // phase, kept as regression coverage against the ranges being wrong.
@@ -665,6 +683,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
             !diagnosticsSession.isActive,
             "a canvas whose capture cannot start is released rather than left orphaned"
         )
+        #if os(macOS)
         // One catch covers every step of bringing a canvas up -- placing the
         // workspace, writing the canvasReady, starting capture -- so the
         // failure it reports has to name the step that actually failed. A
@@ -702,6 +721,7 @@ func runCoreSessionTestsPart2(_ fixtures: CoreSessionSharedFixtures) async {
                 "capture never started, and the canvas nothing could stand on is released"
             )
         }
+        #endif
 
         // A socket that dies between the workspace going up and the reply
         // reaching the wire is not a capture failure either: capture is the

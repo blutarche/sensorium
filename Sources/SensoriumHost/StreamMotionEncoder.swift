@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import SensoriumCore
@@ -344,3 +345,4 @@ package final class StreamMotionEncoder: VideoFrameEncoding, @unchecked Sendable
         return [settledEncoder, movingEncoder].compactMap { $0 }
     }
 }
+#endif

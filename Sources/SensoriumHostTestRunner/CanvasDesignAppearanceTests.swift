@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumCore
@@ -190,3 +191,4 @@ func runCanvasDesignAppearanceTests() async {
 
     print("PASS: the design tokens carry a dark and a light value, the dark ones unchanged, the light ones readable, and resolve per appearance")
 }
+#endif

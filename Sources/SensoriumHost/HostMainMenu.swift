@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SensoriumCore
 
@@ -117,3 +118,4 @@ public final class HostMainMenuController: NSObject {
         quit()
     }
 }
+#endif

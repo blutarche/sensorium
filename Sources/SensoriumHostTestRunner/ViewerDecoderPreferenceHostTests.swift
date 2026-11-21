@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreMedia
 import Foundation
@@ -165,7 +166,7 @@ private final class IdlePreferenceSignal: HostLocalActivitySignal, @unchecked Se
 func makeHostScreenPreferenceFixture(
     videoSink: any CanvasVideoSending = FakeVideoSink(),
     onEvent: (@Sendable (String) -> Void)? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController) {
     let display = DisplaySnapshot(
         id: 7,
@@ -198,7 +199,8 @@ func makeHostScreenPreferenceFixture(
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceActivitySignal: IdlePreferenceSignal()
+        hostScreenPresenceActivitySignal: IdlePreferenceSignal(),
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey, hostCertificateHash: nil
@@ -211,7 +213,9 @@ func makeHostScreenPreferenceFixture(
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: videoSink,
         onEvent: onEvent,
-        hostScreenMediaFactory: hostScreenMediaFactory
+        hostScreenMediaFactory: hostScreenMediaFactory,
+        requiresAccountableHostScreenMedia: false,
+        lockStateReader: FakeScreenLockState(locked: false)
     )
     return (coordinator, controller)
 }
@@ -224,3 +228,4 @@ func hostScreenPreferenceToken(_ controller: HostSessionController) -> Data {
     }
     return entry.opaqueToken
 }
+#endif

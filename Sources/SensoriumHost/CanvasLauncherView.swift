@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import SensoriumCore
 import Foundation
@@ -863,3 +864,4 @@ private final class LauncherEmptyStateView: NSView {
         )
     }
 }
+#endif

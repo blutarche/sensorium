@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -118,6 +119,8 @@ private struct SharpScreenSessionFixture {
                 mediaDisplays.record(displayID)
                 return media
             },
+            requiresAccountableHostScreenMedia: false,
+            lockStateReader: FakeScreenLockState(locked: false),
             hostScreenCaptureRecoveryBoundSeconds: recoveryBoundSeconds,
             hostScreenCaptureRecoveryPollSeconds: 0.05,
             hostScreenCaptureRecoveryWait: { _ in },
@@ -467,3 +470,4 @@ func runSharpScreenSessionTests() async {
     }
     print("PASS: a viewer reconnecting within the grace period streams the same sharp screen, still with no mode changes")
 }
+#endif

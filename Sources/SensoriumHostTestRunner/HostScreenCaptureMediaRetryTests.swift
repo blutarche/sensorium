@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -109,3 +110,4 @@ func runHostScreenCaptureMediaRetryTests() async {
 
     print("PASS: a host-screen pipeline that fails to start is stopped before the retry replaces it")
 }
+#endif

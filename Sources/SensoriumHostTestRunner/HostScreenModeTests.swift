@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -91,6 +93,7 @@ private func makeModeFixture(
         hostScreenPresenceActivitySignal: LongIdleSignal(),
         hostScreenModeController: modes,
         hostScreenModeRestorePolicy: restorePolicy,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false),
         log: { log.record($0) }
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(

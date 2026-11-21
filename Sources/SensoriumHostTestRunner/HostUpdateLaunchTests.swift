@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumHost
 
@@ -101,3 +102,4 @@ func runHostUpdateRelaunchLockTests() {
     expect(relaunch.replacedProcess == 77, "the relaunch names the process it replaces")
     print("PASS: the --replacing route is the one that carries the update relaunch")
 }
+#endif

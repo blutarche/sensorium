@@ -1,4 +1,8 @@
+#if canImport(Darwin)
 import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Foundation
 
 /// Application-level half of the Tailscale-only ingress rule. The PF anchor is
@@ -217,10 +221,24 @@ public enum LocalSubnetEnumerator {
         default:
             return nil
         }
-        let available = max(0, Int(socketAddress.pointee.sa_len) - offset)
+        let available = max(0, socketAddressLength(socketAddress) - offset)
         let raw = UnsafeRawPointer(socketAddress)
         return (0..<count).map { index in
             index < available ? raw.load(fromByteOffset: offset + index, as: UInt8.self) : 0
         }
     }
+}
+
+/// The byte length of a socket address. Darwin records it in the structure;
+/// elsewhere it follows from the family.
+func socketAddressLength(_ address: UnsafePointer<sockaddr>) -> Int {
+    #if canImport(Darwin)
+    return Int(address.pointee.sa_len)
+    #else
+    switch Int32(address.pointee.sa_family) {
+    case AF_INET: return MemoryLayout<sockaddr_in>.size
+    case AF_INET6: return MemoryLayout<sockaddr_in6>.size
+    default: return MemoryLayout<sockaddr>.size
+    }
+    #endif
 }

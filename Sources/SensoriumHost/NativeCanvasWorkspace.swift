@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -559,3 +560,4 @@ final class WorkspaceContentView: NSView, NSTextViewDelegate {
     }
 
 }
+#endif

@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Foundation
 
 /// Where a line may and may not break in prose the host draws. Applied where
@@ -73,8 +75,14 @@ package enum HostTextFlow {
 
     private static func staysWhole(_ name: String, in measure: Measure?) -> Bool {
         guard let measure else { return true }
+        #if os(macOS)
         let width = NSAttributedString(string: name, attributes: measure.attributes).size().width
         return width <= measure.width
+        #else
+        // Without a text engine to measure with, a name cannot be shown to
+        // fit, so only its first two words are held together.
+        return false
+        #endif
     }
 
     /// "15 Nov 2023" and "Nov 15, 2023", the two orders a medium date takes.

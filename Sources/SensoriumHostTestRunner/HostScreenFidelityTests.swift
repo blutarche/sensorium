@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -103,7 +113,7 @@ private func makeFidelityFixture(
     // that runs after it.
     captureAvailability: HostCaptureAvailability = HostCaptureAvailability(),
     streamScaleClock: SteppedClock? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, UInt32) throws -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -127,7 +137,8 @@ private func makeFidelityFixture(
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceActivitySignal: FidelityIdleSignal(),
-        hostScreenModeController: modeController
+        hostScreenModeController: modeController,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
@@ -159,7 +170,9 @@ private func makeFidelityFixture(
         onEvent: onEvent,
         onSessionEnded: onSessionEnded,
         hostScreenMediaFactory: hostScreenMediaFactory,
-        captureAvailability: captureAvailability
+        requiresAccountableHostScreenMedia: false,
+        captureAvailability: captureAvailability,
+        lockStateReader: FakeScreenLockState(locked: false)
     )
     return (coordinator, controller, canvasMedia)
 }
@@ -393,6 +406,7 @@ func runHostScreenFidelityTests() async {
             .appendingPathComponent("sensorium-host-screen-fidelity-log-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: logURL) }
         let accountable = HostScreenAccountableMedia(
+            capturePermission: grantedScreenCapturePermission(),
             rawFactory: { _, _ in
                 let capture = FakeScalableCanvasMedia()
                 captures.append(capture)
@@ -407,7 +421,7 @@ func runHostScreenFidelityTests() async {
         let fixture = makeFidelityFixture(
             display: display,
             modeController: modes,
-            hostScreenMediaFactory: { accountable.makeMedia($0, displayID: $1) }
+            hostScreenMediaFactory: { try accountable.makeMedia($0, displayID: $1) }
         )
         await startFidelitySession(fixture)
         await fixture.coordinator.tickFidelity(atSeconds: 0)
@@ -467,7 +481,8 @@ func runHostScreenFidelityTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: FidelityIdleSignal()
+            hostScreenPresenceActivitySignal: FidelityIdleSignal(),
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
@@ -506,7 +521,9 @@ func runHostScreenFidelityTests() async {
             videoSink: session,
             workspaces: onlyOnSurfaceZero(FakeCanvasWorkspace()),
             latencyRecorder: latencyRecorder,
-            hostScreenMediaFactory: { _, _ in hostScreenMedia }
+            hostScreenMediaFactory: { _, _ in hostScreenMedia },
+            requiresAccountableHostScreenMedia: false,
+            lockStateReader: FakeScreenLockState(locked: false)
         ))
         session.start()
         // Two send intervals, so a tick has genuinely come round rather than

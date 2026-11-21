@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Foundation
 import SensoriumCore
 
@@ -88,7 +90,7 @@ public final class SharpScreenManager {
         displays: @escaping @MainActor () -> [DisplaySnapshot],
         isRuntimeAvailable: @escaping @MainActor () -> Bool,
         isCaptureResolvable: @escaping @MainActor (UInt32) async -> Bool,
-        modeSetter: any SharpScreenModeSetting = CoreGraphicsSharpScreenModeSetter(),
+        modeSetter: any SharpScreenModeSetting = PlatformSharpScreenModeSetter(),
         shutdown: CanvasShutdown? = nil,
         log: @escaping @MainActor (String) -> Void,
         readinessBoundSeconds: Double = 5,
@@ -186,6 +188,7 @@ public final class SharpScreenManager {
         }
     }
 
+#if os(macOS)
     /// Calls `displaysChanged()` on every display change AppKit reports, for
     /// as long as this manager lives. Called once by the host process that
     /// owns it; calling it again adds nothing.
@@ -203,6 +206,7 @@ public final class SharpScreenManager {
             }
         }
     }
+#endif
 
     private func endEveryLease(reason: String) {
         let ending = leases.values

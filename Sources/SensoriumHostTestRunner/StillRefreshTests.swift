@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import SensoriumCore
@@ -173,3 +174,4 @@ private func makeCapturedFrame(presentationTimeNanoseconds: Int64) -> CMSampleBu
     }
     return sampleBuffer
 }
+#endif

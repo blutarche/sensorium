@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -758,3 +759,4 @@ public final class VideoToolboxEncoder: VideoFrameEncoding, @unchecked Sendable 
         return status
     }
 }
+#endif

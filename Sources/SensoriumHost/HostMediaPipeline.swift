@@ -1,16 +1,8 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
 import SensoriumCore
-
-@available(macOS 13.0, *)
-public enum HostMediaPipelineError: Error, Equatable {
-    /// A still-screen refresh was encoded and then not taken by whatever is
-    /// behind this pipeline: the packetizer refused it, or the transport
-    /// discarded it. Reported rather than swallowed, because the alternative
-    /// is telling the person reading the host log that a picture went out.
-    case stillRefreshNotDelivered
-}
 
 /// Where a `HostMediaPipeline` gets its frames: ScreenCaptureKit in the host,
 /// or anything else that can deliver sample buffers carrying an image buffer.
@@ -749,3 +741,4 @@ private final class StillRefreshEncodeInput: @unchecked Sendable {
         self.imageBuffer = imageBuffer
     }
 }
+#endif
