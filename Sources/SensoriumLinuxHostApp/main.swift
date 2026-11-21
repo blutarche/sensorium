@@ -12,7 +12,7 @@ import SensoriumLinuxHost
 /// tailnet address, prints each pairing code and every change of state, and
 /// stops cleanly on SIGTERM or SIGINT. `--allow-screen-sharing` asks the
 /// desktop for the screen-sharing grant with its dialog when no saved grant
-/// could be restored. The host's window is not part of this build yet.
+/// could be restored. Without `--serve` it prints its usage and exits.
 ///
 /// A desktop that cannot show the live-session indicator is offered no host
 /// screen, in this mode as in any other.

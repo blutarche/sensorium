@@ -228,8 +228,8 @@ let package = Package(
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux]))
             ]
         ),
-        // The Linux host executable. Today it runs headless with `--serve`,
-        // for tests; the host window comes later.
+        // The Linux host executable: `sensorium-host --serve` runs the host
+        // headless, for tests.
         .executableTarget(
             name: "SensoriumLinuxHostApp",
             dependencies: [
