@@ -496,6 +496,7 @@ public final class HostSessionController {
     /// Where the fixed-wording host-screen input diagnostics go, when they
     /// are kept apart from `log`; `log` carries them as plain text otherwise.
     private let inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)?
+    private let additionalInputFeatures: [String]
     /// Read once per forwarded host-screen input event, only to say in the
     /// session log whether that input lands on the lock screen. The injector
     /// reads its own reader to choose where to post.
@@ -537,7 +538,8 @@ public final class HostSessionController {
         privateDesktopOffered: @escaping () -> Bool = { false },
         hostScreenLockStateReader: (any ScreenLockStateReading)? = HostPlatformDefaults.screenLockState,
         log: @escaping @MainActor (String) -> Void = { print($0) },
-        inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil
+        inputDiagnosticLog: (@MainActor (HostScreenInputLogLine) -> Void)? = nil,
+        additionalInputFeatures: [String] = []
     ) {
         self.captureAvailability = captureAvailability
         self.privateDesktopOffered = privateDesktopOffered
@@ -574,6 +576,7 @@ public final class HostSessionController {
         self.hostScreenLockStateReader = hostScreenLockStateReader
         self.log = log
         self.inputDiagnosticLog = inputDiagnosticLog
+        self.additionalInputFeatures = additionalInputFeatures
         surfaces = CanvasSurfaceSlots { _ in SurfaceState(inputInjector: inputInjector) }
     }
 
@@ -2121,7 +2124,7 @@ public final class HostSessionController {
                         armingFingerprint: admittedFingerprint
                     )
                 }
-                return .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket, inputFeatures: Self.inputFeatures)
+                return .hostScreenReady(geometry: geometry, resumeTicket: resumeTicket, inputFeatures: inputFeatures)
             }
         case let .hostScreenModeRequest(modeID):
             guard !requireAuthentication || isAuthenticated else {
@@ -2393,13 +2396,15 @@ public final class HostSessionController {
             // Settings during a long-lived host process should still
             // reach the next connection.
             hostName: Host.current().localizedName,
-            inputFeatures: Self.inputFeatures
+            inputFeatures: inputFeatures
         )
     }
 
     /// The input this host posts beyond what every host does, listed in
     /// both replies that admit a session.
-    private static let inputFeatures = [HostInputFeature.backForwardButtons]
+    private var inputFeatures: [String] {
+        [HostInputFeature.backForwardButtons] + additionalInputFeatures
+    }
 
     /// Tears down exactly `surface`, live, mid-session -- unlike `goodbye`'s
     /// own teardown loop, which always tears down every surface because a

@@ -66,6 +66,7 @@ public struct HostWindowState: Equatable, Sendable {
     /// has run on this machine.
     public var lastSessionLine: String?
     public var openAtLogin: OpenAtLogin
+    public var supportsLocalNetwork: Bool
     public var allowsLocalNetwork: Bool
 
     public init(
@@ -76,6 +77,7 @@ public struct HostWindowState: Equatable, Sendable {
         machines: [HostWindowMachine] = [],
         lastSessionLine: String? = nil,
         openAtLogin: OpenAtLogin = .on,
+        supportsLocalNetwork: Bool = true,
         allowsLocalNetwork: Bool = false
     ) {
         self.desktop = desktop
@@ -85,6 +87,7 @@ public struct HostWindowState: Equatable, Sendable {
         self.machines = machines
         self.lastSessionLine = lastSessionLine
         self.openAtLogin = openAtLogin
+        self.supportsLocalNetwork = supportsLocalNetwork
         self.allowsLocalNetwork = allowsLocalNetwork
     }
 }

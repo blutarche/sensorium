@@ -61,10 +61,13 @@ tar -xzOf "$archive" Sensorium | cmp -s - /usr/bin/Sensorium \
 
 requires="$(rpm -qR sensorium | sed 's/(.*//' | grep '^lib.*\.so' | sort -u)"
 
-# Every system library the viewer links against, derived from the modulemaps
-# themselves rather than listed here, so a new dependency cannot be added
-# without this noticing. `va` is also linked directly by CVASurfaceExport.
-linked="$(sed -n 's/^[[:space:]]*link "\(.*\)"$/\1/p' Sources/C*/module.modulemap; echo va)"
+# The viewer's modulemaps plus the library linked by CVASurfaceExport.
+linked="$(
+    for module in COpenSSL CAVCodec CWayland CEGL CXkbcommon CGLib CGtk4 CCairo; do
+        sed -n 's/^[[:space:]]*link "\(.*\)"$/\1/p' "Sources/$module/module.modulemap"
+    done
+    echo va
+)"
 for name in $(echo "$linked" | sort -u); do
     echo "$requires" | grep -q "^lib${name}\.so" \
         || fail "the package does not require lib${name}.so, which a modulemap links against"

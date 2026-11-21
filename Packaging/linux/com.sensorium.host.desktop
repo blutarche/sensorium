@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Sensorium Host
+GenericName=Remote workstation host
+Comment=Share this machine's screen over your own tailnet
+Exec=sensorium-host
+Icon=com.sensorium.host
+Terminal=false
+StartupNotify=true
+Categories=Network;RemoteAccess;
+Keywords=remote;desktop;screen;sharing;workstation;

@@ -77,7 +77,7 @@ See [macOS permissions](macos-permissions.md) for what each permission is for, a
 
 ## Linux (Fedora 44, KDE Plasma on Wayland)
 
-On Linux, Sensorium is the viewer only. The host runs on macOS.
+### Viewer
 
 1. Download `sensorium-<version>-1.fc44.x86_64.rpm` from the release page. A
    `.sha256` file is published beside it. The package is not signed, so the
@@ -103,6 +103,30 @@ out of scope.
 
 Known limitation: KWin keeps Meta+L for its own lock screen, so that one
 shortcut never reaches the host.
+
+### Host
+
+The Fedora host is available as a local build. On Fedora 44, run
+`sh Scripts/package-linux.sh --host` from a Git checkout with the build
+requirements listed in `Packaging/linux/sensorium-host.spec.in`. Open the
+`sensorium-host` RPM under `Artifacts/` in Discover and install it.
+
+1. Sign in to KDE Plasma on Wayland and join the same Tailscale network as the
+   viewer. Open **Sensorium Host** from the application menu.
+2. Click **Allow Screen Sharing** and approve access in KDE's remote
+   control dialog.
+3. Click **Show Pairing Code**, then enter the six digits in the viewer's
+   **Add a Machine** flow.
+
+Pick a physical monitor from the viewer's **Screen** menu. Each session
+shows one monitor at a time. If you granted access with an earlier
+Sensorium build, use **Update Screen Sharing…** in Sensorium Host while
+it is idle and approve access again to enable individual monitors. The
+badge on the host names the connected machine and includes a **Stop** button. Use
+**Open at login** to start the host after signing in, or **Quit Sensorium
+Host** to stop hosting. The Fedora host requires Tailscale and a graphical
+login. Lock-screen capture and input remain unverified on a physical
+Plasma desktop.
 
 ### Faster video on Fedora
 

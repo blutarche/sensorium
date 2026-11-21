@@ -55,7 +55,8 @@ The only other thing it talks to is GitHub, on macOS, to check for updates.
 
 Sensorium is two apps.
 
-- **Sensorium Host** runs on the machine you want to reach. It needs macOS.
+- **Sensorium Host** runs on the machine you want to reach. It runs on macOS,
+  with a Fedora build available from source.
 - **Sensorium** runs on the machine you sit at, on macOS or Fedora.
 
 The viewer shows the host's screen in a window and sends your keyboard,
@@ -130,7 +131,8 @@ rest.
 
 ## Requirements
 
-- **Host:** macOS 13 or later, on Apple silicon. Built and tested only on macOS 26.
+- **Host:** macOS 13 or later on Apple silicon, or Fedora 44 with KDE Plasma
+  on Wayland. The Fedora host streams one authorized monitor at a time.
 - **Viewer:** macOS 13 or later, or Fedora 44 with KDE Plasma on Wayland.
 - **Network:** both machines on the same Tailscale tailnet. The host needs
   Tailscale even when the local network setting is on.
@@ -154,9 +156,9 @@ it carries the project's update signature and the same signing certificate
 as the app already running. The host waits until no machine is connected,
 and goes back to the old version if the new one does not start.
 
-For Fedora, download the RPM from the [release page](../../releases). It
-updates through its package. [Install on Linux](docs/install.md#linux-fedora-44-kde-plasma-on-wayland)
-has the steps, including hardware video decoding.
+For Fedora, download the viewer RPM from the [release page](../../releases).
+The Fedora host is built from source as its own RPM. [Install on Linux](docs/install.md#linux-fedora-44-kde-plasma-on-wayland)
+has the steps for both.
 
 To build from source instead:
 

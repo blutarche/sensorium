@@ -4,33 +4,34 @@ import Foundation
 import SensoriumCore
 import SensoriumHost
 
-/// Builds the shared session's input injectors on the launch-time portal
-/// grant. It builds one only for a host-screen session on the granted
-/// monitor, and only while the grant is open and covers keyboard and
-/// pointer: the Linux host has no session canvas.
+/// Builds each connection's input injector on its portal grant. It builds
+/// one only for the requested monitor while that grant covers keyboard and
+/// pointer.
 @MainActor
 public final class PortalInputInjectorFactory: InputInjectingFactory {
     private let grantState: PortalGrantState
+    private let generation: UInt64?
     private let observer: PortalInputPostObserver
 
     /// `observer` sees every post, so local-activity readings can discount
     /// the host's own input.
     public init(grantState: PortalGrantState, observer: PortalInputPostObserver = PortalInputPostObserver()) {
         self.grantState = grantState
+        generation = grantState.live?.generation
         self.observer = observer
     }
 
     public var isAvailable: Bool {
-        guard let live = grantState.live else { return false }
-        return live.grantsInput && live.geometry != nil
+        guard let live = grantState.live, live.generation == generation else { return false }
+        return live.grantsInput && !live.routableMonitors.isEmpty
     }
 
     public func make(canvasDisplayID: UInt32, sessionKind: InputSessionKind) throws -> any InputInjecting {
         guard sessionKind == .hostScreen,
               let live = grantState.live,
+              live.generation == generation,
               live.grantsInput,
-              let geometry = live.geometry,
-              geometry.displayIdentity == canvasDisplayID else {
+              let geometry = live.routableMonitors.first(where: { $0.geometry.displayIdentity == canvasDisplayID })?.geometry else {
             throw HostSessionControllerError.inputInjectionUnavailable
         }
         let sink = GrantBoundInputSink(inner: live.sink, grantState: grantState, generation: live.generation)

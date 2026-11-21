@@ -461,6 +461,8 @@ public enum HostInputFeature {
     /// (`CanvasPointerButton.back` and `.forward`). A viewer sends neither
     /// to a host that does not list this.
     public static let backForwardButtons = "backForwardButtons"
+    /// The host cannot interpret the viewer's macOS system-shortcut chords.
+    public static let macOSShortcutsUnavailable = "macOSShortcutsUnavailable"
 }
 
 public enum CanvasPointerButton: String, Equatable, Sendable, Codable {

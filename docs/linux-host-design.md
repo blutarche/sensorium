@@ -1,7 +1,10 @@
 # Linux host design
 
-Status: draft. Nothing here ships until the open questions at the end are
-answered on a real machine.
+The Fedora 44 host has been built and package-tested for x86-64. A logged-in
+Plasma desktop streamed to the macOS viewer over Tailscale, and restarting
+the host in the same graphical login restored the sharing grant. The checks
+below cover additional desktop behavior before claiming support for
+unattended use across locks and fresh logins.
 
 ## Scope
 
@@ -59,8 +62,9 @@ record.
 
 The Linux host listens with OpenSSL 3.5's QUIC server API
 (`SSL_new_listener`, `SSL_accept_connection`, `SSL_accept_stream`). It
-selects only the Sensorium ALPN, sets the 30 second idle timeout itself,
-and presents a self-signed certificate of the same shape as the macOS
+selects only the Sensorium ALPN, keeps OpenSSL's default 30 second idle
+timeout, which matches the macOS host's (OpenSSL cannot set it on an
+accepted connection), and presents a self-signed certificate of the same shape as the macOS
 host's, minted with OpenSSL. Both viewers connect unchanged: the macOS
 viewer through Network.framework, the Linux viewer through
 `OpenSSLQUICConnection`. The viewer opens one bidirectional stream and
@@ -74,22 +78,23 @@ peer address, which the source address rule needs. A viewer
 whose address changes reconnects, and the resume ticket brings the
 session back the way it does after any other drop.
 
-The listener binds the tailnet address only, through the same rule as
-macOS, and the local network switch works the same way. No other
-listener is opened. Interop with both viewers is a hard gate, proven
-before anything is built on it. TCP with TLS is not a fallback.
+The listener binds the tailnet address only. The Linux host offers no
+local network switch because it cannot check the source address of a
+connection. Interop with both viewers is a hard gate.
 
 ## Capture and input: one portal session
 
 The host opens one `org.freedesktop.portal.RemoteDesktop` session. It
 calls `SelectDevices` with keyboard and pointer and `persist_mode` 2,
 which needs RemoteDesktop interface version 2 or later. It then calls
-`ScreenCast.SelectSources` on the same session for one monitor. One
-grant covers both.
+`ScreenCast.SelectSources` on the same session to request physical monitor
+streams. KDE 6.7 supplies one stream for each physical monitor when
+multiple sources are requested.
 
-**Granting.** The first grant needs the person at the host to choose a
-monitor in the system dialog. This is the Linux counterpart of granting
-Screen Recording on macOS, and it happens in the host's setup window.
+**Granting.** The person at the host approves access in KDE's remote control
+dialog. **Update Screen Sharing…** opens that dialog again for an existing
+grant. The viewer's **Screen** menu offers the monitors covered by the
+grant, and switching connects to the chosen monitor as a fresh session.
 
 **Restore tokens.** The portal may hand back a new token on every
 successful `Start`, and then the old one stops working. KDE 6.7 hands back
@@ -120,18 +125,19 @@ with the RPM Fusion `mesa-va-drivers-freeworld` driver encodes on the GPU
 (about 9 ms a frame at 2560x1440 on the reference machine); every other
 host falls back to OpenH264 on the CPU. The host never installs a driver.
 
-**Frames.** The portal hands back a PipeWire node. The host reads it with
-libpipewire. It prefers DMA-BUF frames and imports them into VA-API for
-encoding, with shared-memory frames as the fallback. The cursor arrives
-as metadata and is drawn the way the macOS host draws it.
+**Frames.** The portal hands back a PipeWire node for each granted monitor.
+The host reads the nodes with libpipewire and encodes the selected monitor
+from shared-memory frames. DMA-BUF import into VA-API is not implemented.
+The cursor arrives as metadata and is left out of the frame, as on the
+macOS host, because the viewer draws its own.
 
 **Geometry.** The advertised logical size is the stream's `size`
 property. The backing scale is the PipeWire buffer width divided by it.
 Pointer positions go to `NotifyPointerMotionAbsolute` in those logical
 coordinates, so fractional scaling maps exactly. The display identity in
 `hostScreenList` is the stream's `id` property when the portal gives
-one, and otherwise a hash of the monitor's position and size. Only the
-granted monitor is offered.
+one, and otherwise a hash of the monitor's position and size. Only granted
+monitors with a known frame size are offered.
 
 **Input.** Buttons go through `NotifyPointerButton` with evdev codes,
 scrolls through `NotifyPointerAxis` and `NotifyPointerAxisDiscrete`, and
@@ -180,10 +186,9 @@ someone has to unlock it at the machine.
 ## Host app
 
 `sensorium-host` is a GTK4 app, installed by its own RPM next to the
-viewer's. It mirrors the macOS host's window: pairing code, paired
-machines with per-device arming, the screen sharing grant, Open at login,
-Ask first and the local network switch. It uses the system font and the
-shared design tokens, as the Linux viewer does.
+viewer's. The host window shows the pairing code, paired machines with
+per-device arming and Ask first, the screen sharing grant, and Open at
+login. It uses the system font and the shared design tokens.
 
 **Indicator.** While a host-screen session is live, the host shows a
 corner pill on every output through `zwlr_layer_shell_v1`, naming the
@@ -218,12 +223,12 @@ input.
 
 ## Open questions
 
-These need a person at the reference machine, because each involves the
-portal dialog or the lock screen.
+These checks exercise the real Plasma session. The automated host and viewer
+smoke covers frame rendering, input delivery, and Stop with a synthetic
+monitor and no desktop login.
 
-1. **Silent restore.** In a nested KWin 6.7 session, a stored token
-   restores the session with no dialog. Still open: does that hold after
-   a reboot and a fresh login on the real session?
+1. **Silent restore.** A stored token restores sharing after a host restart
+   in the same graphical login. A reboot and fresh login still need checking.
 2. **Lock screen frames.** While the session is locked, does the portal
    stream show the lock screen, a frozen frame, or nothing?
 3. **Lock screen input.** Does portal input reach the lock screen, so a

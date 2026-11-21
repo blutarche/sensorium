@@ -126,7 +126,10 @@ public final class HostConnectionSessionFactory {
     /// `onPairingRequested` above: each connection's own
     /// `ClipboardSyncSession`, if it has one, is its own object, unlike
     /// the process-wide pairing ceremony every connection shares.
-    public func makeController(onClipboardSharingChanged: ((Bool) -> Void)? = nil) -> HostSessionController {
+    public func makeController(
+        additionalInputFeatures: [String] = [],
+        onClipboardSharingChanged: ((Bool) -> Void)? = nil
+    ) -> HostSessionController {
         HostSessionController(
             sessions: sessions,
             approvedPublicKeys: approvedPublicKeys,
@@ -151,7 +154,8 @@ public final class HostConnectionSessionFactory {
             privateDesktopOffered: privateDesktopOffered,
             hostScreenLockStateReader: hostScreenLockStateReader,
             log: log,
-            inputDiagnosticLog: inputDiagnosticLog
+            inputDiagnosticLog: inputDiagnosticLog,
+            additionalInputFeatures: additionalInputFeatures
         )
     }
 }

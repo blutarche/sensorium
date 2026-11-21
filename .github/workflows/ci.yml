@@ -92,6 +92,9 @@ jobs:
       - name: Linux GUI reachability
         run: sh Scripts/test-linux-gui-reachable.sh --allow-missing Scripts/linux-gui-pending.txt
 
+      - name: Isolate nested Wayland settings
+        run: bash Scripts/test-linux-headless-session.sh
+
       - name: SensoriumCoreTestRunner (release)
         run: swift run -c release SensoriumCoreTestRunner
 
@@ -121,14 +124,20 @@ jobs:
       - name: Build the package
         run: sh Scripts/package-linux.sh
 
+      - name: Build the host package
+        run: sh Scripts/package-linux.sh --host
+
       - name: Install, check and remove the package
         run: sh Scripts/test-package-linux.sh
+
+      - name: Install, check and remove the host package
+        run: sh Scripts/test-package-linux-host.sh
 
       - name: Save release package
         uses: actions/upload-artifact@v4
         with:
           name: sensorium-fedora44-x86_64
           path: |
-            Artifacts/*.rpm
-            Artifacts/*.rpm.sha256
+            Artifacts/sensorium-[0-9]*.rpm
+            Artifacts/sensorium-[0-9]*.rpm.sha256
           if-no-files-found: error

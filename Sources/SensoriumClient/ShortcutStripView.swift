@@ -225,6 +225,13 @@ public final class ShortcutStripView: NSView {
         apply()
     }
 
+    var isAvailable: Bool { model.isAvailable }
+
+    func setAvailable(_ available: Bool) {
+        model.setAvailable(available)
+        apply(animated: false)
+    }
+
     /// The pointer left the canvas altogether, or the window stopped being the
     /// key one. Neither produces the motion the strip is otherwise driven by,
     /// so without this a strip left open would stay open (unless pinned, which

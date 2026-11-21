@@ -15,8 +15,8 @@
 //
 // The macOS icons are full-bleed squares with no tile of their own: macOS 26
 // masks an icon itself, and one that arrives already rounded with a transparent
-// margin is treated as legacy artwork and set on a light plate. The Linux icon
-// keeps the rounded tile, since no desktop there masks it.
+// margin is treated as legacy artwork and set on a light plate. The Linux
+// icons keep the rounded tile, since no desktop there masks them.
 //
 // Everything here is deterministic: fixed geometry, no timestamps, no system
 // fonts, no asset files. Scripts/test-package-apps.sh depends on packaging
@@ -25,10 +25,8 @@
 // Usage: swift Scripts/make-app-icons.swift <output-directory>
 //        swift Scripts/make-app-icons.swift --linux <output-directory>
 //
-// The --linux mode writes the viewer mark alone, at the freedesktop icon
-// theme's sizes, in the hicolor layout a Linux package installs. Same
-// geometry, same renderer: there is one drawing of this mark, and a second
-// renderer would be a second drawing that drifts.
+// The --linux mode writes both marks at the freedesktop icon theme's sizes,
+// in the hicolor layout the Linux packages install.
 
 import CoreGraphics
 import Foundation
@@ -326,20 +324,19 @@ if arguments.first == "--linux" {
     guard arguments.count == 2 else {
         fail("usage: swift Scripts/make-app-icons.swift --linux <output-directory>")
     }
-    // The viewer is the only mark Linux gets: there is no Linux host.
-    guard let viewer = marks.first(where: { $0.name == "Sensorium" }) else {
-        fail("no viewer mark to draw")
-    }
     let hicolor = URL(fileURLWithPath: arguments[1]).appendingPathComponent("hicolor", isDirectory: true)
     for pixels in hicolorSizes {
         let directory = hicolor
             .appendingPathComponent("\(pixels)x\(pixels)", isDirectory: true)
             .appendingPathComponent("apps", isDirectory: true)
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let png = directory.appendingPathComponent("com.sensorium.viewer.png")
-        try? fileManager.removeItem(at: png)
-        renderPNG(viewer, pixels: pixels, fullBleed: false, to: png)
-        print(png.path)
+        for mark in marks {
+            let role = mark.name == "SensoriumHost" ? "host" : "viewer"
+            let png = directory.appendingPathComponent("com.sensorium.\(role).png")
+            try? fileManager.removeItem(at: png)
+            renderPNG(mark, pixels: pixels, fullBleed: false, to: png)
+            print(png.path)
+        }
     }
     exit(0)
 }

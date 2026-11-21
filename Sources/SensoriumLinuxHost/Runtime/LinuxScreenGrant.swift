@@ -1,24 +1,23 @@
 #if os(Linux)
 import Foundation
 
-/// One open screen-sharing grant: the monitor the person at the host chose,
-/// where its input goes, and where its pictures come from.
+/// One portal session with the physical monitors the person chose.
 public struct LinuxScreenGrant: Sendable {
     public let grant: PortalGrant
     public let input: any PortalInputSink
-    public let frameSource: any LinuxFrameSource
+    public let frameSources: [UInt32: any LinuxFrameSource]
     /// Ends the grant from the host's side. The restore token stays good.
     public let close: @Sendable () async -> Void
 
     public init(
         grant: PortalGrant,
         input: any PortalInputSink,
-        frameSource: any LinuxFrameSource,
+        frameSources: [UInt32: any LinuxFrameSource],
         close: @escaping @Sendable () async -> Void
     ) {
         self.grant = grant
         self.input = input
-        self.frameSource = frameSource
+        self.frameSources = frameSources
         self.close = close
     }
 }
@@ -49,17 +48,15 @@ public final class PortalScreenGrantOpener: LinuxScreenGrantOpening, @unchecked 
     }
 
     public func open(interactive: Bool, onClosed: @escaping @Sendable () -> Void) async throws -> LinuxScreenGrant {
+        guard interactive || tokenStore.load() != nil else { throw PortalError.grantNeeded }
         let timeouts = interactive ? PortalTimeouts(start: Self.interactiveStartTimeout) : PortalTimeouts()
         let client = PortalSessionClient(bus: bus, tokenStore: tokenStore, timeouts: timeouts)
-        let session = try await client.openSession()
-        guard let stream = session.grant.streams.first else {
-            await session.close()
-            throw PortalError.malformedResponse("the grant names no monitor")
-        }
+        let session = try await client.openSession(restore: !interactive)
         let subscription = bus.subscribe(path: session.grant.sessionHandle, interface: PortalNames.session, member: "Closed")
         Task {
             for await _ in subscription.signals {
                 subscription.cancel()
+                session.desktopDidClose()
                 onClosed()
                 return
             }
@@ -67,7 +64,9 @@ public final class PortalScreenGrantOpener: LinuxScreenGrantOpening, @unchecked 
         return LinuxScreenGrant(
             grant: session.grant,
             input: session,
-            frameSource: PipeWireFrameSource(session: session, stream: stream),
+            frameSources: Dictionary(uniqueKeysWithValues: session.grant.streams.map {
+                ($0.nodeID, PipeWireFrameSource(session: session, stream: $0))
+            }),
             close: {
                 subscription.cancel()
                 await session.close()

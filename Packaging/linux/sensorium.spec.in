@@ -1,6 +1,4 @@
-# The Fedora package for the Sensorium viewer. There is no Linux host, so
-# this builds one binary and installs it with its desktop entry, its metainfo
-# and its icons.
+# The Fedora package for the Sensorium viewer.
 #
 # @VERSION@ is replaced by Scripts/package-linux.sh, which reads the VERSION
 # file at the repository root. Nothing else generates this file.
@@ -45,7 +43,7 @@ can work on that instead.
 
 The two machines talk directly over their own Tailscale tailnet. There is no
 account, no relay, no telemetry and no command line. This package is the
-viewer; the machine being worked on runs macOS.
+viewer you use to connect to Sensorium Host.
 
 %prep
 %autosetup -n %{name}-%{version}

@@ -135,8 +135,8 @@ func testSessionRunsTheFullHandshakeInOrder() async throws {
     let sources = rig.bus.calls(named: "ScreenCast.SelectSources")[0]
     expect(sources.parameters[0] == .objectPath(sessionPath), "SelectSources names the session")
     let sourceOptions = sources.parameters[1].vardictValue ?? [:]
-    expect(sourceOptions["types"] == .uint32(1), "one monitor source type")
-    expect(sourceOptions["multiple"] == .bool(false), "a single monitor")
+    expect(sourceOptions["types"] == .uint32(1), "only the monitor source type")
+    expect(sourceOptions["multiple"] == .bool(false), "a legacy token still restores only its original source")
     expect(sourceOptions["cursor_mode"] == .uint32(4), "cursor metadata is asked for when offered")
     expect(sourceOptions["persist_mode"] == nil, "SelectSources carries no persist mode on a RemoteDesktop session")
     expect(sourceOptions["restore_token"] == nil, "SelectSources carries no restore token on a RemoteDesktop session")
@@ -223,12 +223,38 @@ func testADialogTheHostPersonDismissesIsDeclinedNotATimeout() async throws {
     let rig = try makeRig("declined", bus: bus)
     defer { try? FileManager.default.removeItem(at: rig.root) }
     do {
-        _ = try await rig.client.openSession()
+        _ = try await rig.client.openSession(restore: false)
         expect(false, "a declined grant is an error")
     } catch let error as PortalError {
         expect(error == .declined(response: 1), "the error is declined(1), got \(error)")
     }
     expect(bus.calls(named: "Session.Close").count == 1, "the session was closed")
+    expect(rig.store.load() == "old-token", "cancelling the picker preserves the previous grant token")
+}
+
+private func testUpdatingScreenSharingApprovesAndRestoresMultipleMonitors() async throws {
+    let bus = cooperativePortal(streams: [
+        .tuple([.uint32(57), .vardict(["source_type": .uint32(1), "mapping_id": .string("DP-1")])]),
+        .tuple([.uint32(58), .vardict(["source_type": .uint32(1), "mapping_id": .string("HDMI-1")])])
+    ])
+    let rig = try makeRig("choose-screens", bus: bus)
+    defer { try? FileManager.default.removeItem(at: rig.root) }
+    let session = try await rig.client.openSession(restore: false)
+    let options = bus.calls(named: "RemoteDesktop.SelectDevices")[0].parameters[1].vardictValue
+    expect(options?["restore_token"] == nil, "local reapproval opens without restoring the previous grant")
+    let freshSources = bus.calls(named: "ScreenCast.SelectSources")[0].parameters[1].vardictValue
+    expect(freshSources?["multiple"] == .bool(true), "each monitor the desktop shares can now be offered")
+    expect(session.grant.streams.map(\.nodeID) == [57, 58], "both granted nodes belong to the session")
+    expect(session.grant.streams.compactMap(\.id) == ["DP-1", "HDMI-1"], "the KDE mapping IDs identify the two monitors")
+    expect(rig.store.load() == "new-token", "the newly approved selection replaces the restore token")
+    await session.close()
+
+    let restored = try await rig.client.openSession()
+    let restoredDevices = bus.calls(named: "RemoteDesktop.SelectDevices")[1].parameters[1].vardictValue
+    expect(restoredDevices?["restore_token"] == .string("new-token"), "launch restores the locally approved grant")
+    let restoredSources = bus.calls(named: "ScreenCast.SelectSources")[1].parameters[1].vardictValue
+    expect(restoredSources?["multiple"] == .bool(true), "the multiple-monitor approval follows the rotated token")
+    expect(restored.grant.streams == session.grant.streams, "both approved sources restore")
 }
 
 func testAnOldPortalVersionIsRefusedBeforeAnythingIsCreated() async throws {
@@ -391,6 +417,7 @@ func portalSessionTests() -> [NamedTest] { [
     ("an unstorable token closes the session before any use", { try! await testAnUnstorableTokenClosesTheSessionBeforeAnyUse() }),
     ("a Start that never answers closes the session, then reports grant-needed", { try! await testAStartThatNeverAnswersClosesTheSessionThenReportsGrantNeeded() }),
     ("a dismissed dialog is declined, not a timeout", { try! await testADialogTheHostPersonDismissesIsDeclinedNotATimeout() }),
+    ("updating screen sharing approves and restores multiple monitors", { try! await testUpdatingScreenSharingApprovesAndRestoresMultipleMonitors() }),
     ("an old RemoteDesktop version is refused before anything is created", { try! await testAnOldPortalVersionIsRefusedBeforeAnythingIsCreated() }),
     ("cursor metadata is asked for only when offered", { try! await testCursorMetadataIsAskedForOnlyWhenOffered() }),
     ("a response on an older portal's handle is still heard", { try! await testAResponseOnAnOlderPortalsHandleIsStillHeard() }),

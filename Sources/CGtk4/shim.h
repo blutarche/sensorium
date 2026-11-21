@@ -23,6 +23,18 @@ static inline GtkWindow *sensorium_gtk_window(gpointer object) {
     return GTK_WINDOW(object);
 }
 
+static inline GApplication *sensorium_g_application(gpointer object) {
+    return G_APPLICATION(object);
+}
+
+static inline GtkApplication *sensorium_gtk_application_with_command_line(const char *id) {
+    return gtk_application_new(id, G_APPLICATION_HANDLES_COMMAND_LINE);
+}
+
+static inline void sensorium_g_application_add_switch(GApplication *app, const char *name, const char *description) {
+    g_application_add_main_option(app, name, 0, G_OPTION_FLAG_NONE, G_OPTION_ARG_NONE, description, NULL);
+}
+
 static inline GtkBox *sensorium_gtk_box(gpointer object) {
     return GTK_BOX(object);
 }

@@ -148,6 +148,11 @@ extension WaylandSessionWindow: SessionWindowChrome {
         refreshSessionControls()
     }
 
+    public func updateMacOSShortcutsAvailable(_ available: Bool) {
+        chrome.state.setMacOSShortcutsAvailable(available)
+        relayoutChrome()
+    }
+
     public func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool) {
         chrome.state.controls.hostScreens = displays
         chrome.state.controls.selectedScreenToken = selectedToken

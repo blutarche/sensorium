@@ -156,7 +156,9 @@ export SENSORIUM_HARNESS_SCALE="$scale"
 export SENSORIUM_HARNESS_OUTER_WAYLAND_DISPLAY="${WAYLAND_DISPLAY-}"
 inner_command="$(printf '%q' "$self") --inner"
 # A nested compositor of its own, never the one the person is looking at.
-exec env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
+config_dir=$(mktemp -d "${TMPDIR:-/tmp}/sensorium-kwin.XXXXXX") || exit 1
+trap 'rm -rf -- "$config_dir"' EXIT
+env -u WAYLAND_DISPLAY -u DISPLAY -u DBUS_SESSION_BUS_ADDRESS XDG_CONFIG_HOME="$config_dir" \
     dbus-run-session -- \
     kwin_wayland --virtual --socket "sensorium-harness-$$" --width "$width" --height "$height" --scale "$scale" \
     --no-lockscreen --exit-with-session "$inner_command"

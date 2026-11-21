@@ -205,6 +205,8 @@ nonisolated final class FakeViewerSessionWindow: ViewerSessionWindow, @unchecked
 
     func updateDisplayCount(_ count: Int) {}
     func updateIsHostScreenSession(_ isHostScreenSession: Bool) {}
+    private(set) var macOSShortcutsAvailable = true
+    func updateMacOSShortcutsAvailable(_ available: Bool) { macOSShortcutsAvailable = available }
     func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool) {}
     func updateHostScreenModes(_ modes: [HostScreenModeEntry], currentModeID: String?) {}
     func updateStartTargetPreference(_ preference: StartTarget) {}
@@ -466,6 +468,7 @@ func testViewerApplicationTests() async {
     await testViewerApplicationEnterURLSelectsWithoutDialling()
     await testViewerApplicationBareEnterURLIsTheEnterVerb()
     await testRedialAfterUnreachableFirstDialStillReachesHostScreen()
+    await testScreenMenuSwitchesToAnotherPhysicalMonitor()
     await testRowClickAfterUnreachableKeepsDiallingUntilHostAnswers()
     await testRedialAfterRequestWasSentWithoutTicketStops()
     await testRedialAfterLiveSessionDropPresentsHeldTicket()
@@ -895,7 +898,7 @@ actor UnreachableThenScriptedConnection: ClientControlConnection {
     func close() async {}
 }
 
-private func hostScreenScript() -> [SensoriumTransportPacket] {
+private func hostScreenScript(inputFeatures: [String] = []) -> [SensoriumTransportPacket] {
     let entry = HostScreenListEntry(
         opaqueToken: Data([0x0A]), label: "Built-in Display",
         logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0, isBuiltin: true,
@@ -905,7 +908,8 @@ private func hostScreenScript() -> [SensoriumTransportPacket] {
         .control(.hostScreenList(displays: [entry], canvasAvailable: false)),
         .control(.hostScreenReady(
             geometry: SessionSurfaceGeometry(logicalWidth: 1512, logicalHeight: 982, backingScale: 2.0),
-            resumeTicket: Data([0x66])
+            resumeTicket: Data([0x66]),
+            inputFeatures: inputFeatures
         ))
     ]
 }
@@ -918,7 +922,9 @@ private func testRedialAfterUnreachableFirstDialStillReachesHostScreen() async {
     let ledger = StartLedger(failingStarts: 1)
     let made = ConnectionsMade()
     let harness = ViewerApplicationHarness {
-        let c = UnreachableThenScriptedConnection(ledger: ledger, responses: hostScreenScript())
+        let c = UnreachableThenScriptedConnection(
+            ledger: ledger, responses: hostScreenScript(inputFeatures: [HostInputFeature.macOSShortcutsUnavailable])
+        )
         made.append(c)
         return c
     }
@@ -936,9 +942,58 @@ private func testRedialAfterUnreachableFirstDialStillReachesHostScreen() async {
         "the redial after an unreachable first dial asks the host for its screen -- "
             + "starts=\(ledger.value), hostScreenRequest sent=\(requested), row=\(harness.launch.attemptFailures.map(\.reason))"
     )
+    expect(
+        await harness.settle(until: { harness.windowFactory.made.first?.macOSShortcutsAvailable == false }),
+        "the live host's input features reach the window after reconnecting"
+    )
     harness.launch.onCloseRequested?()
     _ = await harness.settle(until: { harness.eventLoop.stopCount == 1 })
     print("PASS: redial after unreachable first dial")
+}
+
+@MainActor
+private func testScreenMenuSwitchesToAnotherPhysicalMonitor() async {
+    let ledger = StartLedger(failingStarts: 0)
+    let made = ConnectionsMade()
+    let harness = ViewerApplicationHarness {
+        let generation = UInt8(truncatingIfNeeded: made.all.count + 1)
+        let screens = [UInt8(1), 2].map { index in
+            HostScreenListEntry(
+                opaqueToken: Data([generation, index]), label: "Monitor \(index)",
+                logicalWidth: 1920, logicalHeight: 1080, backingScale: 1, isBuiltin: false,
+                displayIdentity: "00000000-0000000\(index)"
+            )
+        }
+        let connection = UnreachableThenScriptedConnection(ledger: ledger, responses: [
+            .control(.hostScreenList(displays: screens, canvasAvailable: false)),
+            .control(.hostScreenReady(
+                geometry: SessionSurfaceGeometry(logicalWidth: 1920, logicalHeight: 1080, backingScale: 1),
+                resumeTicket: Data([generation])
+            ))
+        ])
+        made.append(connection)
+        return connection
+    }
+    defer { harness.cleanUp() }
+    let machine = savedTestMachine(hostPublicKey: Data([7]))
+    harness.store.save(machine)
+    await harness.viewer.run(arguments: [])
+    expect(await harness.settle(until: { harness.launch.showCount > 0 }), "the launch window is shown")
+    harness.launch.onConnect?(machine)
+    expect(await harness.settle(until: { !harness.windowFactory.made.isEmpty }), "the session window is built")
+    let window = harness.windowFactory.made[0]
+    await harness.reportFirstDecodedFrame(in: window)
+    expect(await harness.settle(until: { window.showCount > 0 }), "the first screen is live")
+    expect(window.macOSShortcutsAvailable, "an older host keeps its default shortcuts")
+    window.onSelectRealScreen?(Data([1, 2]))
+    expect(await harness.settle(until: {
+        guard made.all.count == 2, let second = made.all.last else { return false }
+        return await second.sentMessages.contains(.hostScreenRequest(token: Data([2, 2]), resumeTicket: nil))
+    }), "the user's switch dials with the target's fresh token and no previous screen's resume ticket")
+    expect(harness.windowFactory.made.count == 1, "switching reuses the viewer window")
+    window.onCloseRequested?()
+    expect(await harness.settle(until: { harness.eventLoop.stopCount == 1 }), "closing ends the viewer")
+    print("PASS: Screen menu switches the physical monitor using the new connection's token")
 }
 
 /// The row the stop leaves behind. Each click is the person asking; while

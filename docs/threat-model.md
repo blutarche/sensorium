@@ -67,6 +67,11 @@ Each app keeps its key in a file under `~/Library/Application Support/Sensorium`
 
 On Linux the viewer keeps the same files under `~/.local/share/sensorium`, or under `$XDG_DATA_HOME/sensorium` where that variable is set. Each file is owner-read-and-write only, inside a directory only its owner may enter. There is no keyring involved.
 
+The Linux host stores its screen sharing restore token under
+`$XDG_DATA_HOME/sensorium-host` (by default `~/.local/share/sensorium-host`).
+The token is a bearer grant. A process running as the same user can read
+it and restore screen capture and input without a new permission dialog.
+
 ## What is not defended
 
 - **A compromised viewer machine.** It holds the paired key.

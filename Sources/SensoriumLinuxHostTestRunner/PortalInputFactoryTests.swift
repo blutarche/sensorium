@@ -27,17 +27,24 @@ func liveGrant(
 @MainActor
 private func testTheFactoryIsAvailableOnlyWhileTheGrantIsLiveWithKeyboardAndPointer() async {
     let state = PortalGrantState()
-    let factory = PortalInputInjectorFactory(grantState: state)
-    expect(!factory.isAvailable, "no grant yet, no injector")
+    expect(!PortalInputInjectorFactory(grantState: state).isAvailable, "no grant yet, no injector")
 
     state.install(grant: liveGrant(devices: [.pointer]), sink: RecordingSink())
-    expect(!factory.isAvailable, "a grant without the keyboard cannot type a password, so input is off")
+    expect(!PortalInputInjectorFactory(grantState: state).isAvailable, "a grant without the keyboard cannot type a password, so input is off")
 
     state.install(grant: liveGrant(), sink: RecordingSink())
+    let factory = PortalInputInjectorFactory(grantState: state)
     expect(factory.isAvailable, "a live grant with keyboard and pointer builds injectors")
 
     state.end()
     expect(!factory.isAvailable, "an ended portal session builds none")
+    state.install(grant: liveGrant(), sink: RecordingSink())
+    expect(!factory.isAvailable, "the previous connection gets no injector even if the same monitor is granted again")
+    let identity = PortalCaptureGeometry(stream: grantedMonitor)!.displayIdentity
+    do {
+        _ = try factory.make(canvasDisplayID: identity, sessionKind: .hostScreen)
+        expect(false, "trying to rebuild an input injector cannot join the new grant")
+    } catch {}
 }
 
 @MainActor

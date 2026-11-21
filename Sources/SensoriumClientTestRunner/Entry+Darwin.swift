@@ -43,6 +43,7 @@ func runDarwinClientTests() async {
     testViewerApplicationDelegateTerminateTests()
     testShortcutStripTests()
     testShortcutStripVisibilityTests()
+    testShortcutStripHostAvailability()
     testShortcutStripPinTests()
     testShortcutStripPinSurvivesReconnectTests()
     testShortcutStripHandleTests()

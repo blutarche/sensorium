@@ -8,8 +8,7 @@ public struct PortalStream: Equatable, Sendable {
     /// The PipeWire node to read frames from and to name in absolute pointer
     /// motion.
     public var nodeID: UInt32
-    /// The portal's opaque identifier for this stream. It persists across
-    /// restored sessions.
+    /// The portal's stream identifier, or its mapping ID when provided instead.
     public var id: String?
     /// The monitor's position in compositor coordinates.
     public var position: PortalPoint?

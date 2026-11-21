@@ -397,7 +397,7 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
         // wire. An Escape the strip does not take is passed on untouched, since
         // it is then an ordinary keystroke for the machine being worked on.
         shortcutStripKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window === self.window else { return event }
+            guard let self, event.window === self.window, self.shortcutStrip.isAvailable else { return event }
             let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             let toggle = SystemShortcutCatalog.shortcutStripToggle
             if CanvasModifierFlags(appKitFlags: modifiers) == toggle.modifiers,
@@ -836,6 +836,10 @@ public final class ClientCanvasWindowController: @MainActor SessionCanvasWindow,
     /// exists, and read by `displayCountMenuState` above.
     public func updateIsHostScreenSession(_ isHostScreenSession: Bool) {
         cachedIsHostScreenSession = isHostScreenSession
+    }
+
+    public func updateMacOSShortcutsAvailable(_ available: Bool) {
+        shortcutStrip.setAvailable(available)
     }
 
     /// The Displays menu's own action. Forwarded rather than acted on here:

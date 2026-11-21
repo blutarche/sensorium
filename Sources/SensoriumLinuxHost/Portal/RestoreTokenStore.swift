@@ -37,26 +37,35 @@ public struct RestoreTokenStore: Sendable {
         return base.appendingPathComponent("sensorium-host", isDirectory: true)
     }
 
-    private struct Record: Codable {
-        var restoreToken: String
+    struct Record: Codable {
+        let restoreToken: String
+        let allowsMultipleMonitors: Bool?
     }
 
     /// The saved token, or nil when there is none, the file cannot be read,
     /// or the token in it is empty. A bad file must not stop a host from
     /// asking for a fresh grant.
     public func load() -> String? {
+        loadRecord()?.restoreToken
+    }
+
+    func loadRecord() -> Record? {
         OwnerOnlyFileWrite.removeStalePartialFiles(for: fileURL)
         guard let data = try? Data(contentsOf: fileURL),
               let record = try? JSONDecoder().decode(Record.self, from: data),
               !record.restoreToken.isEmpty else {
             return nil
         }
-        return record.restoreToken
+        return record
     }
 
     /// Replaces the saved token atomically with an owner-only file.
     public func save(_ token: String) throws {
-        let data = try JSONEncoder().encode(Record(restoreToken: token))
+        try save(token, allowsMultipleMonitors: nil)
+    }
+
+    func save(_ token: String, allowsMultipleMonitors: Bool?) throws {
+        let data = try JSONEncoder().encode(Record(restoreToken: token, allowsMultipleMonitors: allowsMultipleMonitors))
         try OwnerOnlyFileWrite.write(data, to: fileURL)
     }
 

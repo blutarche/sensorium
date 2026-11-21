@@ -33,6 +33,7 @@ enum HostWindowStatusTests {
         expect(presentation.card.detail.isEmpty, "a waiting host has no detail line")
         expect(!presentation.showsStop, "nobody is connected, so there is nothing to stop")
         expect(presentation.grantButtonTitle == nil, "an allowed host offers no grant button")
+        expect(presentation.showsUpdateScreenSharing, "the host can refresh permission for its monitors while it is idle")
     }
 
     static func testALiveSessionNamesTheDeviceAndShowsStop() async {
@@ -44,6 +45,7 @@ enum HostWindowStatusTests {
             "the detail says it is this machine's own screen"
         )
         expect(presentation.showsStop, "a live session offers Stop")
+        expect(!presentation.showsUpdateScreenSharing, "the sharing window hides the permission update while a viewer is connected")
     }
 
     static func testAPairingInProgressNamesTheDevice() async {

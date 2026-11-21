@@ -33,6 +33,7 @@ public struct ShortcutStripModel: Equatable, Sendable {
     public static let hideDelaySeconds: Double = 1
 
     public private(set) var visibility: ShortcutStripVisibility = .hidden
+    public private(set) var isAvailable = true
     private var phase: ViewerSessionPhase
     private var isOverHandle = false
     private var isOverStrip = false
@@ -68,11 +69,21 @@ public struct ShortcutStripModel: Equatable, Sendable {
         visibility != .hidden
     }
 
+    public mutating func setAvailable(_ available: Bool) {
+        guard available != isAvailable else { return }
+        isAvailable = available
+        isOverHandle = false
+        isOverStrip = false
+        isHoverSuppressed = false
+        hideNow()
+        if available && isPinned { open() }
+    }
+
     /// Whether there is a session to send shortcuts to, and so a handle spot
     /// at the top of the picture. The spot stays the pointer's way in whether
     /// or not the handle is drawn on it.
     public var isHandleVisible: Bool {
-        phase == .live
+        isAvailable && phase == .live
     }
 
     /// Whether the handle pill itself draws. It is how a closed strip is
@@ -117,7 +128,7 @@ public struct ShortcutStripModel: Equatable, Sendable {
     /// during that second brings it back, rather than closing what is already
     /// closing and leaving the ask with nothing to show for it.
     private mutating func toggle() {
-        guard phase == .live else { return }
+        guard isHandleVisible else { return }
         switch visibility {
         case .hidden, .hiding:
             open()
@@ -198,12 +209,13 @@ public struct ShortcutStripModel: Equatable, Sendable {
     /// the pointer has already left starts the ordinary hide at once rather
     /// than waiting for a motion event that may never come.
     public mutating func togglePinRequested(now: TimeInterval) {
+        guard isAvailable else { return }
         isPinned.toggle()
         pointerEngagementChanged(now: now)
     }
 
     private mutating func pointerEngagementChanged(now: TimeInterval) {
-        guard phase == .live else { return }
+        guard isHandleVisible else { return }
         if isOverHandle || isOverStrip {
             switch visibility {
             case .hidden:

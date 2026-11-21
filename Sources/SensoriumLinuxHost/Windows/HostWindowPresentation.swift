@@ -108,12 +108,14 @@ public struct HostWindowPresentation: Equatable, Sendable {
     /// The title of the button that starts the screen sharing grant, or `nil`
     /// when the grant is in place.
     public let grantButtonTitle: String?
+    public let showsUpdateScreenSharing: Bool
 
     public init(_ state: HostWindowState, now: Date) {
         let isConnected: Bool
         if case .sharing = state.status { isConnected = true } else { isConnected = false }
         showsStop = isConnected && state.desktop == .supported
         grantButtonTitle = state.grant == .needed && state.desktop == .supported ? HostWindowCopy.grantButton : nil
+        showsUpdateScreenSharing = !isConnected && state.grant == .allowed && state.desktop == .supported
         card = Self.card(for: state, isConnected: isConnected, now: now)
         pairing = Self.pairing(
             for: state, canReveal: Self.canShowCode(state), filled: !showsStop && grantButtonTitle == nil, now: now

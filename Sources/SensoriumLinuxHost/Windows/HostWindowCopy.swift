@@ -49,7 +49,10 @@ public enum HostWindowCopy {
     public static let grantEyebrow = "SCREEN SHARING NEEDED"
     public static let grantHeadline = "Screen sharing needs to be allowed again."
     public static let grantDetail = "No machine can see a screen until you allow screen sharing for Sensorium Host."
+        + " A paired machine can choose among the screens your desktop shares."
     public static let grantButton = "Allow Screen Sharing"
+    public static let updateScreenSharingButton = "Update Screen Sharing…"
+    public static let updateScreenSharingHelp = "Approve sharing all screens connected to this desktop."
 
     // MARK: Desktop that cannot offer the host screen
 

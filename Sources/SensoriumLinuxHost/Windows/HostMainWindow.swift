@@ -20,6 +20,7 @@ public struct HostMainWindowActions {
     public var remove: @MainActor (_ machineID: String) -> Void = { _ in }
     public var setOpenAtLogin: @MainActor (_ isOn: Bool) -> Void = { _ in }
     public var setAllowsLocalNetwork: @MainActor (_ isOn: Bool) -> Void = { _ in }
+    public var quit: (@MainActor () -> Void)?
 
     public init() {}
 }
@@ -138,11 +139,19 @@ public final class HostMainWindow {
             items.append((codeCard(pairing, code: code), Space.sm))
             items.append((outlinedButton(pairing.hideButtonTitle, actions.hidePairingCode), lg))
         }
+        if presentation.showsUpdateScreenSharing {
+            let button = outlinedButton(HostWindowCopy.updateScreenSharingButton, actions.allowScreenSharing)
+            gtk_widget_set_tooltip_text(sensorium_gtk_widget(button), HostWindowCopy.updateScreenSharingHelp)
+            items.append((button, lg))
+        }
         if !presentation.machines.isHidden {
             items.append((machinesSection(presentation.machines), lg))
         }
         if presentation.showsSwitches {
             appendSwitches(presentation, to: &items)
+        }
+        if let quit = actions.quit {
+            items.append((outlinedButton("Quit Sensorium Host", quit), lg))
         }
 
         for (index, item) in items.enumerated() {
@@ -164,6 +173,7 @@ public final class HostMainWindow {
         if let note = login.note {
             items.append((HostWidgets.label(note, classes: [HostWindowStyle.Class.detail]), Space.lg))
         }
+        guard state.supportsLocalNetwork else { return }
         let network = presentation.localNetwork
         let networkSwitch = HostControls.checkbox(
             title: network.title, isOn: network.isOn, isEnabled: true, appearance: appearance,

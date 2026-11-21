@@ -1,0 +1,74 @@
+# The Fedora package for Sensorium Host.
+
+Name:           sensorium-host
+Version:        @VERSION@
+Release:        1%{?dist}
+Summary:        Share this machine over your own tailnet
+
+License:        GPL-3.0-only
+URL:            https://github.com/blutarche/sensorium
+Source0:        sensorium-%{version}.tar.gz
+
+BuildRequires:  swift-lang
+BuildRequires:  pkgconf-pkg-config
+BuildRequires:  cairo-devel
+BuildRequires:  ffmpeg-free-devel
+BuildRequires:  glib2-devel
+BuildRequires:  gtk4-devel
+BuildRequires:  libva-devel
+BuildRequires:  openssl-devel >= 3.5
+BuildRequires:  pango-devel
+BuildRequires:  pipewire-devel
+BuildRequires:  wayland-devel
+BuildRequires:  desktop-file-utils
+BuildRequires:  appstream
+
+# The portal backend and PipeWire server are used across D-Bus and a socket,
+# so the shared library dependency generator does not find them.
+Requires:       xdg-desktop-portal-kde
+Requires:       pipewire
+Recommends:     mesa-va-drivers-freeworld
+
+%description
+Sensorium Host shares an existing screen of this machine with the Sensorium
+viewer on your other machine. It runs in KDE Plasma on Wayland. The two
+machines pair with a six-digit code and talk directly over your own Tailscale
+tailnet.
+
+%prep
+%autosetup -n sensorium-%{version}
+
+%build
+# SwiftPM's C targets require Clang's module-map flags.
+unset CC CXX
+swift build -c release --product sensorium-host
+
+%install
+install -D -p -m 0755 .build/release/sensorium-host %{buildroot}%{_bindir}/sensorium-host
+install -D -p -m 0644 Packaging/linux/com.sensorium.host.desktop \
+    %{buildroot}%{_datadir}/applications/com.sensorium.host.desktop
+
+release_date=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%%s)}" +%%F)
+mkdir -p %{buildroot}%{_metainfodir}
+sed -e "s/@VERSION@/%{version}/" -e "s/@RELEASE_DATE@/${release_date}/" \
+    Packaging/linux/com.sensorium.host.metainfo.xml \
+    > %{buildroot}%{_metainfodir}/com.sensorium.host.metainfo.xml
+chmod 0644 %{buildroot}%{_metainfodir}/com.sensorium.host.metainfo.xml
+
+for size in 16 22 24 32 48 64 128 256 512; do
+    install -D -p -m 0644 \
+        Packaging/linux/icons/hicolor/${size}x${size}/apps/com.sensorium.host.png \
+        %{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/com.sensorium.host.png
+done
+
+%check
+desktop-file-validate %{buildroot}%{_datadir}/applications/com.sensorium.host.desktop
+appstreamcli validate --no-net %{buildroot}%{_metainfodir}/com.sensorium.host.metainfo.xml
+
+%files
+%license LICENSE
+%doc README.md CHANGELOG.md
+%{_bindir}/sensorium-host
+%{_datadir}/applications/com.sensorium.host.desktop
+%{_metainfodir}/com.sensorium.host.metainfo.xml
+%{_datadir}/icons/hicolor/*/apps/com.sensorium.host.png

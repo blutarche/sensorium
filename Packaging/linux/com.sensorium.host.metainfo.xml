@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.sensorium.host</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Sensorium Host</name>
+  <summary>Share this machine over your own tailnet</summary>
+  <developer id="com.sensorium">
+    <name>blutarche</name>
+  </developer>
+  <description>
+    <p>
+      Run Sensorium Host in a KDE Plasma Wayland session on the machine you
+      want to reach. Allow screen sharing and show a six-digit pairing code
+      to connect from the Sensorium viewer on your other machine.
+    </p>
+    <p>
+      You can turn off screen sharing for any paired machine. A visible
+      indicator names the connected machine and lets you end the session.
+      The two machines talk directly over their own Tailscale tailnet.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.sensorium.host.desktop</launchable>
+  <url type="homepage">https://github.com/blutarche/sensorium</url>
+  <url type="bugtracker">https://github.com/blutarche/sensorium/issues</url>
+  <provides>
+    <binary>sensorium-host</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@RELEASE_DATE@"/>
+  </releases>
+</component>

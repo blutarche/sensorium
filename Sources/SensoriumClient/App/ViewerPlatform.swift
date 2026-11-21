@@ -62,6 +62,7 @@ public protocol SessionWindowChrome: ShortcutForwardingTarget {
     func apply(status: ViewerSessionStatus)
     func updateDisplayCount(_ count: Int)
     func updateIsHostScreenSession(_ isHostScreenSession: Bool)
+    func updateMacOSShortcutsAvailable(_ available: Bool)
     func updateScreenMenu(displays: [HostScreenListEntry], selectedToken: Data?, canvasAvailable: Bool)
     func updateHostScreenModes(_ modes: [HostScreenModeEntry], currentModeID: String?)
     func updateStartTargetPreference(_ preference: StartTarget)
@@ -79,6 +80,10 @@ public protocol SessionWindowChrome: ShortcutForwardingTarget {
     var onSelectHostScreenMode: ((String) -> Void)? { get set }
     var onSelectClipboardSharing: ((Bool) -> Void)? { get set }
     var onSelectStartTarget: ((StartTarget) -> Void)? { get set }
+}
+
+extension SessionWindowChrome {
+    public func updateMacOSShortcutsAvailable(_ available: Bool) {}
 }
 
 /// One session window, whole: the media path and the chrome around it.

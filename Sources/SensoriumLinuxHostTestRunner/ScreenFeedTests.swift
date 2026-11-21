@@ -78,8 +78,11 @@ private final class Ticker: @unchecked Sendable {
 }
 
 private func liveFeed(_ source: ScriptedFrameSource, grantState: PortalGrantState, clock: Ticker = Ticker()) async -> LinuxScreenFeed {
-    grantState.install(grant: liveGrant(), sink: RecordingSink())
-    let feed = LinuxScreenFeed(source: source, grantState: grantState, nowNanoseconds: { clock.next() })
+    let generation = grantState.install(grant: liveGrant(), sink: RecordingSink())
+    let feed = LinuxScreenFeed(
+        source: source, grantState: grantState, streamNodeID: grantedMonitor.nodeID,
+        generation: generation, nowNanoseconds: { clock.next() }
+    )
     do {
         try await feed.start()
     } catch {
@@ -121,7 +124,7 @@ private func testFramesRecordTheirSizeAndOnlyPicturesAreDelivered() async {
     expect(log.frames.isEmpty, "a cursor-only update carries no picture and is not a frame")
     source.push(flatCapturedFrame(width: 3840, height: 2160, padding: 64))
     expect(log.frames.count == 1, "a picture is a frame")
-    let size = grantState.live?.frameSize
+    let size = grantState.live?.routableMonitors.first?.monitor.frameSize
     expect(size?.width == 3840 && size?.height == 2160, "the frame's size is recorded for the display inventory")
     subscription.cancel()
     feed.stop()
@@ -145,9 +148,40 @@ private func testStoppingTheFeedStopsTheSourceAndTellsEverySubscriber() async {
     expect(late.frames.isEmpty, "a stopped feed replays no frame")
 }
 
+private func testAFailedFeedMakesOnlyItsOwnMonitorUnavailable() async throws {
+    let state = PortalGrantState()
+    let inventory = PortalDisplayInventory(grantState: state)
+    let secondMonitor = PortalStream(
+        nodeID: 59, id: "monitor-b", position: PortalPoint(x: 1920, y: 0), size: PortalSize(width: 1280, height: 720)
+    )
+    let generation = state.install(grant: liveGrant(streams: [grantedMonitor, secondMonitor]), sink: RecordingSink())
+    let first = ScriptedFrameSource()
+    let second = ScriptedFrameSource()
+    let firstFeed = LinuxScreenFeed(source: first, grantState: state, streamNodeID: grantedMonitor.nodeID, generation: generation)
+    let secondFeed = LinuxScreenFeed(source: second, grantState: state, streamNodeID: secondMonitor.nodeID, generation: generation)
+    defer {
+        firstFeed.stop()
+        secondFeed.stop()
+    }
+    try await firstFeed.start()
+    try await secondFeed.start()
+    first.push(flatCapturedFrame(width: 1920, height: 1080))
+    second.push(flatCapturedFrame(width: 1280, height: 720))
+    expect(inventory.displays().count == 2, "both monitors are initially ready")
+    second.report(.failed("the monitor disconnected"))
+    second.report(.streaming)
+    second.push(flatCapturedFrame(width: 1280, height: 720))
+    expect(inventory.displays().map(\.modePixelWidth) == [1920], "only the failed monitor is removed from new offers")
+    let log = FeedLog()
+    let subscription = secondFeed.subscribe(onFrame: log.frame, onState: log.state)
+    expect(log.frames.isEmpty && log.states == [.failed("the monitor disconnected")], "new subscribers receive failure without stale pixels")
+    subscription.cancel()
+}
+
 func screenFeedTests() -> [NamedTest] { [
     ("a new feed subscriber gets the latest frame again, stamped now", testANewSubscriberGetsTheLatestFrameAgainStampedNow),
     ("feed frames record their size and only pictures are delivered", testFramesRecordTheirSizeAndOnlyPicturesAreDelivered),
-    ("stopping the feed stops the source and tells every subscriber", testStoppingTheFeedStopsTheSourceAndTellsEverySubscriber)
+    ("stopping the feed stops the source and tells every subscriber", testStoppingTheFeedStopsTheSourceAndTellsEverySubscriber),
+    ("a failed feed makes only its own monitor unavailable", { try! await testAFailedFeedMakesOnlyItsOwnMonitorUnavailable() })
 ] }
 #endif

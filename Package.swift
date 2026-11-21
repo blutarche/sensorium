@@ -234,6 +234,7 @@ let package = Package(
             name: "SensoriumLinuxHostApp",
             dependencies: [
                 "SensoriumLinuxHost",
+                .target(name: "CGtk4", condition: .when(platforms: [.linux])),
                 .target(name: "CGLib", condition: .when(platforms: [.linux])),
                 .target(name: "CGLibDispatchBridge", condition: .when(platforms: [.linux]))
             ]

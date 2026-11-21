@@ -1,9 +1,8 @@
-# Viewer icons, hicolor layout
+# Sensorium app icons, hicolor layout
 
-The PNGs under `hicolor/` are generated, never edited. They are the viewer
-mark from `Scripts/make-app-icons.swift`, drawn at each size rather than
-downsampled from one, and they are committed because the renderer is
-CoreGraphics and only runs on macOS.
+`Scripts/make-app-icons.swift` renders the viewer and host marks under
+`hicolor/` at each icon size. The PNGs are checked in so Linux can package
+them without running the CoreGraphics renderer on macOS.
 
 Regenerate them, from the repository root, on macOS:
 

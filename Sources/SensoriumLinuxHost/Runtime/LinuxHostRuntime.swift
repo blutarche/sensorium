@@ -96,25 +96,21 @@ public final class LinuxHostRuntime {
     private let sessionLog: HostScreenSessionLogStore
     private let liveSessions = HostScreenLiveSessionRegistry()
     private let connections = HostDeviceConnectionRegistry()
-    private let resumeTickets = HostScreenResumeTicketStore()
+    private var resumeTickets = HostScreenResumeTicketStore()
     private let unlockThrottle = HostScreenUnlockThrottle()
     private let ownActivity: MutableHostInjectedHIDActivity
     private let activitySignals: HostScreenActivitySignals
-    /// This runtime's own record of a capture that could not be rebuilt, so
-    /// one dead capture never outlasts the grant it came from in another
-    /// runtime of the same process.
-    private let captureAvailability = HostCaptureAvailability()
     private lazy var presenceGate = HostScreenPresenceGate(prompting: AskFirstPrompting(ask: platform.askFirst))
 
     private var pairing: HostPairingService?
-    private var sessionFactory: HostConnectionSessionFactory?
     private var identity: HostTLSIdentity?
     private var server: OpenSSLQUICServer?
     private var acceptTask: Task<Void, Never>?
     private var listenRetryTask: Task<Void, Never>?
-    private var openGrant: LinuxScreenGrant?
-    private var feed: LinuxScreenFeed?
-    private var grantGeneration = 0
+    private var openGrant: (request: UInt64, session: LinuxScreenGrant)?
+    private var feeds: [UInt32: LinuxScreenFeed] = [:]
+    private var grantRequest: UInt64 = 0
+    private var pendingGrant: UInt64?
     private var isOpeningGrant = false
     private var indicatorProblem: IndicatorError?
     private var liveConnections: [ObjectIdentifier: LiveConnection] = [:]
@@ -180,11 +176,12 @@ public final class LinuxHostRuntime {
         guard let identity = loadIdentities() else { return }
         self.identity = identity.tls
         armingStore.armEveryPairedMachine(approvedStore: approvedStore, now: Date())
-        makePairingAndSessions(hostIdentity: identity.device, tls: identity.tls)
+        makePairing(hostIdentity: identity.device, tls: identity.tls)
         grantState.setChangeHandler { [weak self] in
             Task { @MainActor in self?.refreshState() }
         }
         let sessionAge = await platform.sessionAge()
+        guard !isStopped else { return }
         let locked = LinuxLockAtLaunch.apply(
             lockState: platform.lockState,
             activity: platform.localActivity,
@@ -203,6 +200,7 @@ public final class LinuxHostRuntime {
     public func stop() async {
         guard !isStopped else { return }
         isStopped = true
+        pendingGrant = nil
         listenRetryTask?.cancel()
         server?.stop()
         server = nil
@@ -300,62 +298,88 @@ public final class LinuxHostRuntime {
     }
 
     private func openScreenGrant(interactive: Bool) async {
-        guard !isOpeningGrant, !isStopped else { return }
+        guard !isOpeningGrant, !isStopped, liveHostScreen == nil else { return }
         isOpeningGrant = true
-        defer { isOpeningGrant = false }
-        await closeScreenGrant()
-        grantGeneration += 1
-        let generation = grantGeneration
+        defer {
+            isOpeningGrant = false
+            pendingGrant = nil
+        }
+        grantRequest += 1
+        let request = grantRequest
+        pendingGrant = request
         let opened: LinuxScreenGrant
         do {
             opened = try await platform.grantOpener.open(interactive: interactive, onClosed: { [weak self] in
-                Task { @MainActor in await self?.grantEndedByDesktop(generation: generation) }
+                Task { @MainActor in await self?.grantEndedByDesktop(request: request) }
             })
         } catch {
             log("Sensorium host: screen sharing is not allowed: \(error)")
-            state.grant = .needed
             return
         }
-        grantState.install(grant: opened.grant, sink: opened.input)
-        let feed = LinuxScreenFeed(source: opened.frameSource, grantState: grantState)
-        do {
-            try await feed.start()
-        } catch {
-            log("Sensorium host: the screen could not be captured: \(error)")
-            grantState.end()
+        guard pendingGrant == request else {
             await opened.close()
-            state.grant = .needed
             return
         }
-        openGrant = opened
-        self.feed = feed
-        state.grant = .allowed
+
+        // Keep the old permission during the picker so cancelling changes nothing.
+        await closeScreenGrant()
+        guard pendingGrant == request else {
+            await opened.close()
+            return
+        }
+        openGrant = (request, opened)
+        let generation = grantState.install(grant: opened.grant, sink: opened.input)
+        for stream in opened.grant.streams {
+            guard openGrant?.request == request else { return }
+            guard let source = opened.frameSources[stream.nodeID] else { continue }
+            let feed = LinuxScreenFeed(
+                source: source, grantState: grantState, streamNodeID: stream.nodeID, generation: generation
+            )
+            feeds[stream.nodeID] = feed
+            do {
+                try await feed.start()
+            } catch {
+                guard openGrant?.request == request else { return }
+                feed.stop()
+                feeds.removeValue(forKey: stream.nodeID)
+                grantState.failStream(nodeID: stream.nodeID, generation: generation)
+                log("Sensorium host: the screen could not be captured: \(error)")
+            }
+        }
+        guard openGrant?.request == request else { return }
+        if feeds.isEmpty {
+            await closeScreenGrant()
+        }
         refreshState()
     }
 
-    private func grantEndedByDesktop(generation: Int) async {
-        guard generation == grantGeneration else { return }
+    private func grantEndedByDesktop(request: UInt64) async {
+        if pendingGrant == request { pendingGrant = nil }
+        guard openGrant?.request == request else { return }
         log("Sensorium host: the desktop ended screen sharing")
         await closeScreenGrant()
     }
 
     private func closeScreenGrant() async {
-        let feed = self.feed
+        let feeds = self.feeds
         let opened = openGrant
-        self.feed = nil
+        self.feeds = [:]
         openGrant = nil
         grantState.end()
-        // A session streaming from the feed is told it failed, and ends.
-        feed?.stop()
-        await opened?.close()
-        state.grant = .needed
+        if opened != nil {
+            resumeTickets = HostScreenResumeTicketStore()
+        }
+        for feed in feeds.values {
+            feed.stop()
+        }
+        await opened?.session.close()
         refreshState()
     }
 
     // MARK: - Pairing and sessions
 
-    private func makePairingAndSessions(hostIdentity: DeviceIdentity, tls: HostTLSIdentity) {
-        let pairing = HostPairingService(
+    private func makePairing(hostIdentity: DeviceIdentity, tls: HostTLSIdentity) {
+        pairing = HostPairingService(
             hostIdentity: hostIdentity,
             approvedStore: approvedStore,
             tlsCertificateHash: tls.certificateHash,
@@ -363,9 +387,13 @@ public final class LinuxHostRuntime {
                 MainActor.assumeIsolated { self?.deviceApproved(approval) }
             }
         )
-        self.pairing = pairing
+    }
+
+    private func makeSessionFactory(
+        pairing: HostPairingService, tls: HostTLSIdentity, generation: UInt64?
+    ) -> HostConnectionSessionFactory {
         let grantState = grantState
-        sessionFactory = HostConnectionSessionFactory(
+        return HostConnectionSessionFactory(
             sessions: CanvasSurfaceSlots { _ in VirtualDisplaySession(adapter: NoCanvasDisplayAdapter()) },
             requireAuthentication: true,
             inputInjectorFactory: PortalInputInjectorFactory(
@@ -380,7 +408,10 @@ public final class LinuxHostRuntime {
             keyConfinement: .unconfined,
             hostCertificateHash: tls.certificateHash,
             hostScreenArmingProvider: { [armingStore] in armingStore.load() },
-            hostScreenCurrentDisplaysProvider: { [weak self] in self?.offeredDisplays() ?? [] },
+            hostScreenCurrentDisplaysProvider: { [weak self] in
+                guard let generation, grantState.isCurrent(generation) else { return [] }
+                return self?.offeredDisplays() ?? []
+            },
             hostScreenResumeTicketStore: resumeTickets,
             hostScreenUnlockThrottle: unlockThrottle,
             hostScreenLiveSessionRegistry: liveSessions,
@@ -393,20 +424,22 @@ public final class LinuxHostRuntime {
         )
     }
 
-    /// The monitor a viewer may ask for: the granted one, once its first
-    /// frame says its scale, and only where the indicator can be shown.
+    /// Only granted monitors with known geometry and a live indicator.
     private func offeredDisplays() -> [DisplaySnapshot] {
         guard indicatorProblem == nil else { return [] }
         return PortalDisplayInventory(grantState: grantState).displays()
     }
 
     private func serve(_ channel: OpenSSLQUICServerChannel) {
-        guard let sessionFactory else {
+        guard let pairing, let identity else {
             channel.cancel()
             return
         }
         let log = log
-        let controller = sessionFactory.makeController()
+        let grantState = grantState
+        let generation = grantState.live?.generation
+        let sessionFactory = makeSessionFactory(pairing: pairing, tls: identity, generation: generation)
+        let controller = sessionFactory.makeController(additionalInputFeatures: [HostInputFeature.macOSShortcutsUnavailable])
         let latencyRecorder = HostMediaLatencyRecorder()
         let sendFeedback = VideoSendFeedback()
         let connectionBox = ConnectionBox()
@@ -428,7 +461,10 @@ public final class LinuxHostRuntime {
         let accountable = HostScreenAccountableMedia(
             capturePermission: ScreenCapturePermissionGate(checker: PortalCapturePermissionChecker(grantState: grantState)),
             rawFactory: { [weak self] configuration, sequencer in
-                guard let feed = self?.feed else {
+                guard let self, let generation, grantState.isCurrent(generation),
+                      let displayID = controller.hostScreenDisplayID,
+                      let target = grantState.live?.routableMonitors.first(where: { $0.geometry.displayIdentity == displayID }),
+                      let feed = feeds[target.monitor.stream.nodeID] else {
                     return UnavailableMedia(reason: "screen sharing ended before the stream started")
                 }
                 return LinuxHostScreenMedia(
@@ -480,9 +516,14 @@ public final class LinuxHostRuntime {
                 log("Sensorium host: ending session: \(reason)")
                 session?.stop()
             },
-            hostScreenMediaFactory: accountable.makeMedia,
+            hostScreenMediaFactory: { configuration, displayID in
+                guard let generation, grantState.isCurrent(generation) else {
+                    throw HostScreenAccountableMediaError.screenCapturePermissionNotGranted
+                }
+                return try accountable.makeMedia(configuration, displayID: displayID)
+            },
             requiresAccountableHostScreenMedia: true,
-            captureAvailability: captureAvailability,
+            captureAvailability: HostCaptureAvailability(),
             lockStateReader: platform.lockState,
             lockScreenUnlocker: UnavailableLockScreenUnlocker(),
             hostScreenRelockPoster: platform.relocker,

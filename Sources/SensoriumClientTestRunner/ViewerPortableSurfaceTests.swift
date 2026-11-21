@@ -14,7 +14,13 @@ func testShortcutStripToggleChordTests() {
     )
     expect(
         !SystemShortcutCatalog.all.contains(where: { $0.chord == SystemShortcutCatalog.shortcutStripToggle }),
-        "and is never forwarded, the same way the escape gesture never is"
+        "the summon chord is outside the forwarded system shortcut catalog"
+    )
+    let toggle = SystemShortcutCatalog.shortcutStripToggle
+    let event = CanvasSurfaceEvent.key(keyCode: toggle.keyCode, isDown: true, modifiers: toggle.modifiers)
+    expect(
+        WaylandKeyPath.destination(for: event, allowsShortcutStrip: false) == .canvas(event),
+        "the viewer leaves the key alone when the host cannot use the shortcut strip"
     )
     print("PASS: the shortcut strip's summon chord is named once, in the catalog both window layers read")
 }

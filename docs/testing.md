@@ -118,21 +118,37 @@ The link, the viewer's presentation and the fidelity controller are not in it. I
 
 ## Linux
 
-The viewer also runs on Fedora 44 with Wayland. There is no Linux host, so
-only the three portable runners apply there.
+The viewer and host run on Fedora 44 with Wayland.
 
 | Check | What it does |
 |---|---|
 | `SensoriumCoreTestRunner` | The same suite as on macOS. Nothing in it is platform-specific |
 | `SensoriumClientTestRunner` | The portable half of the viewer suite. The Apple-framework tests are skipped by `Entry+Darwin.swift`, which is empty off Darwin |
 | `SensoriumLinuxUpdateTestRunner` | The same suite as on macOS |
+| `SensoriumLinuxHostTestRunner` | The Linux host runtime, capture, encoding, input, indicators, and QUIC |
 | `Scripts/test-linux-gui-reachable.sh` | Every capability `docs/ux-spec.md` names is reachable from the Linux window layer. `Scripts/linux-gui-pending.txt` lists the ones not brought over yet, and the script also fails when a pending capability has landed, so the list stays honest |
 | `Scripts/test-package-linux.sh` | The Fedora package, installed and removed inside the CI container, and the update archive built beside it |
 
-The `linux-build-and-test` job in `.github/workflows/ci.yml` builds the five
-Linux products and runs the three runners and the reachability check in a
-`fedora:44` container. The `linux-package` job builds the RPM in the same
-image and runs the packaging test against it.
+The Linux jobs in `.github/workflows/ci.yml` run the suites and reachability
+check in Fedora 44 and test installation and removal of both RPMs.
+
+### Unattended Linux host and macOS viewer smoke
+
+Run `python3 Scripts/run-linux-host-macos-smoke.py` on a Mac with Docker
+and a local Fedora 44 development image containing the Linux build dependencies.
+The script uses `sensorium-linux-dev:44` by default. Set
+`SENSORIUM_LINUX_SMOKE_IMAGE` to select another local image.
+
+The Linux fixture offers two synthetic monitors over authenticated QUIC.
+The macOS viewer switches monitors, uses VideoToolbox to decode each stream,
+and checks pixels drawn by its Metal renderer into an offscreen texture.
+It verifies that the host disables macOS shortcuts and sends pointer and
+keyboard input on the second monitor. The fixture triggers the indicator's
+Stop callback, checks the held key is released, and the viewer receives the
+host's Stop reason.
+The test runs with the Mac locked. KDE's remote control dialog, capture
+from physical outputs, the lock screen, and permission restore after a
+fresh login are desktop checks.
 
 Two things need a real compositor, so neither runs in CI:
 

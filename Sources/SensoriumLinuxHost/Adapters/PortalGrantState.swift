@@ -2,46 +2,50 @@
 
 import Foundation
 
-/// The launch-time portal session as every host-screen gate reads it: the
-/// capture grant, the input factory and the display inventory. It is the
-/// Linux counterpart of the Screen Recording grant, and it holds only while
-/// that one portal session is open.
+/// The open portal session as the capture gate, input factory, and display
+/// inventory read it. Each monitor's geometry and frame size belong to its node.
 public final class PortalGrantState: @unchecked Sendable {
-    /// The open portal session and what it granted.
-    public struct Live: Sendable {
-        public let grant: PortalGrant
-        /// Where input for this grant goes.
-        public let sink: any PortalInputSink
-        /// Tells this grant from one installed later, so input built under an
-        /// ended grant never reaches its successor.
-        public let generation: UInt64
-        /// The pixel size of the first frame the granted stream delivered,
-        /// once one has. It fixes the identity of a stream the portal gave
-        /// no size.
-        public fileprivate(set) var firstFrameSize: (width: Int, height: Int)?
-        /// The pixel size of the latest frame, which sets the backing scale.
+    public struct Monitor: Sendable {
+        public let stream: PortalStream
         public fileprivate(set) var frameSize: (width: Int, height: Int)?
+        fileprivate var firstFrameSize: (width: Int, height: Int)?
+        fileprivate var failed = false
 
-        /// The one monitor the person at the host chose.
-        public var stream: PortalStream? { grant.streams.first }
-
-        /// The monitor's logical geometry: from the stream's `size`, or from
-        /// the first frame for a stream the portal gave no size.
-        public var geometry: PortalCaptureGeometry? {
-            guard let stream else { return nil }
+        /// A single monitor can use its first buffer size when the portal
+        /// omits logical geometry. A multi-monitor grant requires that
+        /// geometry to route input to the correct display on a scaled desktop.
+        fileprivate func geometry(allowFrameFallback: Bool) -> PortalCaptureGeometry? {
             if let geometry = PortalCaptureGeometry(stream: stream) {
                 return geometry
             }
-            guard let firstFrameSize else { return nil }
+            guard allowFrameFallback, let firstFrameSize else { return nil }
             return PortalCaptureGeometry(
-                stream: stream,
-                firstFrameWidth: firstFrameSize.width,
-                firstFrameHeight: firstFrameSize.height
+                stream: stream, firstFrameWidth: firstFrameSize.width, firstFrameHeight: firstFrameSize.height
             )
         }
+    }
 
-        /// Whether the grant covers what a remote session types and points
-        /// with. Without the keyboard nobody could type at the lock screen.
+    public struct Live: Sendable {
+        public let grant: PortalGrant
+        public let sink: any PortalInputSink
+        public let generation: UInt64
+        fileprivate var monitors: [Monitor]
+
+        /// A node and display identity must each resolve to exactly one
+        /// granted monitor for the lifetime of the grant.
+        public var routableMonitors: [(monitor: Monitor, geometry: PortalCaptureGeometry)] {
+            let nodeCounts = Dictionary(grouping: monitors, by: \.stream.nodeID)
+            let candidates = monitors.compactMap { monitor -> (Monitor, PortalCaptureGeometry)? in
+                guard let geometry = monitor.geometry(allowFrameFallback: monitors.count == 1) else { return nil }
+                return (monitor, geometry)
+            }
+            let byIdentity = Dictionary(grouping: candidates, by: { $0.1.displayIdentity })
+            return candidates.filter { monitor, geometry in
+                !monitor.failed && nodeCounts[monitor.stream.nodeID]?.count == 1
+                    && byIdentity[geometry.displayIdentity]?.count == 1
+            }
+        }
+
         public var grantsInput: Bool {
             grant.devices.isSuperset(of: [.keyboard, .pointer])
         }
@@ -54,38 +58,37 @@ public final class PortalGrantState: @unchecked Sendable {
 
     public init() {}
 
-    /// The open grant, or nil when there is none.
     public var live: Live? {
         lock.withLock { current }
     }
 
-    /// Whether a monitor may be captured right now.
     public var isGranted: Bool {
-        live?.stream != nil
+        live.map { !$0.grant.streams.isEmpty } ?? false
     }
 
-    /// Whether `generation` is still the open grant.
     public func isCurrent(_ generation: UInt64) -> Bool {
         lock.withLock { current?.generation == generation }
     }
 
-    /// Called after every change, on whichever thread made it.
     public func setChangeHandler(_ handler: (@Sendable () -> Void)?) {
         lock.withLock { changeHandler = handler }
     }
 
-    /// Records a newly opened portal session, replacing any earlier one.
-    public func install(grant: PortalGrant, sink: any PortalInputSink) {
-        let handler = lock.withLock {
-            current = Live(grant: grant, sink: sink, generation: nextGeneration, firstFrameSize: nil, frameSize: nil)
+    @discardableResult
+    public func install(grant: PortalGrant, sink: any PortalInputSink) -> UInt64 {
+        let (generation, handler) = lock.withLock {
+            let generation = nextGeneration
+            current = Live(
+                grant: grant, sink: sink, generation: generation,
+                monitors: grant.streams.map { Monitor(stream: $0) }
+            )
             nextGeneration += 1
-            return changeHandler
+            return (generation, changeHandler)
         }
         handler?()
+        return generation
     }
 
-    /// Records that the portal session is gone: closed by the host, by the
-    /// person at the host, or never opened.
     public func end() {
         let handler: (@Sendable () -> Void)? = lock.withLock {
             guard current != nil else { return nil }
@@ -95,18 +98,36 @@ public final class PortalGrantState: @unchecked Sendable {
         handler?()
     }
 
-    /// Records the pixel size of a frame from the granted stream. The
-    /// handler runs only when the size changed.
-    public func recordFrame(width: Int, height: Int) {
+    public func recordFrame(nodeID: UInt32, generation: UInt64, width: Int, height: Int) {
+        guard width > 0, height > 0 else { return }
+        updateMonitor(nodeID: nodeID, generation: generation) { monitor in
+            guard !monitor.failed else { return false }
+            if let size = monitor.frameSize, size.width == width, size.height == height {
+                return false
+            }
+            if monitor.firstFrameSize == nil {
+                monitor.firstFrameSize = (width, height)
+            }
+            monitor.frameSize = (width, height)
+            return true
+        }
+    }
+
+    func failStream(nodeID: UInt32, generation: UInt64) {
+        updateMonitor(nodeID: nodeID, generation: generation) { monitor in
+            guard !monitor.failed else { return false }
+            monitor.failed = true
+            return true
+        }
+    }
+
+    private func updateMonitor(nodeID: UInt32, generation: UInt64, _ update: (inout Monitor) -> Bool) {
         let handler: (@Sendable () -> Void)? = lock.withLock {
-            guard var live = current, width > 0, height > 0 else { return nil }
-            if let size = live.frameSize, size.width == width, size.height == height {
-                return nil
-            }
-            if live.firstFrameSize == nil {
-                live.firstFrameSize = (width, height)
-            }
-            live.frameSize = (width, height)
+            guard var live = current, live.generation == generation,
+                  let index = live.monitors.firstIndex(where: { $0.stream.nodeID == nodeID }) else { return nil }
+            var monitor = live.monitors[index]
+            guard update(&monitor) else { return nil }
+            live.monitors[index] = monitor
             current = live
             return changeHandler
         }

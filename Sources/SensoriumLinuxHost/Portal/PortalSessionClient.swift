@@ -58,14 +58,14 @@ public final class PortalSessionClient: Sendable {
         self.makeToken = makeToken
     }
 
-    /// Creates the session, selects keyboard, pointer and one monitor, and
-    /// starts it. On a first grant this waits for the person at the host to
+    /// Creates the session, selects keyboard, pointer and monitor sources, and
+    /// starts it. Without a restore token this waits for the person at the host to
     /// answer the system dialog, for at most `timeouts.start`.
     ///
     /// The new restore token is written to the token store before this
     /// returns, so nothing can use the session first. Any failure after the
     /// session exists closes it.
-    public func openSession() async throws -> PortalSession {
+    public func openSession(restore: Bool = true) async throws -> PortalSession {
         let remoteVersion = try await readUInt32(PortalNames.remoteDesktop, "version")
         guard remoteVersion >= PortalNames.minimumRemoteDesktopVersion else {
             throw PortalError.interfaceTooOld(
@@ -97,8 +97,8 @@ public final class PortalSessionClient: Sendable {
                 "types": .uint32(PortalDevices([.keyboard, .pointer]).rawValue),
                 "persist_mode": .uint32(2)
             ]
-            let offeredToken = tokenStore.load()
-            if let offeredToken {
+            let savedGrant = tokenStore.loadRecord()
+            if restore, let offeredToken = savedGrant?.restoreToken {
                 deviceOptions["restore_token"] = .string(offeredToken)
             }
             try await expectSuccess(
@@ -111,9 +111,11 @@ public final class PortalSessionClient: Sendable {
 
             // A RemoteDesktop session persists through SelectDevices alone;
             // the portal refuses persistence options on SelectSources here.
+            // KDE reapplies this option to existing tokens on restore.
+            let allowsMultipleMonitors = !restore || savedGrant?.allowsMultipleMonitors == true
             var sourceOptions: [String: PortalValue] = [
                 "types": .uint32(1),
-                "multiple": .bool(false)
+                "multiple": .bool(allowsMultipleMonitors)
             ]
             if cursorModes & PortalNames.cursorModeMetadata != 0 {
                 sourceOptions["cursor_mode"] = .uint32(PortalNames.cursorModeMetadata)
@@ -142,16 +144,17 @@ public final class PortalSessionClient: Sendable {
             guard started.code == 0 else { throw PortalError.declined(response: started.code) }
 
             let grant = try Self.parseGrant(sessionHandle: sessionHandle, results: started.results)
-            if let issued = grant.restoreToken {
-                do {
-                    try tokenStore.save(issued)
-                } catch {
-                    throw PortalError.tokenNotStored("\(error)")
+            guard allowsMultipleMonitors || grant.streams.count == 1 else {
+                throw PortalError.malformedResponse("the portal granted multiple monitors before local approval")
+            }
+            do {
+                if let issued = grant.restoreToken {
+                    try tokenStore.save(issued, allowsMultipleMonitors: allowsMultipleMonitors)
+                } else if savedGrant != nil {
+                    try tokenStore.clear()
                 }
-            } else if offeredToken != nil {
-                // The portal consumed the token it was given and issued no
-                // replacement, so the stored one is dead.
-                try? tokenStore.clear()
+            } catch {
+                throw PortalError.tokenNotStored("\(error)")
             }
             return PortalSession(bus: bus, grant: grant)
         } catch {
@@ -287,13 +290,19 @@ public final class PortalSessionClient: Sendable {
                   let properties = parts[1].vardictValue else {
                 throw PortalError.malformedResponse("a stream is not (node, properties)")
             }
+            if let type = properties["source_type"]?.uint32Value, type != 1 {
+                throw PortalError.malformedResponse("the portal granted a source other than a monitor")
+            }
             return PortalStream(
                 nodeID: node,
-                id: properties["id"]?.stringValue,
+                id: properties["id"]?.stringValue ?? properties["mapping_id"]?.stringValue,
                 position: properties["position"]?.int32Pair.map { PortalPoint(x: $0.0, y: $0.1) },
                 size: properties["size"]?.int32Pair.map { PortalSize(width: $0.0, height: $0.1) },
                 pipeWireSerial: properties["pipewire-serial"]?.uint64Value
             )
+        }
+        guard Set(streams.map(\.nodeID)).count == streams.count else {
+            throw PortalError.malformedResponse("the portal repeated a monitor stream node")
         }
         let issued = results["restore_token"]?.stringValue
         return PortalGrant(

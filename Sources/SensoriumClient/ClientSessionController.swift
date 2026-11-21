@@ -164,6 +164,9 @@ public actor ClientSessionController {
     /// kept past this connection: the host at the same address may be a
     /// different build next time.
     private var hostInputFeatures: Set<String> = []
+    public var supportsMacOSShortcuts: Bool {
+        !hostInputFeatures.contains(HostInputFeature.macOSShortcutsUnavailable)
+    }
     /// The back and forward presses this connection sent and has not yet
     /// released. A release is sent only for one of these, so a host never
     /// sees a release for a press that was dropped or went to an earlier

@@ -443,6 +443,7 @@ final class ClientSessionHost {
             }
         }
         primaryWindow.updateIsHostScreenSession(isHostScreenSession)
+        primaryWindow.updateMacOSShortcutsAvailable(await controller.supportsMacOSShortcuts)
         // A fresh session's own modes, or none: the host sends its list
         // unprompted once a host screen is live, and a session canvas has
         // no host screen whose resolution this menu could change.
@@ -876,7 +877,8 @@ final class ClientSessionHost {
     func selectRealScreen(token: Data?) {
         let target: SessionTarget
         let label: String?
-        if let token, let entry = lastHostScreenOffer.first(where: { $0.opaqueToken == token }) {
+        if let token {
+            guard let entry = lastHostScreenOffer.first(where: { $0.opaqueToken == token }) else { return }
             target = .hostScreen(displayIdentity: entry.displayIdentity)
             label = entry.label
         } else {

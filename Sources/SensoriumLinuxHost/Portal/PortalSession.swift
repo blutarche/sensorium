@@ -47,6 +47,10 @@ public final class PortalSession: PortalInputSink, @unchecked Sendable {
         }
     }
 
+    func desktopDidClose() {
+        lock.withLock { isClosed = true }
+    }
+
     static func closeSession(bus: any DBusConnecting, path: String) async {
         _ = try? await bus.call(DBusCall(
             destination: PortalNames.destination,

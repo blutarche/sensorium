@@ -88,6 +88,11 @@ public struct SessionChromeState: Equatable, Sendable {
         settleTooltip()
     }
 
+    public mutating func setMacOSShortcutsAvailable(_ available: Bool) {
+        strip.setAvailable(available)
+        settleTooltip()
+    }
+
     public mutating func pointerOverHandle(_ isOver: Bool, now: TimeInterval) {
         strip.pointerOverHandle(isOver, now: now)
         settleTooltip()

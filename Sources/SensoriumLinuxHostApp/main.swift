@@ -12,7 +12,7 @@ import SensoriumLinuxHost
 /// tailnet address, prints each pairing code and every change of state, and
 /// stops cleanly on SIGTERM or SIGINT. `--allow-screen-sharing` asks the
 /// desktop for the screen-sharing grant with its dialog when no saved grant
-/// could be restored. Without `--serve` it prints its usage and exits.
+/// could be restored. Without `--serve` it opens the host window.
 ///
 /// A desktop that cannot show the live-session indicator is offered no host
 /// screen, in this mode as in any other.
@@ -22,23 +22,33 @@ func fail(_ message: String) -> Never {
     exit(2)
 }
 
-let usage = "usage: sensorium-host --serve [--allow-screen-sharing]"
+let usage = "usage: sensorium-host [--background | --serve [--allow-screen-sharing]]"
+if Array(CommandLine.arguments.dropFirst()) == ["--help"] {
+    print(usage)
+    exit(0)
+}
 var serve = false
 var allowScreenSharing = false
+var background = false
 for argument in CommandLine.arguments.dropFirst() {
     switch argument {
     case "--serve": serve = true
     case "--allow-screen-sharing": allowScreenSharing = true
+    case "--background": background = true
     default: fail("unknown option \(argument)\n\(usage)")
     }
 }
-guard serve else { fail(usage) }
+guard !(serve && background), serve || !allowScreenSharing else { fail(usage) }
 
 // Every @MainActor job runs on the thread inside g_main_loop_run, which is
 // also where the indicator's Wayland connection is driven. The attachment only
 // takes while the main actor has never suspended, so nothing above awaits.
 guard sensorium_attach_dispatch_main_queue() != 0 else {
     fail("the main queue could not be attached to the GLib main loop")
+}
+
+if !serve {
+    exit(LinuxHostApplication().run())
 }
 
 let dataFolder = RestoreTokenStore.defaultDataRoot()

@@ -136,7 +136,10 @@ public enum WaylandKeyPath {
            forwarded.consumeEscape(isDown: isDown, allowsClosing: modifiers.isEmpty, chrome: &chrome) {
             return .dropped
         }
-        return destination(event: event, evdev: evdev, isDown: isDown, keyboard: keyboard, menu: menu)
+        return destination(
+            event: event, evdev: evdev, isDown: isDown, keyboard: keyboard, menu: menu,
+            allowsShortcutStrip: chrome.strip.isAvailable
+        )
     }
 
     /// The same order, after the one rule that comes before it: the release
@@ -161,9 +164,9 @@ public enum WaylandKeyPath {
     @MainActor
     private static func destination(
         event: CanvasSurfaceEvent, evdev: UInt32, isDown: Bool,
-        keyboard: any WaylandKeyTranslating, menu: WaylandSessionMenuKeys?
+        keyboard: any WaylandKeyTranslating, menu: WaylandSessionMenuKeys?, allowsShortcutStrip: Bool = true
     ) -> WaylandKeyDestination {
-        let destination = destination(for: event)
+        let destination = destination(for: event, allowsShortcutStrip: allowsShortcutStrip)
         guard case let .key(keyCode, _, modifiers, _) = event,
               destination != .shortcutStrip(isDown: isDown),
               let menu, let key = keyboard.character(evdev: evdev),
@@ -197,14 +200,14 @@ public enum WaylandKeyPath {
 
     /// The same decision for an event the window already has in hand: a key
     /// repeat the viewer itself generated, or a modifier change.
-    public static func destination(for event: CanvasSurfaceEvent) -> WaylandKeyDestination {
+    public static func destination(for event: CanvasSurfaceEvent, allowsShortcutStrip: Bool = true) -> WaylandKeyDestination {
         guard case let .key(keyCode, isDown, modifiers, _) = event else {
             return .canvas(event)
         }
         let chord = KeyChord(keyCode: keyCode, modifiers: modifiers)
         // The strip's chord belongs to the machine the person is sitting at
         // rather than the one being worked on, and is never forwarded.
-        if chord == SystemShortcutCatalog.shortcutStripToggle {
+        if allowsShortcutStrip && chord == SystemShortcutCatalog.shortcutStripToggle {
             return .shortcutStrip(isDown: isDown)
         }
         if chord == SystemShortcutCatalog.escapeGesture

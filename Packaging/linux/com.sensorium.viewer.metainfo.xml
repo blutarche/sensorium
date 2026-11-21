@@ -18,7 +18,7 @@
     <p>
       The two machines talk directly over their own Tailscale tailnet. There
       is no account, no relay, no telemetry and no command line. This package
-      is the viewer. The machine being worked on runs macOS.
+      is the viewer you use to connect to Sensorium Host.
     </p>
   </description>
   <launchable type="desktop-id">com.sensorium.viewer.desktop</launchable>

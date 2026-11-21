@@ -11,6 +11,20 @@ private let permittedKeyCodes: Set<UInt16> = [126, 125, 124, 123, 103, 49, 131, 
 
 private let modifierKeyCodes: Set<UInt16> = [55, 59, 56, 58]
 
+func testShortcutStripHostAvailability() {
+    var strip = ShortcutStripModel(phase: .live, isPinned: true)
+    expect(strip.press(.lockScreen) == .askToConfirm, "a live pinned strip can ask for confirmation")
+    strip.setAvailable(false)
+    strip.pointerOverHandle(true, now: 0)
+    strip.toggleRequested()
+    expect(!strip.isVisible && !strip.isHandleVisible, "the host can suppress the shortcut strip and its handle")
+    expect(strip.press(.missionControl) == nil, "a hidden host shortcut cannot send input")
+    expect(strip.confirmPending() == nil, "an old shortcut confirmation cannot send to a new host")
+    strip.setAvailable(true)
+    expect(strip.isPinned && strip.visibility == .shown, "a compatible host sees the saved pin again")
+    print("PASS: host shortcut availability clears stale controls and preserves the pin")
+}
+
 func testShortcutStripTests() {
     // A chord sent to the far machine must leave nothing held there. Every action
     // is checked as a whole sequence: each key goes down exactly once and comes

@@ -15,16 +15,18 @@ final class SyntheticScreenSource: LinuxFrameSource, @unchecked Sendable {
     let width: Int
     let height: Int
     private let interval: TimeInterval
+    private let invertedPattern: Bool
     private let queue = DispatchQueue(label: "sensorium.test.synthetic-screen")
     private let lock = NSLock()
     private var timer: DispatchSourceTimer?
     private var count = 0
     private(set) var startCount = 0
 
-    init(width: Int, height: Int, framesPerSecond: Double = 30) {
+    init(width: Int, height: Int, framesPerSecond: Double = 30, invertedPattern: Bool = false) {
         self.width = width
         self.height = height
         interval = 1 / framesPerSecond
+        self.invertedPattern = invertedPattern
     }
 
     func start(
@@ -65,7 +67,8 @@ final class SyntheticScreenSource: LinuxFrameSource, @unchecked Sendable {
                 for x in 0..<width {
                     let level: UInt8
                     if y < height / 2 {
-                        level = x < width / 2 ? Self.darkLevel : Self.brightLevel
+                        let dark = (x < width / 2) != invertedPattern
+                        level = dark ? Self.darkLevel : Self.brightLevel
                     } else {
                         level = band
                     }
@@ -92,17 +95,26 @@ final class SyntheticScreenSource: LinuxFrameSource, @unchecked Sendable {
 /// Hands the runtime a portal grant without a portal.
 final class FakeGrantOpener: LinuxScreenGrantOpening, @unchecked Sendable {
     private let lock = NSLock()
-    private let stream: PortalStream
-    private let source: any LinuxFrameSource
+    private let streams: [PortalStream]
+    private let frameSources: [UInt32: any LinuxFrameSource]
     private let sink: any PortalInputSink
     private var failure: (any Error)?
     private var onClosed: (@Sendable () -> Void)?
     private(set) var openCount = 0
     private(set) var interactiveOpenCount = 0
 
-    init(stream: PortalStream, source: any LinuxFrameSource, sink: any PortalInputSink, failure: (any Error)? = nil) {
-        self.stream = stream
-        self.source = source
+    init(
+        stream: PortalStream, source: any LinuxFrameSource, sink: any PortalInputSink,
+        failure: (any Error)? = nil, additionalStream: PortalStream? = nil
+    ) {
+        self.streams = [stream, additionalStream].compactMap { $0 }
+        var frameSources: [UInt32: any LinuxFrameSource] = [stream.nodeID: source]
+        if let additionalStream, let size = additionalStream.size {
+            frameSources[additionalStream.nodeID] = SyntheticScreenSource(
+                width: Int(size.width), height: Int(size.height), invertedPattern: true
+            )
+        }
+        self.frameSources = frameSources
         self.sink = sink
         self.failure = failure
     }
@@ -120,9 +132,9 @@ final class FakeGrantOpener: LinuxScreenGrantOpening, @unchecked Sendable {
         if let failure { throw failure }
         lock.withLock { self.onClosed = onClosed }
         return LinuxScreenGrant(
-            grant: liveGrant(streams: [stream]),
+            grant: liveGrant(streams: streams),
             input: sink,
-            frameSource: source,
+            frameSources: frameSources,
             close: {}
         )
     }
@@ -184,12 +196,14 @@ final class RuntimeRig {
         id: "monitor-b",
         position: PortalPoint(x: 0, y: 0),
         size: PortalSize(width: 320, height: 180)
-    ), bufferWidth: Int = 640, bufferHeight: Int = 360, indicatorSupport: @escaping @MainActor () -> IndicatorError? = { nil }) {
+    ), bufferWidth: Int = 640, bufferHeight: Int = 360,
+    indicatorSupport: @escaping @MainActor () -> IndicatorError? = { nil },
+    additionalStream: PortalStream? = nil) {
         folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("sensorium-runtime-\(UUID().uuidString)", isDirectory: true)
         self.stream = stream
         source = SyntheticScreenSource(width: bufferWidth, height: bufferHeight)
-        opener = FakeGrantOpener(stream: stream, source: source, sink: sink)
+        opener = FakeGrantOpener(stream: stream, source: source, sink: sink, additionalStream: additionalStream)
         let logBox = RigLog()
         let platform = LinuxHostPlatform(
             grantOpener: opener,
@@ -808,8 +822,88 @@ private func testAStreamScaleChangeRebuildsTheStreamAtTheNewSize() async {
     await rig.finish()
 }
 
+@MainActor
+private func testAViewerSwitchesBetweenGrantedMonitorsWithoutCrossingTheirVideoOrInput() async {
+    let secondMonitor = PortalStream(
+        nodeID: 62,
+        id: "monitor-c",
+        position: PortalPoint(x: 320, y: 0),
+        size: PortalSize(width: 480, height: 270)
+    )
+    let rig = RuntimeRig(additionalStream: secondMonitor)
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        let first = try await connectViewer(viewer, port: rig.port)
+        let firstOutcome = try await first.client.connect(
+            deviceName: viewer.name,
+            target: .offeredHostScreen(preferredDisplayIdentity: nil)
+        )
+        guard case let .hostScreen(firstGeometry, _, offer) = firstOutcome, offer.count == 2 else {
+            expect(false, "the host offered both granted monitors, saw \(firstOutcome)")
+            return
+        }
+        expect(firstGeometry.logicalWidth == 320 && firstGeometry.backingScale == 2, "the first monitor kept its scale")
+        let (firstPictures, _) = try await collectPictures(from: first.connection, frames: 3, seconds: 6)
+        guard let firstPicture = firstPictures.last,
+              firstPicture.width == 320, firstPicture.height == 180,
+              let firstDark = meanLuma(firstPicture, x: 20..<100, y: 20..<60),
+              let firstBright = meanLuma(firstPicture, x: 220..<300, y: 20..<60) else {
+            expect(false, "the first monitor delivered its picture")
+            return
+        }
+        expect(firstDark < 70 && firstBright > 170, "the first monitor was dark on the left")
+        try await first.client.sendInput(.pointerMoved(x: 90, y: 70))
+        await expectEventually("the first monitor got its own pointer coordinates") {
+            rig.sink.events.contains(.absolute(stream: 61, x: 90, y: 70))
+        }
+        await first.client.disconnect()
+        await expectEventually("the first monitor's session ended") { rig.runtime.state.status == .waiting }
+
+        let second = try await connectViewer(viewer, port: rig.port)
+        let secondOutcome = try await second.client.connect(
+            deviceName: viewer.name,
+            target: .hostScreen(displayIdentity: offer[1].displayIdentity)
+        )
+        guard case let .hostScreen(secondGeometry, _, _) = secondOutcome else {
+            expect(false, "the viewer switched to the second monitor, saw \(secondOutcome)")
+            return
+        }
+        expect(secondGeometry.logicalWidth == 480 && secondGeometry.backingScale == 1, "the second monitor kept its scale")
+        let (secondPictures, _) = try await collectPictures(from: second.connection, frames: 3, seconds: 6)
+        guard let secondPicture = secondPictures.last,
+              secondPicture.width == 480, secondPicture.height == 270,
+              let secondBright = meanLuma(secondPicture, x: 20..<200, y: 20..<100),
+              let secondDark = meanLuma(secondPicture, x: 280..<460, y: 20..<100) else {
+            expect(false, "the second monitor delivered its picture")
+            return
+        }
+        expect(secondBright > 170 && secondDark < 70, "the second monitor was bright on the left")
+        try await second.client.sendInput(.pointerMoved(x: 390, y: 240))
+        await expectEventually("the second monitor got its own pointer coordinates") {
+            rig.sink.events.contains(.absolute(stream: 62, x: 390, y: 240))
+        }
+        await second.client.disconnect()
+        await expectEventually("the second monitor's session ended") { rig.runtime.state.status == .waiting }
+
+        let ungranted = try await connectViewer(viewer, port: rig.port)
+        do {
+            _ = try await ungranted.client.connect(
+                deviceName: viewer.name,
+                target: .hostScreen(displayIdentity: "ungranted-monitor")
+            )
+            expect(false, "an ungranted monitor must never fall back to a granted one")
+        } catch ClientSessionError.hostScreenRefused {}
+        await ungranted.connection.close()
+    } catch {
+        expect(false, "the switch ran end to end, threw \(error)")
+    }
+    await rig.finish()
+}
+
 func linuxHostRuntimeTests() -> [NamedTest] { [
     ("a paired viewer streams the granted monitor and drives input", testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput),
+    ("a viewer switches between granted monitors without crossing video or input", testAViewerSwitchesBetweenGrantedMonitorsWithoutCrossingTheirVideoOrInput),
     ("a disarmed device is refused with no frame", testADisarmedDeviceIsRefusedWithNoFrame),
     ("an indicator that cannot show refuses with no frame", testAnIndicatorThatCannotShowRefusesWithNoFrame),
     ("a desktop that cannot show the indicator offers no host screen", testADesktopThatCannotShowTheIndicatorOffersNoHostScreen),

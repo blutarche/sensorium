@@ -69,8 +69,8 @@ private struct MediaRig {
     let media: LinuxHostScreenMedia
 
     init(logicalWidth: Int = 128, logicalHeight: Int = 64, backingScale: Double = 2, heartbeat: TimeInterval = 0.5) async {
-        grantState.install(grant: liveGrant(), sink: RecordingSink())
-        feed = LinuxScreenFeed(source: source, grantState: grantState)
+        let generation = grantState.install(grant: liveGrant(), sink: RecordingSink())
+        feed = LinuxScreenFeed(source: source, grantState: grantState, streamNodeID: grantedMonitor.nodeID, generation: generation)
         try? await feed.start()
         let configuration = HostScreenEncoderSizing.resolve(
             for: SessionSurfaceGeometry(logicalWidth: logicalWidth, logicalHeight: logicalHeight, backingScale: backingScale)
