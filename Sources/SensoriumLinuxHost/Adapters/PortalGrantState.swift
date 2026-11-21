@@ -16,7 +16,10 @@ public final class PortalGrantState: @unchecked Sendable {
         /// ended grant never reaches its successor.
         public let generation: UInt64
         /// The pixel size of the first frame the granted stream delivered,
-        /// once one has.
+        /// once one has. It fixes the identity of a stream the portal gave
+        /// no size.
+        public fileprivate(set) var firstFrameSize: (width: Int, height: Int)?
+        /// The pixel size of the latest frame, which sets the backing scale.
         public fileprivate(set) var frameSize: (width: Int, height: Int)?
 
         /// The one monitor the person at the host chose.
@@ -29,8 +32,12 @@ public final class PortalGrantState: @unchecked Sendable {
             if let geometry = PortalCaptureGeometry(stream: stream) {
                 return geometry
             }
-            guard let frameSize else { return nil }
-            return PortalCaptureGeometry(stream: stream, firstFrameWidth: frameSize.width, firstFrameHeight: frameSize.height)
+            guard let firstFrameSize else { return nil }
+            return PortalCaptureGeometry(
+                stream: stream,
+                firstFrameWidth: firstFrameSize.width,
+                firstFrameHeight: firstFrameSize.height
+            )
         }
 
         /// Whether the grant covers what a remote session types and points
@@ -70,7 +77,7 @@ public final class PortalGrantState: @unchecked Sendable {
     /// Records a newly opened portal session, replacing any earlier one.
     public func install(grant: PortalGrant, sink: any PortalInputSink) {
         let handler = lock.withLock {
-            current = Live(grant: grant, sink: sink, generation: nextGeneration, frameSize: nil)
+            current = Live(grant: grant, sink: sink, generation: nextGeneration, firstFrameSize: nil, frameSize: nil)
             nextGeneration += 1
             return changeHandler
         }
@@ -88,12 +95,19 @@ public final class PortalGrantState: @unchecked Sendable {
         handler?()
     }
 
-    /// Records the pixel size of a frame from the granted stream. Only the
-    /// first one is kept; later ones change nothing.
+    /// Records the pixel size of a frame from the granted stream. The
+    /// handler runs only when the size changed.
     public func recordFrame(width: Int, height: Int) {
         let handler: (@Sendable () -> Void)? = lock.withLock {
-            guard current != nil, current?.frameSize == nil, width > 0, height > 0 else { return nil }
-            current?.frameSize = (width, height)
+            guard var live = current, width > 0, height > 0 else { return nil }
+            if let size = live.frameSize, size.width == width, size.height == height {
+                return nil
+            }
+            if live.firstFrameSize == nil {
+                live.firstFrameSize = (width, height)
+            }
+            live.frameSize = (width, height)
+            current = live
             return changeHandler
         }
         handler?()
