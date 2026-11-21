@@ -19,6 +19,7 @@ let package = Package(
         .library(name: "SensoriumLinuxHost", targets: ["SensoriumLinuxHost"]),
         .executable(name: "SensoriumLinuxHostTestRunner", targets: ["SensoriumLinuxHostTestRunner"]),
         .executable(name: "SensoriumIndicatorProbe", targets: ["SensoriumIndicatorProbe"]),
+        .executable(name: "SensoriumHostWindowProbe", targets: ["SensoriumHostWindowProbe"]),
         .executable(name: "sensoriumd", targets: ["sensoriumd"]),
         .executable(name: "Sensorium", targets: ["Sensorium"]),
         .executable(name: "SensoriumVirtualDisplayPreflight", targets: ["SensoriumVirtualDisplayPreflight"]),
@@ -178,7 +179,8 @@ let package = Package(
                 .target(name: "CWaylandProtocols", condition: .when(platforms: [.linux])),
                 .target(name: "CWaylandGlue", condition: .when(platforms: [.linux])),
                 .target(name: "CGLib", condition: .when(platforms: [.linux])),
-                .target(name: "CGio", condition: .when(platforms: [.linux]))
+                .target(name: "CGio", condition: .when(platforms: [.linux])),
+                .target(name: "CGtk4", condition: .when(platforms: [.linux]))
             ]
         ),
         .executableTarget(
@@ -197,6 +199,16 @@ let package = Package(
         .executableTarget(
             name: "SensoriumIndicatorProbe",
             dependencies: ["SensoriumLinuxHost", .target(name: "CGLib", condition: .when(platforms: [.linux]))]
+        ),
+        // Test scaffolding, never bundled: draws the host windows' states
+        // into PNGs from invented sample data.
+        .executableTarget(
+            name: "SensoriumHostWindowProbe",
+            dependencies: [
+                "SensoriumLinuxHost",
+                .target(name: "CGLib", condition: .when(platforms: [.linux])),
+                .target(name: "CGtk4", condition: .when(platforms: [.linux]))
+            ]
         ),
         .executableTarget(name: "sensoriumd", dependencies: ["SensoriumHost", "SensoriumCore", "SensoriumUpdate"]),
         .executableTarget(
