@@ -6,7 +6,7 @@ import SensoriumCore
 import SensoriumLinuxHost
 
 /// The luma plane of a decoded frame, tightly packed.
-private func lumaPlane(of decoded: DecodedFrame) -> [UInt8]? {
+func lumaPlane(of decoded: DecodedFrame) -> [UInt8]? {
     guard let box = decoded.payload as? AVFrameBox, let frame = box.frame,
           let plane = frame.pointee.data.0 else { return nil }
     let stride = Int(frame.pointee.linesize.0)
@@ -50,7 +50,7 @@ private func expectedLuma(of frame: LinuxVideoFrame) -> [UInt8] {
 
 /// A decoded frame keeps its decoder's lifetime rules, so the frames are
 /// held in a box that outlives the closure.
-private final class DecodedFrames: @unchecked Sendable {
+final class DecodedFrames: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: [DecodedFrame] = []
 
