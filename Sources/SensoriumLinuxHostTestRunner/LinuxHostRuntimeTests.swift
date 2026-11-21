@@ -631,11 +631,152 @@ private func testAskFirstWithRecentUseAndADenialRefusesWithNoFrame() async {
     await rig.finish()
 }
 
+/// Waits for pictures until one of `width` by `height` decodes.
+func waitForPicture(
+    from connection: OpenSSLQUICConnection,
+    width: Int,
+    height: Int,
+    seconds: TimeInterval
+) async throws -> [String] {
+    let decoded = DecodedFrames()
+    let decoder = AVCodecVideoDecoder(renderNodePath: nil, outputHandler: { decoded.append($0) })
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        if decoded.frames.contains(where: { $0.width == width && $0.height == height }) { break }
+        let packet = try await withDeadline(max(0.1, deadline.timeIntervalSinceNow), "the next packet") {
+            try await connection.receivePacket()
+        }
+        if case let .video(frame) = packet {
+            try decoder.decode(frame)
+        }
+    }
+    return decoded.frames.map { "\($0.width)x\($0.height)" }
+}
+
+/// Reads until a control message matching `matches` arrives.
+func waitForControl(
+    from connection: OpenSSLQUICConnection,
+    seconds: TimeInterval,
+    _ matches: @Sendable (SensoriumMessage) -> Bool
+) async throws -> SensoriumMessage? {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        let packet = try await withDeadline(max(0.1, deadline.timeIntervalSinceNow), "the next packet") {
+            try await connection.receivePacket()
+        }
+        if case let .control(message) = packet, matches(message) {
+            return message
+        }
+    }
+    return nil
+}
+
+@MainActor
+private func testAFractionallyScaledMonitorStreamsAtItsLogicalSize() async {
+    // A 2560x1440 monitor at 150% is 1707x960 points.
+    let rig = RuntimeRig(
+        stream: PortalStream(
+            nodeID: 62,
+            id: "monitor-c",
+            position: PortalPoint(x: 0, y: 0),
+            size: PortalSize(width: 1707, height: 960)
+        ),
+        bufferWidth: 2560,
+        bufferHeight: 1440
+    )
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        let link = try await connectViewer(viewer, port: rig.port)
+        let outcome = try await link.client.connect(deviceName: viewer.name, target: .offeredHostScreen(preferredDisplayIdentity: nil))
+        guard case let .hostScreen(geometry, _, _) = outcome else {
+            expect(false, "the viewer was given the host screen, got \(outcome)")
+            return
+        }
+        expect(
+            geometry.logicalWidth == 1707 && geometry.logicalHeight == 960 && abs(geometry.backingScale - 1.5) < 0.01,
+            "a 150% monitor is offered at 1707x960 points at 1.5, saw \(geometry)"
+        )
+        let (pictures, _) = try await collectPictures(from: link.connection, frames: 10, seconds: 30)
+        expect(pictures.count >= 10, "pictures decoded, saw \(pictures.count)")
+        let sizes = Set(pictures.map { "\($0.width)x\($0.height)" })
+        expect(sizes == ["1706x960"], "the odd logical width is encoded one pixel narrower, saw \(sizes)")
+        if let last = pictures.last,
+           let dark = meanLuma(last, x: 40..<800, y: 40..<440),
+           let bright = meanLuma(last, x: 900..<1660, y: 40..<440) {
+            expect(dark < 70 && bright > 170, "the scaled picture keeps the monitor's content, dark \(dark) bright \(bright)")
+        }
+        try await link.client.sendInput(.pointerMoved(x: 853.5, y: 480))
+        _ = try await waitForControl(from: link.connection, seconds: 5) { if case .inputApplied = $0 { true } else { false } }
+        let events = rig.sink.events
+        expect(events.contains(.absolute(stream: 62, x: 853.5, y: 480)), "the pointer lands in points, saw \(events)")
+        await link.client.disconnect()
+    } catch {
+        expect(false, "the fractional session ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
+@MainActor
+private func testALiveSessionHearsTheLockStateAndAHeldKeyIsReleasedAtDisconnect() async {
+    let rig = RuntimeRig()
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        let link = try await connectViewer(viewer, port: rig.port)
+        _ = try await link.client.connect(deviceName: viewer.name, target: .offeredHostScreen(preferredDisplayIdentity: nil))
+        rig.lockState.set(true)
+        let locked = try await waitForControl(from: link.connection, seconds: 10) {
+            $0 == .hostScreenLockState(locked: true)
+        }
+        expect(locked != nil, "the viewer is told the host locked")
+        rig.lockState.set(false)
+        let unlocked = try await waitForControl(from: link.connection, seconds: 10) {
+            $0 == .hostScreenLockState(locked: false)
+        }
+        expect(unlocked != nil, "and that it unlocked")
+
+        try await link.client.sendInput(.key(keyCode: 0, isDown: true, modifiers: []))
+        _ = try await waitForControl(from: link.connection, seconds: 5) { if case .inputApplied = $0 { true } else { false } }
+        expect(rig.sink.events.last == .key(30, true), "A is held on the host")
+        await link.client.disconnect()
+        await expectEventually("the held key is released when the viewer leaves") {
+            rig.sink.events.last == .key(30, false)
+        }
+    } catch {
+        expect(false, "the live session ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
+@MainActor
+private func testAStreamScaleChangeRebuildsTheStreamAtTheNewSize() async {
+    let rig = RuntimeRig()
+    await rig.start()
+    do {
+        let viewer = try await rig.pairViewer(named: "Kestrel Laptop")
+        let link = try await connectViewer(viewer, port: rig.port)
+        _ = try await link.client.connect(deviceName: viewer.name, target: .offeredHostScreen(preferredDisplayIdentity: nil))
+        let before = try await waitForPicture(from: link.connection, width: 320, height: 180, seconds: 10)
+        expect(before.contains("320x180"), "the stream starts at the logical size, saw \(Set(before))")
+        try await link.client.sendStreamScalePreference(.fixed(2))
+        let after = try await waitForPicture(from: link.connection, width: 640, height: 360, seconds: 15)
+        expect(after.contains("640x360"), "double scale streams at the buffer's full size, saw \(Set(after))")
+        await link.client.disconnect()
+    } catch {
+        expect(false, "the scale change ran, threw \(error)")
+    }
+    await rig.finish()
+}
+
 func linuxHostRuntimeTests() -> [NamedTest] { [
     ("a paired viewer streams the granted monitor and drives input", testAPairedViewerStreamsTheGrantedMonitorAndDrivesInput),
     ("a disarmed device is refused with no frame", testADisarmedDeviceIsRefusedWithNoFrame),
     ("an indicator that cannot show refuses with no frame", testAnIndicatorThatCannotShowRefusesWithNoFrame),
     ("a withdrawn grant refuses with no frame", testAWithdrawnGrantRefusesWithNoFrame),
-    ("ask first with recent use and a denial refuses with no frame", testAskFirstWithRecentUseAndADenialRefusesWithNoFrame)
+    ("ask first with recent use and a denial refuses with no frame", testAskFirstWithRecentUseAndADenialRefusesWithNoFrame),
+    ("a fractionally scaled monitor streams at its logical size", testAFractionallyScaledMonitorStreamsAtItsLogicalSize),
+    ("a live session hears the lock state and a held key is released at disconnect", testALiveSessionHearsTheLockStateAndAHeldKeyIsReleasedAtDisconnect),
+    ("a stream scale change rebuilds the stream at the new size", testAStreamScaleChangeRebuildsTheStreamAtTheNewSize)
 ] }
 #endif
