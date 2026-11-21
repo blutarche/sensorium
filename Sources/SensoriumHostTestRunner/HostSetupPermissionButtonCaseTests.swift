@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -55,3 +56,4 @@ func runHostSetupPermissionButtonCaseTests() async {
         print("PASS: the Accessibility permission button in the host window reads Title Case")
     }
 }
+#endif

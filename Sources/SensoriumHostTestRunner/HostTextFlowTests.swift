@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -133,3 +134,4 @@ func runHostTextFlowTests() async {
         print("PASS: calendar dates stay whole in either order")
     }
 }
+#endif

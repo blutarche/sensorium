@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -570,3 +571,4 @@ private func squareEncoderConfiguration(side: Int) -> VideoEncoderConfiguration 
         requiresHardwareAcceleration: true
     )
 }
+#endif

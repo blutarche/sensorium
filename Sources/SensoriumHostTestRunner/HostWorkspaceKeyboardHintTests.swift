@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -21,3 +22,4 @@ func runHostWorkspaceKeyboardHintTests() async {
 
     print("PASS: the workspace's keyboard hint reads \"Command-L focuses the launcher · Escape leaves it\"")
 }
+#endif

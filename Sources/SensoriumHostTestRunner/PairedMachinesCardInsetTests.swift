@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -93,3 +94,4 @@ func runPairedMachinesCardInsetTests() async {
         print("PASS: the Last Screen Session card insets its text by 16pt")
     }
 }
+#endif

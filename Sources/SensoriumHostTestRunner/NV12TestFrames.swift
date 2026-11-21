@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -141,3 +142,4 @@ struct NV12TestImage {
         return frame
     }
 }
+#endif

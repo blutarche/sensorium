@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -317,3 +318,4 @@ func runHostCapabilityAndSettingsTests() async {
         print("PASS: HostSessionController's own canvas cap refuses a surface beyond the operator's chosen count, and leaves every surface within it unaffected")
     }
 }
+#endif

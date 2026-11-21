@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -74,7 +76,8 @@ private func makeUnlockFixture(
         hostScreenLiveSessionRegistry: liveSessionRegistry,
         hostScreenPresenceActivitySignal: UnlockTestIdleSignal(),
         hostScreenPresenceGate: nil,
-        hostScreenModeController: nil
+        hostScreenModeController: nil,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     if authenticate {
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -91,6 +94,7 @@ private func makeUnlockFixture(
         videoSink: FakeVideoSink(),
         onEvent: onEvent,
         hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
+        requiresAccountableHostScreenMedia: false,
         lockStateReader: lockStateReader,
         lockScreenUnlocker: unlocker
     )

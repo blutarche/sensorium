@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumCore
 import SensoriumHost
@@ -188,3 +189,4 @@ func runCaptureUnavailableTests() async {
 
     print("PASS: the host window tells the person at this machine to quit and open the host again")
 }
+#endif

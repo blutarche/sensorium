@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -50,3 +51,4 @@ func runHostMenuBarPingTitleColorTests() async {
 
     print("PASS: the menu bar title keeps AppKit's own adaptive colour and still uses the monospaced-digit font")
 }
+#endif

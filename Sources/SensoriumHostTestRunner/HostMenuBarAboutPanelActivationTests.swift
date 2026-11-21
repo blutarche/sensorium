@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -20,3 +21,4 @@ func runHostMenuBarAboutPanelActivationTests() async {
 
     print("PASS: About Sensorium Host brings the app to the front before showing its panel")
 }
+#endif

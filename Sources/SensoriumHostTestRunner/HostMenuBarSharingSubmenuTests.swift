@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -137,3 +138,4 @@ func runHostMenuBarSharingSubmenuTests() async {
 /// item and menu outlive the helper that made them.
 @MainActor
 private var retainedPresences: [HostMenuBarPresence] = []
+#endif

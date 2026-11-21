@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -122,3 +123,4 @@ func runHostSetupPairingCodeViewTests() async {
         print("PASS: the code view's hint and countdown read in the sans face, with the countdown's digits tabular")
     }
 }
+#endif

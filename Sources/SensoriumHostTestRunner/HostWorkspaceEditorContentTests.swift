@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -46,3 +47,4 @@ func runHostWorkspaceEditorContentTests() async {
 
     print("PASS: the workspace editor opens with body-face prose that names the private desktop, wrapped at 640pt")
 }
+#endif

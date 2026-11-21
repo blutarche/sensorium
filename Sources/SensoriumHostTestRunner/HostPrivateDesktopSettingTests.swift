@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import AppKit
 import SensoriumCore
@@ -116,7 +117,8 @@ func runHostPrivateDesktopRefusalTests() {
                 keyConfinement: .unconfined,
                 hostScreenArmingProvider: { arming },
                 hostScreenCurrentDisplaysProvider: { [] },
-                privateDesktopOffered: { offered }
+                privateDesktopOffered: { offered },
+                hostScreenLockStateReader: FakeScreenLockState(locked: false)
             )
             _ = try! controller.handle(hello())
             let offer = try! controller.offerHostScreenList()
@@ -427,3 +429,4 @@ func runHostPrivateDesktopProbeFailureTests() {
         print("PASS: the host window shows a failed private-desktop probe's reason in warning colour beneath the switch")
     }
 }
+#endif

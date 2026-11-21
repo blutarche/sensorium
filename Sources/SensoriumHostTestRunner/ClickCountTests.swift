@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -136,3 +137,4 @@ private final class ClickCountHIDActivity: HostInjectedHIDActivity, @unchecked S
     func sampleBeforePost() {}
     func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
 }
+#endif

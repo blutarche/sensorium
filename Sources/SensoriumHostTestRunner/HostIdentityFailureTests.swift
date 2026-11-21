@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumCore
@@ -328,3 +329,4 @@ private final class FakeHostTLSIdentityReplacer: HostTLSIdentityReplacing, @unch
         storedCount += 1
     }
 }
+#endif

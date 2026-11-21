@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -258,3 +259,4 @@ private func postPresenceWaitingTestClick(at point: NSPoint, windowNumber: Int) 
         NSApplication.shared.postEvent(event, atStart: false)
     }
 }
+#endif

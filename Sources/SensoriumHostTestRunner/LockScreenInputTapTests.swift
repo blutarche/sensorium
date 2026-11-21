@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -319,3 +320,4 @@ private final class RecordedTapPosts {
         taps.removeAll()
     }
 }
+#endif

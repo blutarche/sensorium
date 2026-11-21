@@ -1,3 +1,4 @@
+#if os(macOS)
 import CommonCrypto
 import CryptoKit
 import Foundation
@@ -40,11 +41,6 @@ final class ScriptedRFBChannel: RFBByteChannel, @unchecked Sendable {
     }
 }
 
-struct FakeScreenLockState: ScreenLockStateReading {
-    let locked: Bool
-    func isScreenLocked() -> Bool { locked }
-}
-
 /// Stands in for `MutableHostInjectedHIDActivity.shared` so an unlocker under
 /// test, when its typing actually reaches `press(_:through:)`, never writes
 /// into the process-wide singleton, which would otherwise carry that state
@@ -54,16 +50,6 @@ private final class NoOpHostInjectedHIDActivity: HostInjectedHIDActivity, @unche
     func secondsSinceLastPost() -> TimeInterval? { nil }
     func sampleBeforePost() {}
     func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
-}
-
-/// A lock reader that starts locked and reports unlocked once flipped, so a
-/// success path that types and then re-checks can be driven deterministically.
-final class FlippableLockState: ScreenLockStateReading, @unchecked Sendable {
-    private let lock = NSLock()
-    private var locked: Bool
-    init(locked: Bool) { self.locked = locked }
-    func setLocked(_ value: Bool) { lock.lock(); locked = value; lock.unlock() }
-    func isScreenLocked() -> Bool { lock.lock(); defer { lock.unlock() }; return locked }
 }
 
 private func aesECBDecryptForTest(_ ciphertext: Data, key: [UInt8]) -> [UInt8] {
@@ -587,3 +573,4 @@ func runLockScreenUnlockTests() async {
     await testUnlockerSamplesAndRecordsOncePerPressedKeyPlusReturn()
     testABlockingLoopbackChannelStopsAtItsTimeout()
 }
+#endif

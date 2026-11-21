@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -216,3 +217,4 @@ func runPairedMachinesSharingToggleTests() async {
         print("PASS: choosing ask first reports the device key and new state through its own callback")
     }
 }
+#endif

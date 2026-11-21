@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -98,3 +99,4 @@ func runHostAutoLoginSwitchTests() async {
         print("PASS: turning the checkbox on reports the new state to onToggleAutoLogin")
     }
 }
+#endif

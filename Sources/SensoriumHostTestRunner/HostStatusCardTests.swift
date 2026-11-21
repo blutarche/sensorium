@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -112,3 +113,4 @@ func runHostStatusCardTests() async {
         print("PASS: the menu panel offers Open Screen Recording Settings while that permission is missing")
     }
 }
+#endif

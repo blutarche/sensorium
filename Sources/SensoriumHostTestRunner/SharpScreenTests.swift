@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -285,3 +286,4 @@ func runSharpScreenTests() async {
     }
     print("PASS: a session canvas declares its mode at its pixel size, and the sharp screen declares its mode in points, so macOS offers it at 2x")
 }
+#endif

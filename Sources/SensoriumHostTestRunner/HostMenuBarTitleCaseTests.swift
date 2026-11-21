@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -184,3 +185,4 @@ func runHostMenuBarTitleCaseTests() async {
         print("PASS: leaving out the alert's item leaves no empty section behind")
     }
 }
+#endif

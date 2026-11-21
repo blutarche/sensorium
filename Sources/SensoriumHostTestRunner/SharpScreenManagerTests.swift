@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CoreGraphics
 import Foundation
@@ -613,3 +614,4 @@ func runSharpScreenManagerTests() async {
     }
     print("PASS: the manager hears about a monitor through the display-change notification macOS posts")
 }
+#endif

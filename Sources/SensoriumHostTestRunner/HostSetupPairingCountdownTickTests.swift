@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -119,3 +120,4 @@ func runHostSetupPairingCountdownTickTests() async {
         print("PASS: a pairing countdown tick that finds the code already expired stops the ticker itself")
     }
 }
+#endif

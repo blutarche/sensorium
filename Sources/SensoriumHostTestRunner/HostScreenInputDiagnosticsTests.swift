@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -160,6 +161,7 @@ private func factoryForwardsItsLogToEveryController() {
         keyConfinement: .hostScreen,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [monitorSnapshot(id: 2)] },
+        hostScreenLockStateReader: FakeScreenLockState(locked: false),
         log: { logged.append($0) }
     )
     let controller = factory.makeController()
@@ -296,3 +298,4 @@ private final class FixedInputInjectorFactory: InputInjectingFactory {
         injector
     }
 }
+#endif

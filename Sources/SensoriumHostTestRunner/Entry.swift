@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -32,180 +42,216 @@ import SensoriumHost
 struct SensoriumHostTestRunner {
     static func main() async {
         let coreFixtures = CoreSessionSharedFixtures()
-        let groups: [() async -> Void] = [
-            { await runLifecycleAndGateTests() },
-            { await runCoreSessionTestsPart1(coreFixtures) },
-            { await runCoreSessionTestsPart2(coreFixtures) },
-            { await runCoreSessionTestsPart3(coreFixtures) },
-            { await runCoreSessionTestsPart4(coreFixtures) },
-            { await runLauncherDesignAndOperatorTests() },
-            { await runCanvasDesignAppearanceTests() },
-            { await runCanvasLauncherEmptyStateWrapTests() },
-            { await runCanvasLauncherHostNameTests() },
-            { await runHostWorkspaceKeyboardHintTests() },
-            { await runHostWorkspaceEditorTextOriginTests() },
-            { await runHostWorkspaceEditorContentTests() },
-            { await runHostCapabilityAndSettingsTests() },
-            { runHostPrivateDesktopSettingTests() },
-            { runHostPrivateDesktopRefusalTests() },
-            { runHostPrivateDesktopProbeFailureTests() },
-            { runHostLocalNetworkSettingTests() },
-            { runHostLocalNetworkConnectionRegistryTests() },
-            { await runCanvasReleaseAccountingTests() },
-            { await runScreenCaptureCanvasMediaRetryTests() },
-            { await runHostScreenCaptureMediaRetryTests() },
-            { await runScreenCaptureCanvasMediaStopSignalTests() },
-            { await runCanvasCaptureStopTests() },
-            { await runHostScreenArmingTests() },
-            { await runHostScreenArmingUnreadableFileTests() },
-            { await runPairingSignatureRequirementTests() },
-            { await runHelloChannelBindingHostTests() },
-            { await runHostScreenDeclineIsFinalTests() },
-            { await runHostScreenSelectionGuardTests() },
-            { await runSharpScreenTests() },
-            { await runSharpScreenManagerTests() },
-            { await runSharpScreenSessionTests() },
-            { await runHostScreenPresenceRuleTests() },
-            { await runHostLocalActivitySignalTests() },
-            { await runHostScreenPresenceGateTests() },
-            { await runHostScreenSessionControllerPlaceholderTests() },
-            { await runHostScreenSessionControllerAdmissionTests() },
-            { await runHostScreenResumeTicketStoreTests() },
-            { runHostScreenUnlockThrottleTests() },
-            { await runHostScreenResumeTicketControllerTests() },
-            { await runStreamScalePreferenceHostTests() },
-            { await runHostScreenModeTests() },
-            { await runHostScreenCoordinatorTests() },
-            { await runLockScreenUnlockTests() },
-            { await runHostScreenUnlockCoordinatorTests() },
-            { await runHostScreenLockWatcherTests() },
-            { runHostScreenRelockTrackerTests() },
-            { runHostScreenRelockPosterTests() },
-            { runHostAutoLoginLockAtStartTests() },
-            { runHostAutoLoginDefaultRegistrationTests() },
-            { runSelfPostDiscountingLocalActivitySignalTests() },
-            { runMutableHostInjectedHIDActivityTests() },
-            { await runHostScreenRelockWiringTests() },
-            { await runHostScreenLiveSessionTests() },
-            { await runInputGrantWithoutRelaunchTests() },
-            { await runHostScreenModeCoordinatorTests() },
-            { await runHostScreenModeAccountabilityTests() },
-            { await runHostScreenFidelityTests() },
-            { await runHostScreenViewerGeometryTests() },
-            { await runHostScreenDrawableCoalescingTests() },
-            { await runHostScreenMixedSessionTests() },
-            { await runDisplayCountTests() },
-            { await runHostScreenIndicationTests() },
-            { await runHostScreenProductionWiringTests() },
-            { await runHostScreenOfferOnHelloTests() },
-            { await runPairingCodeRevealTests() },
-            { await runHostSetupTailscaleButtonTests() },
-            { await runHostIdentityFailureTests() },
-            { runHostIdentityReplacementTests() },
-            { await runHostSetupPermissionButtonCaseTests() },
-            { await runHostAutoLoginSwitchTests() },
-            { runHostPrivateDesktopSwitchTests() },
-            { runHostLocalNetworkSwitchTests() },
-            { await runHostSetupRevealButtonTests() },
-            { await runHostSetupStopButtonTests() },
-            { await runHostConnectionAndPairingTests() },
-            { await runHostSetupPairingCodeViewTests() },
-            { await runHostSetupPairingCountdownTickTests() },
-            { await runHostSetupSectionOrderTests() },
-            { await runHostSetupWindowScrollTests() },
-            { await runHostStatusCardTests() },
-            { await runHostTextFlowTests() },
-            { await runHostPairedMachinesEmptyStateTests() },
-            { await runHostMenuBarStopMenuItemTests() },
-            { await runHostMenuBarSharingSubmenuTests() },
-            { await runHostMenuBarAboutMenuItemTests() },
-            { await runHostMenuBarAboutPanelActivationTests() },
-            { await runHostMainMenuTests() },
-            { await runHostMenuBarPairingCardFaceTests() },
-            { await runHostMenuBarTitleCaseTests() },
-            { await runHostMenuBarPingTitleColorTests() },
-            { await runHostMenuBarLogoIconTests() },
-            { await runHostMenuBarPanelMenuWidthTests() },
-            { await runHostMenuPanelEyebrowContrastTests() },
-            { await runPairedMachinesSharingToggleTests() },
-            { await runPairedMachinesCardInsetTests() },
-            { await runHostPairedMachineRowLayoutTests() },
-            { await runPairedMachineRenameTests() },
-            { await runHostRenameSheetPlacementTests() },
-            { await runPairedMachinesCompactListTests() },
-            { await runApprovedDeviceStoreSafetyTests() },
-            { await runFakeHostByteChannelTests() },
-            { await runCaptureCursorPolicyTests() },
-            { await runCaptureStreamColorTests() },
-            { await runHostMediaPipelineFrameSourceTests() },
-            { await runEncoderStallTests() },
-            { await runEncoderCreationStallTests() },
-            { await runPipelineBuildFidelityTests() },
-            { await runFidelityTickOverlapTests() },
-            { await runStreamFidelityLeverTests() },
-            { await runScreenChangeAdmissionTests() },
-            { await runSentByteAccountingTests() },
-            { await runVideoSendRecoveryTests() },
-            { await runStillRefreshTests() },
-            { await runStillRefreshSendTimeTests() },
-            { await runStillRefreshTransportTests() },
-            { await runStreamEncoderFlushTests() },
-            { runFrameChangeSamplerTests() },
-            { await runStreamMotionEncoderTests() },
-            { runStreamMotionProofTests() },
-            { await runStreamMotionPipelineTests() },
-            { await runStillRefreshEncodeMeasurementTests() },
-            { await runBaselineEncoderHardwareTests() },
-            { await runViewerDecoderPreferenceHostTests() },
-            { await runViewerKeyFrameRequestHostTests() },
-            { await runViewerKeyFrameIntervalTests() },
-            { await runStreamFidelityCoordinatorTests() },
-            { await runInputRoundTripTests() },
-            { await runHostScreenKeyInputTests() },
-            { await runSystemHotkeyChordTests() },
-            { await runLockScreenInputTapTests() },
-            { await runHostScreenInputDiagnosticsTests() },
-            { await runClickCountTests() },
-            { await runInjectedInputFidelityTests() },
-            { await runViewerTelemetryReceiptTests() },
-            { await runOnlineDisplayLeakDetectionTests() },
-            { await runDisplayWakeTests() },
-            { await runHostScreenCaptureRecoveryTests() },
-            { await runCaptureUnavailableTests() },
-            { await runHostStopIsFinalTests() },
-            { await runHostViewerSilenceWatchdogTests() },
-            { await runHostUndecodableControlMessageTests() },
-            { await runHostCapsLockTests() },
-            { runHostScrollLineTests() },
-            { await runHostConnectionDeadlineTests() },
-            { await runHostPingDisplayTests() },
-            { await runHostOperatorStatusPingTests() },
-            { runHostListenerRecoveryPolicyTests() },
-            { runHostLocalNetworkAdmissionTests() },
-            { runHostLocalNetworkListenerParameterTests() },
-            { runHostLocalSubnetInterfaceFilterTests() },
-            { runHostUnscopedListenerEventTests() },
-            { runHostUpdateLaunchRouteTests() },
-            { runHostUpdateRelaunchLockTests() },
-            { runHostUpdateSelfTestTests() },
-            { runHostUpdateIdleRuleTests() },
-            { runHostUpdateReadyReportTests() },
-            { runHostUpdateStatusLineTests() },
-            { runHostUpdatePreferenceTests() },
-            { runHostUpdateBundleTests() },
-            { await runHostUpdaterTests() },
-            { runHostUpdateLogLineTests() },
-            { runHostSessionLogLineTests() },
-            { runHostUpdateRelaunchReporterTests() },
-            { await runHostUpdateSwapBackRecoveryTests() },
-            { runHostUpdateArgumentOrderTests() },
-            { runHostUpdateWindowTests() },
-            { runHostUpdateMenuItemTests() },
-            // Kept last -- see the file-level comment above.
-            { runHostCapsLockRealTextFieldTests() },
-            { await runHostScreenPresenceWaitingTests() },
-            { await runHostScreenPresencePromptTests() },
-        ]
+        var groups: [() async -> Void] = []
+        groups.append { await runLifecycleAndGateTests() }
+        groups.append { await runCoreSessionTestsPart1(coreFixtures) }
+        groups.append { await runCoreSessionTestsPart2(coreFixtures) }
+        groups.append { await runCoreSessionTestsPart3(coreFixtures) }
+        groups.append { await runCoreSessionTestsPart4(coreFixtures) }
+        #if os(macOS)
+        groups.append { await runLauncherDesignAndOperatorTests() }
+        groups.append { await runCanvasDesignAppearanceTests() }
+        groups.append { await runCanvasLauncherEmptyStateWrapTests() }
+        groups.append { await runCanvasLauncherHostNameTests() }
+        groups.append { await runHostWorkspaceKeyboardHintTests() }
+        groups.append { await runHostWorkspaceEditorTextOriginTests() }
+        groups.append { await runHostWorkspaceEditorContentTests() }
+        groups.append { await runHostCapabilityAndSettingsTests() }
+        groups.append { runHostPrivateDesktopSettingTests() }
+        groups.append { runHostPrivateDesktopRefusalTests() }
+        groups.append { runHostPrivateDesktopProbeFailureTests() }
+        groups.append { runHostLocalNetworkSettingTests() }
+        groups.append { runHostLocalNetworkConnectionRegistryTests() }
+        groups.append { await runCanvasReleaseAccountingTests() }
+        groups.append { await runScreenCaptureCanvasMediaRetryTests() }
+        groups.append { await runHostScreenCaptureMediaRetryTests() }
+        groups.append { await runScreenCaptureCanvasMediaStopSignalTests() }
+        #endif
+        groups.append { await runCanvasCaptureStopTests() }
+        groups.append { await runHostScreenArmingTests() }
+        groups.append { await runHostScreenGateEnforcementTests() }
+        groups.append { await runHostScreenArmingUnreadableFileTests() }
+        groups.append { await runPairingSignatureRequirementTests() }
+        groups.append { await runHelloChannelBindingHostTests() }
+        groups.append { await runHostScreenDeclineIsFinalTests() }
+        groups.append { await runHostScreenSelectionGuardTests() }
+        #if os(macOS)
+        groups.append { await runSharpScreenTests() }
+        groups.append { await runSharpScreenManagerTests() }
+        groups.append { await runSharpScreenSessionTests() }
+        #endif
+        groups.append { await runHostScreenPresenceRuleTests() }
+        #if os(macOS)
+        groups.append { await runHostLocalActivitySignalTests() }
+        #endif
+        groups.append { await runHostScreenPresenceGateTests() }
+        groups.append { await runHostScreenSessionControllerPlaceholderTests() }
+        groups.append { await runHostScreenSessionControllerAdmissionTests() }
+        groups.append { await runHostScreenResumeTicketStoreTests() }
+        groups.append { runHostScreenUnlockThrottleTests() }
+        groups.append { await runHostScreenResumeTicketControllerTests() }
+        groups.append { await runStreamScalePreferenceHostTests() }
+        groups.append { await runHostScreenModeTests() }
+        groups.append { await runHostScreenCoordinatorTests() }
+        #if os(macOS)
+        groups.append { await runLockScreenUnlockTests() }
+        #endif
+        groups.append { await runHostScreenUnlockCoordinatorTests() }
+        groups.append { await runHostScreenLockWatcherTests() }
+        groups.append { runHostScreenRelockTrackerTests() }
+        #if os(macOS)
+        groups.append { runHostScreenRelockPosterTests() }
+        #endif
+        groups.append { runHostAutoLoginLockAtStartTests() }
+        groups.append { runHostAutoLoginDefaultRegistrationTests() }
+        groups.append { runSelfPostDiscountingLocalActivitySignalTests() }
+        groups.append { runMutableHostInjectedHIDActivityTests() }
+        #if os(macOS)
+        groups.append { await runHostScreenRelockWiringTests() }
+        #endif
+        groups.append { await runHostScreenLiveSessionTests() }
+        groups.append { await runInputGrantWithoutRelaunchTests() }
+        groups.append { await runHostScreenModeCoordinatorTests() }
+        groups.append { await runHostScreenModeAccountabilityTests() }
+        groups.append { await runHostScreenFidelityTests() }
+        groups.append { await runHostScreenViewerGeometryTests() }
+        groups.append { await runHostScreenDrawableCoalescingTests() }
+        groups.append { await runHostScreenMixedSessionTests() }
+        groups.append { await runDisplayCountTests() }
+        #if os(macOS)
+        groups.append { await runHostScreenIndicationTests() }
+        #endif
+        groups.append { await runHostScreenProductionWiringTests() }
+        groups.append { await runHostScreenOfferOnHelloTests() }
+        groups.append { await runPairingCodeRevealTests() }
+        #if os(macOS)
+        groups.append { await runHostSetupTailscaleButtonTests() }
+        groups.append { await runHostIdentityFailureTests() }
+        groups.append { runHostIdentityReplacementTests() }
+        groups.append { await runHostSetupPermissionButtonCaseTests() }
+        groups.append { await runHostAutoLoginSwitchTests() }
+        groups.append { runHostPrivateDesktopSwitchTests() }
+        groups.append { runHostLocalNetworkSwitchTests() }
+        groups.append { await runHostSetupRevealButtonTests() }
+        groups.append { await runHostSetupStopButtonTests() }
+        groups.append { await runHostConnectionAndPairingTests() }
+        groups.append { await runHostSetupPairingCodeViewTests() }
+        groups.append { await runHostSetupPairingCountdownTickTests() }
+        groups.append { await runHostSetupSectionOrderTests() }
+        groups.append { await runHostSetupWindowScrollTests() }
+        groups.append { await runHostStatusCardTests() }
+        groups.append { await runHostTextFlowTests() }
+        groups.append { await runHostPairedMachinesEmptyStateTests() }
+        groups.append { await runHostMenuBarStopMenuItemTests() }
+        groups.append { await runHostMenuBarSharingSubmenuTests() }
+        groups.append { await runHostMenuBarAboutMenuItemTests() }
+        groups.append { await runHostMenuBarAboutPanelActivationTests() }
+        groups.append { await runHostMainMenuTests() }
+        groups.append { await runHostMenuBarPairingCardFaceTests() }
+        groups.append { await runHostMenuBarTitleCaseTests() }
+        groups.append { await runHostMenuBarPingTitleColorTests() }
+        groups.append { await runHostMenuBarLogoIconTests() }
+        groups.append { await runHostMenuBarPanelMenuWidthTests() }
+        groups.append { await runHostMenuPanelEyebrowContrastTests() }
+        groups.append { await runPairedMachinesSharingToggleTests() }
+        groups.append { await runPairedMachinesCardInsetTests() }
+        groups.append { await runHostPairedMachineRowLayoutTests() }
+        groups.append { await runPairedMachineRenameTests() }
+        groups.append { await runHostRenameSheetPlacementTests() }
+        groups.append { await runPairedMachinesCompactListTests() }
+        #endif
+        groups.append { await runApprovedDeviceStoreSafetyTests() }
+        groups.append { await runFakeHostByteChannelTests() }
+        groups.append { await runCaptureCursorPolicyTests() }
+        #if os(macOS)
+        groups.append { await runCaptureStreamColorTests() }
+        groups.append { await runHostMediaPipelineFrameSourceTests() }
+        groups.append { await runEncoderStallTests() }
+        groups.append { await runEncoderCreationStallTests() }
+        groups.append { await runPipelineBuildFidelityTests() }
+        #endif
+        groups.append { await runFidelityTickOverlapTests() }
+        groups.append { await runStreamFidelityLeverTests() }
+        #if os(macOS)
+        groups.append { await runScreenChangeAdmissionTests() }
+        #endif
+        groups.append { await runSentByteAccountingTests() }
+        #if os(macOS)
+        groups.append { await runVideoSendRecoveryTests() }
+        groups.append { await runStillRefreshTests() }
+        #endif
+        groups.append { await runStillRefreshSendTimeTests() }
+        #if os(macOS)
+        groups.append { await runStillRefreshTransportTests() }
+        groups.append { await runStreamEncoderFlushTests() }
+        groups.append { runFrameChangeSamplerTests() }
+        groups.append { await runStreamMotionEncoderTests() }
+        groups.append { runStreamMotionProofTests() }
+        groups.append { await runStreamMotionPipelineTests() }
+        groups.append { await runStillRefreshEncodeMeasurementTests() }
+        groups.append { await runBaselineEncoderHardwareTests() }
+        groups.append { await runViewerDecoderPreferenceHostTests() }
+        groups.append { await runViewerKeyFrameRequestHostTests() }
+        groups.append { await runViewerKeyFrameIntervalTests() }
+        #endif
+        groups.append { await runStreamFidelityCoordinatorTests() }
+        groups.append { await runInputRoundTripTests() }
+        groups.append { await runHostScreenKeyInputTests() }
+        #if os(macOS)
+        groups.append { await runSystemHotkeyChordTests() }
+        groups.append { await runLockScreenInputTapTests() }
+        groups.append { await runHostScreenInputDiagnosticsTests() }
+        groups.append { await runClickCountTests() }
+        groups.append { await runInjectedInputFidelityTests() }
+        #endif
+        groups.append { await runViewerTelemetryReceiptTests() }
+        groups.append { await runOnlineDisplayLeakDetectionTests() }
+        #if os(macOS)
+        groups.append { await runDisplayWakeTests() }
+        groups.append { await runHostScreenCaptureRecoveryTests() }
+        groups.append { await runCaptureUnavailableTests() }
+        #endif
+        groups.append { await runHostStopIsFinalTests() }
+        groups.append { await runHostViewerSilenceWatchdogTests() }
+        groups.append { await runHostUndecodableControlMessageTests() }
+        #if os(macOS)
+        groups.append { await runHostCapsLockTests() }
+        groups.append { runHostScrollLineTests() }
+        #endif
+        groups.append { await runHostConnectionDeadlineTests() }
+        groups.append { await runHostPingDisplayTests() }
+        groups.append { await runHostOperatorStatusPingTests() }
+        groups.append { runHostListenerRecoveryPolicyTests() }
+        #if os(macOS)
+        groups.append { runHostLocalNetworkAdmissionTests() }
+        groups.append { runHostLocalNetworkListenerParameterTests() }
+        groups.append { runHostLocalSubnetInterfaceFilterTests() }
+        groups.append { runHostUnscopedListenerEventTests() }
+        groups.append { runHostUpdateLaunchRouteTests() }
+        groups.append { runHostUpdateRelaunchLockTests() }
+        groups.append { runHostUpdateSelfTestTests() }
+        groups.append { runHostUpdateIdleRuleTests() }
+        groups.append { runHostUpdateReadyReportTests() }
+        groups.append { runHostUpdateStatusLineTests() }
+        groups.append { runHostUpdatePreferenceTests() }
+        groups.append { runHostUpdateBundleTests() }
+        groups.append { await runHostUpdaterTests() }
+        groups.append { runHostUpdateLogLineTests() }
+        #endif
+        groups.append { runHostSessionLogLineTests() }
+        #if os(macOS)
+        groups.append { runHostUpdateRelaunchReporterTests() }
+        groups.append { await runHostUpdateSwapBackRecoveryTests() }
+        groups.append { runHostUpdateArgumentOrderTests() }
+        groups.append { runHostUpdateWindowTests() }
+        groups.append { runHostUpdateMenuItemTests() }
+        #endif
+        // Kept last -- see the file-level comment above.
+        #if os(macOS)
+        groups.append { runHostCapsLockRealTextFieldTests() }
+        groups.append { await runHostScreenPresenceWaitingTests() }
+        groups.append { await runHostScreenPresencePromptTests() }
+        #endif
 
         HostRunnerCompletionGuard.shared.configure(totalGroups: groups.count)
         for group in groups {
@@ -256,7 +302,7 @@ final class HostRunnerCompletionGuard: @unchecked Sendable {
         // `_exit` below is libc's own way out without libc's stdio flush,
         // which would otherwise discard whatever is still buffered -- the
         // line that was printing when the process ended, among others.
-        fflush(stdout)
+        fflush(nil)
         guard completedGroups < totalGroups else {
             print("host runner: \(completedGroups) of \(totalGroups) test groups ran")
             return

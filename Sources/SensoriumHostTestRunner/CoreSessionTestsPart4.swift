@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -1637,6 +1647,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
             )
         }
 
+        #if os(macOS)
         // The axis of key confinement is not "is the focused window mine" but
         // "is the focused window on the owned canvas". A real application
         // launched onto the canvas holds the keyboard itself, and typing into
@@ -1899,6 +1910,7 @@ func runCoreSessionTestsPart4(_ fixtures: CoreSessionSharedFixtures) async {
                 "an unstated scanner refuses every window it cannot see, which costs typing into launched applications and never a key on a physical display"
             )
         }
+        #endif
 
         // End to end on the wiring `sensoriumd` builds: the coordinator
         // installs each surface's window under the very token the controller

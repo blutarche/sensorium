@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -523,3 +524,4 @@ private func flushTestIsKeyFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
     }
     return (first[kCMSampleAttachmentKey_NotSync] as? Bool) != true
 }
+#endif

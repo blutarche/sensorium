@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -70,7 +80,7 @@ private func makeHostScreenFixture(
     modeController: FakeHostScreenModeController? = nil,
     localActivitySignal: (any HostLocalActivitySignal)? = nil,
     presenceGate: (any HostScreenPresenceGating)? = nil,
-    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, CGDirectDisplayID) throws -> any CanvasMediaStreaming
+    hostScreenMediaFactory: @escaping (VideoEncoderConfiguration, UInt32) throws -> any CanvasMediaStreaming
 ) -> (
     coordinator: HostSessionCoordinator,
     controller: HostSessionController,
@@ -104,7 +114,8 @@ private func makeHostScreenFixture(
         hostScreenCurrentDisplaysProvider: { [display] },
         hostScreenPresenceActivitySignal: localActivitySignal ?? AlwaysIdleSignal(),
         hostScreenPresenceGate: presenceGate,
-        hostScreenModeController: modeController
+        hostScreenModeController: modeController,
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Probe", publicKey: deviceKey,
@@ -123,7 +134,9 @@ private func makeHostScreenFixture(
         workspaces: CanvasSurfaceSlots { surface in canvasWorkspaces[surface] },
         onEvent: onEvent,
         onSessionEnded: onSessionEnded,
-        hostScreenMediaFactory: hostScreenMediaFactory
+        hostScreenMediaFactory: hostScreenMediaFactory,
+        requiresAccountableHostScreenMedia: false,
+        lockStateReader: FakeScreenLockState(locked: false)
     )
     return (coordinator, controller, injectorFactory, canvasMedia, canvasWorkspaces)
 }
@@ -143,7 +156,7 @@ func runHostScreenCoordinatorTests() async {
         // Bring-up: no workspace, encoder sized from real geometry
         let display = hostScreenTestDisplay()
         var capturedConfiguration: VideoEncoderConfiguration?
-        var badgeDisplayID: CGDirectDisplayID?
+        var badgeDisplayID: UInt32?
         let hostScreenMedia = FakeScalableCanvasMedia()
         let events = DiagnosticsRecorder()
         let fixture = makeHostScreenFixture(
@@ -288,7 +301,8 @@ func runHostScreenCoordinatorTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import Network
@@ -147,3 +148,4 @@ func runHostSetupStopButtonTests() async {
         print("PASS: the live connection's own ending empties the slot both Stop controls read")
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -158,3 +159,4 @@ func runHostScrollLineTests() {
         print("PASS: a scroll of more than 1000 lines, or of lines that are not a finite number, is refused")
     }
 }
+#endif

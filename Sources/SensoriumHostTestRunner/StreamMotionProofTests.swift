@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import SensoriumHost
 
@@ -178,3 +179,4 @@ private func expectOnlyTheConfiguredMotionSizeProvesMotion() {
     )
     expect(exactMotion.verdict == .pass, "the production motion dimensions followed by full-size recovery pass")
 }
+#endif

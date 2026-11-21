@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumCore
@@ -420,7 +421,8 @@ func runPairedMachineRenameTests() async {
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceActivitySignal: RenameRecentlyActiveSignal(),
-            hostScreenPresenceGate: gate
+            hostScreenPresenceGate: gate,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         _ = try! controller.handle(signedHello(device, deviceName: "Kestrel Laptop Air"))
         guard case let .hostScreenList(displays, _) = try! controller.offerHostScreenList(), let entry = displays.first else {
@@ -622,3 +624,4 @@ func runPairedMachineRenameTests() async {
         print("PASS: the rename sheet's heading names the machine being renamed, held whole")
     }
 }
+#endif

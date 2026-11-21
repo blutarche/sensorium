@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import Foundation
 import ScreenCaptureKit
@@ -221,3 +222,4 @@ func runPipelineBuildFidelityTests() async {
     await expectAChangeDuringAResolutionRebuildReachesThePipeline("a canvas capture", makeMedia: makeCanvasMedia)
     print("PASS: a fidelity change applied while a pipeline is built reaches that pipeline once it is installed")
 }
+#endif

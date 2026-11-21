@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -84,3 +85,4 @@ func runViewerKeyFrameRequestHostTests() async {
 
     print("PASS: the host takes a key-frame declaration and requests only from an authenticated viewer, and only for a surface it streams")
 }
+#endif

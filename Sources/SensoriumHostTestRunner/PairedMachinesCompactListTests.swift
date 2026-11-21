@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -266,3 +267,4 @@ func runPairedMachinesCompactListTests() async {
         print("PASS: a long machine name truncates before the switch, and the controls stay inside the card")
     }
 }
+#endif

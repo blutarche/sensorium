@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import Network
@@ -315,3 +316,4 @@ func runHostConnectionAndPairingTests() async {
         print("PASS: the menu bar offers a working Stop while a pairing code is shown")
     }
 }
+#endif

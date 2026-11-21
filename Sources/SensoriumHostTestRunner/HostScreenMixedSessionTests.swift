@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -71,7 +81,8 @@ func runHostScreenMixedSessionTests() async {
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
-            privateDesktopOffered: { true }
+            privateDesktopOffered: { true },
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -128,7 +139,8 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
-            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -203,7 +215,8 @@ func runHostScreenMixedSessionTests() async {
             keyConfinement: .hostScreen,
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [firstDisplay, secondDisplay] },
-            hostScreenPresenceActivitySignal: AlwaysIdleSignal()
+            hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,
@@ -276,7 +289,8 @@ func runHostScreenMixedSessionTests() async {
             hostScreenArmingProvider: { arming },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenPresenceActivitySignal: AlwaysIdleSignal(),
-            privateDesktopOffered: { true }
+            privateDesktopOffered: { true },
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
             protocolVersion: 1, deviceName: "Probe", publicKey: identity.publicKey,

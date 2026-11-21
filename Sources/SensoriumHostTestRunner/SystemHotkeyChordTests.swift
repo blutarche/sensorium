@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import Foundation
 import SensoriumCore
@@ -202,3 +203,4 @@ private final class NoOpHostInjectedHIDActivity: HostInjectedHIDActivity, @unche
     func sampleBeforePost() {}
     func secondsSinceProvenHardwareActivity() -> TimeInterval? { nil }
 }
+#endif

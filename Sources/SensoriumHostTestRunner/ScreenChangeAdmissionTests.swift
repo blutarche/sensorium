@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import ScreenCaptureKit
 import SensoriumCore
@@ -183,3 +184,4 @@ func runScreenChangeAdmissionTests() async {
 
     print("PASS: an unchanged frame is neither encoded nor counted as the screen changing, and the still-screen levers fire on it")
 }
+#endif

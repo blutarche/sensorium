@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -58,3 +59,4 @@ func runHostMenuBarPairingCardFaceTests() async {
 
     print("PASS: the menu-bar pairing card's countdown and hint read in the sans face, with the countdown's digits tabular")
 }
+#endif

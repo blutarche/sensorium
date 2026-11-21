@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreMedia
 import CoreVideo
@@ -47,3 +48,4 @@ private enum CaptureStreamConfigurationFixture {
         )
     }
 }
+#endif

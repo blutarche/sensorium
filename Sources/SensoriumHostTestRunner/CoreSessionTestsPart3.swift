@@ -1,9 +1,19 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -12,7 +22,8 @@ import SensoriumHost
 func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
     let surfaceZero = fixtures.surfaceZero!
     let surfaceOne = fixtures.surfaceOne!
-    let tlsIdentity = fixtures.tlsIdentity!
+        #if os(macOS)
+        let tlsIdentity = fixtures.tlsIdentity!
         // Requirement: two pipelines sharing one gate never exceed the
         // global in-flight bound, and the bound genuinely allows real
         // concurrency rather than accidentally serialising two encoders the
@@ -861,6 +872,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
                 "\(kind) fails a silent connection after 30s instead of hanging for good"
             )
         }
+        #endif
 
         // Host per-frame stage latency, matched by presentation timestamp
         // across capture, submit, encode, and send. The four stages partition
@@ -1163,6 +1175,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         // fails. Only a `.complete` frame is real capture output. What that
         // frame's dirty-rect list decides on top of the status is covered by
         // `runScreenChangeAdmissionTests`.
+        #if os(macOS)
         let redrawn = [CGRect(x: 0, y: 0, width: 8, height: 8)]
         expect(ScreenCaptureFrameAdmission.shouldEncode(status: .complete, dirtyRects: redrawn), "a complete frame is submitted to the encoder")
         expect(!ScreenCaptureFrameAdmission.shouldEncode(status: .idle, dirtyRects: nil), "an idle no-change notification is never submitted to the encoder")
@@ -1171,6 +1184,7 @@ func runCoreSessionTestsPart3(_ fixtures: CoreSessionSharedFixtures) async {
         expect(!ScreenCaptureFrameAdmission.shouldEncode(status: .started, dirtyRects: redrawn), "a stream-started marker carries no frame and is never submitted")
         expect(!ScreenCaptureFrameAdmission.shouldEncode(status: .stopped, dirtyRects: redrawn), "a stream-stopped marker carries no frame and is never submitted")
         expect(!ScreenCaptureFrameAdmission.shouldEncode(status: nil, dirtyRects: redrawn), "a sample buffer with no status attachment is never submitted to the encoder")
+        #endif
 
         let failureRecorder = HostMediaLatencyRecorder()
         expect(failureRecorder.frameCounts.encodeSubmissionFailures == 0, "a recorder with no failures reports zero rather than nil-like ambiguity")

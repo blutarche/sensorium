@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Foundation
 import SensoriumHost
@@ -166,3 +167,4 @@ func runHostPairedMachinesEmptyStateTests() async {
         print("PASS: the last-session line keeps its date whole and its last two words together")
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreMedia
 import CoreVideo
 import Foundation
@@ -141,3 +142,4 @@ func runHostMediaPipelineFrameSourceTests() async {
 
     print("PASS: a pipeline built from a scripted frame source records a capture, admits the frame to the encoder, and drives the source's start, frame rate and stop")
 }
+#endif

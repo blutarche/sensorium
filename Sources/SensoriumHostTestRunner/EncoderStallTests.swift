@@ -1,3 +1,4 @@
+#if os(macOS)
 import CoreGraphics
 import CoreMedia
 import Foundation
@@ -151,7 +152,8 @@ private func admittedHostScreenSession() -> (HostSessionController, FakeInputInj
         keyConfinement: .unconfined,
         hostScreenArmingProvider: { arming },
         hostScreenCurrentDisplaysProvider: { [display] },
-        hostScreenPresenceActivitySignal: EncoderStallIdleSignal()
+        hostScreenPresenceActivitySignal: EncoderStallIdleSignal(),
+        hostScreenLockStateReader: FakeScreenLockState(locked: false)
     )
     let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
         protocolVersion: 1, deviceName: "Heron Laptop", publicKey: identity.publicKey,
@@ -422,3 +424,4 @@ func runEncoderCreationStallTests() async {
         print("PASS: a canvas capture stopped while its encoder is created discards the late encoder and starts no capture")
     }
 }
+#endif

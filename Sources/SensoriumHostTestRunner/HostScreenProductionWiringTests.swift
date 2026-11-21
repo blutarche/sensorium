@@ -1,10 +1,22 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+#if canImport(CoreMedia)
 import CoreMedia
+#endif
+#if canImport(CoreVideo)
 import CoreVideo
+#endif
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 import Foundation
+#if canImport(Network)
 import Network
+#endif
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import SensoriumCore
 import SensoriumHost
 
@@ -113,7 +125,8 @@ func runHostScreenProductionWiringTests() async {
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
-            hostScreenPresenceActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -164,7 +177,8 @@ func runHostScreenProductionWiringTests() async {
             hostScreenArmingProvider: { armingStore.load() },
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
-            hostScreenPresenceActivitySignal: signal
+            hostScreenPresenceActivitySignal: signal,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
@@ -235,7 +249,8 @@ func runHostScreenProductionWiringTests() async {
             hostScreenCurrentDisplaysProvider: { [display] },
             hostScreenResumeTicketStore: resumeTicketStore,
             hostScreenPresenceActivitySignal: signals.presence,
-            hostScreenPresenceGate: gate
+            hostScreenPresenceGate: gate,
+            hostScreenLockStateReader: FakeScreenLockState(locked: false)
         )
         let controller = factory.makeController()
         let transcript = SensoriumFrameCodec.authenticatedHelloTranscript(
