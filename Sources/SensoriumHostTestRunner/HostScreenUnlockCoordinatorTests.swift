@@ -58,6 +58,7 @@ private func makeUnlockFixture(
     liveSessionRegistry: (any HostScreenLiveSessionRegistering)? = nil,
     armingProvider: (() -> HostScreenArming)? = nil,
     inputInjectorFactory: any InputInjectingFactory = FakeInputInjectorFactory(),
+    hostScreenMedia: FakeScalableCanvasMedia? = nil,
     onEvent: (@Sendable (String) -> Void)? = nil
 ) -> (coordinator: HostSessionCoordinator, controller: HostSessionController) {
     let display = unlockTestDisplay()
@@ -93,7 +94,7 @@ private func makeUnlockFixture(
         media: CanvasSurfaceSlots { _ in FakeCanvasMedia() },
         videoSink: FakeVideoSink(),
         onEvent: onEvent,
-        hostScreenMediaFactory: { _, _ in FakeScalableCanvasMedia() },
+        hostScreenMediaFactory: { _, _ in hostScreenMedia ?? FakeScalableCanvasMedia() },
         requiresAccountableHostScreenMedia: false,
         lockStateReader: lockStateReader,
         lockScreenUnlocker: unlocker
@@ -934,6 +935,36 @@ func runHostScreenLiveSessionTests() async {
         )
 
         print("PASS: pressing Stop frees a device's live-session slot immediately, the same way a dropped transport does")
+    }
+
+    // The viewer's own goodbye frees the device's live-session slot before
+    // the capture stop it starts has finished. A viewer switching to another
+    // monitor says goodbye and dials again at once, and a capture stop that
+    // takes a moment must not have that fresh request refused as a second
+    // live session.
+    do {
+        let registry = HostScreenLiveSessionRegistry()
+        let media = FakeScalableCanvasMedia()
+        let first = makeUnlockFixture(
+            authenticate: true,
+            lockStateReader: FakeScreenLockState(locked: false),
+            unlocker: RecordingUnlocker(outcome: .unlocked),
+            liveSessionRegistry: registry,
+            hostScreenMedia: media
+        )
+        expect(await admitHostScreenResult(first) == .admitted, "the first host-screen session for a device is admitted")
+        var liveDuringStop: Bool?
+        media.stopSideEffect = { liveDuringStop = first.controller.hasLiveHostScreenSession }
+        _ = try! await first.coordinator.handleWritingResponse(
+            .goodbye(reason: "client-disconnected"),
+            onWrite: { _ in }
+        )
+        expect(media.stopCount == 1, "the goodbye stops the host-screen capture")
+        expect(
+            liveDuringStop == false,
+            "while the goodbye's capture stop is still running, the session no longer counts as live -- got \(String(describing: liveDuringStop))"
+        )
+        print("PASS: a viewer's goodbye frees the device's live-session slot before its capture stop finishes")
     }
 
     // An admission whose injector construction fails releases the

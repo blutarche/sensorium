@@ -685,6 +685,9 @@ public final class HostSessionCoordinator {
     ) async throws -> SensoriumMessage? {
         if case .goodbye = message {
             hasEnded = true
+            // Before the teardown, which can take a moment: a viewer that
+            // switches screens says goodbye and asks again at once.
+            controller.noteSessionEnding()
             await tearDownSurfaces()
             defer { focus.setFocusedSurface(controller.focusedSurface) }
             return try controller.handle(message)
