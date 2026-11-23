@@ -30,6 +30,7 @@ struct SensoriumLinuxHostTestRunner {
             ("a second of stream stays near the bit rate budget", testASecondOfStreamStaysNearTheBitRateBudget),
             ("the viewer's decoder opens the stream and the luma matches", testTheViewersDecoderOpensTheStreamAndTheLumaMatches),
             ("a VA-API stream decodes in the viewer as constrained baseline", testVAAPIStreamDecodesInTheViewerWithConstrainedBaseline),
+            ("a VA-API encoder that never got a frame shuts down cleanly", testAVAAPIEncoderThatNeverGotAFrameShutsDownCleanly),
             ("VA-API latency at 2560x1440", testVAAPILatencyAt1440p)
         ] + screenSaverAdapterTests() + portalDisplayInventoryTests() + bgrxScalerTests() + layerShellProbeTests()
         var skipped = 0

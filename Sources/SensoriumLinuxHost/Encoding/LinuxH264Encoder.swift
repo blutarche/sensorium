@@ -127,7 +127,8 @@ public final class LinuxH264Encoder: LinuxVideoFrameEncoding, @unchecked Sendabl
     public func shutDown() {
         lock.lock()
         var outcomes: [LinuxVideoEncodeOutcome] = []
-        if !isShutDown, let context {
+        // FFmpeg's VA-API encoder crashes when drained before its first frame.
+        if !isShutDown, nextFrameIndex > 0, let context {
             isShutDown = true
             if avcodec_send_frame(context, nil) >= 0 {
                 outcomes = receivePackets(lastPresentationTime: lastKeyFrameTime ?? 0)

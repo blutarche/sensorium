@@ -57,6 +57,15 @@ func testVAAPIStreamDecodesInTheViewerWithConstrainedBaseline() throws {
     expect(times == times.sorted(), "output order is presentation order")
 }
 
+/// A session can replace its encoder before the first picture arrives, so the
+/// replaced one shuts down having never been sent a frame.
+func testAVAAPIEncoderThatNeverGotAFrameShutsDownCleanly() throws {
+    let log = OutcomeLog()
+    let encoder = try openVAAPIEncoder(width: 640, height: 360, log: log)
+    encoder.shutDown()
+    expect(log.outcomes.isEmpty, "an encoder that never got a frame reports nothing at shutdown")
+}
+
 private final class VAAPIDecodedCount: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
