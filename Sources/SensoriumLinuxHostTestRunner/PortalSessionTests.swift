@@ -217,6 +217,31 @@ func testAStartThatNeverAnswersClosesTheSessionThenReportsGrantNeeded() async th
     expect(bus.cancelledSubscriptions >= 4, "every Response subscription was cancelled")
 }
 
+func testADialogThePersonAskedForWaitsForTheirAnswer() async throws {
+    let bus = cooperativePortal()
+    bus.react("RemoteDesktop.Start", .silent)
+    let root = scratchRoot("no-start-limit")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let finished = TokenCounter()
+    let client = PortalSessionClient(
+        bus: bus,
+        tokenStore: RestoreTokenStore(dataRoot: root),
+        timeouts: PortalTimeouts(start: nil, step: 10),
+        sleep: { seconds in
+            // Any Start limit fires at once; the other steps answer first.
+            if seconds == 10 { try await Task.sleep(nanoseconds: 3_600_000_000_000) }
+        }
+    )
+    let opening = Task {
+        _ = try? await client.openSession(restore: false)
+        _ = finished.next()
+    }
+    try await Task.sleep(nanoseconds: 300_000_000)
+    expect(finished.next() == "token1", "a dialog the person asked for is still waiting for their answer")
+    expect(bus.calls(named: "Session.Close").isEmpty, "the session was not closed while the dialog waits")
+    opening.cancel()
+}
+
 func testADialogTheHostPersonDismissesIsDeclinedNotATimeout() async throws {
     let bus = cooperativePortal()
     bus.react("RemoteDesktop.Start", .respond(code: 1, results: [:]))
@@ -416,6 +441,7 @@ func portalSessionTests() -> [NamedTest] { [
     ("the new restore token is on disk before the session is usable", { try! await testNewRestoreTokenIsOnDiskBeforeTheSessionIsUsable() }),
     ("an unstorable token closes the session before any use", { try! await testAnUnstorableTokenClosesTheSessionBeforeAnyUse() }),
     ("a Start that never answers closes the session, then reports grant-needed", { try! await testAStartThatNeverAnswersClosesTheSessionThenReportsGrantNeeded() }),
+    ("a dialog the person asked for waits for their answer", { try! await testADialogThePersonAskedForWaitsForTheirAnswer() }),
     ("a dismissed dialog is declined, not a timeout", { try! await testADialogTheHostPersonDismissesIsDeclinedNotATimeout() }),
     ("updating screen sharing approves and restores multiple monitors", { try! await testUpdatingScreenSharingApprovesAndRestoresMultipleMonitors() }),
     ("an old RemoteDesktop version is refused before anything is created", { try! await testAnOldPortalVersionIsRefusedBeforeAnythingIsCreated() }),

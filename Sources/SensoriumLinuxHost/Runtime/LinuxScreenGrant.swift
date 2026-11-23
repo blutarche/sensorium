@@ -36,9 +36,6 @@ public protocol LinuxScreenGrantOpening: Sendable {
 
 /// The RemoteDesktop portal, with ScreenCast on the same session.
 public final class PortalScreenGrantOpener: LinuxScreenGrantOpening, @unchecked Sendable {
-    /// How long a person may take to answer the dialog they asked for.
-    public static let interactiveStartTimeout: TimeInterval = 180
-
     private let bus: any DBusConnecting
     private let tokenStore: RestoreTokenStore
 
@@ -49,7 +46,8 @@ public final class PortalScreenGrantOpener: LinuxScreenGrantOpening, @unchecked 
 
     public func open(interactive: Bool, onClosed: @escaping @Sendable () -> Void) async throws -> LinuxScreenGrant {
         guard interactive || tokenStore.load() != nil else { throw PortalError.grantNeeded }
-        let timeouts = interactive ? PortalTimeouts(start: Self.interactiveStartTimeout) : PortalTimeouts()
+        // The person asked for this dialog, so it waits for their answer.
+        let timeouts = interactive ? PortalTimeouts(start: nil) : PortalTimeouts()
         let client = PortalSessionClient(bus: bus, tokenStore: tokenStore, timeouts: timeouts)
         let session = try await client.openSession(restore: !interactive)
         let subscription = bus.subscribe(path: session.grant.sessionHandle, interface: PortalNames.session, member: "Closed")

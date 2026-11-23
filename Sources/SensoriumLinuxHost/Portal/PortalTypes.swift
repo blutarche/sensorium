@@ -103,12 +103,13 @@ public enum PortalError: Error, Equatable, Sendable {
 
 /// How long each portal step may take before it is given up on.
 public struct PortalTimeouts: Sendable {
-    /// `Start` is the step that shows the dialog on a first grant.
-    public var start: TimeInterval
+    /// `Start` is the step that shows the dialog on a first grant. `nil`
+    /// waits for the person's answer however long it takes.
+    public var start: TimeInterval?
     /// Every other step answers without a person.
     public var step: TimeInterval
 
-    public init(start: TimeInterval = 15, step: TimeInterval = 10) {
+    public init(start: TimeInterval? = 15, step: TimeInterval = 10) {
         self.start = start
         self.step = step
     }

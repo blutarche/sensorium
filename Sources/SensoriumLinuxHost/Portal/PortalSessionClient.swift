@@ -60,7 +60,7 @@ public final class PortalSessionClient: Sendable {
 
     /// Creates the session, selects keyboard, pointer and monitor sources, and
     /// starts it. Without a restore token this waits for the person at the host to
-    /// answer the system dialog, for at most `timeouts.start`.
+    /// answer the system dialog, for at most `timeouts.start` when it is set.
     ///
     /// The new restore token is written to the token store before this
     /// returns, so nothing can use the session first. Any failure after the
@@ -203,7 +203,7 @@ public final class PortalSessionClient: Sendable {
         method: String,
         leading: [PortalValue],
         options: [String: PortalValue],
-        timeout: TimeInterval
+        timeout: TimeInterval?
     ) async throws -> PortalResponse {
         let token = makeToken()
         var allOptions = options
@@ -238,7 +238,7 @@ public final class PortalSessionClient: Sendable {
     private func awaitResponse(
         on subscription: DBusSignalSubscription,
         step: String,
-        timeout: TimeInterval
+        timeout: TimeInterval?
     ) async throws -> PortalResponse {
         let sleep = self.sleep
         let outcome = try await withThrowingTaskGroup(of: Outcome.self) { group in
@@ -250,9 +250,11 @@ public final class PortalSessionClient: Sendable {
                 }
                 return .ended
             }
-            group.addTask {
-                try await sleep(timeout)
-                return .timedOut
+            if let timeout {
+                group.addTask {
+                    try await sleep(timeout)
+                    return .timedOut
+                }
             }
             defer { group.cancelAll() }
             return try await group.next() ?? .ended
