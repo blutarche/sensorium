@@ -128,6 +128,11 @@ host falls back to OpenH264 on the CPU. The host never installs a driver.
 **Frames.** The portal hands back a PipeWire node for each granted monitor.
 The host reads the nodes with libpipewire and encodes the selected monitor
 from shared-memory frames. DMA-BUF import into VA-API is not implemented.
+A node is read only while a session watches its monitor, because a
+running screencast has the compositor render and copy out a picture on
+every change. At the grant the host reads each node just long enough
+for one frame, which gives the monitor's size, and stops. A session that
+starts reading gets the picture on screen as the stream's first frame.
 The cursor arrives as metadata and is left out of the frame, as on the
 macOS host, because the viewer draws its own.
 
