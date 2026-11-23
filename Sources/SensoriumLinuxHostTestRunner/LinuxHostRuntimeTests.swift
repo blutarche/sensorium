@@ -694,12 +694,17 @@ func waitForPicture(
     let decoded = DecodedFrames()
     let decoder = AVCodecVideoDecoder(renderNodePath: nil, outputHandler: { decoded.append($0) })
     let deadline = Date().addingTimeInterval(seconds)
+    var sawKeyFrame = false
     while Date() < deadline {
         if decoded.frames.contains(where: { $0.width == width && $0.height == height }) { break }
         let packet = try await withDeadline(max(0.1, deadline.timeIntervalSinceNow), "the next packet") {
             try await connection.receivePacket()
         }
         if case let .video(frame) = packet {
+            // A decoder joining a running stream can start only at a key
+            // frame that carries its parameter sets.
+            sawKeyFrame = sawKeyFrame || (frame.isKeyFrame && frame.codecConfiguration != nil)
+            guard sawKeyFrame else { continue }
             try decoder.decode(frame)
         }
     }
