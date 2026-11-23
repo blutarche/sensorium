@@ -290,7 +290,10 @@ public final class LinuxScreenFeed: @unchecked Sendable {
                     )
                 } catch {
                     startError = error
-                    lock.withLock { isSourceRunning = false }
+                    lock.withLock {
+                        isSourceRunning = false
+                        isRunSpent = false
+                    }
                     report(.failed("the screen could not be captured: \(error)"), run: run)
                 }
             }

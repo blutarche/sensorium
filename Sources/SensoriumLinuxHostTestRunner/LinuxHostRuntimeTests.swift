@@ -689,12 +689,13 @@ func waitForPicture(
     from connection: OpenSSLQUICConnection,
     width: Int,
     height: Int,
-    seconds: TimeInterval
+    seconds: TimeInterval,
+    joiningRunningStream: Bool = false
 ) async throws -> [String] {
     let decoded = DecodedFrames()
     let decoder = AVCodecVideoDecoder(renderNodePath: nil, outputHandler: { decoded.append($0) })
     let deadline = Date().addingTimeInterval(seconds)
-    var sawKeyFrame = false
+    var sawKeyFrame = !joiningRunningStream
     while Date() < deadline {
         if decoded.frames.contains(where: { $0.width == width && $0.height == height }) { break }
         let packet = try await withDeadline(max(0.1, deadline.timeIntervalSinceNow), "the next packet") {
@@ -818,7 +819,7 @@ private func testAStreamScaleChangeRebuildsTheStreamAtTheNewSize() async {
         let before = try await waitForPicture(from: link.connection, width: 320, height: 180, seconds: 10)
         expect(before.contains("320x180"), "the stream starts at the logical size, saw \(Set(before))")
         try await link.client.sendStreamScalePreference(.fixed(2))
-        let after = try await waitForPicture(from: link.connection, width: 640, height: 360, seconds: 15)
+        let after = try await waitForPicture(from: link.connection, width: 640, height: 360, seconds: 15, joiningRunningStream: true)
         expect(after.contains("640x360"), "double scale streams at the buffer's full size, saw \(Set(after))")
         await link.client.disconnect()
     } catch {
