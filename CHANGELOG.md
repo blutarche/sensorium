@@ -8,6 +8,32 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-27
+
+### Added
+
+- A Linux host. The Fedora package `sensorium-host` shares this machine's
+  screens on KDE Plasma 6. It asks for screen sharing through the system's
+  remote control dialog, once. Tick **Allow restoring on future sessions** and
+  it never asks again. Pairing, arming, Ask first, the live session indicator
+  and the session log work as on the macOS host.
+- The Linux host offers each physical monitor. The viewer's **Screen** menu
+  switches between them.
+- The Linux release carries the host's Fedora package, `sensorium-host`, beside
+  the viewer's.
+
+### Changed
+
+- The Linux host captures a monitor only while a viewer watches it. With
+  nobody connected it uses no capture at all.
+- The screen sharing dialog the Linux host shows stays open until someone
+  answers it.
+
+### Fixed
+
+- Switching screens from the viewer no longer fails with "already live" while
+  the host is still stopping the previous screen.
+
 ## [0.6.0] - 2026-11-05
 
 ### Added
