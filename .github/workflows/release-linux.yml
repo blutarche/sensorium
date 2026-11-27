@@ -28,7 +28,7 @@ jobs:
       - name: Install dependencies
         # The packages the linux-package job in ci.yml installs, plus gh to
         # reach the release.
-        run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pkgconf-pkg-config python3 wayland-devel rpm-build cpio desktop-file-utils appstream gh
+        run: dnf install -y swift-lang cairo-devel ffmpeg-free-devel git glib2-devel gtk4-devel libglvnd-devel libva-devel libxkbcommon-devel mesa-libgbm-devel openssl-devel pango-devel pipewire-devel pkgconf-pkg-config python3 wayland-devel rpm-build cpio desktop-file-utils appstream gh
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -44,8 +44,14 @@ jobs:
       - name: Build the package
         run: sh Scripts/package-linux.sh
 
+      - name: Build the host package
+        run: sh Scripts/package-linux.sh --host
+
       - name: Install, check and remove the package, and check the update archive
         run: sh Scripts/test-package-linux.sh
+
+      - name: Install, check and remove the host package
+        run: sh Scripts/test-package-linux-host.sh
 
       - name: Attest the update archive's build provenance
         # Scripts/sign-linux-update.sh signs a tarball only when this
@@ -79,5 +85,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq '.assets[].name' | tee assets.txt
-          grep -q '\.rpm$' assets.txt
+          grep -q '^sensorium-[0-9].*\.rpm$' assets.txt
+          grep -q '^sensorium-host-[0-9].*\.rpm$' assets.txt
           grep -q '\.tar\.gz$' assets.txt
