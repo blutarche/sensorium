@@ -45,7 +45,8 @@ public final class LinuxHostUpdater {
     /// `handOver` switches to the staged version and waits for it to report
     /// ready, and `afterFailedHandover` takes back what the host gave up for
     /// it beyond its listener and grant. `afterConfirm` runs once a version
-    /// started with `--replacing` has confirmed the switch.
+    /// started with `--replacing` has confirmed the switch and the host it
+    /// replaced has exited.
     public init(
         runningVersion: LinuxUpdateVersion,
         installation: LinuxUpdateInstallation,
@@ -202,8 +203,9 @@ public final class LinuxHostUpdater {
 
     /// Call once the host has started: it has tried to listen and to restore
     /// the screen-sharing grant. A version started to replace another
-    /// reports ready as soon as it listens, and checks for updates only once
-    /// the host it replaced has exited.
+    /// reports ready as soon as it listens. It adopts the launcher entry and
+    /// Open at login, and checks for updates, only once the host it replaced
+    /// has exited.
     public func hostDidStart() {
         hostHasStarted = true
         if !installation.removeAbandonedWorkFolders().isEmpty {
@@ -272,12 +274,14 @@ public final class LinuxHostUpdater {
             onTerminate()
             return
         }
-        afterConfirm()
         startOnceReplacedHostExits(replacing.pid)
     }
 
-    /// The replaced host is this one's parent until it exits, and a check
-    /// before then could start a second handover under it.
+    /// The replaced host is this one's parent until it exits. Until then it
+    /// can still refuse the report and switch `current` back, which would
+    /// leave a launcher entry and an autostart entry naming a version that is
+    /// not installed. A check before then could also start a second handover
+    /// under it.
     private func startOnceReplacedHostExits(_ pid: pid_t) {
         let sleep = sleep
         let interval = parentPollInterval
@@ -285,7 +289,9 @@ public final class LinuxHostUpdater {
             while let self, self.parentProcess() == pid {
                 guard (try? await sleep(interval)) != nil else { return }
             }
-            self?.scheduler.start()
+            guard let self else { return }
+            self.afterConfirm()
+            self.scheduler.start()
         }
     }
 

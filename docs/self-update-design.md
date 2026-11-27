@@ -394,11 +394,11 @@ A host installed by the package lives under `/usr`. Its first update writes the 
 3. Note how the host serves: its TLS certificate, its device key, a digest of its paired machines, the address and port it listens on, and whether screen sharing is allowed.
 4. Stop listening, and close the portal session.
 5. Write the pending marker, switch `current`, and start the new binary with `--replacing <pid> <ready file>` as a child of this one. It stays in the same app scope, which is what the desktop knows the app by.
-6. The new host takes over the application name. It skips lock at launch, restores the screen sharing grant from the saved token, and starts listening. Once it listens, it writes the ready file with every value from step 3, read from its own running state. Then it confirms the switch, writes the launcher entry and points Open at login at itself.
+6. The new host takes over the application name. It skips lock at launch, restores the screen sharing grant from the saved token, and starts listening. Once it listens, it writes the ready file with every value from step 3, read from its own running state, and confirms the switch.
 7. The old host accepts the ready file only if it names the process it started, the new version, and the same values. Screen sharing may be gained but not lost. It then quits.
 8. Otherwise, or if no ready file arrives within 60 seconds, the old host switches `current` back, stops the new process, listens again, restores the grant without a dialog, and asks for the application name back.
 
-The new host checks for updates only once the host it replaced has exited.
+The old host can still refuse the report after the new host confirms. So the new host writes the launcher entry, points Open at login at itself and checks for updates only once the host it replaced has exited.
 
 **The portal session.** The old host closes its portal session before it starts the new host, so only one host holds the grant at a time. The portal hands back a new token on each restore and retires the old one. The host saves it at once, and reads the token from disk each time it opens a session. A new host that restores the grant saves the newest token, and an old host that serves again restores from that. A new host killed during its restore, or a restore that hands back no token, leaves the old host to ask for the grant again with the desktop's dialog.
 

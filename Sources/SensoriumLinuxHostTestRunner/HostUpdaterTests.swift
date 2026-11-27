@@ -184,14 +184,17 @@ private func testAReplacingHostReportsReadyOnceItServesAndChecksAfterTheOldHostE
         "once it listens it reports ready with how it serves"
     )
     expect(rig.installation.pendingSwitch() == nil, "and confirms the switch")
-    expect(rig.confirms == 1, "and adopts the launcher entry and Open at login")
     rig.updater.hostActivityChanged()
-    expect(rig.confirms == 1, "once")
 
+    // The old host can still refuse the report and switch back, so the
+    // launcher and Open at login wait until it has exited.
     try? await Task.sleep(for: .milliseconds(150))
-    expect(rig.checks == 0, "it checks for nothing while the host it replaced runs")
+    expect(rig.confirms == 0, "it adopts nothing while the host it replaced runs")
+    expect(rig.checks == 0, "and checks for nothing")
     rig.parent = 1
-    await expectEventually("and checks once that host has exited") { rig.checks == 1 }
+    await expectEventually("once that host has exited it adopts the launcher entry and Open at login") { rig.confirms == 1 }
+    await expectEventually("and checks for updates") { rig.checks == 1 }
+    expect(rig.confirms == 1, "once")
     expect(rig.terminations == 0, "a confirmed host keeps running")
     rig.finish()
 }
