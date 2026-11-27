@@ -109,6 +109,9 @@ public struct HostWindowPresentation: Equatable, Sendable {
     /// when the grant is in place.
     public let grantButtonTitle: String?
     public let showsUpdateScreenSharing: Bool
+    /// Shown on every desktop: a host that cannot offer the screen here
+    /// still updates itself.
+    public let updateLine: HostWindowUpdateLine?
 
     public init(_ state: HostWindowState, now: Date) {
         let isConnected: Bool
@@ -128,6 +131,7 @@ public struct HostWindowPresentation: Equatable, Sendable {
             isOn: state.allowsLocalNetwork,
             explanation: HostWindowCopy.localNetworkExplanation
         )
+        updateLine = state.updateLine
     }
 
     private static func openAtLogin(_ setting: HostWindowState.OpenAtLogin) -> Switch {

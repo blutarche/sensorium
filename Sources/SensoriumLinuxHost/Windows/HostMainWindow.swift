@@ -150,6 +150,12 @@ public final class HostMainWindow {
         if presentation.showsSwitches {
             appendSwitches(presentation, to: &items)
         }
+        if let update = presentation.updateLine {
+            let classes = update.isFailure
+                ? [HostWindowStyle.Class.detail, HostWindowStyle.Class.detailWarn]
+                : [HostWindowStyle.Class.detail]
+            items.append((HostWidgets.label(update.text, classes: classes), lg))
+        }
         if let quit = actions.quit {
             items.append((outlinedButton("Quit Sensorium Host", quit), lg))
         }

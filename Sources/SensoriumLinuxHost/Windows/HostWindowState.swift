@@ -68,6 +68,8 @@ public struct HostWindowState: Equatable, Sendable {
     public var openAtLogin: OpenAtLogin
     public var supportsLocalNetwork: Bool
     public var allowsLocalNetwork: Bool
+    /// What the host's updater has to say, or `nil` when it says nothing.
+    public var updateLine: HostWindowUpdateLine?
 
     public init(
         desktop: Desktop = .supported,
@@ -78,7 +80,8 @@ public struct HostWindowState: Equatable, Sendable {
         lastSessionLine: String? = nil,
         openAtLogin: OpenAtLogin = .on,
         supportsLocalNetwork: Bool = true,
-        allowsLocalNetwork: Bool = false
+        allowsLocalNetwork: Bool = false,
+        updateLine: HostWindowUpdateLine? = nil
     ) {
         self.desktop = desktop
         self.status = status
@@ -89,6 +92,19 @@ public struct HostWindowState: Equatable, Sendable {
         self.openAtLogin = openAtLogin
         self.supportsLocalNetwork = supportsLocalNetwork
         self.allowsLocalNetwork = allowsLocalNetwork
+        self.updateLine = updateLine
+    }
+}
+
+/// The one line about updates, under the switches.
+public struct HostWindowUpdateLine: Equatable, Sendable {
+    public var text: String
+    /// An update that failed, drawn in the warning colour.
+    public var isFailure: Bool
+
+    public init(text: String, isFailure: Bool) {
+        self.text = text
+        self.isFailure = isFailure
     }
 }
 
