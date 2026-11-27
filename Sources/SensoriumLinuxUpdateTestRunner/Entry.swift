@@ -51,7 +51,11 @@ struct SensoriumLinuxUpdateTestRunner {
             ("each app refuses the other's signed manifest", testEachAppRefusesTheOthersManifest),
             ("the host archive holds sensorium-host alone", testTheHostArchiveHoldsSensoriumHostAlone),
             ("the host self-test prints Sensorium Host and its version", testTheHostSelfTestPrintsSensoriumHostAndItsVersion),
-            ("the host launcher entry runs current with no field code", testTheHostLauncherEntryRunsCurrentWithNoFieldCode)
+            ("the host launcher entry runs current with no field code", testTheHostLauncherEntryRunsCurrentWithNoFieldCode),
+            ("a host ready report must keep identity, pairings, address and screen sharing", testAHostReadyReportMustKeepIdentityPairingsAddressAndScreenSharing),
+            ("a host hands over only to a new host that serves the same way", testAHostHandsOverOnlyToANewHostThatServesTheSameWay),
+            ("the mismatch reason matches the other install failures", testTheMismatchReasonMatchesTheOtherInstallFailures),
+            ("a host scheduler installs a staged update only while idle", testAHostSchedulerInstallsAStagedUpdateOnlyWhileIdle)
         ]
 
         for (name, test) in tests {

@@ -67,8 +67,8 @@ public enum LinuxUpdateRollback: Equatable, Sendable {
     case nothingPending
     /// The switch stands until the new version confirms it. At launch, this
     /// process is that version, and calls `markConfirmed(version:)` once it
-    /// is up: the viewer's window is showing, or the host is serving. From `rollBack(_:unlessReported:)`, the new version
-    /// reported ready in time.
+    /// is up: the viewer's window is showing, or the host is serving. From
+    /// `rollBack(_:unlessReported:)`, the new version reported ready in time.
     case awaitingConfirmation(LinuxUpdatePendingSwitch)
     /// `current` names the previous version again, or is gone when there was
     /// none. The caller records `.readyLate` against the pending version.

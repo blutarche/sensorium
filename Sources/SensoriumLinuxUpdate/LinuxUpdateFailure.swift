@@ -36,13 +36,16 @@ public enum LinuxUpdateFailure: Error, Equatable, Sendable {
     /// not appear in time, or a launch found a pending switch it never
     /// confirmed.
     case readyLate
+    /// The new version reported ready, but not as the one it replaces
+    /// served: the associated value names what differs.
+    case readyMismatch(String)
 
     public var kind: LinuxUpdateFailureKind {
         switch self {
         case .signatureInvalid, .manifestInvalid, .wentBackwards, .wrongArchiveContents, .selfTestFailed:
             .badRelease
         case .downloadFailed, .sizeMismatch, .digestMismatch, .stagingFailed, .selfTestTimedOut,
-             .switchFailed, .launchFailed, .readyLate:
+             .switchFailed, .launchFailed, .readyLate, .readyMismatch:
             .couldPassOnAnotherTry
         }
     }
@@ -57,7 +60,7 @@ public enum LinuxUpdateFailure: Error, Equatable, Sendable {
             "the download did not match the release"
         case .selfTestFailed:
             "the new version did not start"
-        case .downloadFailed, .stagingFailed, .selfTestTimedOut, .switchFailed, .launchFailed, .readyLate:
+        case .downloadFailed, .stagingFailed, .selfTestTimedOut, .switchFailed, .launchFailed, .readyLate, .readyMismatch:
             "the new version did not start in time"
         }
     }

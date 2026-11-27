@@ -7,7 +7,7 @@ import Darwin
 import Glibc
 #endif
 
-private func installationForHandoff(_ directory: URL) -> LinuxUpdateInstallation {
+func installationForHandoff(_ directory: URL) -> LinuxUpdateInstallation {
     let installation = LinuxUpdateInstallation(dataRoot: directory.appendingPathComponent("sensorium", isDirectory: true))
     expect(installation.installability() == .updatable, "a fresh data root is updatable")
     placeVersion("0.5.0", in: installation)
@@ -19,7 +19,7 @@ private func installationForHandoff(_ directory: URL) -> LinuxUpdateInstallation
 /// script has checked it was started the way the old viewer starts a new
 /// one, naming `oldProcess` and a ready file inside a handoff folder of
 /// `installation`.
-private func stagedScript(
+func stagedScript(
     _ text: String,
     in installation: LinuxUpdateInstallation,
     oldProcess: pid_t,
@@ -48,7 +48,7 @@ private func reportReady(version text: String, processIdentifier: String = "$$")
     "printf '{\"processIdentifier\":%s,\"version\":\"\(text)\"}' \(processIdentifier) > \"$3.partial\" && mv \"$3.partial\" \"$3\""
 }
 
-private func handoffFolders(in installation: LinuxUpdateInstallation) -> [String] {
+func handoffFolders(in installation: LinuxUpdateInstallation) -> [String] {
     ((try? FileManager.default.contentsOfDirectory(atPath: installation.dataRoot.path)) ?? []).filter { $0.hasPrefix(".handoff-") }
 }
 

@@ -1,28 +1,52 @@
 import Foundation
 
-/// What the viewer's update line reads.
+/// What the app's update line reads.
 public enum LinuxUpdateStatus: Equatable, Sendable {
     /// Up to date, or not checked yet.
     case current
     case checking
     case downloading(LinuxUpdateVersion)
-    /// Staged and tested: **Restart Now** installs it.
+    /// The viewer's update is staged and tested: **Restart Now** installs
+    /// it.
     case ready(LinuxUpdateVersion)
-    /// A release that failed in a way that could pass on another try, held
-    /// until the next scheduled check.
+    /// The host's update is staged and installs when no machine is
+    /// connected; also a release that failed in a way that could pass on
+    /// another try, held until the next scheduled check.
     case waiting(LinuxUpdateVersion)
     /// Finishes "… could not update: `<reason>`."
     case failed(reason: String)
-    /// The data root is one this viewer cannot install into.
+    /// The data root is one this app cannot install into.
     case notUpdatable
+}
+
+/// How the host's own install of a staged update ended.
+public enum LinuxUpdateInstallOutcome: Equatable, Sendable {
+    /// The new host serves in this one's place: this process exits.
+    case tookOver
+    /// A session or pairing began while the listener was stopping. Nothing
+    /// was switched, and the update stays staged for the next idle moment.
+    case busy
+    case failed(LinuxUpdateFailure)
 }
 
 /// Runs checks at launch and every six hours while automatic updates are
 /// on, and makes no request at all while they are off until
-/// `checkForUpdates()` is called. Holds a staged update until **Restart
-/// Now** installs it, then hears back through `installFinished`.
+/// `checkForUpdates()` is called.
 @MainActor
 public final class LinuxUpdateScheduler {
+    public enum Flavor {
+        /// Holds a staged update until **Restart Now** installs it, then
+        /// hears back through `installFinished`.
+        case viewer
+        /// Installs a staged update whenever `isIdle` holds: no session
+        /// live, no pairing in progress. `install` stops the listener,
+        /// checks the host is still idle, and runs the handover.
+        case host(
+            isIdle: @MainActor () -> Bool,
+            install: @MainActor (LinuxStagedUpdate) async -> LinuxUpdateInstallOutcome
+        )
+    }
+
     public nonisolated static let checkInterval: Duration = .seconds(Int64(LinuxUpdateState.checkInterval))
 
     public private(set) var status: LinuxUpdateStatus {
@@ -52,17 +76,20 @@ public final class LinuxUpdateScheduler {
 
     private let installability: LinuxUpdateInstallability
     private let stateStore: LinuxUpdateStateStore
+    private let flavor: Flavor
     private let interval: Duration
     private let sleep: @Sendable (Duration) async throws -> Void
     private let check: @MainActor () async -> LinuxUpdateCheckResult
     private let stage: @MainActor (LinuxUpdateManifest) async -> Result<LinuxStagedUpdate, LinuxUpdateFailure>
     private var schedule: Task<Void, Never>?
     private var isChecking = false
+    private var isInstalling = false
 
     public init(
         installability: LinuxUpdateInstallability,
         stateStore: LinuxUpdateStateStore,
         automaticUpdates: Bool,
+        flavor: Flavor = .viewer,
         interval: Duration = LinuxUpdateScheduler.checkInterval,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         check: @escaping @MainActor () async -> LinuxUpdateCheckResult,
@@ -71,6 +98,7 @@ public final class LinuxUpdateScheduler {
         self.installability = installability
         self.stateStore = stateStore
         self.automaticUpdates = automaticUpdates
+        self.flavor = flavor
         self.interval = interval
         self.sleep = sleep
         self.check = check
@@ -95,6 +123,28 @@ public final class LinuxUpdateScheduler {
     public func checkForUpdates() async {
         _ = try? stateStore.update { $0.clearFailures() }
         await runCheck()
+    }
+
+    /// The host calls this when a session ends or a pairing finishes, so a
+    /// waiting update installs once the host is idle. The idle rule is
+    /// checked here, right before installing, and once more by `install`
+    /// after the listener stops.
+    public func installIfIdle() async {
+        guard case let .host(isIdle, install) = flavor, let staged = stagedUpdate, !isInstalling else {
+            return
+        }
+        status = .waiting(staged.version)
+        guard isIdle() else { return }
+        isInstalling = true
+        defer { isInstalling = false }
+        switch await install(staged) {
+        case .tookOver:
+            installFinished(staged, failure: nil)
+        case .busy:
+            break
+        case let .failed(failure):
+            installFinished(staged, failure: failure)
+        }
     }
 
     /// How **Restart Now** of `staged` ended: nil once the new version took
@@ -136,7 +186,16 @@ public final class LinuxUpdateScheduler {
             status = .notUpdatable
             return
         }
-        guard stagedUpdate == nil, !isChecking else { return }
+        if stagedUpdate == nil {
+            await checkAndStage()
+        }
+        if case .host = flavor {
+            await installIfIdle()
+        }
+    }
+
+    private func checkAndStage() async {
+        guard !isChecking, !isInstalling else { return }
         isChecking = true
         defer { isChecking = false }
 
@@ -158,7 +217,10 @@ public final class LinuxUpdateScheduler {
             switch await stage(manifest) {
             case let .success(staged):
                 stagedUpdate = staged
-                status = .ready(staged.version)
+                switch flavor {
+                case .viewer: status = .ready(staged.version)
+                case .host: status = .waiting(staged.version)
+                }
             case let .failure(failure):
                 status = record(failure, version: manifest.version, sha256: manifest.sha256)
             }

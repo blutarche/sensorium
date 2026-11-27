@@ -40,11 +40,16 @@ private final class SchedulerHarness {
     private(set) var stages: [LinuxUpdateManifest] = []
     private(set) var statuses: [LinuxUpdateStatus] = []
     private(set) var scheduler: LinuxUpdateScheduler!
+    /// For a host: whether it is idle, how its installs end, and each one.
+    var idle = false
+    var installResult = LinuxUpdateInstallOutcome.tookOver
+    private(set) var installs: [LinuxStagedUpdate] = []
 
     init(
         installability: LinuxUpdateInstallability = .updatable,
         automaticUpdates: Bool = true,
-        checkResult: LinuxUpdateCheckResult = .upToDate
+        checkResult: LinuxUpdateCheckResult = .upToDate,
+        host: Bool = false
     ) {
         stateStore = LinuxUpdateStateStore(dataRoot: directory)
         self.checkResult = checkResult
@@ -53,6 +58,13 @@ private final class SchedulerHarness {
             installability: installability,
             stateStore: stateStore,
             automaticUpdates: automaticUpdates,
+            flavor: host ? .host(
+                isIdle: { [unowned self] in self.idle },
+                install: { [unowned self] staged in
+                    self.installs.append(staged)
+                    return self.installResult
+                }
+            ) : .viewer,
             sleep: { _ in await sleepGate.wait() },
             check: { [unowned self] in
                 self.checks += 1
@@ -270,4 +282,52 @@ func testSchedulerRecordsFailuresAndClearsThemOnAChosenCheck() async {
         harness.stateStore.load().failure(version: version("0.7.0"), sha256: sampleDigest)?.reason == LinuxUpdateFailure.readyLate.reason,
         "a switch rolled back at launch is recorded as a late ready file"
     )
+}
+
+@MainActor
+func testAHostSchedulerInstallsAStagedUpdateOnlyWhileIdle() async {
+    let harness = SchedulerHarness(checkResult: .available(manifest("0.6.0")), host: true)
+    defer { harness.cleanUp() }
+    let staged = stagedFor(manifest("0.6.0"))
+    harness.scheduler.start()
+    let settled1 = await harness.settle(until: { harness.sleepGate.waiters == 1 })
+    expect(settled1, "a host checks at launch")
+    expect(harness.scheduler.stagedUpdate == staged, "and stages a found update")
+    expect(harness.scheduler.status == .waiting(version("0.6.0")), "which waits to install, never offering Restart Now, got \(harness.scheduler.status)")
+    expect(harness.installs.isEmpty, "a busy host installs nothing")
+
+    harness.sleepGate.open()
+    let settled2 = await harness.settle(until: { harness.sleepGate.waiters == 1 })
+    expect(settled2, "the next scheduled check comes round")
+    expect(harness.checks == 1, "a staged update is not checked for again")
+    expect(harness.installs.isEmpty, "and still waits while the host is busy")
+
+    harness.idle = true
+    harness.installResult = .busy
+    await harness.scheduler.installIfIdle()
+    expect(harness.installs == [staged], "an idle host installs")
+    expect(harness.scheduler.stagedUpdate == staged, "a host that turned busy as it stopped listening keeps the update staged")
+    expect(harness.scheduler.status == .waiting(version("0.6.0")), "and keeps waiting, got \(harness.scheduler.status)")
+    expect(harness.stateStore.load().failures.isEmpty, "with no failure recorded")
+
+    harness.installResult = .failed(.readyMismatch("listen address"))
+    await harness.scheduler.installIfIdle()
+    expect(harness.scheduler.stagedUpdate == nil, "a handover that did not take leaves nothing staged")
+    expect(harness.scheduler.status == .waiting(version("0.6.0")), "and waits for another try, got \(harness.scheduler.status)")
+    expect(harness.stateStore.load().failure(version: version("0.6.0"), sha256: sampleDigest)?.tries == 1, "which is recorded once")
+
+    harness.installResult = .tookOver
+    harness.sleepGate.open()
+    let settled3 = await harness.settle(until: { harness.installs.count == 3 })
+    expect(settled3, "the next check stages it again and, idle, installs at once")
+    expect(harness.checks == 2, "after checking once more")
+    expect(harness.scheduler.stagedUpdate == nil, "a handover that took over leaves nothing staged")
+
+    let viewer = SchedulerHarness(automaticUpdates: false, checkResult: .available(manifest("0.6.0")))
+    defer { viewer.cleanUp() }
+    viewer.idle = true
+    await viewer.scheduler.checkForUpdates()
+    await viewer.scheduler.installIfIdle()
+    expect(viewer.installs.isEmpty, "a viewer never installs on its own")
+    expect(viewer.scheduler.status == .ready(version("0.6.0")), "and offers Restart Now, got \(viewer.scheduler.status)")
 }

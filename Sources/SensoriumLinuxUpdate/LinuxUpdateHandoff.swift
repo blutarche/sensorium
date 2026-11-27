@@ -51,16 +51,72 @@ public enum LinuxUpdateLaunchCommand: Equatable, Sendable {
 }
 
 /// The new version's account of itself, written to the ready file once its
-/// window is up.
+/// window is up, or for the host, once it serves.
 public struct LinuxUpdateReadyReport: Codable, Equatable, Sendable {
-    /// The process that wrote the report. The old viewer accepts it only
+    /// How a new host serves. The old host compares it with its own before
+    /// it exits, so an update never changes who viewers find or how.
+    public struct Host: Codable, Equatable, Sendable {
+        /// The TLS certificate viewers pin.
+        public var tlsCertificateFingerprint: String
+        /// The device identity pairing signs with.
+        public var deviceIdentityFingerprint: String
+        public var pairedMachinesDigest: String
+        public var listenAddress: String
+        public var port: UInt16
+        /// Whether the desktop's screen-sharing grant is in place.
+        public var screenSharingAllowed: Bool
+
+        public init(
+            tlsCertificateFingerprint: String,
+            deviceIdentityFingerprint: String,
+            pairedMachinesDigest: String,
+            listenAddress: String,
+            port: UInt16,
+            screenSharingAllowed: Bool
+        ) {
+            self.tlsCertificateFingerprint = tlsCertificateFingerprint
+            self.deviceIdentityFingerprint = deviceIdentityFingerprint
+            self.pairedMachinesDigest = pairedMachinesDigest
+            self.listenAddress = listenAddress
+            self.port = port
+            self.screenSharingAllowed = screenSharingAllowed
+        }
+
+        /// Nil when a host serving this way may replace one serving as
+        /// `baseline`: the same identities, paired machines and address,
+        /// and screen sharing still allowed if it was. Otherwise names what
+        /// differs.
+        public func mismatch(comparedWith baseline: Host) -> String? {
+            if tlsCertificateFingerprint != baseline.tlsCertificateFingerprint {
+                return "TLS identity"
+            }
+            if deviceIdentityFingerprint != baseline.deviceIdentityFingerprint {
+                return "device identity"
+            }
+            if pairedMachinesDigest != baseline.pairedMachinesDigest {
+                return "paired machines"
+            }
+            if listenAddress != baseline.listenAddress || port != baseline.port {
+                return "listen address"
+            }
+            if baseline.screenSharingAllowed, !screenSharingAllowed {
+                return "screen sharing"
+            }
+            return nil
+        }
+    }
+
+    /// The process that wrote the report. The old process accepts it only
     /// from the process it started.
     public var processIdentifier: pid_t
     public var version: LinuxUpdateVersion
+    /// Written by the host only.
+    public var host: Host?
 
-    public init(processIdentifier: pid_t, version: LinuxUpdateVersion) {
+    public init(processIdentifier: pid_t, version: LinuxUpdateVersion, host: Host? = nil) {
         self.processIdentifier = processIdentifier
         self.version = version
+        self.host = host
     }
 }
 
@@ -102,11 +158,12 @@ public enum LinuxUpdateHandoff {
     public static func reportReady(
         version: LinuxUpdateVersion,
         to readyFile: URL,
-        processIdentifier: pid_t = getpid()
+        processIdentifier: pid_t = getpid(),
+        host: LinuxUpdateReadyReport.Host? = nil
     ) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        let data = try encoder.encode(LinuxUpdateReadyReport(processIdentifier: processIdentifier, version: version))
+        let data = try encoder.encode(LinuxUpdateReadyReport(processIdentifier: processIdentifier, version: version, host: host))
         try writeOwnerOnly(data, named: readyFile.lastPathComponent, into: readyFile.deletingLastPathComponent())
     }
 
