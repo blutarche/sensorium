@@ -9,9 +9,8 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parent.parent
-source = (root / 'Sources/Sensorium/main.swift').read_text()
-start = source.index('struct URLSessionLinuxUpdateTransport:')
-source = source[start:source.index('\n@main\n', start)]
+source = (root / 'Sources/SensoriumLinuxUpdate/URLSessionLinuxUpdateTransport.swift').read_text()
+source = source[source.index('struct URLSessionLinuxUpdateTransport:'):source.rindex('\n#endif')]
 stubs = (root / 'Scripts/test-linux-update-transport.swift').read_text()
 test = (root / 'Scripts/test-linux-update-backpressure.swift').read_text()
 with tempfile.TemporaryDirectory(prefix='sensorium-backpressure-') as directory:

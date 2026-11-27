@@ -60,8 +60,8 @@ with tempfile.TemporaryDirectory(prefix='sensorium-transport-') as tmp:
     tmp = Path(tmp)
     server = Server(('127.0.0.1', 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    source = (ROOT / 'Sources/Sensorium/main.swift').read_text()
-    source = source[source.index('struct URLSessionLinuxUpdateTransport:'):source.index('\n@main\n', source.index('struct URLSessionLinuxUpdateTransport:'))]
+    source = (ROOT / 'Sources/SensoriumLinuxUpdate/URLSessionLinuxUpdateTransport.swift').read_text()
+    source = source[source.index('struct URLSessionLinuxUpdateTransport:'):source.rindex('\n#endif')]
     # Both the address check and the redirect check.
     source = patch(source, '== "https"', '== "http"', count=2)
     # Test-only gates force the two interleavings; production logic is unchanged.
