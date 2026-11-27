@@ -9,7 +9,7 @@ The host is a workstation with someone logged in. Remote control of it is full c
 1. **Another machine on the tailnet.** The realistic adversary. It can reach the host's port and speak the protocol.
 2. **A machine on the same LAN or the public internet.** A public source should not reach the port at all. A LAN machine reaches it only while the person at the host has turned on **Allow connections from this network**, which is off by default, and only from the same subnet as the host. It then has to pair and sign exactly as a tailnet machine does.
 3. **A process on the viewer machine.** Out of scope. A compromised viewer machine means a compromised session.
-4. **Someone who can change this project's release page.** Both macOS apps install their updates from it. Replacing a file there is not enough to ship an update, as the controls below show.
+4. **Someone who can change this project's release page.** The macOS apps, the Linux viewer and the Linux host install their updates from it. Replacing a file there is not enough to ship an update, as the controls below show.
 
 There is no cloud account, backend, relay, or vendor control plane to attack, because none exists.
 
@@ -30,6 +30,8 @@ There is no cloud account, backend, relay, or vendor control plane to attack, be
 | Host-screen arming | `HostScreenArming`, `ApprovedDeviceStore`, host-local and host-set only | Host screen granted to a machine the person at the host has not armed |
 | Signed update manifest, then the zip's SHA-256 | `UpdateSignature` against the Ed25519 key in `UpdatePublicKey`, then `UpdateStager` | An update the maintainer did not publish |
 | Same signing certificate as the running app | `CodeRequirementCheck`, the running app's designated requirement | An update signed by anyone else, even with a valid manifest |
+| Signed update manifest, then the tarball's SHA-256 (Linux viewer and host) | The Linux updater against the same Ed25519 key | An update the maintainer did not publish. On Linux this is the only proof |
+| Build provenance check before signing | The local signing step, `gh attestation verify` | A tarball swapped on the release page between CI's upload and the signature |
 
 The source check stands on its own. The PF anchor is one more layer for anyone who adds it. While the setting is off, the listener is also bound to the tailnet interface alone. While it is on, the listener is on every interface, and the source check is what keeps public and off-subnet sources out. Both viewer and host check input bounds independently.
 
@@ -60,6 +62,14 @@ What pairing proves is that whoever held the device at that moment could read th
 ### Typing at a locked host
 
 A locked host screen unlocks through ordinary forwarded input, typed at the viewer (see [Host screen mode](host-screen-design.md)). Sensorium adds no guess budget of its own to that input. Anyone who can type at the viewer during a live host-screen session can type at the host's lock screen.
+
+### How Linux updates are checked
+
+The Linux viewer and the Linux host update themselves from the release page. The Linux binaries carry no code signature, so there is no signing certificate to compare, as the macOS apps do. Two checks remain, and they are the only proofs. The Ed25519 signature on the manifest must verify. Then the SHA-256 of the tarball must match the manifest. The self-test and the version check catch a wrong file, not a hostile one. A failed check never installs.
+
+The signature vouches for the tarball CI built. Anyone who can write to the release's files could swap the tarball before the maintainer signs. So the signing step first verifies the tarball's build provenance. It must name the tarball's exact bytes, this repository, the release workflow and the release's tag. If it does not, nothing is signed. [Self-update](self-update-design.md#115-trust) gives the viewer's side and [the host's](self-update-design.md#12-the-linux-host) follows it.
+
+The Linux host's restore token is a same-user bearer grant, described under [Where the keys are kept](#where-the-keys-are-kept).
 
 ### Where the keys are kept
 
