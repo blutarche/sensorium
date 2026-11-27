@@ -7,7 +7,7 @@ import SensoriumLinuxHost
 @MainActor
 final class LinuxHostApplication {
     private let gtk: UnsafeMutablePointer<GtkApplication>
-    private let autostart = HostAutostart()
+    private let autostart = HostAutostart(dataRoot: RestoreTokenStore.defaultDataRoot())
     private let appearance: IndicatorAppearance = .dark
     private var runtime: LinuxHostRuntime?
     private var desktop: LinuxHostDesktop?
