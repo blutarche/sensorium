@@ -198,7 +198,8 @@ final class RuntimeRig {
         size: PortalSize(width: 320, height: 180)
     ), bufferWidth: Int = 640, bufferHeight: Int = 360,
     indicatorSupport: @escaping @MainActor () -> IndicatorError? = { nil },
-    additionalStream: PortalStream? = nil) {
+    additionalStream: PortalStream? = nil,
+    sessionAge: TimeInterval? = nil) {
         folder = FileManager.default.temporaryDirectory
             .appendingPathComponent("sensorium-runtime-\(UUID().uuidString)", isDirectory: true)
         self.stream = stream
@@ -212,7 +213,7 @@ final class RuntimeRig {
             lockState: lockState,
             localActivity: activity,
             relocker: relocker,
-            sessionAge: { nil },
+            sessionAge: { sessionAge },
             askFirst: { [weak self] content in
                 guard let self else { return .denied }
                 self.askFirstQuestions.append(content)
@@ -229,8 +230,8 @@ final class RuntimeRig {
         _ = logBox
     }
 
-    func start() async {
-        await runtime.start()
+    func start(isUpdateRelaunch: Bool = false) async {
+        await runtime.start(isUpdateRelaunch: isUpdateRelaunch)
         await expectEventually("the grant opens and the first frame arrives") {
             self.runtime.state.grant == .allowed && self.runtime.offersHostScreen
         }
@@ -288,9 +289,9 @@ struct ViewerLink {
     let client: ClientSessionController
 }
 
-func connectViewer(_ viewer: PairedViewer, port: UInt16) async throws -> ViewerLink {
+func connectViewer(_ viewer: PairedViewer, port: UInt16, timeout: TimeInterval = 10) async throws -> ViewerLink {
     let connection = OpenSSLQUICConnection(host: "127.0.0.1", port: port, tlsCertificateHash: viewer.pin)
-    try await connection.start(timeout: 10)
+    try await connection.start(timeout: timeout)
     let client = ClientSessionController(
         transport: connection,
         identity: viewer.identity,

@@ -2,6 +2,7 @@
 import Foundation
 import SensoriumCore
 import SensoriumHost
+import SensoriumLinuxUpdate
 
 /// What the runtime needs from the desktop it runs on. The real desktop
 /// supplies the portal, the layer-shell indicator, the screen saver and
@@ -75,10 +76,14 @@ public final class LinuxHostRuntime {
         didSet {
             if state != oldValue {
                 onStateChange?(state)
+                onActivityChange?()
             }
         }
     }
     public var onStateChange: ((HostWindowState) -> Void)?
+    /// Runs after each change that can make the host idle: a state change,
+    /// or a connection closing, which the state need not show.
+    public var onActivityChange: (@MainActor () -> Void)?
     /// The UDP port the listener is bound to, once it is.
     public private(set) var boundPort: UInt16?
     /// The local-network switch has no Linux counterpart: the host listens
@@ -104,7 +109,12 @@ public final class LinuxHostRuntime {
 
     private var pairing: HostPairingService?
     private var identity: HostTLSIdentity?
+    private var deviceIdentity: DeviceIdentity?
     private var server: OpenSSLQUICServer?
+    /// Where the listener is bound, while it is.
+    private var listening: (address: String, port: UInt16)?
+    /// Stopped for an update's handover, which may yet give serving back.
+    private var isSuspended = false
     private var acceptTask: Task<Void, Never>?
     private var listenRetryTask: Task<Void, Never>?
     private var openGrant: (request: UInt64, session: LinuxScreenGrant)?
@@ -140,7 +150,7 @@ public final class LinuxHostRuntime {
         self.platform = platform
         self.listen = listen
         self.log = log
-        approvedStore = FileApprovedDeviceStore(url: dataFolder.appendingPathComponent("approved-devices.json"))
+        approvedStore = FileApprovedDeviceStore(url: dataFolder.appendingPathComponent(LinuxHostDataFiles.approvedDevices))
         armingStore = HostScreenArmingStore(url: dataFolder.appendingPathComponent("host-screen-arming.json"), log: log)
         sessionLog = HostScreenSessionLogStore(url: dataFolder.appendingPathComponent("host-screen-sessions.log"))
         ownActivity = MutableHostInjectedHIDActivity(rawActivity: platform.localActivity)
@@ -156,8 +166,9 @@ public final class LinuxHostRuntime {
     // MARK: - Starting and stopping
 
     /// Brings the host up: identity, pairing, lock at launch, the listener
-    /// and the screen-sharing grant, restored once without a dialog.
-    public func start() async {
+    /// and the screen-sharing grant, restored once without a dialog. A
+    /// relaunch for an update is not a login, so it skips lock at launch.
+    public func start(isUpdateRelaunch: Bool = false) async {
         do {
             try FileManager.default.createDirectory(
                 at: dataFolder,
@@ -175,6 +186,7 @@ public final class LinuxHostRuntime {
         sessionLog.reconcileAbandonedSessionsAtLaunch()
         guard let identity = loadIdentities() else { return }
         self.identity = identity.tls
+        deviceIdentity = identity.device
         armingStore.armEveryPairedMachine(approvedStore: approvedStore, now: Date())
         makePairing(hostIdentity: identity.device, tls: identity.tls)
         grantState.setChangeHandler { [weak self] in
@@ -186,7 +198,8 @@ public final class LinuxHostRuntime {
             lockState: platform.lockState,
             activity: platform.localActivity,
             sessionAge: sessionAge,
-            relocker: platform.relocker
+            relocker: platform.relocker,
+            isUpdateRelaunch: isUpdateRelaunch
         )
         if locked == .locked {
             log("Sensorium host: the screen was locked at launch, because nobody had used this session since login")
@@ -213,15 +226,16 @@ public final class LinuxHostRuntime {
         await closeScreenGrant()
         state.status = .notHosting
         boundPort = nil
+        listening = nil
     }
 
     private func loadIdentities() -> (device: DeviceIdentity, tls: HostTLSIdentity)? {
         let device: DeviceIdentity
         let tls: HostTLSIdentity
         do {
-            device = try FileDeviceIdentityStore(url: dataFolder.appendingPathComponent("device-identity.json")).loadOrCreate()
+            device = try FileDeviceIdentityStore(url: dataFolder.appendingPathComponent(LinuxHostDataFiles.deviceIdentity)).loadOrCreate()
             tls = try FileHostTLSIdentityStore(
-                url: dataFolder.appendingPathComponent("host-tls-identity.json"),
+                url: dataFolder.appendingPathComponent(LinuxHostDataFiles.tlsIdentity),
                 commonName: "Sensorium Host"
             ).loadOrCreate()
         } catch {
@@ -267,12 +281,13 @@ public final class LinuxHostRuntime {
         }
         self.server = server
         boundPort = server.boundPort
+        listening = (address, server.boundPort)
         log("Sensorium host bound \(address):\(server.boundPort)")
         state.status = .waiting
         let channels = server.channels
         acceptTask = Task { @MainActor [weak self] in
             for await channel in channels {
-                guard let self, !self.isStopped else {
+                guard let self, !self.isStopped, !self.isSuspended else {
                     channel.cancel()
                     continue
                 }
@@ -285,7 +300,7 @@ public final class LinuxHostRuntime {
         listenRetryTask?.cancel()
         listenRetryTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(5))
-            guard let self, !Task.isCancelled, !self.isStopped, self.server == nil else { return }
+            guard let self, !Task.isCancelled, !self.isStopped, !self.isSuspended, self.server == nil else { return }
             self.startListening()
         }
     }
@@ -298,7 +313,7 @@ public final class LinuxHostRuntime {
     }
 
     private func openScreenGrant(interactive: Bool) async {
-        guard !isOpeningGrant, !isStopped, liveHostScreen == nil else { return }
+        guard !isOpeningGrant, !isStopped, !isSuspended, liveHostScreen == nil else { return }
         isOpeningGrant = true
         defer {
             isOpeningGrant = false
@@ -548,6 +563,7 @@ public final class LinuxHostRuntime {
             }
         }
         refreshState()
+        onActivityChange?()
     }
 
     private func hostScreenStarted(connection: ObjectIdentifier, deviceName: String, displayName: String, stop: @escaping @MainActor () -> Void) {
@@ -657,6 +673,96 @@ public final class LinuxHostRuntime {
             liveSessions: liveSessions,
             connections: connections
         ))
+    }
+
+    // MARK: - Updates
+
+    /// How this host serves, as an update's ready report carries it, or nil
+    /// while it does not listen.
+    public func servingValues() -> LinuxUpdateReadyReport.Host? {
+        guard let identity, let deviceIdentity, let listening, server != nil else { return nil }
+        return LinuxUpdateReadyReport.Host(
+            tlsCertificateFingerprint: Self.hex(identity.certificateHash),
+            deviceIdentityFingerprint: Self.hex(deviceIdentity.publicKey),
+            pairedMachinesDigest: Self.pairedMachinesDigest(approvedStore.load()),
+            listenAddress: listening.address,
+            port: listening.port,
+            screenSharingAllowed: grantState.isGranted
+        )
+    }
+
+    /// Whether an update may install now: listening, with no viewer
+    /// connected, no session live, no pairing code on screen and no
+    /// screen-sharing dialog open. A host that does not listen is not idle:
+    /// its replacement could not listen either, so a handover would only
+    /// roll back.
+    public func isIdleForUpdate(now: Date = Date()) -> Bool {
+        guard !isStopped, !isSuspended, server != nil, listening != nil,
+              liveConnections.isEmpty, liveHostScreen == nil, !isOpeningGrant else {
+            return false
+        }
+        // An expired code is off the screen all the same.
+        if case let .showing(_, expiresAt, _) = state.pairing, expiresAt > now {
+            return false
+        }
+        return true
+    }
+
+    /// When to look at the idle rule again with nothing else changing: the
+    /// expiry of a pairing code on screen.
+    public func updateIdleRecheckDate(now: Date = Date()) -> Date? {
+        if case let .showing(_, expiresAt, _) = state.pairing, expiresAt > now {
+            return expiresAt
+        }
+        return nil
+    }
+
+    /// The first step of an update's handover: stops listening and closes
+    /// the screen-sharing grant, so the new version can bind the same
+    /// address and restore the grant itself. Returns how the host served,
+    /// which the new version must match. Nil when the host is not idle, and
+    /// then nothing has stopped.
+    public func suspendForUpdate() async -> LinuxUpdateReadyReport.Host? {
+        guard isIdleForUpdate(), let baseline = servingValues() else { return nil }
+        isSuspended = true
+        pendingGrant = nil
+        listenRetryTask?.cancel()
+        listenRetryTask = nil
+        server?.stop()
+        server = nil
+        acceptTask?.cancel()
+        acceptTask = nil
+        listening = nil
+        boundPort = nil
+        log("Sensorium host: stopped listening to hand over to a new version")
+        await closeScreenGrant()
+        return baseline
+    }
+
+    /// The handover failed: listen again and restore the grant without a
+    /// dialog, as at launch.
+    public func resumeAfterUpdate() async {
+        guard isSuspended, !isStopped else { return }
+        isSuspended = false
+        log("Sensorium host: serving again after a handover that did not complete")
+        startListening()
+        await openScreenGrant(interactive: false)
+        refreshState()
+    }
+
+    private static func hex(_ data: Data) -> String {
+        data.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// SHA-256, in lowercase hex, over every approved key in ascending byte
+    /// order, each preceded by its length as four big-endian bytes.
+    private static func pairedMachinesDigest(_ keys: Set<Data>) -> String {
+        var message = Data()
+        for key in keys.sorted(by: { $0.lexicographicallyPrecedes($1) }) {
+            withUnsafeBytes(of: UInt32(key.count).bigEndian) { message.append(contentsOf: $0) }
+            message.append(key)
+        }
+        return hex(SensoriumCrypto.sha256(message))
     }
 
     // MARK: - State

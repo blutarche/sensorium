@@ -55,14 +55,16 @@ public enum LinuxLockAtLaunch {
         lockState: any ScreenLockStateReading,
         activity: any HostLocalActivitySignal,
         sessionAge: TimeInterval?,
-        relocker: any HostScreenRelocking
+        relocker: any HostScreenRelocking,
+        isUpdateRelaunch: Bool = false
     ) -> HostAutoLoginLockAtStart.Outcome {
         guard let sessionAge else { return .notNeeded }
         return HostAutoLoginLockAtStart.applyIfNeeded(
             lockStateReader: lockState,
             activitySignal: activity,
             systemUptime: sessionAge,
-            relockPoster: relocker
+            relockPoster: relocker,
+            isUpdateRelaunch: isUpdateRelaunch
         )
     }
 }
