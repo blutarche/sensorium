@@ -1,5 +1,6 @@
 #!/bin/sh
-# Installs and removes the host RPM in a disposable Fedora container.
+# Installs and removes the host RPM in a disposable Fedora container, and checks
+# the update archive it built beside it.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -38,6 +39,17 @@ for name in libswiftCore.so libFoundation.so libgtk-4.so.1 libpipewire-0.3.so.0 
 done
 [ "$(rpm -q --queryformat '%{VERSION}' sensorium-host)" = "$VERSION" ] || fail "the host package version differs from VERSION"
 
+# The archive the host updates itself from holds the binary the package
+# installs. It is checked while the package is installed, because the archived
+# binary runs its update self-test too.
+archive="Artifacts/Sensorium-Host-$VERSION-linux-x86_64.tar.gz"
+[ -f "$archive" ] || fail "no host update archive for $VERSION in Artifacts; run Scripts/package-linux.sh --host first"
+(cd Artifacts && sha256sum -c "$(basename "$archive").sha256" > /dev/null) \
+    || fail "the checksum beside $archive does not match it"
+sh Scripts/test-linux-update-archive.sh --host --run "$archive" || fail "the host update archive is not what the host expects"
+tar -xzOf "$archive" sensorium-host | cmp -s - /usr/bin/sensorium-host \
+    || fail "the host update archive does not hold the binary the package installs"
+
 owned="$(rpm -ql sensorium-host)"
 dnf remove -y sensorium-host
 for path in $owned; do
@@ -46,4 +58,4 @@ for path in $owned; do
     fi
 done
 
-echo "PASS: the Fedora host package installs, has a valid launcher, runs, and removes cleanly"
+echo "PASS: the Fedora host package installs, has a valid launcher, runs, and removes cleanly, and its update archive holds the binary it installs"

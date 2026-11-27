@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to attach the Fedora package and the update archive to, for example v1.2.3
+        description: Release tag to attach the Fedora packages and the update archives to, for example v1.2.3
         required: true
         type: string
 
@@ -18,7 +18,7 @@ jobs:
     container: fedora:44
     permissions:
       contents: write
-      # The build provenance of the update archive: a signed statement, made
+      # The build provenance of the update archives: a signed statement, made
       # here, of which workflow run built which bytes.
       id-token: write
       attestations: write
@@ -50,18 +50,19 @@ jobs:
       - name: Install, check and remove the package, and check the update archive
         run: sh Scripts/test-package-linux.sh
 
-      - name: Install, check and remove the host package
+      - name: Install, check and remove the host package, and check the host update archive
         run: sh Scripts/test-package-linux-host.sh
 
-      - name: Attest the update archive's build provenance
+      - name: Attest the update archives' build provenance
         # Scripts/sign-linux-update.sh signs a tarball only when this
         # attestation names its exact bytes and this workflow run for the tag.
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        # The one pattern matches both the viewer's and the host's archive.
         with:
           subject-path: Artifacts/Sensorium-*-linux-x86_64.tar.gz
 
       - name: Refuse to replace the files of a signed release
-        # Once the manifest's signature is up it vouches for the tarball's
+        # Once either manifest's signature is up it vouches for a tarball's
         # exact bytes, so nothing on that release is replaced.
         env:
           GH_TOKEN: ${{ github.token }}
@@ -69,22 +70,23 @@ jobs:
           # gh runs git in the workspace, which the container user does not own.
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           assets="$(gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq '.assets[].name')"
-          if printf '%s\n' "$assets" | grep -qx 'sensorium-update-linux-x86_64\.json\.sig'; then
+          if printf '%s\n' "$assets" | grep -qxE 'sensorium(-host)?-update-linux-x86_64\.json\.sig'; then
             echo "Release $TAG is already signed, so its files are not replaced." >&2
             exit 1
           fi
 
-      - name: Attach the package and the update archive to the release
+      - name: Attach the packages and the update archives to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "$TAG" Artifacts/*.rpm Artifacts/*.rpm.sha256 Artifacts/*.tar.gz Artifacts/*.tar.gz.sha256 --clobber -R "${{ github.repository }}"
 
-      - name: Check the release carries the package and the update archive
+      - name: Check the release carries the packages and the update archives
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$TAG" -R "${{ github.repository }}" --json assets --jq '.assets[].name' | tee assets.txt
           grep -q '^sensorium-[0-9].*\.rpm$' assets.txt
           grep -q '^sensorium-host-[0-9].*\.rpm$' assets.txt
-          grep -q '\.tar\.gz$' assets.txt
+          grep -q '^Sensorium-[0-9].*-linux-x86_64\.tar\.gz$' assets.txt
+          grep -q '^Sensorium-Host-[0-9].*-linux-x86_64\.tar\.gz$' assets.txt

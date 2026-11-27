@@ -1,11 +1,13 @@
 #!/bin/sh
-# Packs the Linux viewer binary into the archive the viewer updates itself from.
+# Packs the Linux viewer binary, or with --host the Linux host binary, into the
+# archive the app updates itself from.
 #
-#   Scripts/make-linux-update-archive.sh <binary> <output directory>
+#   Scripts/make-linux-update-archive.sh [--host] <binary> <output directory>
 #
-# Writes Sensorium-<version>-linux-x86_64.tar.gz and a .sha256 beside it. The
-# archive holds one regular file, Sensorium, mode 0755, with no owner and a
-# fixed time, so the same binary always packs to the same bytes. The time is
+# Writes Sensorium-<version>-linux-x86_64.tar.gz, or
+# Sensorium-Host-<version>-linux-x86_64.tar.gz, and a .sha256 beside it. The
+# archive holds one regular file, Sensorium or sensorium-host, mode 0755, with
+# no owner and a fixed time, so the same binary always packs to the same bytes. The time is
 # SOURCE_DATE_EPOCH when set, else the commit time of HEAD. Needs GNU tar.
 set -eu
 
@@ -17,7 +19,14 @@ die() {
     exit 1
 }
 
-[ $# -eq 2 ] || { echo "usage: $0 <binary> <output directory>" >&2; exit 2; }
+MEMBER=Sensorium
+PREFIX=Sensorium-
+if [ "${1:-}" = --host ]; then
+    MEMBER=sensorium-host
+    PREFIX=Sensorium-Host-
+    shift
+fi
+[ $# -eq 2 ] || { echo "usage: $0 [--host] <binary> <output directory>" >&2; exit 2; }
 BINARY="$1"
 OUTPUT="$2"
 [ -f "$BINARY" ] || die "no binary at $BINARY"
@@ -33,15 +42,15 @@ case "$EPOCH" in
     ''|*[!0-9]*) die "set SOURCE_DATE_EPOCH; the commit time could not be read" ;;
 esac
 
-NAME="Sensorium-$VERSION-linux-x86_64.tar.gz"
+NAME="$PREFIX$VERSION-linux-x86_64.tar.gz"
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/sensorium-update-archive.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
-install -m 0755 "$BINARY" "$STAGE/Sensorium"
+install -m 0755 "$BINARY" "$STAGE/$MEMBER"
 
 # Two steps rather than a pipe, so a failing tar stops the script. gzip -n
 # leaves the file name and time out of the header.
 tar --create --format=gnu --owner=0 --group=0 --numeric-owner --sort=name \
-    --mtime="@$EPOCH" --file="$STAGE/archive.tar" -C "$STAGE" Sensorium
+    --mtime="@$EPOCH" --file="$STAGE/archive.tar" -C "$STAGE" "$MEMBER"
 gzip -n < "$STAGE/archive.tar" > "$STAGE/$NAME"
 
 cp "$STAGE/$NAME" "$OUTPUT/$NAME"

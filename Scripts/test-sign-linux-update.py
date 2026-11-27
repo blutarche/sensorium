@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Exercises the Linux self-update release tooling without a network.
 
+The viewer and the host each update from their own archive and manifest, and
+every check below runs for both.
+
 It covers three scripts:
 
 * Scripts/test-linux-update-archive.sh, against good and malformed archives.
@@ -28,6 +31,9 @@ TAG = f"v{VERSION}"
 TARBALL = f"Sensorium-{VERSION}-linux-x86_64.tar.gz"
 MANIFEST = "sensorium-update-linux-x86_64.json"
 BINARY = b"\x7fELF fixture viewer binary\n"
+HOST_TARBALL = f"Sensorium-Host-{VERSION}-linux-x86_64.tar.gz"
+HOST_MANIFEST = "sensorium-host-update-linux-x86_64.json"
+HOST_BINARY = b"\x7fELF fixture host binary\n"
 
 passed = 0
 
@@ -73,6 +79,7 @@ def build_archive(path, members):
 
 
 GOOD = [("Sensorium", "file", 0o755, 0, BINARY)]
+HOST_GOOD = [("sensorium-host", "file", 0o755, 0, HOST_BINARY)]
 
 
 def sha256_of(path):
@@ -111,6 +118,23 @@ try:
         build_archive(path, members)
         result = run(["sh", str(checker), str(path)])
         check(result.returncode != 0 and "FAIL" in result.stderr, f"the archive check refuses {label}")
+    host_good = work / "host-good.tar.gz"
+    build_archive(host_good, HOST_GOOD)
+    result = run(["sh", str(checker), "--host", str(host_good)])
+    check(result.returncode == 0, f"a one-file host archive passes the host archive check ({result.stderr.strip()})")
+    result = run(["sh", str(checker), "--host", str(good)])
+    check(result.returncode != 0 and "FAIL" in result.stderr, "the host archive check refuses the viewer's archive")
+    result = run(["sh", str(checker), str(host_good)])
+    check(result.returncode != 0 and "FAIL" in result.stderr, "the viewer archive check refuses the host's archive")
+    for label, members in {
+        "a second entry": HOST_GOOD + [("extra", "file", 0o644, 0, b"x")],
+        "no execute bit": [("sensorium-host", "file", 0o644, 0, HOST_BINARY)],
+        "an owner other than root": [("sensorium-host", "file", 0o755, 1000, HOST_BINARY)],
+    }.items():
+        path = work / "host-bad.tar.gz"
+        build_archive(path, members)
+        result = run(["sh", str(checker), "--host", str(path)])
+        check(result.returncode != 0 and "FAIL" in result.stderr, f"the host archive check refuses {label}")
     result = run(["sh", str(checker), str(work / "missing.tar.gz")])
     check(result.returncode != 0, "the archive check refuses a missing file")
     garbage = work / "garbage.tar.gz"
@@ -146,6 +170,20 @@ try:
         check(recorded == [sha256_of(outputs[0]), outputs[0].name], "the .sha256 names the archive and its hash")
         result = run(["sh", str(maker), str(work / "absent"), str(work / "out0")], env={"SOURCE_DATE_EPOCH": "1"})
         check(result.returncode != 0, "the archive maker refuses a binary that is not there")
+        host_binary = work / "host-binary"
+        host_binary.write_bytes(HOST_BINARY)
+        host_out = work / "host-out"
+        host_out.mkdir()
+        result = run(["sh", str(maker), "--host", str(host_binary), str(host_out)], env={"SOURCE_DATE_EPOCH": "1700000000"})
+        check(result.returncode == 0, f"the archive maker packs the host ({result.stderr.strip()})")
+        host_archive = host_out / f"Sensorium-Host-{(ROOT / 'VERSION').read_text().strip()}-linux-x86_64.tar.gz"
+        result = run(["sh", str(checker), "--host", str(host_archive)])
+        check(result.returncode == 0, f"the host archive the maker writes passes the host archive check ({result.stderr.strip()})")
+        with tarfile.open(host_archive) as archive:
+            member = archive.getmembers()[0]
+            check(archive.extractfile(member).read() == HOST_BINARY, "the host archive holds the host binary it was given")
+        recorded = Path(str(host_archive) + ".sha256").read_text().split()
+        check(recorded == [sha256_of(host_archive), host_archive.name], "the host archive's .sha256 names it and its hash")
     else:
         print("SKIP: the archive maker needs GNU tar; this machine has another tar")
 
@@ -203,6 +241,8 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
     )
     release_tarball = fixture_dir / TARBALL
     build_archive(release_tarball, GOOD)
+    host_tarball = fixture_dir / HOST_TARBALL
+    build_archive(host_tarball, HOST_GOOD)
 
     def sign(*args, tag=TAG, mode="", verify="", output=None, extra_env=None):
         gh_log.write_text("")
@@ -242,11 +282,19 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
     result = sign("--dry-run")
     check(result.returncode != 0 and "tarball" in result.stderr, "a release without the tarball is refused")
     (fixture_dir / "held-back").rename(release_tarball)
+    host_tarball.rename(fixture_dir / "held-back")
+    result = sign("--dry-run")
+    check(result.returncode != 0 and HOST_TARBALL in result.stderr, "a release without the host tarball is refused")
+    (fixture_dir / "held-back").rename(host_tarball)
 
     build_archive(release_tarball, GOOD + [("extra", "file", 0o644, 0, b"x")])
     result = sign("--dry-run")
     check(result.returncode != 0 and "FAIL" in result.stderr, "a malformed tarball is refused before it is signed")
     build_archive(release_tarball, GOOD)
+    build_archive(host_tarball, GOOD)
+    result = sign("--dry-run")
+    check(result.returncode != 0 and "FAIL" in result.stderr, "a host tarball holding the viewer is refused before it is signed")
+    build_archive(host_tarball, HOST_GOOD)
 
     result = sign("--dry-run", extra_env={"SENSORIUM_UPDATE_KEY": str(work / "no-such-key")})
     check(result.returncode != 0 and "update key" in result.stderr, "a missing key file is refused")
@@ -282,6 +330,14 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
     )
     download_index = next(i for i, call in enumerate(gh_calls()) if call.startswith("gh release download"))
     check(gh_calls().index(verify_call) > download_index, "the provenance is verified after the download")
+    check(
+        any(call.startswith(f"gh release download {TAG}") and HOST_TARBALL in call for call in gh_calls()),
+        "the host tarball is downloaded from the release by name",
+    )
+    check(
+        verify_call.replace(TARBALL, HOST_TARBALL) in gh_calls(),
+        "and its provenance is verified against the same workflow run",
+    )
 
     manifest = out / MANIFEST
     signature = out / f"{MANIFEST}.sig"
@@ -300,19 +356,31 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
     verify = run(["swift", str(SCRIPTS / "sign-update.swift"), "verify", public_key, str(tampered), str(signature)])
     check(verify.returncode != 0, "the signature does not verify for changed manifest bytes")
     check(key.read_text().strip() not in result.stdout + result.stderr, "the private key is never printed")
+    host_manifest = out / HOST_MANIFEST
+    host_expected = (
+        '{"format":1,"version":"%s","file":"%s","size":%d,"sha256":"%s"}'
+        % (VERSION, HOST_TARBALL, host_tarball.stat().st_size, sha256_of(host_tarball))
+    )
+    check(host_manifest.read_bytes() == host_expected.encode(), "the host manifest names the host tarball, its size and hash")
+    verify = run(["swift", str(SCRIPTS / "sign-update.swift"), "verify", public_key, str(host_manifest), str(out / f"{HOST_MANIFEST}.sig")])
+    check(verify.returncode == 0, f"the host manifest's signature verifies ({verify.stderr.strip()})")
 
     out_live = work / "out-live"
     out_live.mkdir()
     result = sign(output=out_live)
     check(result.returncode == 0, f"a real run succeeds ({result.stderr.strip()})")
     uploads = [call for call in gh_calls() if call.startswith("gh release upload")]
-    check(len(uploads) == 2, "a real run uploads twice")
+    check(len(uploads) == 4, "a real run uploads four files")
     check(
-        uploads[0].endswith(f"{MANIFEST}.sig --clobber") and uploads[1].endswith(f"{MANIFEST} --clobber"),
+        uploads[0].endswith(f"/{MANIFEST}.sig --clobber") and uploads[1].endswith(f"/{MANIFEST} --clobber"),
         "the signature goes up first, then the manifest, each replacing an earlier copy",
     )
+    check(
+        uploads[2].endswith(f"/{HOST_MANIFEST}.sig --clobber") and uploads[3].endswith(f"/{HOST_MANIFEST} --clobber"),
+        "and the same for the host",
+    )
     printed = result.stdout.replace('"', "")
-    check(uploads[0] in printed and uploads[1] in printed, "the upload commands are printed")
+    check(all(upload in printed for upload in uploads), "the upload commands are printed")
     check(printed.index(uploads[0]) < printed.index("Uploaded"), "the commands are printed before they run")
     check((out_live / MANIFEST).read_bytes() == manifest.read_bytes(), "signing the same tarball again gives the same manifest")
 
@@ -331,7 +399,7 @@ cp "$STUB_GH_FIXTURES/$pattern" "$dir/$pattern"
                 f"{run_name} refuses a tarball {label} ({result.stderr.strip()})",
             )
             check(
-                sorted(p.name for p in refused_out.iterdir()) == [TARBALL],
+                sorted(p.name for p in refused_out.iterdir()) == sorted([TARBALL, HOST_TARBALL]),
                 f"and {run_name} writes no manifest or signature for it",
             )
             check(

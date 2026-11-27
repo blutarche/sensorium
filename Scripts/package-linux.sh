@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the Fedora viewer package, or the host package with --host.
-# Each RPM lands in Artifacts/ with a .sha256 beside it. The viewer build
-# also writes the archive the viewer updates itself from.
+# Each RPM lands in Artifacts/ with a .sha256 beside it, and beside that the
+# archive the app updates itself from.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -11,6 +11,8 @@ VERSION="$(cat VERSION)"
 TOPDIR="$PWD/Artifacts/rpmbuild"
 OUTPUT="$PWD/Artifacts"
 PACKAGE=sensorium
+BINARY=Sensorium
+ARCHIVE_FLAG=""
 
 usage() {
     echo "usage: $0 [--host]" >&2
@@ -22,6 +24,8 @@ case "$#" in
     1)
         [ "$1" = --host ] || usage
         PACKAGE=sensorium-host
+        BINARY=sensorium-host
+        ARCHIVE_FLAG=--host
         TOPDIR="$TOPDIR-host"
         ;;
     *) usage ;;
@@ -60,8 +64,6 @@ cp "$built" "$OUTPUT/$(basename "$built")"
 echo "package-linux: $OUTPUT/$(basename "$built")"
 echo "package-linux: $OUTPUT/$(basename "$built").sha256"
 
-[ "$PACKAGE" = sensorium ] || exit 0
-
 # The update archive holds the binary taken out of the package, so it is the
 # one the package test installs and runs, and nothing is built twice.
 for tool in rpm2cpio cpio; do
@@ -70,5 +72,7 @@ done
 UNPACKED="$TOPDIR/unpacked"
 rm -rf "$UNPACKED"
 mkdir -p "$UNPACKED"
-rpm2cpio "$built" | (cd "$UNPACKED" && cpio --quiet -idm ./usr/bin/Sensorium)
-sh "$ROOT/Scripts/make-linux-update-archive.sh" "$UNPACKED/usr/bin/Sensorium" "$OUTPUT"
+rpm2cpio "$built" | (cd "$UNPACKED" && cpio --quiet -idm "./usr/bin/$BINARY")
+# The flag is empty for the viewer, so it is left unquoted.
+# shellcheck disable=SC2086
+sh "$ROOT/Scripts/make-linux-update-archive.sh" $ARCHIVE_FLAG "$UNPACKED/usr/bin/$BINARY" "$OUTPUT"

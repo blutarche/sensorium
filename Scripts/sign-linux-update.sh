@@ -1,16 +1,19 @@
 #!/bin/sh
-# Signs the Linux viewer's update manifest and uploads it. Run by the
-# maintainer, on the machine that holds the update key, after the release-linux
-# workflow has attached Sensorium-<version>-linux-x86_64.tar.gz to the release.
+# Signs the update manifests of the Linux viewer and the Linux host and uploads
+# them. Run by the maintainer, on the machine that holds the update key, after
+# the release-linux workflow has attached Sensorium-<version>-linux-x86_64.tar.gz
+# and Sensorium-Host-<version>-linux-x86_64.tar.gz to the release.
 #
 #   Scripts/sign-linux-update.sh [--dry-run] v<version>
 #
-# Downloads the tarball, verifies its build provenance names the release-linux
-# workflow run for the tag, hashes it, writes sensorium-update-linux-x86_64.json
-# (docs/self-update-design.md section 11.2), signs its exact bytes with the key
+# Downloads both tarballs, verifies each one's build provenance names the
+# release-linux workflow run for the tag, checks and hashes each, writes
+# sensorium-update-linux-x86_64.json and sensorium-host-update-linux-x86_64.json
+# (docs/self-update-design.md section 11.2), signs their exact bytes with the key
 # Scripts/release-macos.sh uses (SENSORIUM_UPDATE_KEY, else
 # $HOME/.sensorium-release/update-key), checks the signature against the public
-# key compiled into the apps, and uploads the signature and then the manifest.
+# key compiled into the apps, and uploads each signature and then its manifest.
+# Nothing is uploaded until both manifests are signed and verified.
 # --dry-run does everything but the upload and keeps the files it wrote.
 # SENSORIUM_LINUX_UPDATE_DIR names an empty folder to work in; the script
 # removes only a folder it made itself.
@@ -20,7 +23,6 @@ ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 SIGN="$ROOT/Scripts/sign-update.swift"
 KEY="${SENSORIUM_UPDATE_KEY:-$HOME/.sensorium-release/update-key}"
-MANIFEST_NAME="sensorium-update-linux-x86_64.json"
 REPOSITORY="blutarche/sensorium"
 BUILD_WORKFLOW="$REPOSITORY/.github/workflows/release-linux.yml"
 
@@ -52,7 +54,26 @@ esac
 [ "${TAG#v}" = "$VERSION" ] ||
     die "the tag is $TAG but VERSION is $VERSION. Check out the release's commit, or fix the tag."
 
-TARBALL="Sensorium-$VERSION-linux-x86_64.tar.gz"
+# Each app: its tarball, its manifest, and the archive check's flag for it.
+APPS="viewer host"
+tarball_of() {
+    case "$1" in
+        viewer) echo "Sensorium-$VERSION-linux-x86_64.tar.gz" ;;
+        host) echo "Sensorium-Host-$VERSION-linux-x86_64.tar.gz" ;;
+    esac
+}
+manifest_of() {
+    case "$1" in
+        viewer) echo "sensorium-update-linux-x86_64.json" ;;
+        host) echo "sensorium-host-update-linux-x86_64.json" ;;
+    esac
+}
+archive_flag_of() {
+    case "$1" in
+        viewer) echo "" ;;
+        host) echo "--host" ;;
+    esac
+}
 
 [ -f "$KEY" ] || die "the update key file $KEY does not exist. Set SENSORIUM_UPDATE_KEY to your key file."
 COMPILED_FILE="$ROOT/Sources/SensoriumUpdate/UpdatePublicKey.swift"
@@ -79,56 +100,75 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-command -v gh > /dev/null 2>&1 || die "gh is not installed, so the tarball cannot be downloaded"
-(cd "$ROOT" && gh release download "$TAG" --pattern "$TARBALL" --dir "$WORK") ||
-    die "the tarball $TARBALL could not be downloaded from release $TAG. Has the release-linux workflow finished?"
-[ -f "$WORK/$TARBALL" ] || die "release $TAG has no tarball named $TARBALL"
-
-# Anyone who can write to the release's files could have replaced the
-# tarball since CI uploaded it. The attestation CI made when it built the
-# tarball names its exact bytes, so only that build is ever signed.
-gh attestation verify "$WORK/$TARBALL" \
-    --repo "$REPOSITORY" \
-    --signer-workflow "$BUILD_WORKFLOW" \
-    --source-ref "refs/tags/$TAG" ||
-    die "the tarball on release $TAG is not the one the release-linux workflow built from $TAG, or gh could not check (it needs the attestation command and a login), so nothing was signed"
-
-sh "$ROOT/Scripts/test-linux-update-archive.sh" "$WORK/$TARBALL" ||
-    die "$TARBALL is not the archive the viewer expects, so nothing was signed"
-
-SIZE="$(wc -c < "$WORK/$TARBALL" | tr -d ' ')"
-if command -v sha256sum > /dev/null 2>&1; then
-    DIGEST="$(sha256sum "$WORK/$TARBALL" | cut -d' ' -f1)"
-else
-    DIGEST="$(shasum -a 256 "$WORK/$TARBALL" | cut -d' ' -f1)"
-fi
 case "$VERSION" in
     ''|*[!A-Za-z0-9._+-]*) die "'$VERSION' cannot be written into the manifest" ;;
 esac
 
-# Compact, with the keys in a fixed order, and no trailing newline: the
-# signature covers these exact bytes.
-MANIFEST="$WORK/$MANIFEST_NAME"
-printf '{"format":1,"version":"%s","file":"%s","size":%s,"sha256":"%s"}' \
-    "$VERSION" "$TARBALL" "$SIZE" "$DIGEST" > "$MANIFEST"
+command -v gh > /dev/null 2>&1 || die "gh is not installed, so the tarballs cannot be downloaded"
+for app in $APPS; do
+    TARBALL="$(tarball_of "$app")"
+    (cd "$ROOT" && gh release download "$TAG" --pattern "$TARBALL" --dir "$WORK") ||
+        die "the tarball $TARBALL could not be downloaded from release $TAG. Has the release-linux workflow finished?"
+    [ -f "$WORK/$TARBALL" ] || die "release $TAG has no tarball named $TARBALL"
+done
+
+for app in $APPS; do
+    TARBALL="$(tarball_of "$app")"
+    # Anyone who can write to the release's files could have replaced the
+    # tarball since CI uploaded it. The attestation CI made when it built the
+    # tarball names its exact bytes, so only that build is ever signed.
+    gh attestation verify "$WORK/$TARBALL" \
+        --repo "$REPOSITORY" \
+        --signer-workflow "$BUILD_WORKFLOW" \
+        --source-ref "refs/tags/$TAG" ||
+        die "the tarball $TARBALL on release $TAG is not the one the release-linux workflow built from $TAG, or gh could not check (it needs the attestation command and a login), so nothing was signed"
+
+    # The flag is empty for the viewer, so it is left unquoted.
+    # shellcheck disable=SC2046
+    sh "$ROOT/Scripts/test-linux-update-archive.sh" $(archive_flag_of "$app") "$WORK/$TARBALL" ||
+        die "$TARBALL is not the archive the $app expects, so nothing was signed"
+done
 
 KEY_PUBLIC="$(swift "$SIGN" public-key "$KEY")" || die "the update key file $KEY cannot be used"
 [ "$KEY_PUBLIC" = "$COMPILED_KEYS" ] ||
-    die "the public key of $KEY does not match the public key compiled into the apps; signing with it would make every installed viewer reject the update"
-swift "$SIGN" sign "$KEY" "$MANIFEST" || die "the manifest could not be signed"
-swift "$SIGN" verify "$COMPILED_KEYS" "$MANIFEST" "$MANIFEST.sig" ||
-    die "the signature does not verify with the public key compiled into the apps"
+    die "the public key of $KEY does not match the public key compiled into the apps; signing with it would make every installed app reject the update"
 
-# The signature goes first: a viewer that finds a manifest must find its
+for app in $APPS; do
+    TARBALL="$(tarball_of "$app")"
+    SIZE="$(wc -c < "$WORK/$TARBALL" | tr -d ' ')"
+    if command -v sha256sum > /dev/null 2>&1; then
+        DIGEST="$(sha256sum "$WORK/$TARBALL" | cut -d' ' -f1)"
+    else
+        DIGEST="$(shasum -a 256 "$WORK/$TARBALL" | cut -d' ' -f1)"
+    fi
+    # Compact, with the keys in a fixed order, and no trailing newline: the
+    # signature covers these exact bytes.
+    MANIFEST="$WORK/$(manifest_of "$app")"
+    printf '{"format":1,"version":"%s","file":"%s","size":%s,"sha256":"%s"}' \
+        "$VERSION" "$TARBALL" "$SIZE" "$DIGEST" > "$MANIFEST"
+    swift "$SIGN" sign "$KEY" "$MANIFEST" || die "the manifest $(manifest_of "$app") could not be signed"
+    swift "$SIGN" verify "$COMPILED_KEYS" "$MANIFEST" "$MANIFEST.sig" ||
+        die "the signature of $(manifest_of "$app") does not verify with the public key compiled into the apps"
+done
+
+# Each signature goes first: an app that finds a manifest must find its
 # signature already there.
-SIG_CMD="gh release upload \"$TAG\" \"$MANIFEST.sig\" --clobber"
-MANIFEST_CMD="gh release upload \"$TAG\" \"$MANIFEST\" --clobber"
+COMMANDS=""
+for app in $APPS; do
+    MANIFEST="$WORK/$(manifest_of "$app")"
+    COMMANDS="$COMMANDS
+  gh release upload \"$TAG\" \"$MANIFEST.sig\" --clobber
+  gh release upload \"$TAG\" \"$MANIFEST\" --clobber"
+done
 if [ "$DRY_RUN" = 1 ]; then
     KEEP_WORK=1
-    printf 'Dry run, not uploaded. The files are in %s. Without --dry-run this runs:\n  %s\n  %s\n' "$WORK" "$SIG_CMD" "$MANIFEST_CMD"
+    printf 'Dry run, not uploaded. The files are in %s. Without --dry-run this runs:%s\n' "$WORK" "$COMMANDS"
 else
-    printf 'Uploading with:\n  %s\n  %s\n' "$SIG_CMD" "$MANIFEST_CMD"
-    (cd "$ROOT" && gh release upload "$TAG" "$MANIFEST.sig" --clobber)
-    (cd "$ROOT" && gh release upload "$TAG" "$MANIFEST" --clobber)
+    printf 'Uploading with:%s\n' "$COMMANDS"
+    for app in $APPS; do
+        MANIFEST="$WORK/$(manifest_of "$app")"
+        (cd "$ROOT" && gh release upload "$TAG" "$MANIFEST.sig" --clobber)
+        (cd "$ROOT" && gh release upload "$TAG" "$MANIFEST" --clobber)
+    done
     printf 'Uploaded to %s\n' "$TAG"
 fi
