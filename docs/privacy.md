@@ -28,6 +28,8 @@ On macOS, each app fetches two small files from github.com when it opens and eve
 
 The Linux viewer does the same. It fetches the two small Linux files from github.com when it opens and every six hours, and downloads the Linux archive from GitHub when there is a newer release. GitHub sees the same things: your address, when the viewer asked, and which file it fetched, so it can tell a Linux viewer from a macOS one and which version is being downloaded. Nothing else about you or your machines is sent. Turning automatic updates off stops these requests until **Check for Updates…** is chosen.
 
+The Linux host does the same with its own two files and archive, when it starts and every six hours. GitHub can tell it from a viewer by the files it fetches. It has no switch for automatic updates.
+
 ## Stored on disk
 
 | Machine | Stored | Where |
@@ -42,13 +44,14 @@ The Linux viewer does the same. It fetches the two small Linux files from github
 | Both, macOS only | The highest release version seen, when updates were last checked, and each version that failed to install, with its download's SHA-256, why it failed, and how many times it was tried | `~/Library/Application Support/Sensorium/host-update-state.json` and `viewer-update-state.json`, owner-only |
 | Viewer, Linux only | The same update record as on macOS | `$XDG_DATA_HOME/sensorium/viewer-update-state.json`, owner-only |
 | Viewer, Linux only | Each installed update of the viewer, which one runs, and a marker naming a switch the new version has not yet confirmed. The running version and the two before it are kept | `$XDG_DATA_HOME/sensorium/versions`, `current` and `update-pending.json`, owner-only |
+| Host, Linux only | The same update record, installed versions and marker, for the host | `$XDG_DATA_HOME/sensorium-host/host-update-state.json`, `versions`, `current` and `update-pending.json`, owner-only |
 
-A downloaded update and its staging folder live in the system's temporary items folder. They are deleted once the update installs or fails. On Linux they live in a hidden folder inside `versions`, deleted the same way. Once an update confirms it started, the Linux viewer also writes a copy of the package's launcher entry, pointed at `current`, into `$XDG_DATA_HOME/applications`, and copies the package's icons into `$XDG_DATA_HOME/icons`, so the launcher opens the updated version.
+A downloaded update and its staging folder live in the system's temporary items folder. They are deleted once the update installs or fails. On Linux they live in a hidden folder inside `versions`, deleted the same way. Once an update confirms it started, the Linux viewer also writes a copy of the package's launcher entry, pointed at `current`, into `$XDG_DATA_HOME/applications`, and copies the package's icons into `$XDG_DATA_HOME/icons`, so the launcher opens the updated version. The Linux host does the same with its own entry and icons, and points its autostart entry at `current` when Open at login is on.
 
 On Linux the viewer keeps the same files, under the same names, in
 `$XDG_DATA_HOME/sensorium`, or in `~/.local/share/sensorium` where that
-variable is unset. The host rows above do not apply there: there is no Linux
-host.
+variable is unset. The Linux host keeps the host's files, under the same
+names, in `$XDG_DATA_HOME/sensorium-host`.
 
 No screen contents, keystrokes, or input history reach disk. Opt-in local latency traces hold stage timings only, no addresses, no screen contents, no input.
 

@@ -189,8 +189,8 @@ No. The host uses Screen Recording to capture and Accessibility to type and
 click. See [macOS permissions](docs/macos-permissions.md).
 
 **Does it talk to anything besides my other machine?**
-Only GitHub, on macOS, to check for and download updates. Turning automatic
-updates off stops that. See [Privacy](docs/privacy.md#update-checks).
+Only GitHub, to check for and download updates. On macOS and in the Linux
+viewer, turning automatic updates off stops that. See [Privacy](docs/privacy.md#update-checks).
 
 **Can I connect from Windows, a phone or a browser?**
 No. The viewer runs on macOS and Fedora only.

@@ -209,9 +209,13 @@ Allow and Deny. It times out to Deny.
 **Records.** The session record and arming record are the same JSON files
 the macOS host writes, under `$XDG_DATA_HOME/sensorium-host`.
 
-**Updates.** The host does not update itself in this first version. A new
-version comes as a new RPM. Self-update waits until the portal grant is
-known to survive the host moving its own files.
+**Updates.** The host updates itself from a signed release, as section 12
+of `docs/self-update-design.md` describes. It installs once no machine is
+connected and no pairing is in progress. It hands over to the new version
+only once the new one serves with the same identities, paired machines and
+address, and keeps serving if it does not. The new version runs as the old
+one's child, so the desktop sees the same app and the saved portal grant
+restores without a dialog.
 
 ## What is not ported
 

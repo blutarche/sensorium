@@ -8,6 +8,14 @@ once it reaches 1.0.
 
 ## [Unreleased]
 
+### Added
+
+- The Linux host updates itself. It checks for a signed release when it
+  starts and every six hours, and installs it once no machine is connected.
+  The host window says which version is waiting, and why an update failed.
+- The Linux release carries the host's update archive and its signed
+  manifest beside the viewer's.
+
 ## [0.7.0] - 2026-11-27
 
 ### Added

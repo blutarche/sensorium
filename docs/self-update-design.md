@@ -345,3 +345,63 @@ The signature vouches for the tarball CI built. Anyone who can write to the rele
 
 Updating other architectures than x86_64, updating through a system package manager, and key rotation.
 
+
+## 12. The Linux host
+
+The Linux host updates itself with the engine section 11 describes, with the host's own files and the host's rules from sections 3.4 and 3.5.
+
+### 12.1 What the person sees
+
+The host checks when it starts, then every six hours while it runs. It installs on its own once no machine is connected and no pairing is in progress. It has no **Restart Now**, no **Install updates automatically** checkbox and no **Check for Updates…**.
+
+The host window shows one line under the switches, in the macOS host's words:
+
+| State | Line |
+| --- | --- |
+| Not checked yet this launch | No line. |
+| Current, after a check this launch | *Sensorium Host `<version>` is up to date.* |
+| Waiting | *Sensorium Host `<new version>` will install when no machine is connected.* |
+| Failed | *Sensorium Host could not update: `<reason>`. It keeps running `<version>`.* |
+| Not updatable | *Sensorium Host cannot update itself because it cannot write to its own folder.* |
+
+The waiting line shows while a session runs, too. A build with no release version, such as one built from source, has no updater and no line.
+
+### 12.2 Release
+
+A Linux release adds three more files beside the viewer's:
+
+| File | What it is |
+| --- | --- |
+| `Sensorium-Host-<version>-linux-x86_64.tar.gz` | One regular file, `sensorium-host`, the binary the host package installs |
+| `sensorium-host-update-linux-x86_64.json` | Signed manifest, in the viewer's format |
+| `sensorium-host-update-linux-x86_64.json.sig` | Ed25519 signature on the manifest's exact bytes, by the same key |
+
+CI takes the binary out of the host package, packs it, and runs the packed binary's self-test in an empty data folder before it attaches anything. It records both tarballs' build provenance. The signing step checks and signs both manifests in one run, and uploads nothing until both are signed. The manifest's name is part of what is signed, so neither app can install the other's archive.
+
+### 12.3 Where it installs
+
+The host installs into its own data folder, `$XDG_DATA_HOME/sensorium-host`, beside the records it keeps there:
+
+- `versions/<version>/sensorium-host`, with `current` and the pending marker as in section 11.3.
+- The engine removes only what it made: versions it pruned, and its own staging and handoff folders, which carry a name and a UUID. It never moves or changes the paired machines, identities, arming record, session log or portal token.
+
+A host installed by the package lives under `/usr`. Its first update writes the launcher entry `$XDG_DATA_HOME/applications/com.sensorium.host.desktop`, which starts `current/sensorium-host`. If Open at login is on, it rewrites the autostart entry to start that binary with `--background`. If Open at login is off, it writes no autostart entry. Turning Open at login on later points it at the installed version, or at the packaged binary before the first update.
+
+### 12.4 Install and rollback
+
+1. Download, check and stage as in section 11.4, steps 1 to 3. The self-test reads the host's identities and paired machines, writes nothing, and fails on a record it cannot read.
+2. Wait until the host is idle, as in section 3.5. Look again right before stopping.
+3. Note how the host serves: its TLS certificate, its device key, a digest of its paired machines, the address and port it listens on, and whether screen sharing is allowed.
+4. Stop listening, and close the portal session.
+5. Write the pending marker, switch `current`, and start the new binary with `--replacing <pid> <ready file>` as a child of this one. It stays in the same app scope, which is what the desktop knows the app by.
+6. The new host takes over the application name. It skips lock at launch, restores the screen sharing grant from the saved token, and starts listening. Once it listens, it writes the ready file with every value from step 3, read from its own running state. Then it confirms the switch, writes the launcher entry and points Open at login at itself.
+7. The old host accepts the ready file only if it names the process it started, the new version, and the same values. Screen sharing may be gained but not lost. It then quits.
+8. Otherwise, or if no ready file arrives within 60 seconds, the old host switches `current` back, stops the new process, listens again, restores the grant without a dialog, and asks for the application name back.
+
+The new host checks for updates only once the host it replaced has exited.
+
+**The portal session.** The old host closes its portal session before it starts the new host, so only one host holds the grant at a time. The portal hands back a new token on each restore and retires the old one. The host saves it at once, and reads the token from disk each time it opens a session. A new host that restores the grant saves the newest token, and an old host that serves again restores from that. A new host killed during its restore, or a restore that hands back no token, leaves the old host to ask for the grant again with the desktop's dialog.
+
+### 12.5 Not in this version
+
+The same as section 11.6. A packaged binary newer than the installed version is not preferred over it: the host runs what `current` names until its next update.
