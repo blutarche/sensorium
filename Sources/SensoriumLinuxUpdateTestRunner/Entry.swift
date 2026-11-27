@@ -55,7 +55,8 @@ struct SensoriumLinuxUpdateTestRunner {
             ("a host ready report must keep identity, pairings, address and screen sharing", testAHostReadyReportMustKeepIdentityPairingsAddressAndScreenSharing),
             ("a host hands over only to a new host that serves the same way", testAHostHandsOverOnlyToANewHostThatServesTheSameWay),
             ("the mismatch reason matches the other install failures", testTheMismatchReasonMatchesTheOtherInstallFailures),
-            ("a host scheduler installs a staged update only while idle", testAHostSchedulerInstallsAStagedUpdateOnlyWhileIdle)
+            ("a host scheduler installs a staged update only while idle", testAHostSchedulerInstallsAStagedUpdateOnlyWhileIdle),
+            ("the engine's cleanup leaves the host's records alone", testTheEnginesCleanupLeavesTheHostsRecordsAlone)
         ]
 
         for (name, test) in tests {

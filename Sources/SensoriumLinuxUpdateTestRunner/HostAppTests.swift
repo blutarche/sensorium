@@ -164,3 +164,51 @@ func testTheHostLauncherEntryRunsCurrentWithNoFieldCode() {
         "the host's icons are copied"
     )
 }
+
+/// The host installs into the folder that holds its records. Pruning and the
+/// launch-time cleanup touch only what the engine made there.
+func testTheEnginesCleanupLeavesTheHostsRecordsAlone() {
+    let directory = makeTemporaryDirectory("host-records")
+    defer { removeTemporaryDirectory(directory) }
+    let dataRoot = directory.appendingPathComponent("sensorium-host", isDirectory: true)
+    mkdir(dataRoot.path, 0o700)
+    let records = [
+        "approved-devices.json", "device-identity.json", "host-tls-identity.json",
+        "host-screen-arming.json", "host-screen-sessions.log", "portal-restore-token.json"
+    ]
+    for name in records {
+        writeFile("{\"record\":\"\(name)\"}", to: dataRoot.appendingPathComponent(name), mode: 0o600)
+    }
+    // Folders that look like the engine's own but are not named as it names
+    // them, and a file that is.
+    let lookalikes = [".handoff-pairing", ".staging-notes", "versions-old"]
+    for name in lookalikes {
+        mkdir(dataRoot.appendingPathComponent(name).path, 0o700)
+    }
+    let fileNamedLikeAWorkFolder = ".handoff-" + UUID().uuidString
+    writeFile("kept", to: dataRoot.appendingPathComponent(fileNamedLikeAWorkFolder), mode: 0o600)
+    func contents(_ name: String) -> String? {
+        try? String(contentsOf: dataRoot.appendingPathComponent(name), encoding: .utf8)
+    }
+    let before = records.map(contents)
+
+    let installation = LinuxUpdateInstallation(dataRoot: dataRoot, app: .host)
+    for text in ["0.5.0", "0.6.0", "0.7.0", "0.8.0"] {
+        writeFile("#!/bin/sh\n", to: installation.versionDirectory(for: version(text)).appendingPathComponent("sensorium-host"), mode: 0o755)
+    }
+    let newest = LinuxStagedUpdate(
+        version: version("0.8.0"), sha256: sampleDigest,
+        executable: installation.versionDirectory(for: version("0.8.0")).appendingPathComponent("sensorium-host")
+    )
+    guard case .success = installation.switchCurrent(to: newest) else {
+        return expect(false, "the switch to the newest version was made")
+    }
+    expect(installation.markConfirmed(version: version("0.8.0")) == .confirmed, "the newest version confirms")
+    expect(installation.installedVersions() == [version("0.6.0"), version("0.7.0"), version("0.8.0")], "pruning removes the oldest version")
+    installation.removeAbandonedWorkFolders(now: Date().addingTimeInterval(365 * 24 * 3600))
+
+    expect(records.map(contents) == before, "every host record is as it was")
+    for name in lookalikes + [fileNamedLikeAWorkFolder] {
+        expect(FileManager.default.fileExists(atPath: dataRoot.appendingPathComponent(name).path), "\(name) is kept")
+    }
+}
