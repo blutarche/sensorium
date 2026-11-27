@@ -29,14 +29,16 @@ func fail(_ message: String) -> Never {
 // identities and paired machines without changing them, and needs no
 // display.
 let arguments: [String]
+let replacing: LinuxHostReplacement?
 switch LinuxHostLaunchRoute.route(Array(CommandLine.arguments.dropFirst())) {
 case .updateSelfTest:
     exit(LinuxHostUpdateSelfTest.run(
         dataFolder: RestoreTokenStore.defaultDataRoot(),
         versionLine: "Sensorium Host \(LinuxHostRelease.version)"
     ))
-case let .host(hostArguments, _):
+case let .host(hostArguments, replaced):
     arguments = hostArguments
+    replacing = replaced
 }
 
 let usage = "usage: sensorium-host [--background | --serve [--allow-screen-sharing]]"
@@ -65,7 +67,7 @@ guard sensorium_attach_dispatch_main_queue() != 0 else {
 }
 
 if !serve {
-    exit(LinuxHostApplication(arguments: arguments).run())
+    exit(LinuxHostApplication(arguments: arguments, replacing: replacing).run())
 }
 
 let dataFolder = RestoreTokenStore.defaultDataRoot()

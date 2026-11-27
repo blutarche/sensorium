@@ -27,8 +27,26 @@ static inline GApplication *sensorium_g_application(gpointer object) {
     return G_APPLICATION(object);
 }
 
-static inline GtkApplication *sensorium_gtk_application_with_command_line(const char *id) {
-    return gtk_application_new(id, G_APPLICATION_HANDLES_COMMAND_LINE);
+// Another instance may take the application's bus name over, and one started
+// with `replace` does, so a new version can start while the old one runs.
+static inline GtkApplication *sensorium_gtk_application_with_command_line(const char *id, gboolean replace) {
+    GApplicationFlags flags = G_APPLICATION_HANDLES_COMMAND_LINE | G_APPLICATION_ALLOW_REPLACEMENT;
+    if (replace) {
+        flags |= G_APPLICATION_REPLACE;
+    }
+    return gtk_application_new(id, flags);
+}
+
+// Asks for the application's bus name again after an instance that took it
+// over has gone. GApplication has no call of its own for this. The request
+// queues until the name is free, and lets a later instance take it over.
+static inline void sensorium_g_application_reclaim_name(GApplication *app) {
+    GDBusConnection *connection = g_application_get_dbus_connection(app);
+    const char *id = g_application_get_application_id(app);
+    if (connection == NULL || id == NULL) {
+        return;
+    }
+    g_bus_own_name_on_connection(connection, id, G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT, NULL, NULL, NULL, NULL);
 }
 
 static inline void sensorium_g_application_add_switch(GApplication *app, const char *name, const char *description) {

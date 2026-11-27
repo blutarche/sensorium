@@ -17,10 +17,13 @@ final class LinuxHostApplication {
     private var isStopping = false
     /// The options GApplication parses, without the updater's own.
     private let arguments: [String]
+    /// The host this process was started to replace, for an update.
+    private let replacing: LinuxHostReplacement?
 
-    init(arguments: [String]) {
+    init(arguments: [String], replacing: LinuxHostReplacement?) {
         self.arguments = arguments
-        gtk = sensorium_gtk_application_with_command_line("com.sensorium.host")
+        self.replacing = replacing
+        gtk = sensorium_gtk_application_with_command_line("com.sensorium.host", replacing == nil ? 0 : 1)
     }
 
     func run() -> Int32 {
@@ -46,6 +49,15 @@ final class LinuxHostApplication {
             MainActor.assumeIsolated { host.launch(background: false) }
         }
         sensorium_signal_connect(object, "activate", unsafeBitCast(activate, to: (@convention(c) () -> Void).self), context)
+        // The new version of an update takes the bus name over while this
+        // host waits for it to report ready. GApplication would quit here;
+        // this host quits once the new one has reported, and serves on if it
+        // never does.
+        let nameLost: @convention(c) (UnsafeMutablePointer<GApplication>?, UnsafeMutableRawPointer?) -> gboolean = { _, _ in
+            print("Sensorium host: another instance took over the application name")
+            return 1
+        }
+        sensorium_signal_connect(object, "name-lost", unsafeBitCast(nameLost, to: (@convention(c) () -> Void).self), context)
 
         defer { g_object_unref(object) }
         // GApplication reads the program's name and the options it knows;
