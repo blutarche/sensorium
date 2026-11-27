@@ -14,10 +14,6 @@ import Glibc
 /// creates a file, so no entry's name, type, owner or mode can reach the
 /// disk. The whole listing is checked before the binary is written.
 public enum LinuxUpdateArchive {
-    /// The one entry a release archive holds, named alone or as
-    /// `./Sensorium`.
-    public static let binaryName = "Sensorium"
-
     /// The largest binary accepted.
     public static let maximumBinarySize: Int64 = 512 * 1024 * 1024
 
@@ -32,12 +28,14 @@ public enum LinuxUpdateArchive {
 
     private static let decompressedName = ".archive.tar"
 
-    /// Writes `directory/Sensorium`, mode 0755, and returns it.
-    /// `directory` is a fresh owner-only folder; on any failure it is left
-    /// as it was found.
+    /// Writes `directory/<binary>`, mode 0755, and returns it. The archive
+    /// must hold `app.binaryName` alone, named as it is or with one leading
+    /// `./`. `directory` is a fresh owner-only folder; on any failure it is
+    /// left as it was found.
     public static func extract(
         _ archive: URL,
         into directory: URL,
+        app: LinuxUpdateApp = .viewer,
         gzip: URL = defaultGzip,
         maximumBinarySize: Int64 = maximumBinarySize
     ) -> Result<URL, LinuxUpdateFailure> {
@@ -60,7 +58,8 @@ public enum LinuxUpdateArchive {
         guard fstat(descriptor, &info) == 0 else { return .failure(.stagingFailed) }
 
         let entry: BinaryEntry
-        switch listing(TarFile(descriptor: descriptor, length: Int64(info.st_size)), maximumBinarySize: maximumBinarySize) {
+        let binaryName = app.binaryName
+        switch listing(TarFile(descriptor: descriptor, length: Int64(info.st_size)), binaryName: binaryName, maximumBinarySize: maximumBinarySize) {
         case let .success(found):
             entry = found
         case let .failure(refusal):
@@ -167,7 +166,7 @@ public enum LinuxUpdateArchive {
 
     /// Walks every header and finds the binary's data, or says why the
     /// archive is refused. Reads no entry's data except extended headers.
-    static func listing(_ file: TarFile, maximumBinarySize: Int64) -> Result<BinaryEntry, Refusal> {
+    static func listing(_ file: TarFile, binaryName: String, maximumBinarySize: Int64) -> Result<BinaryEntry, Refusal> {
         func refuse(_ why: String) -> Result<BinaryEntry, Refusal> { .failure(Refusal(why: why)) }
 
         var offset: Int64 = 0
@@ -252,7 +251,7 @@ public enum LinuxUpdateArchive {
                 pendingPath = nil
                 pendingSize = nil
                 pendingExtended = false
-                if let why = refusal(forName: name) {
+                if let why = refusal(forName: name, binaryName: binaryName) {
                     return refuse(why)
                 }
                 guard binary == nil else {
@@ -286,8 +285,8 @@ public enum LinuxUpdateArchive {
         return .success(binary)
     }
 
-    /// The name must be `Sensorium`, or `./Sensorium` with one leading `./`.
-    static func refusal(forName name: String) -> String? {
+    /// The name must be `binaryName`, or the same with one leading `./`.
+    static func refusal(forName name: String, binaryName: String) -> String? {
         if name.isEmpty {
             return "an entry has no name"
         }

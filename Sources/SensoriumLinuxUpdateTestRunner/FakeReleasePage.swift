@@ -27,10 +27,10 @@ final class FakeReleasePage: LinuxUpdateTransport, @unchecked Sendable {
     }
 
     /// Serves `manifest` and its signature, made with `privateKey`, at the
-    /// release's fixed addresses.
-    func publish(_ manifest: Data, signedWith privateKey: Data) {
-        serve(manifest, at: LinuxUpdateReleaseLocation.manifestURL)
-        serve(linuxSignatureFile(signing: manifest, with: privateKey), at: LinuxUpdateReleaseLocation.signatureURL)
+    /// fixed addresses `app` reads.
+    func publish(_ manifest: Data, signedWith privateKey: Data, app: LinuxUpdateApp = .viewer) {
+        serve(manifest, at: LinuxUpdateReleaseLocation.manifestURL(for: app))
+        serve(linuxSignatureFile(signing: manifest, with: privateKey), at: LinuxUpdateReleaseLocation.signatureURL(for: app))
     }
 
     func fetch(_ url: URL, maximumBytes: Int) async throws -> Data {

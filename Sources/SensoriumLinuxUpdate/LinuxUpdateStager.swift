@@ -41,7 +41,7 @@ public struct LinuxUpdateStager: Sendable {
             if let failure = LinuxUpdateStaging.verifyDownload(at: archive, size: manifest.size, sha256: manifest.sha256) {
                 return .failure(failure)
             }
-            let extracted = LinuxUpdateArchive.extract(archive, into: staging, gzip: gzip)
+            let extracted = LinuxUpdateArchive.extract(archive, into: staging, app: installation.app, gzip: gzip)
             // Removed before the self-test, so the folder moved into place
             // holds the binary alone.
             try? FileManager.default.removeItem(at: archive)
@@ -55,7 +55,7 @@ public struct LinuxUpdateStager: Sendable {
             return .failure(failure)
         }
 
-        if let failure = await LinuxUpdateStaging.runSelfTest(executable: binary, version: manifest.version, timeout: selfTestTimeout) {
+        if let failure = await LinuxUpdateStaging.runSelfTest(executable: binary, version: manifest.version, app: installation.app, timeout: selfTestTimeout) {
             return .failure(failure)
         }
         guard let placed = installation.moveIntoPlace(staging, as: manifest.version) else {
@@ -64,7 +64,7 @@ public struct LinuxUpdateStager: Sendable {
         return .success(LinuxStagedUpdate(
             version: manifest.version,
             sha256: manifest.sha256,
-            executable: placed.appendingPathComponent(LinuxUpdateInstallation.executableName)
+            executable: placed.appendingPathComponent(installation.executableName)
         ))
     }
 }

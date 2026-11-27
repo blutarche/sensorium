@@ -15,23 +15,22 @@ public enum LinuxUpdateLauncherEntryError: Error, Equatable {
     case couldNotWrite(String)
 }
 
-/// The first update of a viewer the package installed, as section 11.3 of
+/// The first update of an app the package installed, as section 11.3 of
 /// `docs/self-update-design.md` describes: a launcher entry and icons in the
 /// person's own applications and icons folders, which take precedence over
-/// the package's because they carry the same names. The package's own files
+/// the package's because they carry the same names. The same desktop id
+/// keeps the app id the desktop knows the app by. The package's own files
 /// are read, never changed.
 public enum LinuxUpdateLauncherEntry {
-    public static let desktopFileName = "com.sensorium.viewer.desktop"
-    public static let iconFileName = "com.sensorium.viewer.png"
-
-    /// Writes `applicationsDirectory/com.sensorium.viewer.desktop`, a copy of
+    /// Writes `applicationsDirectory/<desktop id>.desktop`, a copy of
     /// `packagedDesktopFile` whose every `Exec=` line runs
-    /// `<dataRoot>/current/Sensorium %u`, and copies each
-    /// `hicolor/<size>/apps/com.sensorium.viewer.png` under
+    /// `<dataRoot>/current/<binary>`, followed by the app's field code if it
+    /// has one, and copies each `hicolor/<size>/apps/<desktop id>.png` under
     /// `packagedIconsDirectory` to the same place under `iconsDirectory`.
     /// Only regular files are copied; a link is skipped. Every file is
     /// replaced in one rename, so running this again changes nothing.
     public static func install(
+        app: LinuxUpdateApp = .viewer,
         dataRoot: URL,
         packagedDesktopFile: URL,
         packagedIconsDirectory: URL,
@@ -41,20 +40,18 @@ public enum LinuxUpdateLauncherEntry {
         guard let packaged = try? String(contentsOf: packagedDesktopFile, encoding: .utf8) else {
             throw LinuxUpdateLauncherEntryError.unreadableEntry
         }
-        let executable = dataRoot
-            .appendingPathComponent(LinuxUpdateInstallation.currentLinkName)
-            .appendingPathComponent(LinuxUpdateInstallation.executableName)
-        let entry = try rewrittenEntry(packaged, executablePath: executable.path)
+        let executable = LinuxUpdateInstallation(dataRoot: dataRoot, app: app).currentExecutable
+        let entry = try rewrittenEntry(packaged, executablePath: executable.path, fieldCode: app.execFieldCode)
 
-        for (source, destination) in iconCopies(from: packagedIconsDirectory, to: iconsDirectory) {
+        for (source, destination) in iconCopies(from: packagedIconsDirectory, to: iconsDirectory, iconFileName: "\(app.desktopID).png") {
             guard let data = try? Data(contentsOf: source) else { continue }
             try replace(destination, with: data)
         }
-        try replace(applicationsDirectory.appendingPathComponent(desktopFileName), with: Data(entry.utf8))
+        try replace(applicationsDirectory.appendingPathComponent("\(app.desktopID).desktop"), with: Data(entry.utf8))
     }
 
-    static func rewrittenEntry(_ packaged: String, executablePath: String) throws -> String {
-        let exec = "Exec=" + (try execArgument(for: executablePath)) + " %u"
+    static func rewrittenEntry(_ packaged: String, executablePath: String, fieldCode: String?) throws -> String {
+        let exec = "Exec=" + (try execArgument(for: executablePath)) + (fieldCode.map { " " + $0 } ?? "")
         var found = false
         let lines = packaged.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
             guard line.hasPrefix("Exec=") else { return String(line) }
@@ -92,7 +89,7 @@ public enum LinuxUpdateLauncherEntry {
             .replacingOccurrences(of: "%", with: "%%")
     }
 
-    private static func iconCopies(from packaged: URL, to destination: URL) -> [(URL, URL)] {
+    private static func iconCopies(from packaged: URL, to destination: URL, iconFileName: String) -> [(URL, URL)] {
         let theme = packaged.appendingPathComponent("hicolor", isDirectory: true)
         let sizes = ((try? FileManager.default.contentsOfDirectory(atPath: theme.path)) ?? []).sorted()
         return sizes.compactMap { size in

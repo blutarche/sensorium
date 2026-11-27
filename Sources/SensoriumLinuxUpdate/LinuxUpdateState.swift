@@ -14,18 +14,18 @@ public struct LinuxUpdateFailureRecord: Codable, Equatable, Sendable {
     public var lastFailed: Date?
 }
 
-/// What the viewer remembers between checks.
+/// What an app remembers between checks.
 public struct LinuxUpdateState: Codable, Equatable, Sendable {
     /// A release that could pass on another try is tried this many times,
     /// then counts as bad.
     public static let maximumTries = 3
 
-    /// The viewer checks at launch and this often while it runs. A retry
+    /// An app checks at launch and this often while it runs. A retry
     /// waits this long after its last failure, so a relaunch does not retry
     /// at once.
     public static let checkInterval: TimeInterval = 6 * 60 * 60
 
-    /// The highest version this viewer has seen in a valid manifest.
+    /// The highest version this app has seen in a valid manifest.
     public var highestVersionSeen: LinuxUpdateVersion?
     public var lastCheck: Date?
     public var failures: [LinuxUpdateFailureRecord]
@@ -82,15 +82,13 @@ public struct LinuxUpdateState: Codable, Equatable, Sendable {
     }
 }
 
-/// `viewer-update-state.json` in the data root: owner-only, written
-/// atomically.
+/// `viewer-update-state.json` or `host-update-state.json` in the data root:
+/// owner-only, written atomically.
 public struct LinuxUpdateStateStore: Sendable {
-    public static let fileName = "viewer-update-state.json"
-
     public let url: URL
 
-    public init(dataRoot: URL) {
-        url = dataRoot.appendingPathComponent(Self.fileName)
+    public init(dataRoot: URL, app: LinuxUpdateApp = .viewer) {
+        url = dataRoot.appendingPathComponent(app.stateFileName)
     }
 
     /// A missing or unreadable file reads as an empty state, so one bad

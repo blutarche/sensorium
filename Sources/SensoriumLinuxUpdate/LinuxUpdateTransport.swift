@@ -4,8 +4,13 @@ import Foundation
 /// constant and fields of a verified manifest; the updater never follows an
 /// address it was handed whole.
 public enum LinuxUpdateReleaseLocation {
-    public static let manifestURL = URL(string: "https://github.com/blutarche/sensorium/releases/latest/download/sensorium-update-linux-x86_64.json")!
-    public static let signatureURL = URL(string: "https://github.com/blutarche/sensorium/releases/latest/download/sensorium-update-linux-x86_64.json.sig")!
+    public static func manifestURL(for app: LinuxUpdateApp) -> URL {
+        URL(string: "https://github.com/blutarche/sensorium/releases/latest/download/\(app.manifestName)")!
+    }
+
+    public static func signatureURL(for app: LinuxUpdateApp) -> URL {
+        URL(string: "https://github.com/blutarche/sensorium/releases/latest/download/\(app.manifestName).sig")!
+    }
 
     /// The cap on the manifest and on its signature.
     public static let maximumSmallFileBytes = 64 * 1024
@@ -23,7 +28,7 @@ public enum LinuxUpdateReleaseLocation {
     public static let archiveDeadline: TimeInterval = 10 * 60
 
     /// `LinuxUpdateManifest.parse` has already held `manifest.file` to
-    /// exactly `Sensorium-<version>-linux-x86_64.tar.gz`.
+    /// exactly the app's own archive name for its version.
     public static func downloadURL(for manifest: LinuxUpdateManifest) -> URL {
         URL(string: "https://github.com/blutarche/sensorium/releases/download/v\(manifest.version)/\(manifest.file)")!
     }

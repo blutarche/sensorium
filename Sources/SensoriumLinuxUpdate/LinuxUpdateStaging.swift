@@ -35,20 +35,21 @@ public enum LinuxUpdateStaging {
 
     /// Runs `executable` with `--update-self-test` alone. It must exit 0
     /// within `timeout`, and the first line it prints must be exactly
-    /// `Sensorium <version>`. Its output goes to a file beside it, removed
+    /// `app.selfTestLine(for: version)`, such as `Sensorium 0.6.0`. Its output goes to a file beside it, removed
     /// afterwards, so a child that keeps the output open cannot stall the
     /// wait.
     public static func runSelfTest(
         executable: URL,
         version: LinuxUpdateVersion,
+        app: LinuxUpdateApp = .viewer,
         timeout: TimeInterval = selfTestTimeout
     ) async -> LinuxUpdateFailure? {
         await LinuxUpdateChildProcess.offThePool {
-            selfTest(executable: executable, version: version, timeout: timeout)
+            selfTest(executable: executable, expected: app.selfTestLine(for: version), timeout: timeout)
         }
     }
 
-    private static func selfTest(executable: URL, version: LinuxUpdateVersion, timeout: TimeInterval) -> LinuxUpdateFailure? {
+    private static func selfTest(executable: URL, expected: String, timeout: TimeInterval) -> LinuxUpdateFailure? {
         let output = executable.deletingLastPathComponent().appendingPathComponent(selfTestOutputName)
         unlink(output.path)
         let descriptor = open(output.path, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
@@ -85,7 +86,6 @@ public enum LinuxUpdateStaging {
         guard count >= 0 else { return .stagingFailed }
         let printed = Data(buffer.prefix(count))
         let firstLine = printed.split(separator: UInt8(ascii: "\n"), maxSplits: 1, omittingEmptySubsequences: false).first ?? Data()
-        let expected = "Sensorium \(version)"
         guard Data(firstLine) == Data(expected.utf8) else {
             return .wrongArchiveContents("the new binary does not report itself as \(expected)")
         }

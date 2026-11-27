@@ -9,11 +9,12 @@ public enum LinuxUpdateManifestError: Error, Equatable {
     case invalidDigest
 }
 
-/// `sensorium-update-linux-x86_64.json`: what the latest release offers the
-/// Linux viewer. Only ever parsed after its signature has verified.
+/// `sensorium-update-linux-x86_64.json` or
+/// `sensorium-host-update-linux-x86_64.json`: what the latest release offers
+/// one Linux app. Only ever parsed after its signature has verified.
 public struct LinuxUpdateManifest: Equatable, Sendable {
-    /// The largest archive any release may name. The viewer binary is a few
-    /// tens of megabytes.
+    /// The largest archive any release may name. Each binary is a few tens
+    /// of megabytes.
     public static let maximumArchiveSize: Int64 = 512 * 1024 * 1024
 
     public let version: LinuxUpdateVersion
@@ -29,12 +30,14 @@ public struct LinuxUpdateManifest: Equatable, Sendable {
         self.sha256 = sha256
     }
 
-    /// The only file name a release may give its archive for `version`.
-    public static func archiveFileName(for version: LinuxUpdateVersion) -> String {
-        "Sensorium-\(version)-linux-x86_64.tar.gz"
+    /// The only file name a release may give `app`'s archive for `version`.
+    /// One key signs every manifest, so this name is what keeps one app from
+    /// installing the other's archive.
+    public static func archiveFileName(for version: LinuxUpdateVersion, app: LinuxUpdateApp = .viewer) -> String {
+        "\(app.archivePrefix)\(version)-linux-x86_64.tar.gz"
     }
 
-    public static func parse(_ data: Data) throws -> LinuxUpdateManifest {
+    public static func parse(_ data: Data, app: LinuxUpdateApp = .viewer) throws -> LinuxUpdateManifest {
         // The format is read on its own first, so a later format whose other
         // fields changed shape reads as unsupported rather than malformed.
         guard let format = try? JSONDecoder().decode(Format.self, from: data) else {
@@ -49,7 +52,7 @@ public struct LinuxUpdateManifest: Equatable, Sendable {
         guard let version = LinuxUpdateVersion(wire.version) else {
             throw LinuxUpdateManifestError.invalidVersion
         }
-        guard wire.file == archiveFileName(for: version) else {
+        guard wire.file == archiveFileName(for: version, app: app) else {
             throw LinuxUpdateManifestError.invalidFile
         }
         guard wire.size > 0, wire.size <= maximumArchiveSize else {

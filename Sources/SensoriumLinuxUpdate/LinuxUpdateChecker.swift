@@ -2,8 +2,8 @@ import Foundation
 
 public enum LinuxUpdateCheckResult: Equatable, Sendable {
     /// Nothing to install: the running version is current, the release has
-    /// no signed Linux manifest yet, or its manifest format is one this
-    /// viewer does not read.
+    /// no signed Linux manifest yet, or its manifest format is one this app
+    /// does not read.
     case upToDate
     /// The release page could not be reached. Not a failure, and nothing is
     /// recorded.
@@ -24,6 +24,7 @@ public struct LinuxUpdateChecker: Sendable {
     let runningVersion: LinuxUpdateVersion
     let transport: any LinuxUpdateTransport
     let stateStore: LinuxUpdateStateStore
+    let app: LinuxUpdateApp
     let publicKey: Data
     let now: @Sendable () -> Date
 
@@ -31,12 +32,14 @@ public struct LinuxUpdateChecker: Sendable {
         runningVersion: LinuxUpdateVersion,
         transport: any LinuxUpdateTransport,
         stateStore: LinuxUpdateStateStore,
+        app: LinuxUpdateApp = .viewer,
         publicKey: Data = LinuxUpdatePublicKey.rawRepresentation,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.runningVersion = runningVersion
         self.transport = transport
         self.stateStore = stateStore
+        self.app = app
         self.publicKey = publicKey
         self.now = now
     }
@@ -45,8 +48,8 @@ public struct LinuxUpdateChecker: Sendable {
         let manifestData: Data
         let signatureData: Data
         do {
-            manifestData = try await transport.fetch(LinuxUpdateReleaseLocation.manifestURL, maximumBytes: LinuxUpdateReleaseLocation.maximumSmallFileBytes)
-            signatureData = try await transport.fetch(LinuxUpdateReleaseLocation.signatureURL, maximumBytes: LinuxUpdateReleaseLocation.maximumSmallFileBytes)
+            manifestData = try await transport.fetch(LinuxUpdateReleaseLocation.manifestURL(for: app), maximumBytes: LinuxUpdateReleaseLocation.maximumSmallFileBytes)
+            signatureData = try await transport.fetch(LinuxUpdateReleaseLocation.signatureURL(for: app), maximumBytes: LinuxUpdateReleaseLocation.maximumSmallFileBytes)
         } catch LinuxUpdateTransportError.badStatus(404) {
             // The release is published before its Linux manifest is signed
             // and uploaded; until then there is nothing to offer.
@@ -60,7 +63,7 @@ public struct LinuxUpdateChecker: Sendable {
         }
         let manifest: LinuxUpdateManifest
         do {
-            manifest = try LinuxUpdateManifest.parse(manifestData)
+            manifest = try LinuxUpdateManifest.parse(manifestData, app: app)
         } catch LinuxUpdateManifestError.unsupportedFormat {
             return recordingCheckTime(.upToDate)
         } catch {

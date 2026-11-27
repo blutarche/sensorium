@@ -46,7 +46,12 @@ struct SensoriumLinuxUpdateTestRunner {
             ("the scheduler checks at launch and every six hours while on", testSchedulerChecksAtLaunchAndEverySixHoursWhileOn),
             ("the scheduler stages an update and reports each answer", testSchedulerStagesAnUpdateAndReportsEachAnswer),
             ("the scheduler records failures and clears them on a chosen check", testSchedulerRecordsFailuresAndClearsThemOnAChosenCheck),
-            ("the scheduler keeps checking after a transfer times out", testSchedulerKeepsCheckingAfterATransferTimesOut)
+            ("the scheduler keeps checking after a transfer times out", testSchedulerKeepsCheckingAfterATransferTimesOut),
+            ("the host has its own release files, folder and names", testTheHostHasItsOwnReleaseFilesFolderAndNames),
+            ("each app refuses the other's signed manifest", testEachAppRefusesTheOthersManifest),
+            ("the host archive holds sensorium-host alone", testTheHostArchiveHoldsSensoriumHostAlone),
+            ("the host self-test prints Sensorium Host and its version", testTheHostSelfTestPrintsSensoriumHostAndItsVersion),
+            ("the host launcher entry runs current with no field code", testTheHostLauncherEntryRunsCurrentWithNoFieldCode)
         ]
 
         for (name, test) in tests {

@@ -44,8 +44,8 @@ public struct LinuxStagedUpdate: Equatable, Sendable {
 public struct LinuxUpdatePendingSwitch: Codable, Equatable, Sendable {
     public let version: LinuxUpdateVersion
     public let sha256: String
-    /// What `current` named before the switch. Nil for the first update of a
-    /// viewer installed by the package, which had no `current`.
+    /// What `current` named before the switch. Nil for the first update of
+    /// an app installed by the package, which had no `current`.
     public let previous: LinuxUpdateVersion?
 
     public init(version: LinuxUpdateVersion, sha256: String, previous: LinuxUpdateVersion?) {
@@ -59,15 +59,15 @@ public struct LinuxUpdatePendingSwitch: Codable, Equatable, Sendable {
 public enum LinuxUpdateStartup: Equatable, Sendable {
     /// Any launch but the one below.
     case normal
-    /// Started with `--replacing` by the old viewer, running this version.
+    /// Started with `--replacing` by the old process, running this version.
     case replacing(LinuxUpdateVersion)
 }
 
 public enum LinuxUpdateRollback: Equatable, Sendable {
     case nothingPending
     /// The switch stands until the new version confirms it. At launch, this
-    /// process is that version, and calls `markConfirmed(version:)` once its
-    /// window is up. From `rollBack(_:unlessReported:)`, the new version
+    /// process is that version, and calls `markConfirmed(version:)` once it
+    /// is up: the viewer's window is showing, or the host is serving. From `rollBack(_:unlessReported:)`, the new version
     /// reported ready in time.
     case awaitingConfirmation(LinuxUpdatePendingSwitch)
     /// `current` names the previous version again, or is gone when there was
@@ -86,23 +86,22 @@ public enum LinuxUpdateConfirmation: Equatable, Sendable {
     case notPending
 }
 
-/// Where the Linux viewer installs its own versions, as section 11.3 of
+/// Where a Linux app installs its own versions, as section 11.3 of
 /// `docs/self-update-design.md` describes:
 ///
-///     <data root>/versions/<version>/Sensorium
+///     <data root>/versions/<version>/<binary>
 ///     <data root>/current -> versions/<version>
 ///     <data root>/update-pending.json
 ///
 /// `current` only ever changes by `rename(2)` of a new link over it, so a
 /// reader always finds the old target or the new one. The pending marker is
 /// on disk before `current` moves. The steps that change the layout hold an
-/// exclusive lock on `.update.lock`, because the old and the new viewer both
+/// exclusive lock on `.update.lock`, because the old and the new process both
 /// touch it during a handoff.
 public struct LinuxUpdateInstallation: Sendable {
     public static let versionsDirectoryName = "versions"
     public static let currentLinkName = "current"
     public static let pendingMarkerName = "update-pending.json"
-    public static let executableName = LinuxUpdateArchive.binaryName
     /// Versions kept below the current one after a confirmed switch.
     public static let previousVersionsKept = 2
 
@@ -116,15 +115,18 @@ public struct LinuxUpdateInstallation: Sendable {
     static let stagingPrefix = ".staging-"
 
     public let dataRoot: URL
+    public let app: LinuxUpdateApp
 
-    public init(dataRoot: URL = LinuxUpdateInstallation.defaultDataRoot()) {
+    public init(dataRoot: URL = LinuxUpdateInstallation.defaultDataRoot(), app: LinuxUpdateApp = .viewer) {
         self.dataRoot = dataRoot
+        self.app = app
     }
 
-    /// `$XDG_DATA_HOME/sensorium`, or `~/.local/share/sensorium` where that
-    /// variable is unset or empty: the folder the viewer keeps its own
+    /// `$XDG_DATA_HOME/<app folder>`, or `~/.local/share/<app folder>` where
+    /// that variable is unset or empty: the folder the app keeps its own
     /// records in, resolved by the same rule.
     public static func defaultDataRoot(
+        app: LinuxUpdateApp = .viewer,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
     ) -> URL {
@@ -136,7 +138,12 @@ public struct LinuxUpdateInstallation: Sendable {
                 .appendingPathComponent(".local", isDirectory: true)
                 .appendingPathComponent("share", isDirectory: true)
         }
-        return base.appendingPathComponent("sensorium", isDirectory: true)
+        return base.appendingPathComponent(app.dataFolderName, isDirectory: true)
+    }
+
+    /// The installed executable's name in each version's folder.
+    public var executableName: String {
+        app.binaryName
     }
 
     public var versionsDirectory: URL {
@@ -149,7 +156,7 @@ public struct LinuxUpdateInstallation: Sendable {
 
     /// What the launcher entry runs.
     public var currentExecutable: URL {
-        currentLink.appendingPathComponent(Self.executableName)
+        currentLink.appendingPathComponent(executableName)
     }
 
     public var pendingMarker: URL {
@@ -312,7 +319,7 @@ public struct LinuxUpdateInstallation: Sendable {
     @discardableResult
     public func switchCurrent(to staged: LinuxStagedUpdate) -> Result<LinuxUpdatePendingSwitch, LinuxUpdateFailure> {
         withLock { () -> Result<LinuxUpdatePendingSwitch, LinuxUpdateFailure> in
-            let executable = versionDirectory(for: staged.version).appendingPathComponent(Self.executableName)
+            let executable = versionDirectory(for: staged.version).appendingPathComponent(executableName)
             guard lstatInfo(executable.path).map({ $0.st_mode & S_IFMT == S_IFREG }) == true else {
                 return .failure(.switchFailed)
             }
@@ -331,7 +338,7 @@ public struct LinuxUpdateInstallation: Sendable {
         } ?? .failure(.switchFailed)
     }
 
-    /// Called by the new version once its window is up: removes the pending
+    /// Called by the new version once it is up: removes the pending
     /// marker, then removes every version but the current one and the
     /// `previousVersionsKept` highest below it.
     public func markConfirmed(version: LinuxUpdateVersion) -> LinuxUpdateConfirmation {
@@ -367,7 +374,7 @@ public struct LinuxUpdateInstallation: Sendable {
         } ?? .nothingPending
     }
 
-    /// Step 5 of section 11.4: the old viewer's wait for the ready file ran
+    /// Step 5 of section 11.4: the old process's wait for the ready file ran
     /// out, or the new version could not be started. Undoes `switched`, the
     /// switch this process made with `switchCurrent(to:)`, while `current`
     /// still names its version. The marker may already be gone, so the
@@ -392,7 +399,7 @@ public struct LinuxUpdateInstallation: Sendable {
     private func switchBack(_ pending: LinuxUpdatePendingSwitch) -> LinuxUpdateRollback {
         let restored: Bool
         if let previous = pending.previous,
-           lstatInfo(versionDirectory(for: previous).appendingPathComponent(Self.executableName).path) != nil {
+           lstatInfo(versionDirectory(for: previous).appendingPathComponent(executableName).path) != nil {
             restored = point(currentAt: previous)
         } else {
             restored = unlink(currentLink.path) == 0 || errno == ENOENT

@@ -4,12 +4,12 @@ import SensoriumLinuxUpdate
 
 func testReleaseAddressesAreBuiltFromConstantsAndManifestFields() {
     expect(
-        LinuxUpdateReleaseLocation.manifestURL.absoluteString
+        LinuxUpdateReleaseLocation.manifestURL(for: .viewer).absoluteString
             == "https://github.com/blutarche/sensorium/releases/latest/download/sensorium-update-linux-x86_64.json",
         "the manifest address is the release page's stable latest link"
     )
     expect(
-        LinuxUpdateReleaseLocation.signatureURL.absoluteString
+        LinuxUpdateReleaseLocation.signatureURL(for: .viewer).absoluteString
             == "https://github.com/blutarche/sensorium/releases/latest/download/sensorium-update-linux-x86_64.json.sig",
         "the signature sits beside the manifest"
     )
@@ -26,7 +26,7 @@ func testReleaseAddressesAreBuiltFromConstantsAndManifestFields() {
     expect(LinuxUpdateReleaseLocation.archiveDeadline == 10 * 60, "downloading the archive ends within 10 minutes")
 }
 
-private struct SigningKey {
+struct SigningKey {
     let privateKey = SensoriumCrypto.ed25519GeneratePrivateKey()
     var publicKey: Data { try! SensoriumCrypto.ed25519PublicKey(privateKey: privateKey) }
 }
@@ -57,8 +57,8 @@ func testCheckFindsASignedNewerReleaseAndRemembersIt() async {
     expect(offer.file == "Sensorium-0.6.0-linux-x86_64.tar.gz", "the offer names the Linux archive")
     expect(
         page.requests == [
-            .init(url: LinuxUpdateReleaseLocation.manifestURL, maximumBytes: 64 * 1024),
-            .init(url: LinuxUpdateReleaseLocation.signatureURL, maximumBytes: 64 * 1024)
+            .init(url: LinuxUpdateReleaseLocation.manifestURL(for: .viewer), maximumBytes: 64 * 1024),
+            .init(url: LinuxUpdateReleaseLocation.signatureURL(for: .viewer), maximumBytes: 64 * 1024)
         ],
         "a check fetches the manifest and its signature, each capped at 64 KB, and nothing else"
     )
@@ -83,14 +83,14 @@ func testCheckStopsOnAnyFailureBeforeTrustingTheManifest() async {
     expect(store.load().highestVersionSeen == nil, "an unverified manifest's version is not remembered")
 
     let unreachable = FakeReleasePage()
-    unreachable.fail(LinuxUpdateReleaseLocation.manifestURL)
+    unreachable.fail(LinuxUpdateReleaseLocation.manifestURL(for: .viewer))
     let before = store.load()
     let unreachableResult = await makeChecker(page: unreachable, key: key, store: store).check()
     expect(unreachableResult == .unreachable, "an unreachable release page is not a failure")
     expect(store.load() == before, "an unreachable release page records nothing")
 
     let serverError = FakeReleasePage()
-    serverError.fail(LinuxUpdateReleaseLocation.manifestURL, with: .badStatus(503))
+    serverError.fail(LinuxUpdateReleaseLocation.manifestURL(for: .viewer), with: .badStatus(503))
     let serverErrorResult = await makeChecker(page: serverError, key: key, store: store).check()
     expect(serverErrorResult == .unreachable, "a server error is an unreachable release page")
 
@@ -123,7 +123,7 @@ func testAReleaseWithNoLinuxManifestYetIsUpToDate() async {
     expect(store.load().lastCheck == Date(timeIntervalSince1970: 1_800_000_000), "the check still counts as made")
 
     let manifestOnly = FakeReleasePage()
-    manifestOnly.serve(serialized(sampleManifestObject(version: "0.6.0")), at: LinuxUpdateReleaseLocation.manifestURL)
+    manifestOnly.serve(serialized(sampleManifestObject(version: "0.6.0")), at: LinuxUpdateReleaseLocation.manifestURL(for: .viewer))
     let manifestOnlyResult = await makeChecker(page: manifestOnly, key: key, store: store).check()
     expect(manifestOnlyResult == .upToDate, "a manifest whose signature is not uploaded yet offers nothing")
     expect(store.load().highestVersionSeen == nil, "an unsigned manifest's version is not remembered")
