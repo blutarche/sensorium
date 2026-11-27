@@ -41,7 +41,7 @@ tailnet.
 %build
 # SwiftPM's C targets require Clang's module-map flags.
 unset CC CXX
-swift build -c release --product sensorium-host
+swift build -c release --product sensorium-host -Xcc '-DSENSORIUM_BUILD_VERSION="%{version}"'
 
 %install
 install -D -p -m 0755 .build/release/sensorium-host %{buildroot}%{_bindir}/sensorium-host

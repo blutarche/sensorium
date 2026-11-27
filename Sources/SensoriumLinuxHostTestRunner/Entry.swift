@@ -55,6 +55,7 @@ struct SensoriumLinuxHostTestRunner {
             + indicatorBadgeTests() + portalCapturePermissionTests() + lockAtLaunchTests()
             + screenFeedTests() + linuxHostScreenMediaTests() + linuxHostRuntimeTests()
             + HostWindowStatusTests.all + HostWindowPairingTests.all + HostWindowMachinesTests.all + AskFirstPromptTests.all
+            + hostUpdateLaunchTests()
         for (name, test) in mainActorTests {
             await test()
             print("PASS: \(name)")

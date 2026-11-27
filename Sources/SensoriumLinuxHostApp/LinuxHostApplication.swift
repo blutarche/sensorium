@@ -15,8 +15,11 @@ final class LinuxHostApplication {
     private var renameWindow: PairedMachineRenameWindow?
     private var cancelAsk: (() -> Void)?
     private var isStopping = false
+    /// The options GApplication parses, without the updater's own.
+    private let arguments: [String]
 
-    init() {
+    init(arguments: [String]) {
+        self.arguments = arguments
         gtk = sensorium_gtk_application_with_command_line("com.sensorium.host")
     }
 
@@ -45,8 +48,15 @@ final class LinuxHostApplication {
         sensorium_signal_connect(object, "activate", unsafeBitCast(activate, to: (@convention(c) () -> Void).self), context)
 
         defer { g_object_unref(object) }
+        // GApplication reads the program's name and the options it knows;
+        // `--replacing` and its values never reach it.
+        let argv = ([CommandLine.arguments.first ?? "sensorium-host"] + arguments).map { strdup($0) }
+        defer { argv.forEach { free($0) } }
+        var pointers: [UnsafeMutablePointer<CChar>?] = argv + [nil]
         return withExtendedLifetime(self) {
-            g_application_run(application, CommandLine.argc, CommandLine.unsafeArgv)
+            pointers.withUnsafeMutableBufferPointer { buffer in
+                g_application_run(application, Int32(argv.count), buffer.baseAddress)
+            }
         }
     }
 

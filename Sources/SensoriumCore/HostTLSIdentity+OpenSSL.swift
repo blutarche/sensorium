@@ -86,6 +86,19 @@ extension HostTLSIdentity {
         return (certificate, key)
     }
 
+    /// Whether a stored certificate and key would serve: parsed and matched
+    /// exactly as `makeOpenSSLCredentials()` does for the listener, in
+    /// memory, with nothing kept.
+    public static func servesWithOpenSSL(certificateDER: Data, privateKeyData: Data) -> Bool {
+        guard let credentials = try? HostTLSIdentity(certificateDER: certificateDER, privateKeyData: privateKeyData)
+            .makeOpenSSLCredentials() else {
+            return false
+        }
+        X509_free(credentials.certificate)
+        EVP_PKEY_free(credentials.privateKey)
+        return true
+    }
+
     private static func publicPoint(of key: OpaquePointer) throws -> Data {
         var point = [UInt8](repeating: 0, count: uncompressedPointLength)
         var length = 0

@@ -1,6 +1,8 @@
-#if os(macOS)
+#if os(macOS) || os(Linux)
 import Foundation
+#if canImport(Security)
 import Security
+#endif
 import SensoriumCore
 
 /// `--update-self-test`, run by an older host on a newly downloaded version
@@ -65,8 +67,11 @@ public enum HostUpdateSelfTest {
         }
         guard let stored = try? JSONDecoder().decode(Stored.self, from: data),
               let certificateDER = Data(base64Encoded: stored.certificateDER),
-              let keyData = Data(base64Encoded: stored.privateKey),
-              let certificate = SecCertificateCreateWithData(nil, certificateDER as CFData) else {
+              let keyData = Data(base64Encoded: stored.privateKey) else {
+            return false
+        }
+        #if canImport(Security)
+        guard let certificate = SecCertificateCreateWithData(nil, certificateDER as CFData) else {
             return false
         }
         let attributes: [CFString: Any] = [
@@ -78,6 +83,9 @@ public enum HostUpdateSelfTest {
             return false
         }
         return SecIdentityCreate(nil, certificate, key) != nil
+        #else
+        return HostTLSIdentity.servesWithOpenSSL(certificateDER: certificateDER, privateKeyData: keyData)
+        #endif
     }
 
     /// `FileApprovedDeviceStore`'s shape, or the plain list of keys an older

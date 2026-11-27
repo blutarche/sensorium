@@ -199,6 +199,7 @@ let package = Package(
             dependencies: [
                 "SensoriumCore",
                 "SensoriumHost",
+                .target(name: "SensoriumLinuxUpdate", condition: .when(platforms: [.linux])),
                 .target(name: "COpenSSL", condition: .when(platforms: [.linux])),
                 .target(name: "CAVCodec", condition: .when(platforms: [.linux])),
                 .target(name: "CCairo", condition: .when(platforms: [.linux])),
