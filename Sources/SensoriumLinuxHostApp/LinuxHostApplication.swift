@@ -10,6 +10,7 @@ final class LinuxHostApplication {
     private let autostart = HostAutostart(dataRoot: RestoreTokenStore.defaultDataRoot())
     private let appearance: IndicatorAppearance = .dark
     private var runtime: LinuxHostRuntime?
+    private var updater: LinuxHostUpdater?
     private var desktop: LinuxHostDesktop?
     private var window: HostMainWindow?
     private var renameWindow: PairedMachineRenameWindow?
@@ -89,6 +90,23 @@ final class LinuxHostApplication {
             self.runtime = runtime
             runtime.onStateChange = { [weak self] in self?.updateWindow($0) }
             state = runtime.state
+            let updater = LinuxHostUpdater.make(
+                releaseVersion: LinuxHostRelease.version,
+                dataRoot: dataFolder,
+                host: runtime,
+                replacing: replacing,
+                autostart: autostart,
+                launcherFolders: LinuxHostLocations.launcherFolders(),
+                afterFailedHandover: { [weak self] in self?.reclaimApplicationName() },
+                onTerminate: { [weak self] in self?.quit() }
+            )
+            self.updater = updater
+            updater?.rollBackUnconfirmedSwitch()
+            updater?.onLineChange = { [weak self] _ in
+                guard let self, let runtime = self.runtime else { return }
+                self.updateWindow(runtime.state)
+            }
+            runtime.onActivityChange = { [weak updater] in updater?.hostActivityChanged() }
         } catch {
             state.status = .couldNotStart(
                 headline: "Sensorium Host could not start",
@@ -100,6 +118,7 @@ final class LinuxHostApplication {
 
         state.openAtLogin = autostart.state
         state.supportsLocalNetwork = runtime?.supportsLocalNetwork ?? false
+        state.updateLine = updater?.line
         let window = HostMainWindow(state: state, appearance: appearance, actions: makeActions())
         self.window = window
         gtk_window_set_application(sensorium_gtk_window(window.toplevel), gtk)
@@ -108,7 +127,11 @@ final class LinuxHostApplication {
         watchSignals()
         if !background { window.show() }
         if let runtime {
-            Task { await runtime.start() }
+            let isUpdateRelaunch = replacing != nil
+            Task { [weak self] in
+                await runtime.start(isUpdateRelaunch: isUpdateRelaunch)
+                self?.updater?.hostDidStart()
+            }
         }
     }
 
@@ -132,6 +155,7 @@ final class LinuxHostApplication {
         var state = state
         state.openAtLogin = autostart.state
         state.supportsLocalNetwork = runtime?.supportsLocalNetwork ?? false
+        state.updateLine = updater?.line
         window?.update(state)
     }
 
@@ -192,9 +216,16 @@ final class LinuxHostApplication {
         }
     }
 
+    /// A handover that failed left this host serving again, without the
+    /// application name the new version took.
+    private func reclaimApplicationName() {
+        sensorium_g_application_reclaim_name(sensorium_g_application(UnsafeMutableRawPointer(gtk)))
+    }
+
     private func quit() {
         guard !isStopping else { return }
         isStopping = true
+        updater?.stop()
         cancelAsk?()
         Task {
             await runtime?.stop()
