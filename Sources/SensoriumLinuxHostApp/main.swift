@@ -38,7 +38,11 @@ case .updateSelfTest:
     ))
 case let .host(hostArguments, replaced):
     arguments = hostArguments
-    replacing = replaced
+    replacing = LinuxHostLaunchRoute.verified(
+        replacing: replaced,
+        dataRoot: RestoreTokenStore.defaultDataRoot(),
+        releaseVersion: LinuxHostRelease.version
+    )
 }
 
 let usage = "usage: sensorium-host [--background | --serve [--allow-screen-sharing]]"

@@ -19,6 +19,24 @@ private func testTheSelfTestAndTheReplacingLaunchAreRoutedBeforeAnythingElse() a
     )
 }
 
+private func testAReplacingLaunchIsHonouredOnlyFromTheHostThatStartedItForThisVersion() async {
+    let readyFile = URL(fileURLWithPath: "/home/ada/.local/share/sensorium-host/.handoff-1/update-ready.json")
+    let replacement = LinuxHostReplacement(pid: 42, readyFile: readyFile)
+    func verdict(parent: pid_t, pending: String?) -> LinuxHostReplacementVerdict {
+        LinuxHostLaunchRoute.verdict(for: replacement, parentProcess: parent, pendingVersion: pending, runningVersion: "0.9.0")
+    }
+    expect(verdict(parent: 42, pending: "0.9.0") == .relaunch, "the replaced host as parent and a pending switch to this version is an update relaunch")
+    guard case let .ordinary(parentReason) = verdict(parent: 7, pending: "0.9.0") else {
+        return expect(false, "a parent that is not the replaced host is an ordinary launch")
+    }
+    expect(parentReason.contains("parent"), "and says it was the parent, saw \(parentReason)")
+    guard case let .ordinary(noneReason) = verdict(parent: 42, pending: nil) else {
+        return expect(false, "no pending switch is an ordinary launch")
+    }
+    expect(noneReason.contains("pending"), "and says no switch was pending, saw \(noneReason)")
+    expect(verdict(parent: 42, pending: "0.8.0") != .relaunch, "a switch to another version is an ordinary launch")
+}
+
 /// Every name, size, mode and modification time, so a write or a removal
 /// anywhere in the folder shows.
 private func snapshot(_ directory: URL) -> [String] {
@@ -77,6 +95,7 @@ private func testTheHostSelfTestReadsWhatTheHostServesWithAndWritesNothing() asy
 
 func hostUpdateLaunchTests() -> [NamedTest] { [
     ("the self-test and the replacing launch are routed before anything else", testTheSelfTestAndTheReplacingLaunchAreRoutedBeforeAnythingElse),
+    ("a replacing launch is honoured only from the host that started it for this version", testAReplacingLaunchIsHonouredOnlyFromTheHostThatStartedItForThisVersion),
     ("the host self-test reads what the host serves with and writes nothing", testTheHostSelfTestReadsWhatTheHostServesWithAndWritesNothing)
 ] }
 #endif
